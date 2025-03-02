@@ -82,13 +82,6 @@ if ! check_command "electron"; then
     echo "Electron installed successfully"
 fi
 
-# Extract version from the installer filename
-VERSION=$(basename "$CLAUDE_DOWNLOAD_URL" | grep -oP 'Claude-Setup-x64\.exe' | sed 's/Claude-Setup-x64\.exe/0.7.9/')
-PACKAGE_NAME="claude-desktop"
-ARCHITECTURE="amd64"
-MAINTAINER="Claude Desktop Linux Maintainers"
-DESCRIPTION="Claude Desktop for Linux"
-
 # Create working directories
 WORK_DIR="$(pwd)/build"
 DEB_ROOT="$WORK_DIR/deb-package"
@@ -125,6 +118,14 @@ if ! 7z x -y "$CLAUDE_EXE"; then
     echo "❌ Failed to extract installer"
     exit 1
 fi
+
+# Extract version from RELEASES file
+echo "Extract version from the installer filename"
+VERSION=$(grep -oP 'AnthropicClaude-\K[0-9]+.[0-9]+.[0-9]+' RELEASES || echo "0.8.0")
+PACKAGE_NAME="claude-desktop"
+ARCHITECTURE="amd64"
+MAINTAINER="Claude Desktop Linux Maintainers"
+DESCRIPTION="Claude Desktop for Linux"
 
 if ! 7z x -y "AnthropicClaude-$VERSION-full.nupkg"; then
     echo "❌ Failed to extract nupkg"
@@ -223,6 +224,10 @@ EOF
 mkdir -p app.asar.contents/resources
 cp ../lib/net45/resources/Tray* app.asar.contents/resources/
 
+# Copy i18n
+mkdir -p app.asar.contents/resources/i18n
+cp ../lib/net45/resources/*.json app.asar.contents/resources/i18n
+
 # Repackage app.asar
 npx asar pack app.asar.contents app.asar
 
@@ -290,7 +295,7 @@ EOF
 # Create launcher script
 cat > "$INSTALL_DIR/bin/claude-desktop" << EOF
 #!/bin/bash
-electron /usr/lib/claude-desktop/app.asar "\$@"
+electron /usr/lib/claude-desktop/app.asar --no-sandbox "\$@"
 EOF
 chmod +x "$INSTALL_DIR/bin/claude-desktop"
 
@@ -320,6 +325,8 @@ fi
 if [ -f "$DEB_FILE" ]; then
     echo "✓ Package built successfully at: $DEB_FILE"
     echo "🎉 Done! You can now install the package with: sudo dpkg -i $DEB_FILE"
+    echo "Note: This package uses --no-sandbox for Electron, which has security implications."
+    echo "      Use at your own discretion."
 else
     echo "❌ Package file not found at expected location: $DEB_FILE"
     exit 1
