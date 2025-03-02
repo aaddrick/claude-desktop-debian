@@ -4,23 +4,6 @@ set -e
 # Update this URL when a new version of Claude Desktop is released
 CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
 
-# Check for Debian-based system
-if [ ! -f "/etc/debian_version" ]; then
-    echo "❌ This script requires a Debian-based Linux distribution"
-    exit 1
-fi
-
-# Check for root/sudo
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run with sudo to install dependencies"
-    exit 1
-fi
-
-# Print system information
-echo "System Information:"
-echo "Distribution: $(cat /etc/os-release | grep "PRETTY_NAME" | cut -d'"' -f2)"
-echo "Debian version: $(cat /etc/debian_version)"
-
 # Function to check if a command exists
 check_command() {
     if ! command -v "$1" &> /dev/null; then
@@ -31,6 +14,31 @@ check_command() {
         return 0
     fi
 }
+
+# Function to check for sudo or root
+check_sudo_or_root() {
+    if check_command "sudo"; then
+        USE_SUDO="sudo"
+    elif [ "$(id -u)" -eq 0 ]; then
+        USE_SUDO=""
+    else
+        echo "❌ This script requires sudo or root privileges"
+        exit 1
+    fi
+}
+
+check_sudo_or_root
+
+# Check for Debian-based system
+if [ ! -f "/etc/debian_version" ]; then
+    echo "❌ This script requires a Debian-based Linux distribution"
+    exit 1
+fi
+
+# Print system information
+echo "System Information:"
+echo "Distribution: $(cat /etc/os-release | grep "PRETTY_NAME" | cut -d'"' -f2)"
+echo "Debian version: $(cat /etc/debian_version)"
 
 # Check and install dependencies
 echo "Checking dependencies..."
@@ -65,8 +73,8 @@ done
 # Install system dependencies if any
 if [ ! -z "$DEPS_TO_INSTALL" ]; then
     echo "Installing system dependencies: $DEPS_TO_INSTALL"
-    apt update
-    apt install -y $DEPS_TO_INSTALL
+    $USE_SUDO apt update
+    $USE_SUDO apt install -y $DEPS_TO_INSTALL
     echo "System dependencies installed successfully"
 fi
 
