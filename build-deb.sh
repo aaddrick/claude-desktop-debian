@@ -175,6 +175,27 @@ cp -r "lib/net45/resources/app.asar.unpacked" electron-app/
 cd electron-app
 npx asar extract app.asar app.asar.contents
 
+# Create i18n directory and en-US.json file
+echo "Creating missing i18n directory and files..."
+mkdir -p app.asar.contents/resources/i18n
+cat > app.asar.contents/resources/i18n/en-US.json << EOF
+{
+  "app": {
+    "name": "Claude",
+    "description": "Claude AI Assistant by Anthropic"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "yes": "Yes",
+    "no": "No",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error"
+  }
+}
+EOF
+
 # Replace native module with stub implementation
 echo "Creating stub native module..."
 cat > app.asar.contents/node_modules/claude-native/index.js << EOF
@@ -273,6 +294,26 @@ module.exports = {
 };
 EOF
 
+# Create i18n directory in installation path
+mkdir -p "$INSTALL_DIR/lib/$PACKAGE_NAME/resources/i18n"
+cat > "$INSTALL_DIR/lib/$PACKAGE_NAME/resources/i18n/en-US.json" << EOF
+{
+  "app": {
+    "name": "Claude",
+    "description": "Claude AI Assistant by Anthropic"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "yes": "Yes",
+    "no": "No",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error"
+  }
+}
+EOF
+
 # Copy app files
 cp app.asar "$INSTALL_DIR/lib/$PACKAGE_NAME/"
 cp -r app.asar.unpacked "$INSTALL_DIR/lib/$PACKAGE_NAME/"
@@ -290,9 +331,36 @@ MimeType=x-scheme-handler/claude;
 StartupWMClass=Claude
 EOF
 
-# Create launcher script
+# Create launcher script with additional safeguards
 cat > "$INSTALL_DIR/bin/claude-desktop" << EOF
 #!/bin/bash
+# Ensure resource directories exist
+if [ ! -d "/usr/lib/claude-desktop/resources/i18n" ]; then
+  mkdir -p "/usr/lib/claude-desktop/resources/i18n"
+fi
+
+# Check if localization file exists, create if missing
+if [ ! -f "/usr/lib/claude-desktop/resources/i18n/en-US.json" ]; then
+  cat > "/usr/lib/claude-desktop/resources/i18n/en-US.json" << 'LOCALEOF'
+{
+  "app": {
+    "name": "Claude",
+    "description": "Claude AI Assistant by Anthropic"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "yes": "Yes",
+    "no": "No",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error"
+  }
+}
+LOCALEOF
+fi
+
+# Launch the application
 electron /usr/lib/claude-desktop/app.asar "\$@"
 EOF
 chmod +x "$INSTALL_DIR/bin/claude-desktop"
