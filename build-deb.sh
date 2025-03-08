@@ -1,8 +1,25 @@
 #!/bin/bash
 set -e
 
+# Try to load NVM regardless of user
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+    export NVM_DIR="$HOME/.nvm"
+    . "$NVM_DIR/nvm.sh"
+elif [ -s "/home/$(logname)/.nvm/nvm.sh" ]; then
+    # Try to load original user's NVM when running as root
+    export NVM_DIR="/home/$(logname)/.nvm"
+    . "$NVM_DIR/nvm.sh"
+fi
+
 # Update this URL when a new version of Claude Desktop is released
 CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
+
+# Handle privilege escalation while preserving environment
+if [ "$EUID" -ne 0 ]; then
+    echo "Elevating privileges to install system dependencies..."
+    exec sudo --preserve-env=NVM_DIR,PATH,HOME "$0" "$@"
+    exit $?
+fi
 
 # Check for Debian-based system
 if [ ! -f "/etc/debian_version" ]; then
@@ -10,25 +27,29 @@ if [ ! -f "/etc/debian_version" ]; then
     exit 1
 fi
 
-# Check for root/sudo
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run with sudo to install dependencies"
-    exit 1
-fi
-
 # Print system information
 echo "System Information:"
 echo "Distribution: $(cat /etc/os-release | grep "PRETTY_NAME" | cut -d'"' -f2)"
 echo "Debian version: $(cat /etc/debian_version)"
+echo "Node.js version: $(node --version 2>/dev/null || echo 'Not installed')"
+echo "NPM version: $(npm --version 2>/dev/null || echo 'Not installed')"
+echo "NVM version: $(nvm --version 2>/dev/null || echo 'Not available')"
 
-# Function to check if a command exists
+# Function to check if a command exists (with NVM awareness)
 check_command() {
-    if ! command -v "$1" &> /dev/null; then
-        echo "❌ $1 not found"
-        return 1
-    else
+    # Try directly
+    if command -v "$1" &> /dev/null; then
         echo "✓ $1 found"
         return 0
+    # Check in NVM paths if NVM is installed
+    elif [ -d "$NVM_DIR" ] && find "$NVM_DIR" -name "$1" -type f 2>/dev/null | grep -q .; then
+        echo "✓ $1 found (via NVM)"
+        NPX_PATH=$(find "$NVM_DIR" -name "$1" -type f | head -1)
+        export PATH="$(dirname "$NPX_PATH"):$PATH"
+        return 0
+    else
+        echo "❌ $1 not found"
+        return 1
     fi
 }
 
@@ -37,7 +58,7 @@ echo "Checking dependencies..."
 DEPS_TO_INSTALL=""
 
 # Check system package dependencies
-for cmd in p7zip wget wrestool icotool convert npx dpkg-deb; do
+for cmd in p7zip wget wrestool icotool convert dpkg-deb; do
     if ! check_command "$cmd"; then
         case "$cmd" in
             "p7zip")
@@ -52,9 +73,6 @@ for cmd in p7zip wget wrestool icotool convert npx dpkg-deb; do
             "convert")
                 DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick"
                 ;;
-            "npx")
-                DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs npm"
-                ;;
             "dpkg-deb")
                 DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev"
                 ;;
@@ -62,12 +80,59 @@ for cmd in p7zip wget wrestool icotool convert npx dpkg-deb; do
     fi
 done
 
+# Special handling for Node.js related commands
+# Check for Node.js first
+if ! check_command "node"; then
+    DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs"
+fi
+
+# Then check for npm and npx (if node is available)
+if check_command "node"; then
+    if ! check_command "npm"; then
+        if [ -n "$(command -v node)" ]; then
+            echo "Node.js found but npm is missing. Installing npm..."
+            DEPS_TO_INSTALL="$DEPS_TO_INSTALL npm"
+        fi
+    fi
+    
+    # Check for npx - if npm is available, we'll use npm to install it if needed
+    if ! check_command "npx"; then
+        if check_command "npm"; then
+            echo "Installing npx via npm..."
+            npm install -g npx
+            check_command "npx"
+        else
+            echo "Cannot install npx without npm"
+        fi
+    fi
+fi
+
 # Install system dependencies if any
 if [ ! -z "$DEPS_TO_INSTALL" ]; then
     echo "Installing system dependencies: $DEPS_TO_INSTALL"
     apt update
-    apt install -y $DEPS_TO_INSTALL
+    apt install  $DEPS_TO_INSTALL
     echo "System dependencies installed successfully"
+fi
+
+# Re-check Node.js related commands after potential installations
+if ! check_command "node"; then
+    echo "❌ Node.js installation failed. Please install Node.js manually."
+    exit 1
+fi
+
+if ! check_command "npm"; then
+    echo "❌ npm installation failed. Please install npm manually."
+    exit 1
+fi
+
+if ! check_command "npx"; then
+    echo "Installing npx via npm..."
+    npm install -g npx
+    if ! check_command "npx"; then
+        echo "❌ npx installation failed. Please install npx manually."
+        exit 1
+    fi
 fi
 
 # Install electron globally via npm if not present
@@ -76,7 +141,7 @@ if ! check_command "electron"; then
     npm install -g electron
     if ! check_command "electron"; then
         echo "Failed to install electron. Please install it manually:"
-        echo "sudo npm install -g electron"
+        echo "npm install -g electron"
         exit 1
     fi
     echo "Electron installed successfully"
@@ -293,7 +358,22 @@ EOF
 # Create launcher script
 cat > "$INSTALL_DIR/bin/claude-desktop" << EOF
 #!/bin/bash
-electron /usr/lib/claude-desktop/app.asar "\$@"
+# Source NVM if available
+if [ -f "\$HOME/.nvm/nvm.sh" ]; then
+    export NVM_DIR="\$HOME/.nvm"
+    . "\$NVM_DIR/nvm.sh"
+fi
+
+# Find and use electron from either system or NVM
+if command -v electron > /dev/null; then
+    electron /usr/lib/claude-desktop/app.asar "\$@"
+elif [ -d "\$NVM_DIR" ] && [ -n "\$(find "\$NVM_DIR" -name "electron" -type f 2>/dev/null)" ]; then
+    ELECTRON_PATH=\$(find "\$NVM_DIR" -name "electron" -type f | head -1)
+    \$ELECTRON_PATH /usr/lib/claude-desktop/app.asar "\$@"
+else
+    echo "Error: electron not found. Please install it with 'npm install -g electron' or using NVM"
+    exit 1
+fi
 EOF
 chmod +x "$INSTALL_DIR/bin/claude-desktop"
 
@@ -303,13 +383,14 @@ Package: claude-desktop
 Version: $VERSION
 Architecture: $ARCHITECTURE
 Maintainer: $MAINTAINER
-Depends: nodejs, npm, p7zip-full
+Depends: p7zip-full
+Recommends: nodejs, npm
 Description: $DESCRIPTION
  Claude is an AI assistant from Anthropic.
  This package provides the desktop interface for Claude.
  .
  Supported on Debian-based Linux distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
- Requires: nodejs (>= 12.0.0), npm
+ Requires Node.js (>= 12.0.0) which can be provided through NVM
 EOF
 
 # Build .deb package
