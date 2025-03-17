@@ -83,7 +83,7 @@ if ! check_command "electron"; then
 fi
 
 # Extract version from the installer filename
-VERSION=$(basename "$CLAUDE_DOWNLOAD_URL" | grep -oP 'Claude-Setup-x64\.exe' | sed 's/Claude-Setup-x64\.exe/0.8.0/')
+VERSION=$(7z l "$CLAUDE_EXE" | grep "Comment" | grep -oP "FileVersion: \K[0-9\.]+")
 PACKAGE_NAME="claude-desktop"
 ARCHITECTURE="amd64"
 MAINTAINER="Claude Desktop Linux Maintainers"
