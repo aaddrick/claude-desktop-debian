@@ -1,17 +1,23 @@
-## LOOKING FOR NEW MAINTAINER
-I've had fun with this, but I'm ready to pass the torch. Let me know if you'd like to take a swing at this!
-
 ***THIS IS AN UNOFFICIAL BUILD SCRIPT!***
 
 If you run into an issue with this build script, make an issue here. Don't bug Anthropic about it - they already have enough on their plates.
 
+*This repo is the fork of https://github.com/aaddrick/claude-desktop-debian*
+
+# TLDR
+To just build and install Claude Desktop on a Debian-based system, run the following command in your terminal:
+
+```bash
+
+wget -O- https://raw.githubusercontent.com/emsi/claude-desktop/refs/heads/main/install-claude-desktop.sh | bash
+```
+
+## Supports MCP
+This app supports running MCP servers on Linux with some caveats. See the [MCP_LINUX.md](MCP_LINUX.md) file for more information.
+
 # Claude Desktop for Linux
 
 This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) and their [Reddit post](https://www.reddit.com/r/ClaudeAI/comments/1hgsmpq/i_successfully_ran_claude_desktop_natively_on/) about running Claude Desktop natively on Linux. Their work provided valuable insights into the application's structure and the native bindings implementation.
-
-Supports MCP!
-
-Location of the MCP-configuration file is: `~/.config/Claude/claude_desktop_config.json`
 
 ![image](https://github.com/user-attachments/assets/93080028-6f71-48bd-8e59-5149d148cd45)
 
@@ -29,12 +35,11 @@ For Debian-based distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.), you
 
 ```bash
 # Clone this repository
-git clone https://github.com/aaddrick/claude-desktop-debian.git
-cd claude-desktop-debian
+git clone https://github.com/emsi/claude-desktop
+cd claude-desktop
 
-# Build the package
-sudo ./build-deb.sh
-sudo dpkg -i ./build/electron-app/claude-desktop_0.8.0_amd64.deb
+# Build and install the package
+./install-claude-desktop.sh
 
 # The script will automatically:
 # - Check for and install required dependencies
@@ -47,10 +52,6 @@ Requirements:
 - Any Debian-based Linux distribution
 - Node.js >= 12.0.0 and npm
 - Root/sudo access for dependency installation
-
-## 2. NixOS Implementation
-
-For NixOS users, please refer to [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) repository. Their implementation is specifically designed for NixOS and provides the original Nix flake that inspired this project.
 
 # How it works
 

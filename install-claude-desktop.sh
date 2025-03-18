@@ -10,15 +10,9 @@ if [ ! -f "/etc/debian_version" ]; then
     exit 1
 fi
 
-# Check for root/sudo
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run with sudo to install dependencies"
-    exit 1
-fi
-
 # Print system information
 echo "System Information:"
-echo "Distribution: $(cat /etc/os-release | grep "PRETTY_NAME" | cut -d'"' -f2)"
+echo "Distribution: $(grep "PRETTY_NAME" /etc/os-release | cut -d'"' -f2)"
 echo "Debian version: $(cat /etc/debian_version)"
 
 # Function to check if a command exists
@@ -58,15 +52,18 @@ for cmd in p7zip wget wrestool icotool convert npx dpkg-deb; do
             "dpkg-deb")
                 DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev"
                 ;;
+            "bwrap")
+                DEPS_TO_INSTALL="$DEPS_TO_INSTALL bubblewrap"
+                ;;
         esac
     fi
 done
 
 # Install system dependencies if any
-if [ ! -z "$DEPS_TO_INSTALL" ]; then
+if [ -n "$DEPS_TO_INSTALL" ]; then
     echo "Installing system dependencies: $DEPS_TO_INSTALL"
-    apt update
-    apt install -y $DEPS_TO_INSTALL
+    sudo apt update
+    sudo apt install -y "$DEPS_TO_INSTALL"
     echo "System dependencies installed successfully"
 fi
 
@@ -117,6 +114,19 @@ if ! wget -O "$CLAUDE_EXE" "$CLAUDE_DOWNLOAD_URL"; then
     exit 1
 fi
 echo "✓ Download complete"
+
+# Downloading sandbox script if it doesn't exist
+echo "📥 Checking for sandbox script..."
+SANDBOX_SCRIPT="$WORK_DIR/claude_sandbox.sh"
+if [ ! -f "$SANDBOX_SCRIPT" ]; then
+    echo "Downloading sandbox script..."
+    if ! wget -O "$SANDBOX_SCRIPT" "https://raw.githubusercontent.com/emsi/claude-desktop/refs/heads/main/claude_sandbox.sh"; then
+        echo "❌ Failed to download sandbox script"
+        exit 1
+    fi
+    echo "✓ Download complete"
+fi
+chmod +x "$SANDBOX_SCRIPT"
 
 # Extract resources
 echo "📦 Extracting resources..."
@@ -322,7 +332,9 @@ fi
 
 if [ -f "$DEB_FILE" ]; then
     echo "✓ Package built successfully at: $DEB_FILE"
-    echo "🎉 Done! You can now install the package with: sudo dpkg -i $DEB_FILE"
+    echo "🎉 Installing the package..."
+    sudo dpkg -i "$DEB_FILE"
+    echo "✅ Claude Desktop has been installed successfully!"
 else
     echo "❌ Package file not found at expected location: $DEB_FILE"
     exit 1
