@@ -94,6 +94,9 @@ elif ! check_command "electron"; then
                 echo "npm install --save-dev electron"
                 exit 1
             fi
+            # Some systems have permission issues with global packages
+            chown root:root $(npm root -g)/electron/dist/chrome-sandbox
+            chmod 4755 $(npm root -g)/electron/dist/chrome-sandbox
             echo "Global electron installed successfully"
         fi
     else
@@ -104,6 +107,9 @@ elif ! check_command "electron"; then
             echo "npm install --save-dev electron"
             exit 1
         fi
+        # Some systems have permission issues with global packages
+        chown root:root $(npm root -g)/electron/dist/chrome-sandbox
+        chmod 4755 $(npm root -g)/electron/dist/chrome-sandbox
         echo "Global electron installed successfully"
     fi
 fi
