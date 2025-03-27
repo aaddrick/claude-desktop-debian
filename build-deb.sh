@@ -189,7 +189,7 @@ if [ -z "$NUPKG_PATH" ]; then
 fi
 
 # Extract version from the nupkg filename
-VERSION=$(echo "$NUPKG_PATH" | grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full)')
+VERSION=$(7z l "$CLAUDE_EXE" | grep "Comment" | grep -oP "FileVersion: \K[0-9\.]+")
 if [ -z "$VERSION" ]; then
     echo "❌ Could not extract version from nupkg filename"
     exit 1
@@ -386,14 +386,73 @@ Package: claude-desktop
 Version: $VERSION
 Architecture: $ARCHITECTURE
 Maintainer: $MAINTAINER
-Depends: nodejs, npm, p7zip-full
+Depends: p7zip-full
 Description: $DESCRIPTION
  Claude is an AI assistant from Anthropic.
  This package provides the desktop interface for Claude.
  .
  Supported on Debian-based Linux distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
- Requires: nodejs (>= 12.0.0), npm
 EOF
+
+# Create postinst script
+cat > "$DEB_ROOT/DEBIAN/postinst" << EOF
+#!/bin/sh
+set -e
+
+# Function to check for nodejs and npm
+check_node_npm() {
+    # Check if nodejs is available in PATH
+    if ! command -v node &> /dev/null; then
+        echo "WARNING: nodejs not found in PATH"
+        echo "Claude Desktop requires Node.js to function properly."
+        echo "Please install Node.js using one of these methods:"
+        echo ""
+        echo "1. System package (Debian/Ubuntu):"
+        echo "   sudo apt update && sudo apt install nodejs npm"
+        echo ""
+        echo "2. Using NVM (recommended for development):"
+        echo "   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash"
+        echo "   source ~/.bashrc"
+        echo "   nvm install --lts"
+        echo ""
+    fi
+
+    # Check if npm is available in PATH
+    if ! command -v npm &> /dev/null; then
+        echo "WARNING: npm not found in PATH"
+        echo "Claude Desktop requires npm to function properly."
+        echo "Please install npm using one of these methods:"
+        echo ""
+        echo "1. System package (Debian/Ubuntu):"
+        echo "   sudo apt update && sudo apt install npm"
+        echo ""
+        echo "2. Using NVM (automatically installs npm with Node.js):"
+        echo "   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash"
+        echo "   source ~/.bashrc"
+        echo "   nvm install --lts"
+        echo ""
+    fi
+}
+
+case "\$1" in
+    configure)
+        # Check for nodejs and npm when configuring the package
+        check_node_npm
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        # No specific actions needed for these cases
+        ;;
+    *)
+        echo "postinst called with unknown argument '\$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
+EOF
+
+# Make postinst script executable
+chmod +x "$DEB_ROOT/DEBIAN/postinst"
 
 # Build .deb package
 echo "🖹 Building .deb package..."
