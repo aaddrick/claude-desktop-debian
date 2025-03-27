@@ -48,6 +48,11 @@ Requirements:
 - Node.js >= 12.0.0 and npm
 - Root/sudo access for dependency installation
 
+**Important for Ubuntu Users:** After installing the Debian package on Ubuntu, you might encounter sandbox-related errors preventing the application from running. This is due to incorrect permissions on the `chrome-sandbox` file. To resolve this, run the following command in your terminal: 
+```bash
+sudo chmod 4755 /usr/local/lib/node_modules/electron/dist/chrome-sandbox
+```
+
 ## 2. NixOS Implementation
 
 For NixOS users, please refer to [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) repository. Their implementation is specifically designed for NixOS and provides the original Nix flake that inspired this project.
