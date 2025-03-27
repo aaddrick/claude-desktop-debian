@@ -1,51 +1,12 @@
 #!/bin/bash
 set -e
 
-# Default download URL (may be outdated)
-DEFAULT_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
+# Update this URL when a new version of Claude Desktop is released
+CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
 
-# ANSI color codes
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Help/usage information
-usage() {
-    echo -e "${BLUE}Usage:${NC} sudo $0 [download_url]"
-    echo
-    echo -e "${BLUE}Arguments:${NC}"
-    echo -e "  download_url  Optional URL to the Claude Desktop Windows installer"
-    echo
-    echo -e "${BLUE}Example:${NC}"
-    echo -e "  sudo $0 https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
-    echo
-    exit 1
-}
-
-# Set download URL from command line argument or use default
-if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    usage
-fi
-
-CLAUDE_DOWNLOAD_URL="${1:-$DEFAULT_URL}"
-
-# Show warning if using default URL
-if [ "$CLAUDE_DOWNLOAD_URL" = "$DEFAULT_URL" ]; then
-    echo -e "${YELLOW}⚠️  Warning: Using the default download URL which may be outdated.${NC}"
-    echo -e "${YELLOW}   To get the latest version:${NC}"
-    echo -e "${YELLOW}   1. Go to ${BLUE}https://claude.ai/download${YELLOW}${NC}"
-    echo -e "${YELLOW}   2. Right-click the 'Windows' download button${NC}"
-    echo -e "${YELLOW}   3. Select 'Copy Link'${NC}"
-    echo -e "${YELLOW}   4. Run this script with the copied URL as an argument${NC}"
-    echo
-fi
-
-# Check if running on a Debian-based distribution
+# Check for Debian-based system
 if [ ! -f "/etc/debian_version" ]; then
-    echo -e "${RED}❌ This script requires a Debian-based Linux distribution${NC}"
-    echo -e "${YELLOW}This script has been tested on: Debian, Ubuntu, Linux Mint, Pop!_OS${NC}"
+    echo "❌ This script requires a Debian-based Linux distribution"
     exit 1
 fi
 
@@ -228,70 +189,24 @@ if [ -z "$NUPKG_PATH" ]; then
 fi
 
 # Extract version from the nupkg filename
-VERSION=$(7z l "$CLAUDE_EXE" | grep "FileVersion:" | grep -v "\.0$" | head -n1 | grep -oP "FileVersion: \K[0-9\.]+")
+VERSION=$(7z l "$CLAUDE_EXE" | grep "Comment" | grep -oP "FileVersion: \K[0-9\.]+")
 if [ -z "$VERSION" ]; then
     echo "❌ Could not extract version from nupkg filename"
     exit 1
 fi
 echo "✓ Detected Claude version: $VERSION"
 
-# Create a dedicated directory for nupkg extraction
-mkdir -p nupkg_contents
-cd nupkg_contents
-
-# Extract the nupkg with full paths preserved
-if ! 7z x -y "../$NUPKG_PATH"; then
+if ! 7z x -y "$NUPKG_PATH"; then
     echo "❌ Failed to extract nupkg"
     exit 1
 fi
-
-# Verify the extraction worked and required directories exist
-if [ ! -d "lib/net45/resources" ]; then
-    echo "❌ Failed to find lib/net45/resources directory"
-    # Check what directories were actually created
-    echo "Directories found:"
-    find . -type d | sort
-    
-    # Try to locate app.asar
-    echo "Searching for app.asar:"
-    find . -name "app.asar" -type f
-    
-    # Create the necessary directory structure manually if needed
-    mkdir -p lib/net45/resources
-    
-    # Try to find and move app.asar file to the expected location
-    APP_ASAR=$(find . -name "app.asar" -type f | head -1)
-    if [ ! -z "$APP_ASAR" ]; then
-        cp "$APP_ASAR" lib/net45/resources/
-        echo "✓ Moved app.asar to lib/net45/resources/"
-    else
-        echo "❌ Could not find app.asar file"
-        exit 1
-    fi
-fi
-
-# Return to build directory
-cd ..
-
 echo "✓ Resources extracted"
 
 # Extract and convert icons
 echo "🎨 Processing icons..."
-if ! wrestool -x -t 14 "nupkg_contents/lib/net45/claude.exe" -o claude.ico; then
+if ! wrestool -x -t 14 "lib/net45/claude.exe" -o claude.ico; then
     echo "❌ Failed to extract icons from exe"
-    # Try to locate claude.exe
-    echo "Searching for claude.exe:"
-    CLAUDE_EXE_PATH=$(find nupkg_contents -name "claude.exe" -type f | head -1)
-    if [ ! -z "$CLAUDE_EXE_PATH" ]; then
-        echo "✓ Found claude.exe at: $CLAUDE_EXE_PATH"
-        if ! wrestool -x -t 14 "$CLAUDE_EXE_PATH" -o claude.ico; then
-            echo "❌ Failed to extract icons even with found claude.exe"
-            exit 1
-        fi
-    else
-        echo "❌ Could not find claude.exe"
-        exit 1
-    fi
+    exit 1
 fi
 
 if ! icotool -x claude.ico; then
@@ -324,34 +239,8 @@ done
 
 # Process app.asar
 mkdir -p electron-app
-
-# Use more robust path reference for resources
-RESOURCES_PATH="nupkg_contents/lib/net45/resources"
-
-# Check if app.asar exists at the expected location
-if [ ! -f "$RESOURCES_PATH/app.asar" ]; then
-    echo "❌ app.asar not found at expected location: $RESOURCES_PATH/app.asar"
-    
-    # Try to find app.asar in extracted files
-    APP_ASAR=$(find nupkg_contents -name "app.asar" -type f | head -1)
-    if [ ! -z "$APP_ASAR" ]; then
-        echo "✓ Found app.asar at: $APP_ASAR"
-        RESOURCES_PATH=$(dirname "$APP_ASAR")
-    else
-        echo "❌ Could not find app.asar file"
-        exit 1
-    fi
-fi
-
-# Copy the files from the actual location
-cp "$RESOURCES_PATH/app.asar" electron-app/
-
-# Check for app.asar.unpacked and copy if it exists
-if [ -d "$RESOURCES_PATH/app.asar.unpacked" ]; then
-    cp -r "$RESOURCES_PATH/app.asar.unpacked" electron-app/
-else
-    echo "ℹ️ app.asar.unpacked directory not found - may not be needed"
-fi
+cp "lib/net45/resources/app.asar" electron-app/
+cp -r "lib/net45/resources/app.asar.unpacked" electron-app/
 
 cd "$WORK_DIR/electron-app"
 npx asar extract app.asar app.asar.contents
@@ -404,9 +293,8 @@ EOF
 mkdir -p app.asar.contents/resources
 mkdir -p app.asar.contents/resources/i18n
 
-# Use the previously determined resources path
-cp ../"$RESOURCES_PATH"/Tray* app.asar.contents/resources/ 2>/dev/null || echo "Warning: Tray icons not found"
-cp ../"$RESOURCES_PATH"/*-*.json app.asar.contents/resources/i18n/ 2>/dev/null || echo "Warning: i18n files not found"
+cp ../lib/net45/resources/Tray* app.asar.contents/resources/
+cp ../lib/net45/resources/*-*.json app.asar.contents/resources/i18n/
 
 # Repackage app.asar
 npx asar pack app.asar.contents app.asar
@@ -469,7 +357,7 @@ fi
 cat > "$INSTALL_DIR/share/applications/claude-desktop.desktop" << EOF
 [Desktop Entry]
 Name=Claude
-Exec=/usr/bin/claude-desktop %u
+Exec=claude-desktop %u
 Icon=claude-desktop
 Type=Application
 Terminal=false
@@ -478,18 +366,17 @@ MimeType=x-scheme-handler/claude;
 StartupWMClass=Claude
 EOF
 
-# Create wrapper script
+# Create launcher script
 cat > "$INSTALL_DIR/bin/claude-desktop" << EOF
 #!/bin/bash
 
-# Load NVM if available
-if [ -f "\$HOME/.nvm/nvm.sh" ]; then
-    export NVM_DIR="\$HOME/.nvm"
-    [ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
+# Try to use local electron if available
+if [ -f "\$(dirname \$0)/../lib/claude-desktop/node_modules/.bin/electron" ]; then
+    "\$(dirname \$0)/../lib/claude-desktop/node_modules/.bin/electron" /usr/lib/claude-desktop/app.asar "\$@"
+else
+    # Fall back to globally installed electron
+    electron /usr/lib/claude-desktop/app.asar "\$@"
 fi
-
-# Launch the actual application
-exec electron /usr/lib/claude-desktop/resources/app.asar "\$@"
 EOF
 chmod +x "$INSTALL_DIR/bin/claude-desktop"
 
@@ -514,19 +401,8 @@ set -e
 
 # Function to check for nodejs and npm
 check_node_npm() {
-    # Check for NVM installation
-    if [ -f "$HOME/.nvm/nvm.sh" ]; then
-        export NVM_DIR="$HOME/.nvm"
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-    fi
-
-    # Use which to find executables in both system and nvm paths
-    NODEJS_PATH=$(which node 2>/dev/null)
-    NPM_PATH=$(which npm 2>/dev/null)
-
-    if [ -n "$NODEJS_PATH" ]; then
-        echo "Found Node.js at: $NODEJS_PATH"
-    else
+    # Check if nodejs is available in PATH
+    if ! command -v node &> /dev/null; then
         echo "WARNING: nodejs not found in PATH"
         echo "Claude Desktop requires Node.js to function properly."
         echo "Please install Node.js using one of these methods:"
@@ -541,10 +417,8 @@ check_node_npm() {
         echo ""
     fi
 
-    # Check for npm in PATH (after loading nvm if available)
-    if [ -n "$NPM_PATH" ]; then
-        echo "Found npm at: $NPM_PATH"
-    else
+    # Check if npm is available in PATH
+    if ! command -v npm &> /dev/null; then
         echo "WARNING: npm not found in PATH"
         echo "Claude Desktop requires npm to function properly."
         echo "Please install npm using one of these methods:"
@@ -560,24 +434,10 @@ check_node_npm() {
     fi
 }
 
-# Function to check for electron
-check_electron() {
-    if ! command -v electron &> /dev/null; then
-        echo "WARNING: electron not found in PATH"
-        echo "Claude Desktop requires electron to function properly."
-        echo "Please install electron using:"
-        echo "  npm install -g electron"
-        echo ""
-    else
-        echo "Found electron at: $(which electron)"
-    fi
-}
-
 case "\$1" in
     configure)
-        # Check for nodejs, npm, and electron when configuring the package
+        # Check for nodejs and npm when configuring the package
         check_node_npm
-        check_electron
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
         # No specific actions needed for these cases
