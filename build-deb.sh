@@ -16,6 +16,38 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Preserve NVM path when running with sudo
+if [ ! -z "$SUDO_USER" ]; then
+    # Get the original user's home directory
+    USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    
+    # Check for NVM installation and add to PATH
+    if [ -d "$USER_HOME/.nvm" ]; then
+        echo "Found NVM installation, preserving npm/npx path..."
+        
+        # Find the most recent node version directory
+        NVM_BIN=$(find "$USER_HOME/.nvm/versions/node" -maxdepth 2 -name "bin" -type d | sort -r | head -n 1)
+        
+        if [ ! -z "$NVM_BIN" ]; then
+            echo "Adding $NVM_BIN to PATH"
+            export PATH="$NVM_BIN:$PATH"
+            
+            # Verify npm and npx are now accessible
+            if command -v npm &> /dev/null; then
+                echo "✓ npm found at: $(which npm)"
+            else
+                echo "❌ npm still not accessible in PATH"
+            fi
+            
+            if command -v npx &> /dev/null; then
+                echo "✓ npx found at: $(which npx)"
+            else
+                echo "❌ npx still not accessible in PATH"
+            fi
+        fi
+    fi
+fi
+
 # Print system information
 echo "System Information:"
 echo "Distribution: $(cat /etc/os-release | grep "PRETTY_NAME" | cut -d'"' -f2)"
@@ -53,7 +85,7 @@ for cmd in p7zip wget wrestool icotool convert npx dpkg-deb; do
                 DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick"
                 ;;
             "npx")
-                DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs npm"
+                DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs npm" 
                 ;;
             "dpkg-deb")
                 DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev"
