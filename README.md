@@ -45,8 +45,36 @@ sudo dpkg -i ./build/electron-app/claude-desktop_0.8.0_amd64.deb
 
 Requirements:
 - Any Debian-based Linux distribution
-- Node.js >= 12.0.0 and npm
 - Root/sudo access for dependency installation
+
+## Installation Requirements
+
+### Node.js and npm
+The application is designed to work with Node.js and npm installed via nvm (Node Version Manager). System-level Node.js/npm installation is not required.
+
+### Electron Setup
+After installing the package, you'll need to set the correct permissions for the Electron chrome-sandbox. You can use this command to automatically detect your Node.js version and set the permissions:
+
+```bash
+NODE_VERSION=$(node -v | sed 's/v//') && \
+sudo chown root:root ~/.nvm/versions/node/v${NODE_VERSION}/lib/node_modules/electron/dist/chrome-sandbox && \
+sudo chmod 4755 ~/.nvm/versions/node/v${NODE_VERSION}/lib/node_modules/electron/dist/chrome-sandbox
+```
+
+Or if you know your Node.js version (e.g., v18.20.7), you can use:
+
+```bash
+sudo chown root:root ~/.nvm/versions/node/v18.20.7/lib/node_modules/electron/dist/chrome-sandbox && \
+sudo chmod 4755 ~/.nvm/versions/node/v18.20.7/lib/node_modules/electron/dist/chrome-sandbox
+```
+
+This step is necessary for Electron's sandbox security features to work properly on Linux systems.
+
+## Package Structure
+The Debian package includes:
+- Application binary and resources
+- A wrapper script that handles nvm integration
+- Desktop integration files
 
 ## 2. NixOS Implementation
 
