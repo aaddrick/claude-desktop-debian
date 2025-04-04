@@ -82,7 +82,7 @@ The script will output the path to the generated `.AppImage` file (e.g., `claude
 
 #### --no-sandbox
 
-The AppImage script runs with electron's --no-sandbox flag. AppImage's don't have their own sandbox. chome-sandbox, which is used by electron, needs to escalate root privaleges briefly in order to setup the sandbox. When you pack an AppImage, chrome-sandbox loses any assigned ownership and executes with user permissions. There's also an issue with [unprivileged namespaces](https://www.reddit.com/r/debian/comments/hkyeft/comment/fww5xb1) being set differently on different distributions.
+The AppImage script runs with electron's --no-sandbox flag. AppImage's don't have their own sandbox. chome-sandbox, which is used by electron, needs to escalate root privileges briefly in order to setup the sandbox. When you pack an AppImage, chrome-sandbox loses any assigned ownership and executes with user permissions. There's also an issue with [unprivileged namespaces](https://www.reddit.com/r/debian/comments/hkyeft/comment/fww5xb1) being set differently on different distributions.
 
 **Alternatives to --no-sandbox**
  - Run claude-desktop as root
@@ -90,7 +90,7 @@ The AppImage script runs with electron's --no-sandbox flag. AppImage's don't hav
  - Install chrome-sandbox outside of the AppImage(or leverage an existing install), set it with the right permissions, and reference it.
    - Counter-intuitive to the "batteries included" mindset of AppImages
  - Run it with --no-sandbox, but then wrap the whole thing inside another sandbox like bubblewrap
-   - Not "batteries included", and configuring in such a way that it runs everywhere is beyond my immediate capabilites.
+   - Not "batteries included", and configuring in such a way that it runs everywhere is beyond my immediate capabilities.
 
 I'd love a better suggestion. Feel free to submit a PR or start a discussion if I missed something obvious.
 
