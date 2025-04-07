@@ -173,7 +173,7 @@ for cmd in $ALL_DEPS_TO_CHECK; do
             "wrestool"|"icotool") DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils" ;;
             "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick" ;;
             "npx") DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs npm" ;;
-            "dpkg-deb") DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev" ;;
+            "dpkg-deb") DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-deb" ;;
         esac
     fi
 done
