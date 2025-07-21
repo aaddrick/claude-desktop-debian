@@ -34,43 +34,40 @@ Supports the Ctrl+Alt+Space popup!
 Supports the Tray menu! (Screenshot of running on KDE)
 ![image](https://github.com/user-attachments/assets/ba209824-8afb-437c-a944-b53fd9ecd559)
 
-# Building & Installation (Debian/Ubuntu based)
+# Building & Installation (Red Hat/CentOS/Fedora based)
 
-For Debian-based distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.), you can build Claude Desktop using the provided build script. Use command-line flags to specify the desired output format (`.deb` or `.AppImage`) and whether to clean up intermediate build files.
+For Red Hat-based distributions (Fedora, CentOS, RHEL, Rocky Linux, AlmaLinux, etc.), you can build Claude Desktop using the provided build script. Use command-line flags to specify the desired output format (`rpm` or `appimage`) and whether to clean up intermediate build files.
 
 ```bash
 # Clone this repository
 git clone https://github.com/aaddrick/claude-desktop-debian.git
 cd claude-desktop-debian
 
-# Build the package (Defaults to .deb and cleans build files)
+# Build the package (Defaults to .rpm and cleans build files)
 ./build.sh
 
 # Example: Build an AppImage and keep intermediate files
 ./build.sh --build appimage --clean no
 
-# Example: Build a .deb (explicitly) and clean intermediate files (default)
-./build.sh --build deb --clean yes
+# Example: Build an RPM (explicitly) and clean intermediate files (default)
+./build.sh --build rpm --clean yes
 ```
 
 The script will automatically:
- - Check for and install required dependencies
+ - Check for and install required dependencies (using dnf)
  - Download and extract resources from the Windows version
- - Create a proper Debian package or AppImage
+ - Create a proper RPM package or AppImage
  - Perform the build steps based on selected flags
 
 ## After Building:
 
-### If you chose Debian Package (.deb):
+### If you chose RPM Package (.rpm):
 
-The script will output the path to the generated `.deb` file (e.g., `claude-desktop_0.9.1_amd64.deb`). Install it using `dpkg`:
+The script will output the path to the generated `.rpm` file (e.g., `claude-desktop-0.9.1-1.x86_64.rpm`). Install it using `dnf`:
 
 ```bash
 # Replace VERSION and ARCHITECTURE with the actual values from the filename
-sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb 
-
-# If you encounter dependency issues, run:
-sudo apt --fix-broken install 
+sudo dnf install ./claude-desktop-VERSION-1.ARCH.rpm
 ```
 
 ### If you chose AppImage (.AppImage):
@@ -82,7 +79,7 @@ The script will output the path to the generated `.AppImage` file (e.g., `claude
 1.  **Make the AppImage executable:**
     ```bash
     # Replace FILENAME with the actual AppImage filename
-    chmod +x ./FILENAME.AppImage 
+    chmod +x ./FILENAME.AppImage
     ```
 2.  **Run the AppImage:**
     ```bash
@@ -92,34 +89,20 @@ The script will output the path to the generated `.AppImage` file (e.g., `claude
     -   Tools like [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) can automatically integrate AppImages (moving them to a central location and adding them to your application menu) using the bundled `.desktop` file.
     -   Alternatively, you can manually move the `.AppImage` file to a preferred location (e.g., `~/Applications` or `/opt`) and copy the generated `claude-desktop-appimage.desktop` file to `~/.local/share/applications/` (you might need to edit the `Exec=` line in the `.desktop` file to point to the new location of the AppImage).
 
-#### --no-sandbox
-
-The AppImage script runs with electron's --no-sandbox flag. AppImage's don't have their own sandbox. chome-sandbox, which is used by electron, needs to escalate root privileges briefly in order to setup the sandbox. When you pack an AppImage, chrome-sandbox loses any assigned ownership and executes with user permissions. There's also an issue with [unprivileged namespaces](https://www.reddit.com/r/debian/comments/hkyeft/comment/fww5xb1) being set differently on different distributions.
-
-**Alternatives to --no-sandbox**
- - Run claude-desktop as root
-   - Doesn't feel warm and fuzzy.
- - Install chrome-sandbox outside of the AppImage(or leverage an existing install), set it with the right permissions, and reference it.
-   - Counter-intuitive to the "batteries included" mindset of AppImages
- - Run it with --no-sandbox, but then wrap the whole thing inside another sandbox like bubblewrap
-   - Not "batteries included", and configuring in such a way that it runs everywhere is beyond my immediate capabilities.
-
-I'd love a better suggestion. Feel free to submit a PR or start a discussion if I missed something obvious.
-
 # Uninstallation
 
-## Debian Package (.deb)
+## RPM Package (.rpm)
 
-If you installed the `.deb` package, you can uninstall it using `dpkg`:
+If you installed the `.rpm` package, you can uninstall it using `dnf`:
 
 ```bash
-sudo dpkg -r claude-desktop
+sudo dnf remove claude-desktop
 ```
 
-If you also want to remove configuration files (including MCP settings), use `purge`:
+If you also want to remove configuration files (including MCP settings):
 
 ```bash
-sudo dpkg -P claude-desktop
+rm -rf ~/.config/Claude
 ```
 
 ## AppImage (.AppImage)

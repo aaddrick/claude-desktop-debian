@@ -4,9 +4,21 @@ set -euo pipefail
 # --- Architecture Detection ---
 echo -e "\033[1;36m--- Architecture Detection ---\033[0m"
 echo "⚙️ Detecting system architecture..."
-HOST_ARCH=$(dpkg --print-architecture)
-echo "Detected host architecture: $HOST_ARCH"
-cat /etc/os-release && uname -m && dpkg --print-architecture
+RAW_ARCH=$(uname -m)
+case "$RAW_ARCH" in
+    x86_64)
+        HOST_ARCH="amd64"
+        ;;
+    aarch64)
+        HOST_ARCH="arm64"
+        ;;
+    *)
+        echo "❌ Unsupported architecture: $RAW_ARCH. This script supports x86_64 (amd64) and aarch64 (arm64)."
+        exit 1
+        ;;
+esac
+echo "Detected host architecture: $RAW_ARCH (mapped to $HOST_ARCH)"
+cat /etc/os-release && uname -m
 
 # Set variables based on detected architecture
 if [ "$HOST_ARCH" = "amd64" ]; then
@@ -20,15 +32,16 @@ elif [ "$HOST_ARCH" = "arm64" ]; then
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
     echo "Configured for arm64 build."
 else
+    # This case is redundant due to the check above but kept for safety
     echo "❌ Unsupported architecture: $HOST_ARCH. This script currently supports amd64 and arm64."
     exit 1
 fi
-echo "Target Architecture (detected): $ARCHITECTURE" # Renamed echo
+echo "Target Architecture (detected): $ARCHITECTURE"
 echo -e "\033[1;36m--- End Architecture Detection ---\033[0m"
 
 
-if [ ! -f "/etc/debian_version" ]; then
-    echo "❌ This script requires a Debian-based Linux distribution"
+if [ ! -f "/etc/redhat-release" ]; then
+    echo "❌ This script requires a Red Hat-based Linux distribution (e.g., Fedora, CentOS, RHEL)."
     exit 1
 fi
 
@@ -73,14 +86,14 @@ fi # End of if [ -d "$ORIGINAL_HOME/.nvm" ] check
 
 echo "System Information:"
 echo "Distribution: $(grep "PRETTY_NAME" /etc/os-release | cut -d'"' -f2)"
-echo "Debian version: $(cat /etc/debian_version)"
-echo "Target Architecture: $ARCHITECTURE" 
+echo "Distribution Version: $(cat /etc/redhat-release)"
+echo "Target Architecture: $ARCHITECTURE"
 PACKAGE_NAME="claude-desktop"
 MAINTAINER="Claude Desktop Linux Maintainers"
 DESCRIPTION="Claude Desktop for Linux"
-PROJECT_ROOT="$(pwd)" WORK_DIR="$PROJECT_ROOT/build" APP_STAGING_DIR="$WORK_DIR/electron-app" VERSION="" 
+PROJECT_ROOT="$(pwd)" WORK_DIR="$PROJECT_ROOT/build" APP_STAGING_DIR="$WORK_DIR/electron-app" VERSION=""
 echo -e "\033[1;36m--- Argument Parsing ---\033[0m"
-BUILD_FORMAT="deb"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false
+BUILD_FORMAT="rpm"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -99,8 +112,8 @@ while [[ $# -gt 0 ]]; do
         shift # past argument
         ;;
         -h|--help)
-        echo "Usage: $0 [--build deb|appimage] [--clean yes|no] [--test-flags]"
-        echo "  --build: Specify the build format (deb or appimage). Default: deb"
+        echo "Usage: $0 [--build rpm|appimage] [--clean yes|no] [--test-flags]"
+        echo "  --build: Specify the build format (rpm or appimage). Default: rpm"
         echo "  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes"
         echo "  --test-flags: Parse flags, print results, and exit without building."
         exit 0
@@ -114,8 +127,8 @@ done
 
 # Validate arguments
 BUILD_FORMAT=$(echo "$BUILD_FORMAT" | tr '[:upper:]' '[:lower:]') CLEANUP_ACTION=$(echo "$CLEANUP_ACTION" | tr '[:upper:]' '[:lower:]')
-if [[ "$BUILD_FORMAT" != "deb" && "$BUILD_FORMAT" != "appimage" ]]; then
-    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'deb' or 'appimage'." >&2
+if [[ "$BUILD_FORMAT" != "rpm" && "$BUILD_FORMAT" != "appimage" ]]; then
+    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'rpm' or 'appimage'." >&2
     exit 1
 fi
 if [[ "$CLEANUP_ACTION" != "yes" && "$CLEANUP_ACTION" != "no" ]]; then
@@ -156,11 +169,11 @@ check_command() {
 echo "Checking dependencies..."
 DEPS_TO_INSTALL=""
 COMMON_DEPS="p7zip wget wrestool icotool convert npx"
-DEB_DEPS="dpkg-deb"
-APPIMAGE_DEPS="" 
+RPM_DEPS="rpm-build"
+APPIMAGE_DEPS=""
 ALL_DEPS_TO_CHECK="$COMMON_DEPS"
-if [ "$BUILD_FORMAT" = "deb" ]; then
-    ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $DEB_DEPS"
+if [ "$BUILD_FORMAT" = "rpm" ]; then
+    ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $RPM_DEPS"
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $APPIMAGE_DEPS"
 fi
@@ -168,12 +181,12 @@ fi
 for cmd in $ALL_DEPS_TO_CHECK; do
     if ! check_command "$cmd"; then
         case "$cmd" in
-            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip-full" ;;
+            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip p7zip-plugins" ;;
             "wget") DEPS_TO_INSTALL="$DEPS_TO_INSTALL wget" ;;
             "wrestool"|"icotool") DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils" ;;
-            "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick" ;;
-            "npx") DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs npm" ;;
-            "dpkg-deb") DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev" ;;
+            "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL ImageMagick" ;;
+            "npx") DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs" ;;
+            "rpm-build") DEPS_TO_INSTALL="$DEPS_TO_INSTALL rpm-build" ;;
         esac
     fi
 done
@@ -185,14 +198,10 @@ if [ -n "$DEPS_TO_INSTALL" ]; then
         echo "❌ Failed to validate sudo credentials. Please ensure you can run sudo."
         exit 1
     fi
-        if ! sudo apt update; then
-        echo "❌ Failed to run 'sudo apt update'."
-        exit 1
-    fi
     # Here on purpose no "" to expand the 'list', thus
     # shellcheck disable=SC2086
-    if ! sudo apt install -y $DEPS_TO_INSTALL; then
-         echo "❌ Failed to install dependencies using 'sudo apt install'."
+    if ! sudo dnf install -y $DEPS_TO_INSTALL; then
+         echo "❌ Failed to install dependencies using 'sudo dnf install'."
          exit 1
     fi
     echo "✓ System dependencies installed successfully via sudo."
@@ -200,7 +209,7 @@ fi
 
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
-mkdir -p "$APP_STAGING_DIR" 
+mkdir -p "$APP_STAGING_DIR"
 echo -e "\033[1;36m--- Electron & Asar Handling ---\033[0m"
 CHOSEN_ELECTRON_MODULE_PATH="" ASAR_EXEC=""
 
@@ -255,7 +264,7 @@ else
     exit 1
 fi
 
-cd "$PROJECT_ROOT" 
+cd "$PROJECT_ROOT"
 if [ -z "$CHOSEN_ELECTRON_MODULE_PATH" ] || [ ! -d "$CHOSEN_ELECTRON_MODULE_PATH" ]; then
      echo "❌ Critical error: Could not resolve a valid Electron module path to copy."
      exit 1
@@ -318,8 +327,8 @@ echo "✓ Icons processed and copied to $WORK_DIR"
 
 echo "⚙️ Processing app.asar..."
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar" "$APP_STAGING_DIR/"
-cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/" 
-cd "$APP_STAGING_DIR" 
+cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/"
+cd "$APP_STAGING_DIR"
 "$ASAR_EXEC" extract app.asar app.asar.contents
 
 echo "Creating stub native module..."
@@ -392,7 +401,7 @@ echo "Copying chosen electron installation to staging area..."
 mkdir -p "$APP_STAGING_DIR/node_modules/"
 ELECTRON_DIR_NAME=$(basename "$CHOSEN_ELECTRON_MODULE_PATH")
 echo "Copying from $CHOSEN_ELECTRON_MODULE_PATH to $APP_STAGING_DIR/node_modules/"
-cp -a "$CHOSEN_ELECTRON_MODULE_PATH" "$APP_STAGING_DIR/node_modules/" 
+cp -a "$CHOSEN_ELECTRON_MODULE_PATH" "$APP_STAGING_DIR/node_modules/"
 STAGED_ELECTRON_BIN="$APP_STAGING_DIR/node_modules/$ELECTRON_DIR_NAME/dist/electron"
 if [ -f "$STAGED_ELECTRON_BIN" ]; then
     echo "Setting executable permission on staged Electron binary: $STAGED_ELECTRON_BIN"
@@ -406,24 +415,27 @@ echo "✓ app.asar processed and staged in $APP_STAGING_DIR"
 cd "$PROJECT_ROOT"
 
 echo -e "\033[1;36m--- Call Packaging Script ---\033[0m"
-FINAL_OUTPUT_PATH="" FINAL_DESKTOP_FILE_PATH="" 
-if [ "$BUILD_FORMAT" = "deb" ]; then
-    echo "📦 Calling Debian packaging script for $ARCHITECTURE..."
-    chmod +x scripts/build-deb-package.sh
-    if ! scripts/build-deb-package.sh \
-        "$VERSION" "$ARCHITECTURE" "$WORK_DIR" "$APP_STAGING_DIR" \
+FINAL_OUTPUT_PATH="" FINAL_DESKTOP_FILE_PATH=""
+if [ "$BUILD_FORMAT" = "rpm" ]; then
+    echo "📦 Calling RPM packaging script for $ARCHITECTURE..."
+    # IMPORTANT: Assumes you have a 'build-rpm-package.sh' script in the 'scripts' directory
+    # This script must be created to handle creating a .spec file and running rpmbuild.
+    chmod +x scripts/build-rpm-package.sh
+    if ! scripts/build-rpm-package.sh \
+        "$VERSION" "$RAW_ARCH" "$WORK_DIR" "$APP_STAGING_DIR" \
         "$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
-        echo "❌ Debian packaging script failed."
+        echo "❌ RPM packaging script failed."
         exit 1
     fi
-    DEB_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb" | head -n 1)
-    echo "✓ Debian Build complete!"
-    if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-        FINAL_OUTPUT_PATH="./$(basename "$DEB_FILE")" # Set final path using basename directly
-        mv "$DEB_FILE" "$FINAL_OUTPUT_PATH"
+    # Find the generated RPM. The architecture in the filename will be x86_64 or aarch64.
+    RPM_FILE=$(find "$WORK_DIR" -name "${PACKAGE_NAME}-${VERSION}*.${RAW_ARCH}.rpm" | head -n 1)
+    echo "✓ RPM Build complete!"
+    if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
+        FINAL_OUTPUT_PATH="./$(basename "$RPM_FILE")"
+        mv "$RPM_FILE" "$FINAL_OUTPUT_PATH"
         echo "Package created at: $FINAL_OUTPUT_PATH"
     else
-        echo "Warning: Could not determine final .deb file path from $WORK_DIR for ${ARCHITECTURE}."
+        echo "Warning: Could not determine final .rpm file path from $WORK_DIR for ${RAW_ARCH}."
         FINAL_OUTPUT_PATH="Not Found"
     fi
 
@@ -438,7 +450,7 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
     APPIMAGE_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}-${VERSION}-${ARCHITECTURE}.AppImage" | head -n 1)
     echo "✓ AppImage Build complete!"
     if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
-        FINAL_OUTPUT_PATH="./$(basename "$APPIMAGE_FILE")" 
+        FINAL_OUTPUT_PATH="./$(basename "$APPIMAGE_FILE")"
         mv "$APPIMAGE_FILE" "$FINAL_OUTPUT_PATH"
         echo "Package created at: $FINAL_OUTPUT_PATH"
 
@@ -483,27 +495,24 @@ fi
 echo "✅ Build process finished."
 
 echo -e "\n\033[1;34m====== Next Steps ======\033[0m"
-if [ "$BUILD_FORMAT" = "deb" ]; then
+if [ "$BUILD_FORMAT" = "rpm" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
-        echo -e "📦 To install the Debian package, run:"
-        echo -e "   \033[1;32msudo apt install $FINAL_OUTPUT_PATH\033[0m"
-        echo -e "   (or \`sudo dpkg -i $FINAL_OUTPUT_PATH\`)"
+        echo -e "📦 To install the RPM package, run:"
+        echo -e "   \033[1;32msudo dnf install $FINAL_OUTPUT_PATH\033[0m"
     else
-        echo -e "⚠️ Debian package file not found. Cannot provide installation instructions."
+        echo -e "⚠️ RPM package file not found. Cannot provide installation instructions."
     fi
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
         echo -e "✅ AppImage created at: \033[1;36m$FINAL_OUTPUT_PATH\033[0m"
         echo -e "\n\033[1;33mIMPORTANT:\033[0m This AppImage requires \033[1;36mAppImageLauncher\033[0m for proper desktop integration"
         echo -e "and to handle the \`claude://\` login process correctly."
-        echo -e "\n🚀 To install AppImageLauncher (v2.2.0 for amd64):"
+        echo -e "\n🚀 To install AppImageLauncher (v2.2.0 for x86_64):"
         echo -e "   1. Download:"
-        echo -e "      \033[1;32mwget https://github.com/TheAssassin/AppImageLauncher/releases/download/v2.2.0/appimagelauncher_2.2.0-travis995.0f91801.bionic_amd64.deb -O /tmp/appimagelauncher.deb\033[0m"
+        echo -e "      \033[1;32mwget https://github.com/TheAssassin/AppImageLauncher/releases/download/v2.2.0/appimagelauncher-2.2.0-travis995.0f91801.x86_64.rpm -O /tmp/appimagelauncher.rpm\033[0m"
         echo -e "       - or appropriate package from here: \033[1;34mhttps://github.com/TheAssassin/AppImageLauncher/releases/latest\033[0m"
         echo -e "   2. Install the package:"
-        echo -e "      \033[1;32msudo dpkg -i /tmp/appimagelauncher.deb\033[0m"
-        echo -e "   3. Fix any missing dependencies:"
-        echo -e "      \033[1;32msudo apt --fix-broken install\033[0m"
+        echo -e "      \033[1;32msudo dnf install /tmp/appimagelauncher.rpm\033[0m"
         echo -e "\n   After installation, simply double-click \033[1;36m$FINAL_OUTPUT_PATH\033[0m and choose 'Integrate and run'."
     else
         echo -e "⚠️ AppImage file not found. Cannot provide usage instructions."
