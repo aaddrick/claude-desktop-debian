@@ -99,6 +99,28 @@ if [ ! -z "\$WAYLAND_DISPLAY" ]; then
   echo "Wayland detected" >> "\$LOG_FILE"
 fi
 
+# Check for display issues and set compatibility mode if needed
+if [ "\$IS_WAYLAND" = true ]; then
+  echo "Setting Wayland compatibility mode..." >> "\$LOG_FILE"
+  # Force X11 backend to avoid Wayland GPU issues
+  export GDK_BACKEND=x11
+  export ELECTRON_OZONE_PLATFORM_HINT=x11
+  # Disable GPU acceleration to prevent dmabuf errors
+  export ELECTRON_DISABLE_GPU=1
+  echo "Wayland compatibility mode enabled (using X11 backend)" >> "\$LOG_FILE"
+elif [ -z "\$DISPLAY" ] && [ -z "\$WAYLAND_DISPLAY" ]; then
+  echo "No display detected (TTY session) - cannot start graphical application" >> "\$LOG_FILE"
+  # Optionally, display an error to the user via zenity or kdialog if available
+  # No graphical environment detected; display error message in TTY session
+  echo "Error: Claude Desktop requires a graphical desktop environment." >&2
+  echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
+  else
+    echo "Error: Claude Desktop requires a graphical desktop environment." >&2
+    echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
+  fi
+  exit 1
+fi
+
 # Determine Electron executable path
 ELECTRON_EXEC="electron" # Default to global
 LOCAL_ELECTRON_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/electron" # Correct path to executable
@@ -125,10 +147,10 @@ fi
 APP_PATH="/usr/lib/$PACKAGE_NAME/app.asar"
 ELECTRON_ARGS=("\$APP_PATH")
 
-# Add Wayland flags if Wayland is detected
+# Add compatibility flags
 if [ "\$IS_WAYLAND" = true ]; then
-  echo "Adding Wayland flags" >> "\$LOG_FILE"
-  ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations" "--ozone-platform=wayland" "--enable-wayland-ime" "--wayland-text-input-version=3")
+  echo "Adding compatibility flags for Wayland session" >> "\$LOG_FILE"
+  ELECTRON_ARGS+=("--no-sandbox")
 fi
 
 # Change to the application directory
