@@ -20,47 +20,81 @@ jobs:
 
     steps:
     # Checkout code is needed within the reusable workflow itself
-    # because the caller only specifies 'uses:', it doesn't run steps before calling.
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Install RPM building tools and dependencies on Ubuntu
-    - name: Install RPM build dependencies
+    # Set up Docker Buildx for container builds
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # Build using Docker container with Fedora 42
+    - name: Build AMD64 package using Docker
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          rpm \
-          p7zip-full \
-          wget \
-          icoutils \
-          imagemagick \
-          fuse \
-          zsync || {
-            echo "Failed to install packages. Trying alternative packages..."
-            sudo apt-get install -y \
-              rpm \
-              p7zip-full \
-              wget \
-              icoutils \
-              imagemagick-6.q16 \
-              libfuse2 \
-              zsync
-          }
-
-    # Install Node.js 20+ which is required for the build
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Make build script executable
-      run: chmod +x ./build-fedora.sh
-
-    - name: Run Fedora build script
-      run: |
-        echo "Running AMD64 Fedora build with flags: ${{ inputs.build_flags }}"
-        # No sudo needed if runner user has permissions or build script handles it internally
-        ./build-fedora.sh ${{ inputs.build_flags }}
+        echo "Building AMD64 package with flags: ${{ inputs.build_flags }}"
+        
+        # Create a temporary Dockerfile for the build
+        cat > Dockerfile.amd64 << 'EOF'
+        FROM fedora:42
+        
+        # Install build dependencies (skip dnf update for speed)
+        RUN dnf install -y --nodocs --setopt=install_weak_deps=False \
+            rpm-build \
+            rpmdevtools \
+            p7zip \
+            p7zip-plugins \
+            wget \
+            icoutils \
+            ImageMagick \
+            nodejs \
+            npm \
+            git \
+            which \
+            findutils \
+            sed \
+            tar \
+            gzip && \
+            dnf clean all && \
+            # Try to install zsync from COPR, but don't fail if unavailable
+            (timeout 120 dnf copr enable -y petersen/zsync && timeout 120 dnf install -y zsync) || \
+            echo "zsync not available - AppImage .zsync files may not be generated"
+        
+        # Set working directory
+        WORKDIR /workspace
+        
+        # Copy source code
+        COPY . .
+        
+        # Make build script executable
+        RUN chmod +x ./build-fedora.sh
+        
+        # Set environment variable to indicate we're in a container
+        ENV CONTAINER=true
+        
+        # Run the build
+        ENTRYPOINT ["./build-fedora.sh"]
+        EOF
+        
+        # Build the Docker image and run the build
+        docker buildx build \
+          --platform linux/amd64 \
+          --load \
+          -f Dockerfile.amd64 \
+          -t claude-desktop-fedora-amd64 \
+          .
+        
+        # Run the container to build the package
+        docker run \
+          --platform linux/amd64 \
+          --rm \
+          -v "$(pwd):/output" \
+          claude-desktop-fedora-amd64 \
+          ${{ inputs.build_flags }}
+        
+        # Copy artifacts from container output to workflow directory
+        ls -la
+        
+        # Clean up
+        rm -f Dockerfile.amd64
 
     # Upload the built artifact for the release job
     - name: Upload AMD64 Artifact

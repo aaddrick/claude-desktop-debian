@@ -25,7 +25,7 @@ mkdir -p "$APPDIR_PATH/usr/lib"
 mkdir -p "$APPDIR_PATH/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$APPDIR_PATH/usr/share/applications"
 
-echo "📦 Staging application files into AppDir..."
+echo " Staging application files into AppDir..."
 # Copy the core application files (asar, unpacked resources, node_modules if present)
 # Explicitly copy required components to ensure hidden files/dirs like .bin are included
 if [ -f "$APP_STAGING_DIR/app.asar" ]; then
@@ -45,7 +45,7 @@ fi
 BUNDLED_ELECTRON_PATH="$APPDIR_PATH/usr/lib/node_modules/electron/dist/electron"
 echo "Checking for executable at: $BUNDLED_ELECTRON_PATH"
 if [ ! -x "$BUNDLED_ELECTRON_PATH" ]; then # Check if it exists and is executable
-    echo "❌ Electron executable not found or not executable in staging area ($BUNDLED_ELECTRON_PATH)."
+    echo "ERROR: Electron executable not found or not executable in staging area ($BUNDLED_ELECTRON_PATH)."
     echo "   AppImage requires Electron to be bundled. Ensure the main script copies it correctly."
     exit 1
 fi
@@ -53,7 +53,7 @@ fi
 chmod +x "$BUNDLED_ELECTRON_PATH"
 
 # --- Create AppRun Script ---
-echo "🚀 Creating AppRun script..."
+echo " Creating AppRun script..."
 # Note: We use $VERSION and $PACKAGE_NAME from the build script environment here
 # They will be embedded into the AppRun script.
 cat > "$APPDIR_PATH/AppRun" << EOF
@@ -130,10 +130,10 @@ echo "AppRun: Executing \$ELECTRON_EXEC \${ELECTRON_ARGS[@]} \$@ >> \$LOG_FILE 2
 exec "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" >> "\$LOG_FILE" 2>&1
 EOF
 chmod +x "$APPDIR_PATH/AppRun"
-echo "✓ AppRun script created (with logging to \$HOME/claude-desktop-launcher.log, --no-sandbox, and CWD set to \$HOME)"
+echo "SUCCESS: AppRun script created (with logging to \$HOME/claude-desktop-launcher.log, --no-sandbox, and CWD set to \$HOME)"
 
 # --- Create Desktop Entry (Bundled inside AppDir) ---
-echo "📝 Creating bundled desktop entry..."
+echo " Creating bundled desktop entry..."
 # This is the desktop file *inside* the AppImage, used by tools like appimaged
 cat > "$APPDIR_PATH/$COMPONENT_ID.desktop" << EOF
 [Desktop Entry]
@@ -152,10 +152,10 @@ EOF
 # Also place it in the standard location for tools like appimaged and validation
 mkdir -p "$APPDIR_PATH/usr/share/applications"
 cp "$APPDIR_PATH/$COMPONENT_ID.desktop" "$APPDIR_PATH/usr/share/applications/"
-echo "✓ Bundled desktop entry created and copied to usr/share/applications/"
+echo "SUCCESS: Bundled desktop entry created and copied to usr/share/applications/"
 
 # --- Copy Icons ---
-echo "🎨 Copying icons..."
+echo " Copying icons..."
 # Use the 256x256 icon as the main AppImage icon
 ICON_SOURCE_PATH="$WORK_DIR/claude_6_256x256x32.png"
 if [ -f "$ICON_SOURCE_PATH" ]; then
@@ -167,13 +167,13 @@ if [ -f "$ICON_SOURCE_PATH" ]; then
     cp "$ICON_SOURCE_PATH" "$APPDIR_PATH/${COMPONENT_ID}"
     # Hidden .DirIcon (fallback for some systems/tools)
     cp "$ICON_SOURCE_PATH" "$APPDIR_PATH/.DirIcon"
-    echo "✓ Icon copied to standard path, top-level (.png and no ext), and .DirIcon"
+    echo "SUCCESS: Icon copied to standard path, top-level (.png and no ext), and .DirIcon"
 else
     echo "Warning: Missing 256x256 icon at $ICON_SOURCE_PATH. AppImage icon might be missing."
 fi
 
 # --- Create AppStream Metadata ---
-echo "📄 Creating AppStream metadata..."
+echo " Creating AppStream metadata..."
 METADATA_DIR="$APPDIR_PATH/usr/share/metainfo"
 mkdir -p "$METADATA_DIR"
 
@@ -233,28 +233,28 @@ cat > "$APPDATA_FILE" << EOF
 
 </component>
 EOF
-echo "✓ AppStream metadata created at $APPDATA_FILE"
+echo "SUCCESS: AppStream metadata created at $APPDATA_FILE"
 
 
 # --- Get appimagetool ---
 APPIMAGETOOL_PATH=""
 if command -v appimagetool &> /dev/null; then
     APPIMAGETOOL_PATH=$(command -v appimagetool)
-    echo "✓ Found appimagetool in PATH: $APPIMAGETOOL_PATH"
+    echo "SUCCESS: Found appimagetool in PATH: $APPIMAGETOOL_PATH"
 elif [ -f "$WORK_DIR/appimagetool-x86_64.AppImage" ]; then # Check for specific arch first
     APPIMAGETOOL_PATH="$WORK_DIR/appimagetool-x86_64.AppImage"
-    echo "✓ Found downloaded x86_64 appimagetool: $APPIMAGETOOL_PATH"
+    echo "SUCCESS: Found downloaded x86_64 appimagetool: $APPIMAGETOOL_PATH"
 elif [ -f "$WORK_DIR/appimagetool-aarch64.AppImage" ]; then # Check for other arch
     APPIMAGETOOL_PATH="$WORK_DIR/appimagetool-aarch64.AppImage"
-    echo "✓ Found downloaded aarch64 appimagetool: $APPIMAGETOOL_PATH"
+    echo "SUCCESS: Found downloaded aarch64 appimagetool: $APPIMAGETOOL_PATH"
 else
-    echo "🛠️ Downloading appimagetool..."
+    echo "Downloading appimagetool..."
     # Determine architecture for download URL
     TOOL_ARCH=""
     case "$ARCHITECTURE" in # Use target ARCHITECTURE passed to script
         "amd64") TOOL_ARCH="x86_64" ;;
         "arm64") TOOL_ARCH="aarch64" ;;
-        *) echo "❌ Unsupported architecture for appimagetool download: $ARCHITECTURE"; exit 1 ;;
+        *) echo "ERROR: Unsupported architecture for appimagetool download: $ARCHITECTURE"; exit 1 ;;
     esac
 
     APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${TOOL_ARCH}.AppImage"
@@ -262,27 +262,27 @@ else
 
     if wget -q -O "$APPIMAGETOOL_PATH" "$APPIMAGETOOL_URL"; then
         chmod +x "$APPIMAGETOOL_PATH"
-        echo "✓ Downloaded appimagetool to $APPIMAGETOOL_PATH"
+        echo "SUCCESS: Downloaded appimagetool to $APPIMAGETOOL_PATH"
     else
-        echo "❌ Failed to download appimagetool from $APPIMAGETOOL_URL"
+        echo "ERROR: Failed to download appimagetool from $APPIMAGETOOL_URL"
         rm -f "$APPIMAGETOOL_PATH" # Clean up partial download
         exit 1
     fi
 fi
 
 # --- Build AppImage ---
-echo "📦 Building AppImage..."
+echo " Building AppImage..."
 OUTPUT_FILENAME="${PACKAGE_NAME}-${VERSION}-${ARCHITECTURE}.AppImage"
 OUTPUT_PATH="$WORK_DIR/$OUTPUT_FILENAME"
 
 # --- Prepare Update Information (GitHub Actions only) ---
 # Check if running in GitHub Actions workflow
 if [ "$GITHUB_ACTIONS" = "true" ]; then
-    echo "🔄 Running in GitHub Actions - embedding update information for automatic updates..."
+    echo " Running in GitHub Actions - embedding update information for automatic updates..."
     
     # Check if zsyncmake is available (required for generating .zsync files)
     if ! command -v zsyncmake &> /dev/null; then
-        echo "⚠️ zsyncmake not found. Installing zsync package for .zsync file generation..."
+        echo "WARNING: zsyncmake not found. Installing zsync package for .zsync file generation..."
         if command -v apt-get &> /dev/null; then
             sudo apt-get update && sudo apt-get install -y zsync
         elif command -v dnf &> /dev/null; then
@@ -290,7 +290,7 @@ if [ "$GITHUB_ACTIONS" = "true" ]; then
         elif command -v zypper &> /dev/null; then
             sudo zypper install -y zsync
         else
-            echo "⚠️ Cannot install zsync automatically. .zsync files may not be generated."
+            echo "WARNING: Cannot install zsync automatically. .zsync files may not be generated."
         fi
     fi
 
@@ -302,32 +302,62 @@ if [ "$GITHUB_ACTIONS" = "true" ]; then
     # Execute appimagetool with update information
     export ARCH="$ARCHITECTURE"
     echo "Using ARCH=$ARCH" # Debug output
-    if "$APPIMAGETOOL_PATH" --updateinformation "$UPDATE_INFO" "$APPDIR_PATH" "$OUTPUT_PATH"; then
-        echo "✓ AppImage built successfully with embedded update info: $OUTPUT_PATH"
-        # Check if zsync file was generated
-        ZSYNC_FILE="${OUTPUT_PATH}.zsync"
-        if [ -f "$ZSYNC_FILE" ]; then
-            echo "✓ zsync file generated: $ZSYNC_FILE"
-            echo "📤 zsync file will be included in release artifacts"
+    # Use --appimage-extract-and-run if appimagetool is an AppImage (for Docker/FUSE-less environments)
+    if [[ "$APPIMAGETOOL_PATH" == *.AppImage ]]; then
+        if "$APPIMAGETOOL_PATH" --appimage-extract-and-run --updateinformation "$UPDATE_INFO" "$APPDIR_PATH" "$OUTPUT_PATH"; then
+            echo "SUCCESS: AppImage built successfully with embedded update info: $OUTPUT_PATH"
+            # Check if zsync file was generated
+            ZSYNC_FILE="${OUTPUT_PATH}.zsync"
+            if [ -f "$ZSYNC_FILE" ]; then
+                echo "SUCCESS: zsync file generated: $ZSYNC_FILE"
+                echo "zsync file will be included in release artifacts"
+            else
+                echo "WARNING: zsync file not generated (zsyncmake may not be installed)"
+            fi
         else
-            echo "⚠️ zsync file not generated (zsyncmake may not be installed)"
+            echo "ERROR: Failed to build AppImage using $APPIMAGETOOL_PATH --appimage-extract-and-run"
+            exit 1
         fi
     else
-        echo "❌ Failed to build AppImage using $APPIMAGETOOL_PATH"
-        exit 1
+        # Use regular execution for system-installed appimagetool
+        if "$APPIMAGETOOL_PATH" --updateinformation "$UPDATE_INFO" "$APPDIR_PATH" "$OUTPUT_PATH"; then
+            echo "SUCCESS: AppImage built successfully with embedded update info: $OUTPUT_PATH"
+            # Check if zsync file was generated
+            ZSYNC_FILE="${OUTPUT_PATH}.zsync"
+            if [ -f "$ZSYNC_FILE" ]; then
+                echo "SUCCESS: zsync file generated: $ZSYNC_FILE"
+                echo "zsync file will be included in release artifacts"
+            else
+                echo "WARNING: zsync file not generated (zsyncmake may not be installed)"
+            fi
+        else
+            echo "ERROR: Failed to build AppImage using $APPIMAGETOOL_PATH"
+            exit 1
+        fi
     fi
 else
-    echo "🏠 Running locally - building AppImage without update information"
+    echo " Running locally - building AppImage without update information"
     echo "   (Update info and zsync files are only generated in GitHub Actions for releases)"
     
     # Execute appimagetool without update information
     export ARCH="$ARCHITECTURE"
     echo "Using ARCH=$ARCH" # Debug output
-    if "$APPIMAGETOOL_PATH" "$APPDIR_PATH" "$OUTPUT_PATH"; then
-        echo "✓ AppImage built successfully: $OUTPUT_PATH"
+    # Use --appimage-extract-and-run if appimagetool is an AppImage (for Docker/FUSE-less environments)
+    if [[ "$APPIMAGETOOL_PATH" == *.AppImage ]]; then
+        if "$APPIMAGETOOL_PATH" --appimage-extract-and-run "$APPDIR_PATH" "$OUTPUT_PATH"; then
+            echo "SUCCESS: AppImage built successfully: $OUTPUT_PATH"
+        else
+            echo "ERROR: Failed to build AppImage using $APPIMAGETOOL_PATH --appimage-extract-and-run"
+            exit 1
+        fi
     else
-        echo "❌ Failed to build AppImage using $APPIMAGETOOL_PATH"
-        exit 1
+        # Use regular execution for system-installed appimagetool
+        if "$APPIMAGETOOL_PATH" "$APPDIR_PATH" "$OUTPUT_PATH"; then
+            echo "SUCCESS: AppImage built successfully: $OUTPUT_PATH"
+        else
+            echo "ERROR: Failed to build AppImage using $APPIMAGETOOL_PATH"
+            exit 1
+        fi
     fi
 fi
 

@@ -10,9 +10,9 @@ run-name: |
 
 on:
   push:
-    branches: [main]
+    branches: [FrostMain]
   pull_request:
-    branches: [main]
+    branches: [FrostMain]
 
 permissions:
   contents: read

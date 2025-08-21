@@ -30,7 +30,7 @@ echo "RPM Architecture: $RPM_ARCH"
 # Set up RPM build environment
 RPM_BUILD_ROOT="$WORK_DIR/rpmbuild"
 SPEC_FILE="$RPM_BUILD_ROOT/SPECS/${PACKAGE_NAME}.spec"
-INSTALL_DIR="$RPM_BUILD_ROOT/BUILDROOT/${PACKAGE_NAME}-${VERSION}-1.${RPM_ARCH}/usr"
+STAGING_DIR="$RPM_BUILD_ROOT/STAGING"
 
 # Clean previous build structure if it exists
 rm -rf "$RPM_BUILD_ROOT"
@@ -38,13 +38,13 @@ rm -rf "$RPM_BUILD_ROOT"
 # Create RPM build directory structure
 echo "Creating RPM build structure in $RPM_BUILD_ROOT..."
 mkdir -p "$RPM_BUILD_ROOT"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-mkdir -p "$INSTALL_DIR/lib/$PACKAGE_NAME"
-mkdir -p "$INSTALL_DIR/share/applications"
-mkdir -p "$INSTALL_DIR/share/icons"
-mkdir -p "$INSTALL_DIR/bin"
+mkdir -p "$STAGING_DIR/usr/lib/$PACKAGE_NAME"
+mkdir -p "$STAGING_DIR/usr/share/applications"
+mkdir -p "$STAGING_DIR/usr/share/icons"
+mkdir -p "$STAGING_DIR/usr/bin"
 
 # --- Icon Installation ---
-echo "🎨 Installing icons..."
+echo "Installing icons..."
 # Map icon sizes to their corresponding extracted files (relative to WORK_DIR)
 declare -A icon_files=(
     ["16"]="claude_13_16x16x32.png"
@@ -56,7 +56,7 @@ declare -A icon_files=(
 )
 
 for size in 16 24 32 48 64 256; do
-    icon_dir="$INSTALL_DIR/share/icons/hicolor/${size}x${size}/apps"
+    icon_dir="$STAGING_DIR/usr/share/icons/hicolor/${size}x${size}/apps"
     mkdir -p "$icon_dir"
     icon_source_path="$WORK_DIR/${icon_files[$size]}"
     if [ -f "$icon_source_path" ]; then
@@ -66,23 +66,23 @@ for size in 16 24 32 48 64 256; do
         echo "Warning: Missing ${size}x${size} icon at $icon_source_path"
     fi
 done
-echo "✓ Icons installed"
+echo "SUCCESS: Icons installed"
 
 # --- Copy Application Files ---
-echo "📦 Copying application files from $APP_STAGING_DIR..."
-cp "$APP_STAGING_DIR/app.asar" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
-cp -r "$APP_STAGING_DIR/app.asar.unpacked" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
+echo "Copying application files from $APP_STAGING_DIR..."
+cp "$APP_STAGING_DIR/app.asar" "$STAGING_DIR/usr/lib/$PACKAGE_NAME/"
+cp -r "$APP_STAGING_DIR/app.asar.unpacked" "$STAGING_DIR/usr/lib/$PACKAGE_NAME/"
 
 # Copy local electron if it was packaged (check if node_modules exists in staging)
 if [ -d "$APP_STAGING_DIR/node_modules" ]; then
     echo "Copying packaged electron..."
-    cp -r "$APP_STAGING_DIR/node_modules" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
+    cp -r "$APP_STAGING_DIR/node_modules" "$STAGING_DIR/usr/lib/$PACKAGE_NAME/"
 fi
-echo "✓ Application files copied"
+echo "SUCCESS: Application files copied"
 
 # --- Create Desktop Entry ---
-echo "📝 Creating desktop entry..."
-cat > "$INSTALL_DIR/share/applications/claude-desktop.desktop" << EOF
+echo "Creating desktop entry..."
+cat > "$STAGING_DIR/usr/share/applications/claude-desktop.desktop" << EOF
 [Desktop Entry]
 Name=Claude
 Exec=/usr/bin/claude-desktop %u
@@ -93,11 +93,11 @@ Categories=Office;Utility;
 MimeType=x-scheme-handler/claude;
 StartupWMClass=Claude
 EOF
-echo "✓ Desktop entry created"
+echo "SUCCESS: Desktop entry created"
 
 # --- Create Launcher Script ---
-echo "🚀 Creating launcher script..."
-cat > "$INSTALL_DIR/bin/claude-desktop" << EOF
+echo "Creating launcher script..."
+cat > "$STAGING_DIR/usr/bin/claude-desktop" << EOF
 #!/bin/bash
 LOG_FILE="\$HOME/claude-desktop-launcher.log"
 echo "--- Claude Desktop Launcher Start ---" >> "\$LOG_FILE"
@@ -181,11 +181,11 @@ echo "Electron exited with code: \$EXIT_CODE" >> "\$LOG_FILE"
 echo "--- Claude Desktop Launcher End ---" >> "\$LOG_FILE"
 exit \$EXIT_CODE
 EOF
-chmod +x "$INSTALL_DIR/bin/claude-desktop"
-echo "✓ Launcher script created"
+chmod +x "$STAGING_DIR/usr/bin/claude-desktop"
+echo "SUCCESS: Launcher script created"
 
 # --- Create RPM Spec File ---
-echo "📄 Creating RPM spec file..."
+echo "Creating RPM spec file..."
 cat > "$SPEC_FILE" << EOF
 Name:           $PACKAGE_NAME
 Version:        $VERSION
@@ -195,7 +195,6 @@ Packager:       $MAINTAINER
 
 License:        MIT
 URL:            https://github.com/Frost26/Claude-Linux-Desktop
-Source0:        %{name}-%{version}.tar.gz
 BuildArch:      $RPM_ARCH
 
 # Build dependencies
@@ -218,15 +217,20 @@ This package provides the desktop interface for Claude.
 Supported on Red Hat-based Linux distributions (Fedora, RHEL, CentOS, openSUSE, etc.)
 Requires: nodejs (>= 20.0.0), npm
 
-%prep
-%setup -q
-
 %build
 # Build steps are handled by the calling script
 
 %install
-# Copy the pre-built files from the BUILDROOT
-# The files are already in place from the calling script
+# Copy files from staging directory to buildroot
+mkdir -p %{buildroot}%{_bindir}
+mkdir -p %{buildroot}%{_libdir}/%{name}
+mkdir -p %{buildroot}%{_datadir}/applications
+mkdir -p %{buildroot}%{_datadir}/icons
+
+# Copy files to proper locations
+cp -a %{_topdir}/STAGING/usr/bin/* %{buildroot}%{_bindir}/
+cp -a %{_topdir}/STAGING/usr/lib/* %{buildroot}%{_libdir}/
+cp -a %{_topdir}/STAGING/usr/share/* %{buildroot}%{_datadir}/
 
 %post
 # Update desktop database for MIME types
@@ -267,10 +271,10 @@ fi
 - Automated build of Claude Desktop version $VERSION
 
 EOF
-echo "✓ RPM spec file created"
+echo "SUCCESS: RPM spec file created"
 
 # --- Build RPM Package ---
-echo "📦 Building RPM package..."
+echo "Building RPM package..."
 RPM_FILE="${PACKAGE_NAME}-${VERSION}-1.${RPM_ARCH}.rpm"
 OUTPUT_PATH="$WORK_DIR/$RPM_FILE"
 
@@ -278,7 +282,7 @@ OUTPUT_PATH="$WORK_DIR/$RPM_FILE"
 if rpmbuild --define "_topdir $RPM_BUILD_ROOT" \
            --define "_rpmdir $WORK_DIR" \
            --bb "$SPEC_FILE"; then
-    echo "✓ RPM package built successfully"
+    echo "SUCCESS: RPM package built successfully"
     
     # Find the generated RPM file
     GENERATED_RPM=$(find "$WORK_DIR" -name "*.rpm" -not -path "*/RPMS/*" | head -n 1)
@@ -291,12 +295,12 @@ if rpmbuild --define "_topdir $RPM_BUILD_ROOT" \
     fi
     
     if [ -f "$OUTPUT_PATH" ] || [ -f "$GENERATED_RPM" ]; then
-        echo "✓ RPM package available at: $(basename "$OUTPUT_PATH")"
+        echo "SUCCESS: RPM package available at: $(basename "$OUTPUT_PATH")"
     else
         echo "Warning: Could not locate generated RPM package"
     fi
 else
-    echo "❌ Failed to build RPM package"
+    echo "ERROR: Failed to build RPM package"
     exit 1
 fi
 

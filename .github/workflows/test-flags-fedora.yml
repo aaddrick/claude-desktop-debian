@@ -7,6 +7,8 @@ on:
 jobs:
   test-flags:
     runs-on: ubuntu-22.04  # Pin to specific version for stability
+    container:
+      image: fedora:42
 
     steps:
     - name: Checkout code
@@ -15,8 +17,7 @@ jobs:
     # Install dependencies needed for flag testing
     - name: Install basic dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y rpm
+        dnf install -y rpm-build git which findutils
 
     - name: Make build script executable
       run: chmod +x ./build-fedora.sh
@@ -25,12 +26,22 @@ jobs:
     - name: Test Case 1 - Defaults (rpm, clean=yes)
       run: |
         echo "--- Running Test Case 1: ./build-fedora.sh --test-flags ---"
-        OUTPUT=$(./build-fedora.sh --test-flags)
+        set +e  # Allow script to fail without stopping the test
+        OUTPUT=$(./build-fedora.sh --test-flags 2>&1)
+        EXIT_CODE=$?
+        set -e  # Re-enable error checking
         echo "$OUTPUT" # Print output for logs
+        echo "Script exit code: $EXIT_CODE"
+        
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "ERROR: Script failed with exit code $EXIT_CODE"
+          exit 1
+        fi
+        
         echo "--- Verifying Test Case 1 ---"
-        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "❌ Expected 'Build Format: rpm'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "❌ Expected 'Clean Action: yes'" && exit 1)
-        echo "✓ Test Case 1 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "ERROR: Expected 'Build Format: rpm'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "ERROR: Expected 'Clean Action: yes'" && exit 1)
+        echo "SUCCESS: Test Case 1 Passed"
 
     # Test Case 2: --build rpm (clean=yes)
     - name: Test Case 2 - --build rpm (clean=yes)
@@ -39,9 +50,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --build rpm --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 2 ---"
-        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "❌ Expected 'Build Format: rpm'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "❌ Expected 'Clean Action: yes'" && exit 1)
-        echo "✓ Test Case 2 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "ERROR: Expected 'Build Format: rpm'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "ERROR: Expected 'Clean Action: yes'" && exit 1)
+        echo "SUCCESS: Test Case 2 Passed"
 
     # Test Case 3: --build appimage (clean=yes)
     - name: Test Case 3 - --build appimage (clean=yes)
@@ -50,9 +61,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --build appimage --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 3 ---"
-        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "❌ Expected 'Build Format: appimage'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "❌ Expected 'Clean Action: yes'" && exit 1)
-        echo "✓ Test Case 3 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "ERROR: Expected 'Build Format: appimage'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "ERROR: Expected 'Clean Action: yes'" && exit 1)
+        echo "SUCCESS: Test Case 3 Passed"
 
     # Test Case 4: --clean yes (build=rpm)
     - name: Test Case 4 - --clean yes (build=rpm)
@@ -61,9 +72,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --clean yes --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 4 ---"
-        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "❌ Expected 'Build Format: rpm'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "❌ Expected 'Clean Action: yes'" && exit 1)
-        echo "✓ Test Case 4 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "ERROR: Expected 'Build Format: rpm'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "ERROR: Expected 'Clean Action: yes'" && exit 1)
+        echo "SUCCESS: Test Case 4 Passed"
 
     # Test Case 5: --clean no (build=rpm)
     - name: Test Case 5 - --clean no (build=rpm)
@@ -72,9 +83,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --clean no --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 5 ---"
-        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "❌ Expected 'Build Format: rpm'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "❌ Expected 'Clean Action: no'" && exit 1)
-        echo "✓ Test Case 5 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "ERROR: Expected 'Build Format: rpm'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "ERROR: Expected 'Clean Action: no'" && exit 1)
+        echo "SUCCESS: Test Case 5 Passed"
 
     # Test Case 6: --build rpm --clean yes
     - name: Test Case 6 - --build rpm --clean yes
@@ -83,9 +94,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --build rpm --clean yes --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 6 ---"
-        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "❌ Expected 'Build Format: rpm'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "❌ Expected 'Clean Action: yes'" && exit 1)
-        echo "✓ Test Case 6 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "ERROR: Expected 'Build Format: rpm'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "ERROR: Expected 'Clean Action: yes'" && exit 1)
+        echo "SUCCESS: Test Case 6 Passed"
 
     # Test Case 7: --build rpm --clean no
     - name: Test Case 7 - --build rpm --clean no
@@ -94,9 +105,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --build rpm --clean no --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 7 ---"
-        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "❌ Expected 'Build Format: rpm'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "❌ Expected 'Clean Action: no'" && exit 1)
-        echo "✓ Test Case 7 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: rpm" || (echo "ERROR: Expected 'Build Format: rpm'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "ERROR: Expected 'Clean Action: no'" && exit 1)
+        echo "SUCCESS: Test Case 7 Passed"
 
     # Test Case 8: --build appimage --clean yes
     - name: Test Case 8 - --build appimage --clean yes
@@ -105,9 +116,9 @@ jobs:
         OUTPUT=$(./build-fedora.sh --build appimage --clean yes --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 8 ---"
-        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "❌ Expected 'Build Format: appimage'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "❌ Expected 'Clean Action: yes'" && exit 1)
-        echo "✓ Test Case 8 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "ERROR: Expected 'Build Format: appimage'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: yes" || (echo "ERROR: Expected 'Clean Action: yes'" && exit 1)
+        echo "SUCCESS: Test Case 8 Passed"
 
     # Test Case 9: --build appimage --clean no
     - name: Test Case 9 - --build appimage --clean no
@@ -116,6 +127,6 @@ jobs:
         OUTPUT=$(./build-fedora.sh --build appimage --clean no --test-flags)
         echo "$OUTPUT"
         echo "--- Verifying Test Case 9 ---"
-        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "❌ Expected 'Build Format: appimage'" && exit 1)
-        echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "❌ Expected 'Clean Action: no'" && exit 1)
-        echo "✓ Test Case 9 Passed"
+        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "ERROR: Expected 'Build Format: appimage'" && exit 1)
+        echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "ERROR: Expected 'Clean Action: no'" && exit 1)
+        echo "SUCCESS: Test Case 9 Passed"

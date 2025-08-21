@@ -10,7 +10,7 @@ on:
   push:
     branches:
       # Note: Pushing tags also triggers 'push' events. We filter later with 'if'.
-      - main # Trigger on pushes to main
+      - FrostMain # Trigger on pushes to FrostMain
       - dev # Also trigger on pushes to this branch for testing
     paths: # Trigger if relevant files change
       - 'build-fedora.sh'
@@ -19,7 +19,7 @@ on:
     tags:
       - 'v*' # Also trigger on version tags like v1.0, v2.1.3
   pull_request:
-    branches: [main]
+    branches: [FrostMain]
   workflow_dispatch: # Allows manual triggering
 
 jobs:
@@ -55,36 +55,12 @@ jobs:
     # Secrets are not automatically passed to reusable workflows, pass if needed
     # secrets: inherit
 
-  # Build ARM64 packages
-  build-arm64:
-    name: Build Packages (arm64 - ${{ matrix.flags || 'defaults' }})
-    needs: test-flags # Run only if test-flags job succeeds
-    # Runner is defined in the called workflow (build-arm64-fedora.yml)
-
-    strategy:
-      fail-fast: false # Allow other builds to continue if one fails
-      matrix:
-        include:
-          - arch: arm64
-            flags: "--clean no" # Implies rpm build
-            artifact_suffix: 'rpm'
-          - arch: arm64
-            flags: "--build appimage"
-            artifact_suffix: 'appimage'
-
-    uses: ./.github/workflows/build-arm64-fedora.yml # Call the dedicated arm64 workflow
-    with:
-      build_flags: ${{ matrix.flags }}
-      artifact_suffix: ${{ matrix.artifact_suffix }}
-    # Secrets are not automatically passed to reusable workflows, pass if needed
-    # secrets: inherit
-
   # Create Release job - runs only on tag pushes
   release:
     name: Create Release
     # Only run this job if the trigger was a tag push starting with 'v'
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-flags, build-amd64, build-arm64] # Ensure builds are successful
+    needs: [test-flags, build-amd64] # Ensure builds are successful
     runs-on: ubuntu-22.04  # Pin to specific version for stability
     permissions:
       contents: write # Needed to create releases and upload assets
@@ -103,17 +79,6 @@ jobs:
           name: package-amd64-appimage
           path: artifacts/
 
-      - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-rpm
-          path: artifacts/
-
-      - name: Download ARM64 AppImage artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-appimage
-          path: artifacts/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

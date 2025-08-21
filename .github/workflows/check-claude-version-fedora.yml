@@ -15,18 +15,19 @@ permissions:
 jobs:
   check-version:
     runs-on: ubuntu-22.04  # Pin to specific version for stability
+    container:
+      image: fedora:42
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0 # Need full history for tags
-        token: ${{ secrets.GH_PAT }} # PAT required for pushing tags
+        token: ${{ secrets.CD_F }} # PAT required for pushing tags
     
     - name: Set up environment
       run: |
-        sudo apt-get update
-        sudo apt-get install -y p7zip-full wget
+        dnf install -y p7zip wget git which findutils
     
     - name: Download and check Claude version
       id: check_version
@@ -78,7 +79,7 @@ jobs:
     - name: Check if update needed
       id: check_update
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.CD_F }}
       run: |
         CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
         REPO_VERSION="${{ vars.REPO_VERSION }}"
@@ -111,7 +112,7 @@ jobs:
         
         # Check if we have a PAT
         if [ -z "$GH_TOKEN" ]; then
-          echo "❌ Error: CD_F secret is not configured"
+          echo "ERROR: CD_F secret is not configured"
           echo "This workflow requires a Personal Access Token to update repository variables"
           echo "Please create a PAT with 'repo' and 'workflow' scopes and add it as CD_F secret"
           exit 1

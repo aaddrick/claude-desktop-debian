@@ -3,14 +3,14 @@ set -euo pipefail
 
 # --- Architecture Detection ---
 echo -e "\033[1;36m--- Architecture Detection ---\033[0m"
-echo "⚙️ Detecting system architecture..."
+echo " Detecting system architecture..."
 
 # Use uname for architecture detection on Fedora/RHEL systems
 UNAME_ARCH=$(uname -m)
 case "$UNAME_ARCH" in
     "x86_64") HOST_ARCH="amd64" ;;
     "aarch64") HOST_ARCH="arm64" ;;
-    *) echo "❌ Unsupported architecture: $UNAME_ARCH"; exit 1 ;;
+    *) echo "ERROR: Unsupported architecture: $UNAME_ARCH"; exit 1 ;;
 esac
 
 echo "Detected host architecture: $HOST_ARCH (uname -m: $UNAME_ARCH)"
@@ -28,7 +28,7 @@ elif [ "$HOST_ARCH" = "arm64" ]; then
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
     echo "Configured for arm64 build."
 else
-    echo "❌ Unsupported architecture: $HOST_ARCH. This script currently supports amd64 and arm64."
+    echo "ERROR: Unsupported architecture: $HOST_ARCH. This script currently supports amd64 and arm64."
     exit 1
 fi
 echo "Target Architecture (detected): $ARCHITECTURE"
@@ -36,45 +36,28 @@ echo -e "\033[1;36m--- End Architecture Detection ---\033[0m"
 
 # Check for Fedora/RHEL-based system
 if [ ! -f "/etc/redhat-release" ] && [ ! -f "/etc/fedora-release" ] && [ ! -f "/etc/os-release" ]; then
-    echo "❌ This script requires a Red Hat-based Linux distribution (Fedora, RHEL, CentOS, etc.)"
+    echo "ERROR: This script requires a Red Hat-based Linux distribution (Fedora, RHEL, CentOS, etc.)"
     exit 1
 fi
 
-# Verify we're on a supported system (skip in test mode)
-if [ -f "/etc/os-release" ]; then
-    . /etc/os-release
-    case "$ID" in
-        fedora|rhel|centos|rocky|almalinux|opensuse*|sles)
-            echo "✓ Detected supported distribution: $PRETTY_NAME"
-            ;;
-        *)
-            # Skip interactive prompt in test-flags mode  
-            if [ "$TEST_FLAGS_MODE" = true ]; then
-                echo "⚠️ Note: Running in test mode on unsupported distribution: $PRETTY_NAME"
-            else
-                echo "⚠️ Warning: Untested distribution: $PRETTY_NAME"
-                echo "   This script is designed for Red Hat-based distributions."
-                read -p "Continue anyway? (y/N): " -n 1 -r
-                echo
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                    exit 1
-                fi
-            fi
-            ;;
-    esac
-fi
+# Note: OS compatibility check moved to after argument parsing
 
 if [ "$EUID" -eq 0 ]; then
-   echo "❌ This script should not be run using sudo or as the root user."
-   echo "   It will prompt for sudo password when needed for specific actions."
-   echo "   Please run as a normal user."
-   exit 1
+   # Check if we're running in a container environment
+   if [ -f "/.dockerenv" ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+       echo "INFO: Running as root in container environment - this is normal."
+   else
+       echo "ERROR: This script should not be run using sudo or as the root user."
+       echo "   It will prompt for sudo password when needed for specific actions."
+       echo "   Please run as a normal user."
+       exit 1
+   fi
 fi
 
 ORIGINAL_USER=$(whoami)
 ORIGINAL_HOME=$(getent passwd "$ORIGINAL_USER" | cut -d: -f6)
 if [ -z "$ORIGINAL_HOME" ]; then
-    echo "❌ Could not determine home directory for user $ORIGINAL_USER."
+    echo "ERROR: Could not determine home directory for user $ORIGINAL_USER."
     exit 1
 fi
 echo "Running as user: $ORIGINAL_USER (Home: $ORIGINAL_HOME)"
@@ -104,6 +87,7 @@ fi # End of if [ -d "$ORIGINAL_HOME/.nvm" ] check
 
 echo "System Information:"
 if [ -f "/etc/os-release" ]; then
+    # shellcheck source=/dev/null
     . /etc/os-release
     echo "Distribution: $PRETTY_NAME"
     echo "Version: ${VERSION_ID:-Unknown}"
@@ -121,13 +105,13 @@ while [[ $# -gt 0 ]]; do
     case $key in
         -b|--build)
         if [[ -z "$2" || "$2" == -* ]]; then
-            echo "❌ Error: Argument for $1 is missing" >&2; exit 1
+            echo "ERROR: Argument for $1 is missing" >&2; exit 1
         fi
         BUILD_FORMAT="$2"
         shift 2 ;; # Shift past flag and value
         -c|--clean)
         if [[ -z "$2" || "$2" == -* ]]; then
-            echo "❌ Error: Argument for $1 is missing" >&2; exit 1
+            echo "ERROR: Argument for $1 is missing" >&2; exit 1
         fi
         CLEANUP_ACTION="$2"
         shift 2 ;; # Shift past flag and value
@@ -143,7 +127,7 @@ while [[ $# -gt 0 ]]; do
         exit 0
         ;;
         *)
-        echo "❌ Unknown option: $1" >&2
+        echo "ERROR: Unknown option: $1" >&2
         echo "Use -h or --help for usage information." >&2
         exit 1
         ;;
@@ -155,11 +139,11 @@ BUILD_FORMAT=$(echo "$BUILD_FORMAT" | tr '[:upper:]' '[:lower:]')
 CLEANUP_ACTION=$(echo "$CLEANUP_ACTION" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$BUILD_FORMAT" != "rpm" && "$BUILD_FORMAT" != "appimage" ]]; then
-    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'rpm' or 'appimage'." >&2
+    echo "ERROR: Invalid build format specified: '$BUILD_FORMAT'. Must be 'rpm' or 'appimage'." >&2
     exit 1
 fi
 if [[ "$CLEANUP_ACTION" != "yes" && "$CLEANUP_ACTION" != "no" ]]; then
-    echo "❌ Invalid cleanup option specified: '$CLEANUP_ACTION'. Must be 'yes' or 'no'." >&2
+    echo "ERROR: Invalid cleanup option specified: '$CLEANUP_ACTION'. Must be 'yes' or 'no'." >&2
     exit 1
 fi
 
@@ -190,20 +174,40 @@ if [ "$TEST_FLAGS_MODE" = true ]; then
     exit 0
 fi
 
+# Verify we're on a supported system (after argument parsing)
+if [ -f "/etc/os-release" ]; then
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    case "$ID" in
+        fedora|rhel|centos|rocky|almalinux|opensuse*|sles)
+            echo "SUCCESS: Detected supported distribution: $PRETTY_NAME"
+            ;;
+        *)
+            echo "WARNING: Warning: Untested distribution: $PRETTY_NAME"
+            echo "   This script is designed for Red Hat-based distributions."
+            read -p "Continue anyway? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+            ;;
+    esac
+fi
+
 check_command() {
     if ! command -v "$1" &> /dev/null; then
-        echo "❌ $1 not found"
+        echo "ERROR: $1 not found"
         return 1
     else
-        echo "✓ $1 found"
+        echo "SUCCESS: $1 found"
         return 0
     fi
 }
 
 echo "Checking dependencies..."
 DEPS_TO_INSTALL=""
-COMMON_DEPS="p7zip wget wrestool icotool convert"
-RPM_DEPS="rpm-build rpmbuild"
+COMMON_DEPS="7z wget wrestool icotool convert"
+RPM_DEPS="rpmbuild"
 APPIMAGE_DEPS=""
 
 ALL_DEPS_TO_CHECK="$COMMON_DEPS"
@@ -216,11 +220,11 @@ fi
 for cmd in $ALL_DEPS_TO_CHECK; do
     if ! check_command "$cmd"; then
         case "$cmd" in
-            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip p7zip-plugins" ;;
+            "7z") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip p7zip-plugins" ;;
             "wget") DEPS_TO_INSTALL="$DEPS_TO_INSTALL wget" ;;
             "wrestool"|"icotool") DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils" ;;
             "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL ImageMagick" ;;
-            "rpm-build"|"rpmbuild") DEPS_TO_INSTALL="$DEPS_TO_INSTALL rpm-build" ;;
+            "rpmbuild") DEPS_TO_INSTALL="$DEPS_TO_INSTALL rpm-build" ;;
         esac
     fi
 done
@@ -229,7 +233,7 @@ if [ -n "$DEPS_TO_INSTALL" ]; then
     echo "System dependencies needed: $DEPS_TO_INSTALL"
     echo "Attempting to install using sudo..."
     if ! sudo -v; then
-        echo "❌ Failed to validate sudo credentials. Please ensure you can run sudo."
+        echo "ERROR: Failed to validate sudo credentials. Please ensure you can run sudo."
         exit 1
     fi
     
@@ -237,42 +241,42 @@ if [ -n "$DEPS_TO_INSTALL" ]; then
     if command -v dnf &> /dev/null; then
         echo "Using dnf package manager..."
         if ! sudo dnf update -y; then
-            echo "❌ Failed to run 'sudo dnf update'."
+            echo "ERROR: Failed to run 'sudo dnf update'."
             exit 1
         fi
         # shellcheck disable=SC2086
         if ! sudo dnf install -y $DEPS_TO_INSTALL; then
-            echo "❌ Failed to install dependencies using 'sudo dnf install'."
+            echo "ERROR: Failed to install dependencies using 'sudo dnf install'."
             exit 1
         fi
     elif command -v yum &> /dev/null; then
         echo "Using yum package manager..."
         if ! sudo yum update -y; then
-            echo "❌ Failed to run 'sudo yum update'."
+            echo "ERROR: Failed to run 'sudo yum update'."
             exit 1
         fi
         # shellcheck disable=SC2086
         if ! sudo yum install -y $DEPS_TO_INSTALL; then
-            echo "❌ Failed to install dependencies using 'sudo yum install'."
+            echo "ERROR: Failed to install dependencies using 'sudo yum install'."
             exit 1
         fi
     elif command -v zypper &> /dev/null; then
         echo "Using zypper package manager..."
         if ! sudo zypper refresh; then
-            echo "❌ Failed to run 'sudo zypper refresh'."
+            echo "ERROR: Failed to run 'sudo zypper refresh'."
             exit 1
         fi
         # shellcheck disable=SC2086
         if ! sudo zypper install -y $DEPS_TO_INSTALL; then
-            echo "❌ Failed to install dependencies using 'sudo zypper install'."
+            echo "ERROR: Failed to install dependencies using 'sudo zypper install'."
             exit 1
         fi
     else
-        echo "❌ No supported package manager found (dnf, yum, zypper)."
+        echo "ERROR: No supported package manager found (dnf, yum, zypper)."
         echo "Please install the following packages manually: $DEPS_TO_INSTALL"
         exit 1
     fi
-    echo "✓ System dependencies installed successfully."
+    echo "SUCCESS: System dependencies installed successfully."
 fi
 
 rm -rf "$WORK_DIR"
@@ -288,13 +292,13 @@ if command -v node &> /dev/null; then
     echo "System Node.js version: v$NODE_VERSION"
     
     if [ "$NODE_MAJOR" -ge 20 ]; then
-        echo "✓ System Node.js version is adequate (v$NODE_VERSION)"
+        echo "SUCCESS: System Node.js version is adequate (v$NODE_VERSION)"
         NODE_VERSION_OK=true
     else
-        echo "⚠️ System Node.js version is too old (v$NODE_VERSION). Need v20+"
+        echo "WARNING: System Node.js version is too old (v$NODE_VERSION). Need v20+"
     fi
 else
-    echo "⚠️ Node.js not found in system"
+    echo "WARNING: Node.js not found in system"
 fi
 
 # If system Node.js is not adequate, install a local copy
@@ -307,7 +311,7 @@ if [ "$NODE_VERSION_OK" = false ]; then
     elif [ "$ARCHITECTURE" = "arm64" ]; then
         NODE_ARCH="arm64"
     else
-        echo "❌ Unsupported architecture for Node.js: $ARCHITECTURE"
+        echo "ERROR: Unsupported architecture for Node.js: $ARCHITECTURE"
         exit 1
     fi
     
@@ -319,14 +323,14 @@ if [ "$NODE_VERSION_OK" = false ]; then
     echo "Downloading Node.js v${NODE_VERSION_TO_INSTALL} for ${NODE_ARCH}..."
     cd "$WORK_DIR"
     if ! wget -O "$NODE_TARBALL" "$NODE_URL"; then
-        echo "❌ Failed to download Node.js from $NODE_URL"
+        echo "ERROR: Failed to download Node.js from $NODE_URL"
         cd "$PROJECT_ROOT"
         exit 1
     fi
     
     echo "Extracting Node.js..."
     if ! tar -xf "$NODE_TARBALL"; then
-        echo "❌ Failed to extract Node.js tarball"
+        echo "ERROR: Failed to extract Node.js tarball"
         cd "$PROJECT_ROOT"
         exit 1
     fi
@@ -340,9 +344,9 @@ if [ "$NODE_VERSION_OK" = false ]; then
     # Verify local Node.js installation
     if command -v node &> /dev/null; then
         LOCAL_NODE_VERSION=$(node --version)
-        echo "✓ Local Node.js installed successfully: $LOCAL_NODE_VERSION"
+        echo "SUCCESS: Local Node.js installed successfully: $LOCAL_NODE_VERSION"
     else
-        echo "❌ Failed to install local Node.js"
+        echo "ERROR: Failed to install local Node.js"
         cd "$PROJECT_ROOT"
         exit 1
     fi
@@ -381,21 +385,21 @@ fi
 if [ "$INSTALL_NEEDED" = true ]; then
     echo "Installing Electron and Asar locally into $WORK_DIR..."
     if ! npm install --no-save electron @electron/asar; then
-        echo "❌ Failed to install Electron and/or Asar locally."
+        echo "ERROR: Failed to install Electron and/or Asar locally."
         cd "$PROJECT_ROOT"
         exit 1
     fi
-    echo "✓ Electron and Asar installation command finished."
+    echo "SUCCESS: Electron and Asar installation command finished."
 else
-    echo "✓ Local Electron distribution and Asar binary already present."
+    echo "SUCCESS: Local Electron distribution and Asar binary already present."
 fi
 
 if [ -d "$ELECTRON_DIST_PATH" ]; then
-    echo "✓ Found Electron distribution directory at $ELECTRON_DIST_PATH."
+    echo "SUCCESS: Found Electron distribution directory at $ELECTRON_DIST_PATH."
     CHOSEN_ELECTRON_MODULE_PATH="$(realpath "$WORK_DIR/node_modules/electron")"
-    echo "✓ Setting Electron module path for copying to $CHOSEN_ELECTRON_MODULE_PATH."
+    echo "SUCCESS: Setting Electron module path for copying to $CHOSEN_ELECTRON_MODULE_PATH."
 else
-    echo "❌ Failed to find Electron distribution directory at '$ELECTRON_DIST_PATH' after installation attempt."
+    echo "ERROR: Failed to find Electron distribution directory at '$ELECTRON_DIST_PATH' after installation attempt."
     echo "   Cannot proceed without the Electron distribution files."
     cd "$PROJECT_ROOT"
     exit 1
@@ -403,78 +407,78 @@ fi
 
 if [ -f "$ASAR_BIN_PATH" ]; then
     ASAR_EXEC="$(realpath "$ASAR_BIN_PATH")"
-    echo "✓ Found local Asar binary at $ASAR_EXEC."
+    echo "SUCCESS: Found local Asar binary at $ASAR_EXEC."
 else
-    echo "❌ Failed to find Asar binary at '$ASAR_BIN_PATH' after installation attempt."
+    echo "ERROR: Failed to find Asar binary at '$ASAR_BIN_PATH' after installation attempt."
     cd "$PROJECT_ROOT"
     exit 1
 fi
 
 cd "$PROJECT_ROOT"
 if [ -z "$CHOSEN_ELECTRON_MODULE_PATH" ] || [ ! -d "$CHOSEN_ELECTRON_MODULE_PATH" ]; then
-    echo "❌ Critical error: Could not resolve a valid Electron module path to copy."
+    echo "ERROR: Critical error: Could not resolve a valid Electron module path to copy."
     exit 1
 fi
 echo "Using Electron module path: $CHOSEN_ELECTRON_MODULE_PATH"
 echo "Using asar executable: $ASAR_EXEC"
 
 echo -e "\033[1;36m--- Download the latest Claude executable ---\033[0m"
-echo "📥 Downloading Claude Desktop installer for $ARCHITECTURE..."
+echo " Downloading Claude Desktop installer for $ARCHITECTURE..."
 CLAUDE_EXE_PATH="$WORK_DIR/$CLAUDE_EXE_FILENAME"
 if ! wget -O "$CLAUDE_EXE_PATH" "$CLAUDE_DOWNLOAD_URL"; then
-    echo "❌ Failed to download Claude Desktop installer from $CLAUDE_DOWNLOAD_URL"
+    echo "ERROR: Failed to download Claude Desktop installer from $CLAUDE_DOWNLOAD_URL"
     exit 1
 fi
-echo "✓ Download complete: $CLAUDE_EXE_FILENAME"
+echo "SUCCESS: Download complete: $CLAUDE_EXE_FILENAME"
 
-echo "📦 Extracting resources from $CLAUDE_EXE_FILENAME into separate directory..."
+echo " Extracting resources from $CLAUDE_EXE_FILENAME into separate directory..."
 CLAUDE_EXTRACT_DIR="$WORK_DIR/claude-extract"
 mkdir -p "$CLAUDE_EXTRACT_DIR"
 if ! 7z x -y "$CLAUDE_EXE_PATH" -o"$CLAUDE_EXTRACT_DIR"; then
-    echo "❌ Failed to extract installer"
+    echo "ERROR: Failed to extract installer"
     cd "$PROJECT_ROOT" && exit 1
 fi
 
 cd "$CLAUDE_EXTRACT_DIR" # Change into the extract dir to find files
 NUPKG_PATH_RELATIVE=$(find . -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
 if [ -z "$NUPKG_PATH_RELATIVE" ]; then
-    echo "❌ Could not find AnthropicClaude nupkg file in $CLAUDE_EXTRACT_DIR"
+    echo "ERROR: Could not find AnthropicClaude nupkg file in $CLAUDE_EXTRACT_DIR"
     cd "$PROJECT_ROOT" && exit 1
 fi
 echo "Found nupkg: $NUPKG_PATH_RELATIVE (in $CLAUDE_EXTRACT_DIR)"
 
 VERSION=$(echo "$NUPKG_PATH_RELATIVE" | LC_ALL=C grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full|-arm64-full)')
 if [ -z "$VERSION" ]; then
-    echo "❌ Could not extract version from nupkg filename: $NUPKG_PATH_RELATIVE"
+    echo "ERROR: Could not extract version from nupkg filename: $NUPKG_PATH_RELATIVE"
     cd "$PROJECT_ROOT" && exit 1
 fi
-echo "✓ Detected Claude version: $VERSION"
+echo "SUCCESS: Detected Claude version: $VERSION"
 
 if ! 7z x -y "$NUPKG_PATH_RELATIVE"; then
-    echo "❌ Failed to extract nupkg"
+    echo "ERROR: Failed to extract nupkg"
     cd "$PROJECT_ROOT" && exit 1
 fi
-echo "✓ Resources extracted from nupkg"
+echo "SUCCESS: Resources extracted from nupkg"
 
 EXE_RELATIVE_PATH="lib/net45/claude.exe" # Check if this path is correct for arm64 too
 if [ ! -f "$EXE_RELATIVE_PATH" ]; then
-    echo "❌ Cannot find claude.exe at expected path within extraction dir: $CLAUDE_EXTRACT_DIR/$EXE_RELATIVE_PATH"
+    echo "ERROR: Cannot find claude.exe at expected path within extraction dir: $CLAUDE_EXTRACT_DIR/$EXE_RELATIVE_PATH"
     cd "$PROJECT_ROOT" && exit 1
 fi
-echo "🎨 Processing icons from $EXE_RELATIVE_PATH..."
+echo " Processing icons from $EXE_RELATIVE_PATH..."
 if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then
-    echo "❌ Failed to extract icons from exe"
+    echo "ERROR: Failed to extract icons from exe"
     cd "$PROJECT_ROOT" && exit 1
 fi
 
 if ! icotool -x claude.ico; then
-    echo "❌ Failed to convert icons"
+    echo "ERROR: Failed to convert icons"
     cd "$PROJECT_ROOT" && exit 1
 fi
 cp claude_*.png "$WORK_DIR/"
-echo "✓ Icons processed and copied to $WORK_DIR"
+echo "SUCCESS: Icons processed and copied to $WORK_DIR"
 
-echo "⚙️ Processing app.asar..."
+echo " Processing app.asar..."
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar" "$APP_STAGING_DIR/"
 cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/"
 cd "$APP_STAGING_DIR"
@@ -566,9 +570,9 @@ if [ -d "$ELECTRON_RESOURCES_SRC" ]; then
     echo "Copying Electron locale resources..."
     mkdir -p "$ELECTRON_RESOURCES_DEST"
     cp -a "$ELECTRON_RESOURCES_SRC"/* "$ELECTRON_RESOURCES_DEST/"
-    echo "✓ Electron locale resources copied"
+    echo "SUCCESS: Electron locale resources copied"
 else
-    echo "⚠️ Warning: Electron resources directory not found at $ELECTRON_RESOURCES_SRC"
+    echo "WARNING: Warning: Electron resources directory not found at $ELECTRON_RESOURCES_SRC"
 fi
 
 # Copy Claude locale JSON files to Electron resources directory where they're expected
@@ -577,12 +581,12 @@ echo "Copying Claude locale JSON files to Electron resources directory..."
 if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     # Copy Claude's locale JSON files to the Electron resources directory
     cp "$CLAUDE_LOCALE_SRC/"*-*.json "$ELECTRON_RESOURCES_DEST/"
-    echo "✓ Claude locale JSON files copied to Electron resources directory"
+    echo "SUCCESS: Claude locale JSON files copied to Electron resources directory"
 else
-    echo "⚠️ Warning: Claude locale source directory not found at $CLAUDE_LOCALE_SRC"
+    echo "WARNING: Warning: Claude locale source directory not found at $CLAUDE_LOCALE_SRC"
 fi
 
-echo "✓ app.asar processed and staged in $APP_STAGING_DIR"
+echo "SUCCESS: app.asar processed and staged in $APP_STAGING_DIR"
 
 cd "$PROJECT_ROOT"
 
@@ -591,16 +595,16 @@ FINAL_OUTPUT_PATH=""
 FINAL_DESKTOP_FILE_PATH=""
 
 if [ "$BUILD_FORMAT" = "rpm" ]; then
-    echo "📦 Calling RPM packaging script for $ARCHITECTURE..."
+    echo " Calling RPM packaging script for $ARCHITECTURE..."
     chmod +x scripts/build-rpm-package.sh
     if ! scripts/build-rpm-package.sh \
         "$VERSION" "$ARCHITECTURE" "$WORK_DIR" "$APP_STAGING_DIR" \
         "$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
-        echo "❌ RPM packaging script failed."
+        echo "ERROR: RPM packaging script failed."
         exit 1
     fi
-    RPM_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}-${VERSION}-*.rpm" | head -n 1)
-    echo "✓ RPM Build complete!"
+    RPM_FILE=$(find "$WORK_DIR" -name "${PACKAGE_NAME}-${VERSION}-*.rpm" | head -n 1)
+    echo "SUCCESS: RPM Build complete!"
     if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
         FINAL_OUTPUT_PATH="./$(basename "$RPM_FILE")"
         mv "$RPM_FILE" "$FINAL_OUTPUT_PATH"
@@ -611,15 +615,15 @@ if [ "$BUILD_FORMAT" = "rpm" ]; then
     fi
 
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
-    echo "📦 Calling AppImage packaging script for $ARCHITECTURE..."
+    echo " Calling AppImage packaging script for $ARCHITECTURE..."
     chmod +x scripts/build-appimage.sh
     if ! scripts/build-appimage.sh \
         "$VERSION" "$ARCHITECTURE" "$WORK_DIR" "$APP_STAGING_DIR" "$PACKAGE_NAME"; then
-        echo "❌ AppImage packaging script failed."
+        echo "ERROR: AppImage packaging script failed."
         exit 1
     fi
     APPIMAGE_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}-${VERSION}-${ARCHITECTURE}.AppImage" | head -n 1)
-    echo "✓ AppImage Build complete!"
+    echo "SUCCESS: AppImage Build complete!"
     if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
         FINAL_OUTPUT_PATH="./$(basename "$APPIMAGE_FILE")"
         mv "$APPIMAGE_FILE" "$FINAL_OUTPUT_PATH"
@@ -627,7 +631,7 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
 
         echo -e "\033[1;36m--- Generate .desktop file for AppImage ---\033[0m"
         FINAL_DESKTOP_FILE_PATH="./${PACKAGE_NAME}-appimage.desktop"
-        echo "📝 Generating .desktop file for AppImage at $FINAL_DESKTOP_FILE_PATH..."
+        echo " Generating .desktop file for AppImage at $FINAL_DESKTOP_FILE_PATH..."
         cat > "$FINAL_DESKTOP_FILE_PATH" << EOF
 [Desktop Entry]
 Name=Claude (AppImage)
@@ -642,7 +646,7 @@ StartupWMClass=Claude
 X-AppImage-Version=$VERSION
 X-AppImage-Name=Claude Desktop (AppImage)
 EOF
-        echo "✓ .desktop file generated."
+        echo "SUCCESS: .desktop file generated."
 
     else
         echo "Warning: Could not determine final .AppImage file path from $WORK_DIR for ${ARCHITECTURE}."
@@ -654,32 +658,32 @@ echo -e "\033[1;36m--- Cleanup ---\033[0m"
 if [ "$PERFORM_CLEANUP" = true ]; then
     echo "🧹 Cleaning up intermediate build files in $WORK_DIR..."
     if rm -rf "$WORK_DIR"; then
-        echo "✓ Cleanup complete ($WORK_DIR removed)."
+        echo "SUCCESS: Cleanup complete ($WORK_DIR removed)."
     else
-        echo "⚠️ Cleanup command (rm -rf $WORK_DIR) failed."
+        echo "WARNING: Cleanup command (rm -rf $WORK_DIR) failed."
     fi
 else
     echo "Skipping cleanup of intermediate build files in $WORK_DIR."
 fi
 
-echo "✅ Build process finished."
+echo " Build process finished."
 
 echo -e "\n\033[1;34m====== Next Steps ======\033[0m"
 if [ "$BUILD_FORMAT" = "rpm" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
-        echo -e "📦 To install the RPM package, run:"
+        echo -e " To install the RPM package, run:"
         echo -e "   \033[1;32msudo dnf install $FINAL_OUTPUT_PATH\033[0m"
         echo -e "   (or \033[1;32msudo rpm -i $FINAL_OUTPUT_PATH\033[0m)"
         echo -e "   (or \033[1;32msudo yum install $FINAL_OUTPUT_PATH\033[0m on older systems)"
     else
-        echo -e "⚠️ RPM package file not found. Cannot provide installation instructions."
+        echo -e "WARNING: RPM package file not found. Cannot provide installation instructions."
     fi
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
-        echo -e "✅ AppImage created at: \033[1;36m$FINAL_OUTPUT_PATH\033[0m"
+        echo -e " AppImage created at: \033[1;36m$FINAL_OUTPUT_PATH\033[0m"
         echo -e "\n\033[1;33mIMPORTANT:\033[0m This AppImage requires \033[1;36mGear Lever\033[0m for proper desktop integration"
         echo -e "and to handle the \033[1;36mclaude://\033[0m login process correctly."
-        echo -e "\n🚀 To install Gear Lever:"
+        echo -e "\nTo install Gear Lever:"
         echo -e "   1. Install via Flatpak:"
         echo -e "      \033[1;32mflatpak install flathub it.mijorus.gearlever\033[0m"
         echo -e "       - or visit: \033[1;34mhttps://flathub.org/apps/it.mijorus.gearlever\033[0m"
@@ -687,10 +691,10 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
         echo -e "      - Open Gear Lever"
         echo -e "      - Drag and drop \033[1;36m$FINAL_OUTPUT_PATH\033[0m into Gear Lever"
         echo -e "      - Click 'Integrate' to add it to your app menu"
-        if [ "$GITHUB_ACTIONS" = "true" ]; then
-            echo -e "\n   \033[1;32m✓\033[0m This AppImage includes embedded update information!"
-            echo -e "   \033[1;32m✓\033[0m Gear Lever will automatically detect and handle updates from GitHub releases."
-            echo -e "   \033[1;32m✓\033[0m No manual update URL configuration needed."
+        if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+            echo -e "\n   \033[1;32mSUCCESS:\033[0m This AppImage includes embedded update information!"
+            echo -e "   \033[1;32mSUCCESS:\033[0m Gear Lever will automatically detect and handle updates from GitHub releases."
+            echo -e "   \033[1;32mSUCCESS:\033[0m No manual update URL configuration needed."
         else
             echo -e "\n   \033[1;33mℹ\033[0m This locally-built AppImage does not include update information."
             echo -e "   \033[1;33mℹ\033[0m You can manually configure updates in Gear Lever:"
@@ -701,9 +705,19 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
             echo -e "   \033[1;34m→\033[0m For automatic updates, download release versions: https://github.com/Frost26/Claude-Linux-Desktop/releases"
         fi
     else
-        echo -e "⚠️ AppImage file not found. Cannot provide usage instructions."
+        echo -e "WARNING: AppImage file not found. Cannot provide usage instructions."
     fi
 fi
 echo -e "\033[1;34m======================\033[0m"
+
+# Copy artifacts to /output if running in a container
+if [ "${CONTAINER:-false}" = "true" ] && [ -d "/output" ]; then
+    echo " Container environment detected - copying artifacts to /output"
+    find . -maxdepth 1 -name "claude-desktop-*" -type f | while read -r file; do
+        echo " Copying $file to /output/"
+        cp "$file" "/output/"
+    done
+    ls -la /output/claude-desktop-* 2>/dev/null || echo "No artifacts found to copy"
+fi
 
 exit 0

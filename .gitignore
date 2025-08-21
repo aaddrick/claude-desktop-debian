@@ -22,3 +22,6 @@ Thumbs.db
 
 .claude/
 CLAUDE.md
+
+# Temporarily ignore Claude workflows (too much noise)
+.github/workflows/claude*.yml
