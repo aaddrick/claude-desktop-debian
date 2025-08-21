@@ -10,22 +10,34 @@ PACKAGE_NAME="$5"
 MAINTAINER="$6"
 DESCRIPTION="$7"
 
-echo "--- Starting Debian Package Build ---"
+echo "--- Starting RPM Package Build ---"
 echo "Version: $VERSION"
 echo "Architecture: $ARCHITECTURE"
 echo "Work Directory: $WORK_DIR"
 echo "App Staging Directory: $APP_STAGING_DIR"
 echo "Package Name: $PACKAGE_NAME"
 
-PACKAGE_ROOT="$WORK_DIR/package"
-INSTALL_DIR="$PACKAGE_ROOT/usr"
+# Convert architecture naming between Debian and RPM conventions
+RPM_ARCH="$ARCHITECTURE"
+case "$ARCHITECTURE" in
+    "amd64") RPM_ARCH="x86_64" ;;
+    "arm64") RPM_ARCH="aarch64" ;;
+    *) echo "Warning: Unknown architecture conversion for $ARCHITECTURE, using as-is" ;;
+esac
 
-# Clean previous package structure if it exists
-rm -rf "$PACKAGE_ROOT"
+echo "RPM Architecture: $RPM_ARCH"
 
-# Create Debian package structure
-echo "Creating package structure in $PACKAGE_ROOT..."
-mkdir -p "$PACKAGE_ROOT/DEBIAN"
+# Set up RPM build environment
+RPM_BUILD_ROOT="$WORK_DIR/rpmbuild"
+SPEC_FILE="$RPM_BUILD_ROOT/SPECS/${PACKAGE_NAME}.spec"
+INSTALL_DIR="$RPM_BUILD_ROOT/BUILDROOT/${PACKAGE_NAME}-${VERSION}-1.${RPM_ARCH}/usr"
+
+# Clean previous build structure if it exists
+rm -rf "$RPM_BUILD_ROOT"
+
+# Create RPM build directory structure
+echo "Creating RPM build structure in $RPM_BUILD_ROOT..."
+mkdir -p "$RPM_BUILD_ROOT"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 mkdir -p "$INSTALL_DIR/lib/$PACKAGE_NAME"
 mkdir -p "$INSTALL_DIR/share/applications"
 mkdir -p "$INSTALL_DIR/share/icons"
@@ -92,11 +104,28 @@ echo "--- Claude Desktop Launcher Start ---" >> "\$LOG_FILE"
 echo "Timestamp: \$(date)" >> "\$LOG_FILE"
 echo "Arguments: \$@" >> "\$LOG_FILE"
 
+export ELECTRON_FORCE_IS_PACKAGED=true
+
 # Detect if Wayland is likely running
 IS_WAYLAND=false
 if [ ! -z "\$WAYLAND_DISPLAY" ]; then
   IS_WAYLAND=true
   echo "Wayland detected" >> "\$LOG_FILE"
+fi
+
+# Check for display issues and set compatibility mode if needed
+if [ "\$IS_WAYLAND" = true ]; then
+  echo "Setting Wayland compatibility mode..." >> "\$LOG_FILE"
+  # Use native Wayland backend with GlobalShortcuts Portal support
+  export ELECTRON_OZONE_PLATFORM_HINT=wayland
+  # Keep GPU acceleration enabled for better performance
+  echo "Wayland compatibility mode enabled (using native Wayland backend)" >> "\$LOG_FILE"
+elif [ -z "\$DISPLAY" ] && [ -z "\$WAYLAND_DISPLAY" ]; then
+  echo "No display detected (TTY session) - cannot start graphical application" >> "\$LOG_FILE"
+  # No graphical environment detected; display error message in TTY session
+  echo "Error: Claude Desktop requires a graphical desktop environment." >&2
+  echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
+  exit 1
 fi
 
 # Determine Electron executable path
@@ -110,7 +139,7 @@ else
     if command -v electron &> /dev/null; then
         echo "Using global Electron: \$ELECTRON_EXEC" >> "\$LOG_FILE"
     else
-        echo "Error: Electron executable not found (checked local \$LOCAL_ELECTRON_PATH and global path)." >> "\$LOG_FILE" # Log the correct path checked
+        echo "Error: Electron executable not found (checked local \$LOCAL_ELECTRON_PATH and global path)." >> "\$LOG_FILE"
         # Optionally, display an error to the user via zenity or kdialog if available
         if command -v zenity &> /dev/null; then
             zenity --error --text="Claude Desktop cannot start because the Electron framework is missing. Please ensure Electron is installed globally or reinstall Claude Desktop."
@@ -125,10 +154,16 @@ fi
 APP_PATH="/usr/lib/$PACKAGE_NAME/app.asar"
 ELECTRON_ARGS=("\$APP_PATH")
 
-# Add Wayland flags if Wayland is detected
+# Add compatibility flags
 if [ "\$IS_WAYLAND" = true ]; then
-  echo "Adding Wayland flags" >> "\$LOG_FILE"
-  ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations" "--ozone-platform=wayland" "--enable-wayland-ime" "--wayland-text-input-version=3")
+  echo "Adding compatibility flags for Wayland session" >> "\$LOG_FILE"
+  ELECTRON_ARGS+=("--no-sandbox")
+  # Enable Wayland features for Electron 37+
+  ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal")
+  ELECTRON_ARGS+=("--ozone-platform=wayland")
+  ELECTRON_ARGS+=("--enable-wayland-ime")
+  ELECTRON_ARGS+=("--wayland-text-input-version=3")
+  echo "Enabled native Wayland support with GlobalShortcuts Portal" >> "\$LOG_FILE"
 fi
 
 # Change to the application directory
@@ -149,43 +184,59 @@ EOF
 chmod +x "$INSTALL_DIR/bin/claude-desktop"
 echo "✓ Launcher script created"
 
-# --- Create Control File ---
-echo "📄 Creating control file..."
-# Determine dependencies based on whether electron was packaged
-DEPENDS="nodejs, npm, p7zip-full" # Base dependencies
-# Electron is now always packaged locally, so it's not listed as an external dependency.
-echo "Electron is packaged locally; not adding to external Depends list."
+# --- Create RPM Spec File ---
+echo "📄 Creating RPM spec file..."
+cat > "$SPEC_FILE" << EOF
+Name:           $PACKAGE_NAME
+Version:        $VERSION
+Release:        1%{?dist}
+Summary:        $DESCRIPTION
+Packager:       $MAINTAINER
 
-cat > "$PACKAGE_ROOT/DEBIAN/control" << EOF
-Package: $PACKAGE_NAME
-Version: $VERSION
-Architecture: $ARCHITECTURE
-Maintainer: $MAINTAINER
-Depends: $DEPENDS
-Description: $DESCRIPTION
- Claude is an AI assistant from Anthropic.
- This package provides the desktop interface for Claude.
- .
- Supported on Debian-based Linux distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
- Requires: nodejs (>= 12.0.0), npm
-EOF
-echo "✓ Control file created"
+License:        MIT
+URL:            https://github.com/Frost26/Claude-Linux-Desktop
+Source0:        %{name}-%{version}.tar.gz
+BuildArch:      $RPM_ARCH
 
-# --- Create Postinst Script ---
-echo "⚙️ Creating postinst script..."
-cat > "$PACKAGE_ROOT/DEBIAN/postinst" << EOF
-#!/bin/sh
-set -e
+# Build dependencies
+BuildRequires:  nodejs >= 20.0.0
+BuildRequires:  npm
+BuildRequires:  p7zip
+BuildRequires:  p7zip-plugins
+BuildRequires:  wget
+BuildRequires:  icoutils
+BuildRequires:  ImageMagick
 
+# Runtime dependencies
+Requires:       nodejs >= 20.0.0
+Requires:       npm
+
+%description
+Claude is an AI assistant from Anthropic.
+This package provides the desktop interface for Claude.
+
+Supported on Red Hat-based Linux distributions (Fedora, RHEL, CentOS, openSUSE, etc.)
+Requires: nodejs (>= 20.0.0), npm
+
+%prep
+%setup -q
+
+%build
+# Build steps are handled by the calling script
+
+%install
+# Copy the pre-built files from the BUILDROOT
+# The files are already in place from the calling script
+
+%post
 # Update desktop database for MIME types
 echo "Updating desktop database..."
-update-desktop-database /usr/share/applications &> /dev/null || true
+update-desktop-database %{_datadir}/applications &> /dev/null || true
 
-# Set correct permissions for chrome-sandbox if electron is installed globally or locally packaged
+# Set correct permissions for chrome-sandbox if electron is packaged locally
 echo "Setting chrome-sandbox permissions..."
 SANDBOX_PATH=""
-# Electron is always packaged locally now, so only check the local path.
-LOCAL_SANDBOX_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/chrome-sandbox" # Correct path to sandbox
+LOCAL_SANDBOX_PATH="/usr/lib/%{name}/node_modules/electron/dist/chrome-sandbox"
 if [ -f "\$LOCAL_SANDBOX_PATH" ]; then
     SANDBOX_PATH="\$LOCAL_SANDBOX_PATH"
 fi
@@ -196,24 +247,59 @@ if [ -n "\$SANDBOX_PATH" ] && [ -f "\$SANDBOX_PATH" ]; then
     chmod 4755 "\$SANDBOX_PATH" || echo "Warning: Failed to chmod chrome-sandbox"
     echo "Permissions set for \$SANDBOX_PATH"
 else
-    echo "Warning: chrome-sandbox binary not found in local package at \$LOCAL_SANDBOX_PATH. Sandbox may not function correctly." # Log the correct path checked
+    echo "Warning: chrome-sandbox binary not found in local package at \$LOCAL_SANDBOX_PATH. Sandbox may not function correctly."
 fi
 
-exit 0
+%postun
+if [ \$1 -eq 0 ]; then
+    # Complete removal
+    update-desktop-database %{_datadir}/applications &> /dev/null || true
+fi
+
+%files
+%{_bindir}/claude-desktop
+%{_libdir}/%{name}/
+%{_datadir}/applications/claude-desktop.desktop
+%{_datadir}/icons/hicolor/*/apps/claude-desktop.png
+
+%changelog
+* $(date +'%a %b %d %Y') Automated Build <noreply@github.com> - $VERSION-1
+- Automated build of Claude Desktop version $VERSION
+
 EOF
-chmod +x "$PACKAGE_ROOT/DEBIAN/postinst"
-echo "✓ Postinst script created"
+echo "✓ RPM spec file created"
 
-# --- Build .deb Package ---
-echo "📦 Building .deb package..."
-DEB_FILE="$WORK_DIR/${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+# --- Build RPM Package ---
+echo "📦 Building RPM package..."
+RPM_FILE="${PACKAGE_NAME}-${VERSION}-1.${RPM_ARCH}.rpm"
+OUTPUT_PATH="$WORK_DIR/$RPM_FILE"
 
-if ! dpkg-deb --build "$PACKAGE_ROOT" "$DEB_FILE"; then
-    echo "❌ Failed to build .deb package"
+# Use rpmbuild to create the package
+if rpmbuild --define "_topdir $RPM_BUILD_ROOT" \
+           --define "_rpmdir $WORK_DIR" \
+           --bb "$SPEC_FILE"; then
+    echo "✓ RPM package built successfully"
+    
+    # Find the generated RPM file
+    GENERATED_RPM=$(find "$WORK_DIR" -name "*.rpm" -not -path "*/RPMS/*" | head -n 1)
+    if [ -z "$GENERATED_RPM" ]; then
+        # Look in the RPMS subdirectory
+        GENERATED_RPM=$(find "$RPM_BUILD_ROOT/RPMS" -name "*.rpm" | head -n 1)
+        if [ -n "$GENERATED_RPM" ]; then
+            mv "$GENERATED_RPM" "$OUTPUT_PATH"
+        fi
+    fi
+    
+    if [ -f "$OUTPUT_PATH" ] || [ -f "$GENERATED_RPM" ]; then
+        echo "✓ RPM package available at: $(basename "$OUTPUT_PATH")"
+    else
+        echo "Warning: Could not locate generated RPM package"
+    fi
+else
+    echo "❌ Failed to build RPM package"
     exit 1
 fi
 
-echo "✓ .deb package built successfully: $DEB_FILE"
-echo "--- Debian Package Build Finished ---"
+echo "--- RPM Package Build Finished ---"
 
 exit 0

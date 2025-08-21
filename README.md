@@ -1,200 +1,191 @@
-# Archived
-Sorry all, I no longer use Debian, so can't maintain this further. Please feel free to fork and continue developing. 
+# Claude Desktop for Linux (Fedora Fork)
 
+This project provides build scripts to run Claude Desktop natively on Linux systems, with a focus on Fedora and RPM-based distributions. It repackages the official Windows application for Fedora, RHEL, and other RPM-based systems, producing either `.rpm` packages or AppImages.
 
-## Release Workflow & Feedback
+**Note:** This is an unofficial build script and a Fedora-focused fork. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/Frost26/Claude-Linux-Desktop/issues) in this repository.
 
-This repository now uses a GitHub Actions workflow to automatically build and release `.deb` and `.AppImage` packages when a tag following the format `v<wrapper_version>+claude<claude_version>` (e.g., `v1.0.0+claude0.9.1`) is pushed.
+## Features
 
-Please check the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases) for the latest builds. Feedback on the packages and the build process is greatly appreciated! Please open an issue if you encounter any problems.
+- **Native Linux Support**: Run Claude Desktop without virtualization or Wine
+- **MCP Support**: Full Model Context Protocol integration  
+  Configuration file location: `~/.config/Claude/claude_desktop_config.json`
+- **System Integration**: 
+  - X11 Global hotkey support (Ctrl+Alt+Space)
+  - System tray integration
+  - Desktop environment integration
 
----
+### Screenshots
 
+![Claude Desktop running on Linux](https://github.com/user-attachments/assets/93080028-6f71-48bd-8e59-5149d148cd45)
 
-**Arch Linux users:** For the PKGBUILD and Arch-specific instructions: [https://github.com/aaddrick/claude-desktop-arch](https://github.com/aaddrick/claude-desktop-arch)
+![Global hotkey popup](https://github.com/user-attachments/assets/1deb4604-4c06-4e4b-b63f-7f6ef9ef28c1)
 
-The build script now uses command-line flags to select the output format and cleanup behavior.
+![System tray menu on KDE](https://github.com/user-attachments/assets/ba209824-8afb-437c-a944-b53fd9ecd559)
 
-***THIS IS AN UNOFFICIAL BUILD SCRIPT FOR DEBIAN/UBUNTU BASED SYSTEMS (produces .deb or .AppImage)!***
+## Installation
 
-If you run into an issue with this build script, make an issue here. Don't bug Anthropic about it - they already have enough on their plates.
+### Using Pre-built Releases
 
-# Claude Desktop for Linux
+Download the latest `.rpm` or `.AppImage` from the [Releases page](https://github.com/Frost26/Claude-Linux-Desktop/releases).
 
-This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) and their [Reddit post](https://www.reddit.com/r/ClaudeAI/comments/1hgsmpq/i_successfully_ran_claude_desktop_natively_on/) about running Claude Desktop natively on Linux. Their work provided valuable insights into the application's structure and the native bindings implementation.
+### Building from Source
 
-Supports MCP!
+#### Prerequisites
 
-Location of the MCP-configuration file is: `~/.config/Claude/claude_desktop_config.json`
+- Fedora, RHEL, CentOS, or other RPM-based Linux distribution
+- Git
+- Basic build tools (automatically installed by the script)
 
-![image](https://github.com/user-attachments/assets/93080028-6f71-48bd-8e59-5149d148cd45)
-
-Supports the Ctrl+Alt+Space popup!
-![image](https://github.com/user-attachments/assets/1deb4604-4c06-4e4b-b63f-7f6ef9ef28c1)
-
-Supports the Tray menu! (Screenshot of running on KDE)
-![image](https://github.com/user-attachments/assets/ba209824-8afb-437c-a944-b53fd9ecd559)
-
-# Building & Installation (Debian/Ubuntu based)
-
-For Debian-based distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.), you can build Claude Desktop using the provided build script. Use command-line flags to specify the desired output format (`.deb` or `.AppImage`) and whether to clean up intermediate build files.
-
-```bash
-# Clone this repository
-git clone https://github.com/aaddrick/claude-desktop-debian.git
-cd claude-desktop-debian
-
-# Build the package (Defaults to .deb and cleans build files)
-./build.sh
-
-# Example: Build an AppImage and keep intermediate files
-./build.sh --build appimage --clean no
-
-# Example: Build a .deb (explicitly) and clean intermediate files (default)
-./build.sh --build deb --clean yes
-```
-
-The script will automatically:
- - Check for and install required dependencies
- - Download and extract resources from the Windows version
- - Create a proper Debian package or AppImage
- - Perform the build steps based on selected flags
-
-## After Building:
-
-### If you chose Debian Package (.deb):
-
-The script will output the path to the generated `.deb` file (e.g., `claude-desktop_0.9.1_amd64.deb`). Install it using `dpkg`:
+#### Build Instructions
 
 ```bash
-# Replace VERSION and ARCHITECTURE with the actual values from the filename
-sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb 
+# Clone the repository
+git clone https://github.com/Frost26/Claude-Linux-Desktop.git
+cd Claude-Linux-Desktop
 
-# If you encounter dependency issues, run:
-sudo apt --fix-broken install 
+# Build an RPM package (default for this fork)
+./build-fedora.sh --build rpm
+
+# Build an AppImage
+./build-fedora.sh --build appimage
+
+# Build with custom options
+./build-fedora.sh --build rpm --clean no  # Keep intermediate files
 ```
 
-### If you chose AppImage (.AppImage):
+#### Installing the Built Package
 
-The script will output the path to the generated `.AppImage` file (e.g., `claude-desktop-0.9.1-amd64.AppImage`) and a corresponding `.desktop` file (`claude-desktop-appimage.desktop`).
-
-**AppImage login will not work unless you setup the .desktop file correctly or use a tool like AppImageLauncher to manage it for you.**
-
-1.  **Make the AppImage executable:**
-    ```bash
-    # Replace FILENAME with the actual AppImage filename
-    chmod +x ./FILENAME.AppImage 
-    ```
-2.  **Run the AppImage:**
-    ```bash
-    ./FILENAME.AppImage
-    ```
-3.  **(Optional) Integrate with your system:**
-    -   Tools like [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) can automatically integrate AppImages (moving them to a central location and adding them to your application menu) using the bundled `.desktop` file.
-    -   Alternatively, you can manually move the `.AppImage` file to a preferred location (e.g., `~/Applications` or `/opt`) and copy the generated `claude-desktop-appimage.desktop` file to `~/.local/share/applications/` (you might need to edit the `Exec=` line in the `.desktop` file to point to the new location of the AppImage).
-
-#### --no-sandbox
-
-The AppImage script runs with electron's --no-sandbox flag. AppImage's don't have their own sandbox. chome-sandbox, which is used by electron, needs to escalate root privileges briefly in order to setup the sandbox. When you pack an AppImage, chrome-sandbox loses any assigned ownership and executes with user permissions. There's also an issue with [unprivileged namespaces](https://www.reddit.com/r/debian/comments/hkyeft/comment/fww5xb1) being set differently on different distributions.
-
-**Alternatives to --no-sandbox**
- - Run claude-desktop as root
-   - Doesn't feel warm and fuzzy.
- - Install chrome-sandbox outside of the AppImage(or leverage an existing install), set it with the right permissions, and reference it.
-   - Counter-intuitive to the "batteries included" mindset of AppImages
- - Run it with --no-sandbox, but then wrap the whole thing inside another sandbox like bubblewrap
-   - Not "batteries included", and configuring in such a way that it runs everywhere is beyond my immediate capabilities.
-
-I'd love a better suggestion. Feel free to submit a PR or start a discussion if I missed something obvious.
-
-# Uninstallation
-
-## Debian Package (.deb)
-
-If you installed the `.deb` package, you can uninstall it using `dpkg`:
-
+**For .rpm packages:**
 ```bash
-sudo dpkg -r claude-desktop
+# Install with DNF (Fedora)
+sudo dnf install ./claude-desktop-*.rpm
+
+# Or with YUM (RHEL/CentOS)
+sudo yum install ./claude-desktop-*.rpm
+
+# Or with Zypper (openSUSE)
+sudo zypper install ./claude-desktop-*.rpm
 ```
 
-If you also want to remove configuration files (including MCP settings), use `purge`:
-
+**For AppImages:**
 ```bash
-sudo dpkg -P claude-desktop
+# Make executable
+chmod +x ./claude-desktop-*.AppImage
+
+# Run directly
+./claude-desktop-*.AppImage
+
+# Or integrate with your system using Gear Lever
 ```
 
-## AppImage (.AppImage)
+**Note:** AppImage login requires proper desktop integration. Use [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or manually install the provided `.desktop` file to `~/.local/share/applications/`.
 
-If you used the AppImage:
-1.  Delete the `.AppImage` file.
-2.  Delete the associated `.desktop` file (e.g., `claude-desktop-appimage.desktop` from where you placed it, like `~/.local/share/applications/`).
-3.  If you used AppImageLauncher, it might offer an option to un-integrate the AppImage.
+**Automatic Updates:** AppImages downloaded from GitHub releases include embedded update information and work seamlessly with Gear Lever for automatic updates. Locally-built AppImages can be manually configured for updates in Gear Lever.
 
-## Configuration Files (Both Formats)
+## Configuration
 
-To remove user-specific configuration files (including MCP settings), regardless of installation method:
+### MCP Configuration
 
+Model Context Protocol settings are stored in:
+```
+~/.config/Claude/claude_desktop_config.json
+```
+
+### Application Logs
+
+Runtime logs are available at:
+```
+$HOME/claude-desktop-launcher.log
+```
+
+## Uninstallation
+
+**For .rpm packages:**
+```bash
+# Remove package (DNF/Fedora)
+sudo dnf remove claude-desktop
+
+# Or with YUM (RHEL/CentOS)
+sudo yum remove claude-desktop
+
+# Or with Zypper (openSUSE)
+sudo zypper remove claude-desktop
+```
+
+**For AppImages:**
+1. Delete the `.AppImage` file
+2. Remove the `.desktop` file from `~/.local/share/applications/`
+3. If using Gear Lever, use its uninstall option
+
+**Remove user configuration (both formats):**
 ```bash
 rm -rf ~/.config/Claude
 ```
 
-# Troubleshooting
+## Troubleshooting
 
-Aside from the install logs, runtime logs can be found in (`$HOME/claude-desktop-launcher.log`).
+### Window Scaling Issues
 
-If your window isn't scaling correctly the first time or two you open the application, right click on the claude-desktop panel (taskbar) icon and quit. When doing a safe shutdown like this, the application saves some states to the .config/claude folder which will resolve the issue moving forward. Force quitting the application will not trigger the updates. 
+If the window doesn't scale correctly on first launch:
+1. Right-click the Claude Desktop tray icon
+2. Select "Quit" (do not force quit)
+3. Restart the application
 
-# How it works (Debian/Ubuntu Build)
+This allows the application to save display settings properly.
 
-Claude Desktop is an Electron application packaged as a Windows executable. Our build script performs several key operations to make it work on Linux:
+### AppImage Sandbox Warning
 
-1.  Downloads and extracts the Windows installer
-2.  Unpacks the `app.asar` archive containing the application code
-3.  Replaces the Windows-specific native module with a Linux-compatible stub implementation
-4.  Repackages everything into the user's chosen format:
-    *   **Debian Package (.deb):** Creates a standard Debian package installable via `dpkg`.
-    *   **AppImage (.AppImage):** Creates a self-contained executable using `appimagetool`.
+AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
 
-The process works because Claude Desktop is largely cross-platform, with only one platform-specific component that needs replacement.
+For enhanced security, consider:
+- Using the .rpm package instead
+- Running the AppImage within a separate sandbox (e.g., bubblewrap)
+- Using Gear Lever's integrated AppImage management for better isolation
 
-## Build Process Details
+## Technical Details
 
-The main build script (`build.sh`) orchestrates the process:
+### How It Works
 
-1. Checks for a Debian-based system and required dependencies
-2. Parses command-line flags (`--build`, `--clean`) to determine output format and cleanup behavior.
-3. Downloads the official Windows installer
-4. Extracts the application resources
-5. Processes icons for Linux desktop integration
-6. Unpacks and modifies the app.asar:
-   - Replaces the native mapping module with our Linux version
-   - Preserves all other functionality
-7. Calls the appropriate packaging script (`scripts/build-deb-package.sh` or `scripts/build-appimage.sh`) to create the final output:
-   *   **For .deb:** Creates a package with desktop entry, icons, dependencies, and post-install steps.
-   *   **For .AppImage:** Creates an AppDir, bundles Electron, generates an `AppRun` script and `.desktop` file, and uses `appimagetool` to create the final `.AppImage`.
+Claude Desktop is an Electron application distributed for Windows. This project:
 
-## Updating the Build Script
+1. Downloads the official Windows installer
+2. Extracts application resources
+3. Replaces Windows-specific native modules with Linux-compatible implementations
+4. Repackages as either:
+   - **RPM package**: Standard system package with full integration for Fedora/RHEL/openSUSE
+   - **AppImage**: Portable, self-contained executable
 
-When a new version of Claude Desktop is released, the script attempts to automatically detect the correct download URL based on your system architecture (amd64 or arm64). If the download URLs change significantly in the future, you may need to update the `CLAUDE_DOWNLOAD_URL` variables near the top of `build.sh`. The script should handle the rest of the build process automatically.
+### Build Process
 
-# k3d3's Original NixOS Implementation
+The build script (`build-fedora.sh`) handles:
+- Dependency checking and installation for RPM-based systems
+- Resource extraction from Windows installer
+- Icon processing for Linux desktop standards
+- Native module replacement
+- Package generation based on selected format (RPM or AppImage)
 
-For NixOS users, please refer to [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) repository. Their implementation is specifically designed for NixOS and provides the original Nix flake that inspired this project. Go check their repo out if you want some more details about the core process behind this.
+### Updating for New Releases
 
-# Emsi's Alternative Debian Implementation
+The script automatically detects system architecture and downloads the appropriate version. If Claude Desktop's download URLs change, update the `CLAUDE_DOWNLOAD_URL` variables in `build-fedora.sh`.
 
-Emsi has put together a fork of this repo at [https://github.com/emsi/claude-desktop](https://github.com/emsi/claude-desktop). Aside from approaching the problem much more intelligently than I, his repo collection is full of goodies such as [https://github.com/emsi/MyManus](https://github.com/emsi/MyManus). This repo (aaddrick/claude-desktop-debian) currently relies on his title bar fix to keep the main title bar visible.
+## Acknowledgments
 
-# License
+This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) and their [Reddit post](https://www.reddit.com/r/ClaudeAI/comments/1hgsmpq/i_successfully_ran_claude_desktop_natively_on/) about running Claude Desktop natively on Linux.
 
-The build scripts in this repository, are dual-licensed under the terms of the MIT license and the Apache License (Version 2.0).
+Special thanks to:
+- **k3d3** for the original NixOS implementation and native bindings insights
+- **[emsi](https://github.com/emsi/claude-desktop)** for the title bar fix and alternative implementation approach
 
-See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
+For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
 
-The Claude Desktop application, not included in this repository, is likely covered by [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
+## License
 
-## Contribution
+The build scripts in this repository are dual-licensed under:
+- MIT License (see [LICENSE-MIT](LICENSE-MIT))
+- Apache License 2.0 (see [LICENSE-APACHE](LICENSE-APACHE))
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+The Claude Desktop application itself is subject to [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
+
+## Contributing
+
+Contributions are welcome! By submitting a contribution, you agree to license it under the same dual-license terms as this project.

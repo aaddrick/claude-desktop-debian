@@ -1,6 +1,6 @@
-name: CI
+name: CI (Fedora)
 run-name: |
-  CI: ${{
+  CI Fedora: ${{
     github.event_name == 'pull_request' && format('PR #{0} by @{1} - {2}', github.event.pull_request.number, github.actor, github.event.pull_request.title) ||
     github.event_name == 'push' && github.event.head_commit && format('Push by @{0} - {1}', github.actor, github.event.head_commit.message) ||
     format('{0} triggered by @{1}', github.event_name, github.actor)
@@ -13,7 +13,7 @@ on:
       - main # Trigger on pushes to main
       - dev # Also trigger on pushes to this branch for testing
     paths: # Trigger if relevant files change
-      - 'build.sh'
+      - 'build-fedora.sh'
       - 'scripts/**'
       - '.github/workflows/**'
     tags:
@@ -26,29 +26,29 @@ jobs:
 
   # First, run the quick flag tests
   test-flags:
-    name: Test Flags Parsing
-    # Runner is defined in the called workflow (test-flags.yml)
-    uses: ./.github/workflows/test-flags.yml
-    # No inputs needed for test-flags.yml
+    name: Test Flags Parsing (Fedora)
+    # Runner is defined in the called workflow (test-flags-fedora.yml)
+    uses: ./.github/workflows/test-flags-fedora.yml
+    # No inputs needed for test-flags-fedora.yml
  
   # Build AMD64 packages
   build-amd64:
     name: Build Packages (amd64 - ${{ matrix.flags || 'defaults' }})
     needs: test-flags # Run only if test-flags job succeeds
-    # Runner is defined in the called workflow (build-amd64.yml)
+    # Runner is defined in the called workflow (build-amd64-fedora.yml)
 
     strategy:
       fail-fast: false # Allow other builds to continue if one fails
       matrix:
         include:
           - arch: amd64
-            flags: "" # Defaults (deb, clean=yes)
-            artifact_suffix: 'deb'
+            flags: "" # Defaults (rpm, clean=yes)
+            artifact_suffix: 'rpm'
           - arch: amd64
             flags: "--build appimage --clean no"
             artifact_suffix: 'appimage'
 
-    uses: ./.github/workflows/build-amd64.yml # Call the dedicated amd64 workflow
+    uses: ./.github/workflows/build-amd64-fedora.yml # Call the dedicated amd64 workflow
     with:
       build_flags: ${{ matrix.flags }}
       artifact_suffix: ${{ matrix.artifact_suffix }}
@@ -59,20 +59,20 @@ jobs:
   build-arm64:
     name: Build Packages (arm64 - ${{ matrix.flags || 'defaults' }})
     needs: test-flags # Run only if test-flags job succeeds
-    # Runner is defined in the called workflow (build-arm64.yml)
+    # Runner is defined in the called workflow (build-arm64-fedora.yml)
 
     strategy:
       fail-fast: false # Allow other builds to continue if one fails
       matrix:
         include:
           - arch: arm64
-            flags: "--clean no" # Implies deb build
-            artifact_suffix: 'deb'
+            flags: "--clean no" # Implies rpm build
+            artifact_suffix: 'rpm'
           - arch: arm64
             flags: "--build appimage"
             artifact_suffix: 'appimage'
 
-    uses: ./.github/workflows/build-arm64.yml # Call the dedicated arm64 workflow
+    uses: ./.github/workflows/build-arm64-fedora.yml # Call the dedicated arm64 workflow
     with:
       build_flags: ${{ matrix.flags }}
       artifact_suffix: ${{ matrix.artifact_suffix }}
@@ -85,16 +85,16 @@ jobs:
     # Only run this job if the trigger was a tag push starting with 'v'
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test-flags, build-amd64, build-arm64] # Ensure builds are successful
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Pin to specific version for stability
     permissions:
       contents: write # Needed to create releases and upload assets
 
     steps:
 
-      - name: Download AMD64 deb artifact
+      - name: Download AMD64 rpm artifact
         uses: actions/download-artifact@v4
         with:
-          name: package-amd64-deb
+          name: package-amd64-rpm
           path: artifacts/ # Download all artifacts into a single directory
 
       - name: Download AMD64 AppImage artifact
@@ -103,10 +103,10 @@ jobs:
           name: package-amd64-appimage
           path: artifacts/
 
-      - name: Download ARM64 deb artifact
+      - name: Download ARM64 rpm artifact
         uses: actions/download-artifact@v4
         with:
-          name: package-arm64-deb
+          name: package-arm64-rpm
           path: artifacts/
 
       - name: Download ARM64 AppImage artifact
@@ -118,6 +118,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/**/* # Upload all downloaded .deb and .AppImage files
+          files: artifacts/**/* # Upload all downloaded .rpm and .AppImage files
           # The release name and tag will automatically use the pushed tag (e.g., v1.0.0)
           # GITHUB_TOKEN is automatically used for authentication

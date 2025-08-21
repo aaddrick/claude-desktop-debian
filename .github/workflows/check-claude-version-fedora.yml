@@ -1,0 +1,186 @@
+name: Check Claude Desktop Version (Fedora)
+# IMPORTANT: This workflow requires a Personal Access Token (PAT) to function properly
+# Create a PAT with 'repo' and 'workflow' scopes and add it as a secret named GH_PAT
+# Without it, the workflow cannot update variables and will fail to prevent duplicate releases
+
+on:
+  schedule:
+    # Run daily at 1 AM UTC
+    - cron: "0 1 * * *"
+  workflow_dispatch: # Allow manual triggering for testing
+
+permissions:
+  contents: write  # For creating tags and releases
+
+jobs:
+  check-version:
+    runs-on: ubuntu-22.04  # Pin to specific version for stability
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Need full history for tags
+        token: ${{ secrets.GH_PAT }} # PAT required for pushing tags
+    
+    - name: Set up environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y p7zip-full wget
+    
+    - name: Download and check Claude version
+      id: check_version
+      run: |
+        # Download URLs for both architectures (we'll check amd64)
+        CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
+        
+        echo "Downloading Claude Desktop installer to check version..."
+        WORK_DIR=$(mktemp -d)
+        cd "$WORK_DIR"
+        
+        if ! wget -q -O Claude-Setup-x64.exe "$CLAUDE_DOWNLOAD_URL"; then
+          echo "Failed to download Claude Desktop installer"
+          exit 1
+        fi
+        
+        echo "Extracting installer..."
+        EXTRACT_DIR="$WORK_DIR/extract"
+        mkdir -p "$EXTRACT_DIR"
+        
+        if ! 7z x -y Claude-Setup-x64.exe -o"$EXTRACT_DIR" > /dev/null 2>&1; then
+          echo "Failed to extract installer"
+          exit 1
+        fi
+        
+        cd "$EXTRACT_DIR"
+        NUPKG_FILE=$(find . -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
+        
+        if [ -z "$NUPKG_FILE" ]; then
+          echo "Could not find AnthropicClaude nupkg file"
+          exit 1
+        fi
+        
+        # Extract version from nupkg filename
+        CLAUDE_VERSION=$(echo "$NUPKG_FILE" | grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full|-arm64-full)')
+        
+        if [ -z "$CLAUDE_VERSION" ]; then
+          echo "Could not extract version from nupkg filename"
+          exit 1
+        fi
+        
+        echo "Detected Claude Desktop version: $CLAUDE_VERSION"
+        echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
+        
+        # Clean up
+        cd /
+        rm -rf "$WORK_DIR"
+    
+    - name: Check if update needed
+      id: check_update
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+        REPO_VERSION="${{ vars.REPO_VERSION }}"
+        STORED_CLAUDE_VERSION="${{ vars.CLAUDE_DESKTOP_VERSION }}"
+        
+        echo "Current stored Claude version: $STORED_CLAUDE_VERSION"
+        echo "Detected Claude version: $CLAUDE_VERSION"
+        echo "Repository version: $REPO_VERSION"
+        
+        if [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
+          echo "New Claude Desktop version detected!"
+          echo "update_needed=true" >> $GITHUB_OUTPUT
+          
+          # Construct the new tag - use fedora suffix to distinguish from debian builds
+          NEW_TAG="v${REPO_VERSION}+claude${CLAUDE_VERSION}-fedora"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "New tag will be: $NEW_TAG"
+        else
+          echo "Claude Desktop version unchanged"
+          echo "update_needed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Update version variable and create tag
+      if: steps.check_update.outputs.update_needed == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.CD_F }}
+      run: |
+        CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+        NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
+        
+        # Check if we have a PAT
+        if [ -z "$GH_TOKEN" ]; then
+          echo "❌ Error: CD_F secret is not configured"
+          echo "This workflow requires a Personal Access Token to update repository variables"
+          echo "Please create a PAT with 'repo' and 'workflow' scopes and add it as CD_F secret"
+          exit 1
+        fi
+        
+        echo "Updating CLAUDE_DESKTOP_VERSION variable to $CLAUDE_VERSION"
+        gh variable set CLAUDE_DESKTOP_VERSION --body "$CLAUDE_VERSION"
+        
+        echo "Creating and pushing new tag: $NEW_TAG"
+        
+        # Configure git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Create annotated tag
+        git tag -a "$NEW_TAG" -m "Update to Claude Desktop $CLAUDE_VERSION (Fedora build)"
+        
+        # Push the tag
+        git push origin "$NEW_TAG"
+        
+        echo "Successfully created tag $NEW_TAG"
+    
+    - name: Create release
+      if: steps.check_update.outputs.update_needed == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.CD_F }}
+      run: |
+        NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
+        CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+        
+        # Create release notes using heredoc
+        RELEASE_NOTES=$(cat <<EOF
+        ## Claude Desktop Update (Fedora)
+        
+        This release updates the packaged Claude Desktop version to **$CLAUDE_VERSION** for Fedora-based distributions.
+        
+        ### What's Changed
+        - Updated Claude Desktop to version $CLAUDE_VERSION
+        - Built for Red Hat-based distributions (Fedora, RHEL, CentOS, Rocky Linux, etc.)
+        - Available in both RPM and AppImage formats
+        
+        ### Installation
+        
+        #### For Fedora/RHEL/CentOS users:
+        Download the \`.rpm\` package for your architecture and install with:
+        \`\`\`bash
+        sudo dnf install ./claude-desktop-*.rpm
+        # or
+        sudo rpm -i ./claude-desktop-*.rpm
+        \`\`\`
+        
+        #### For universal Linux compatibility:
+        Download the \`.AppImage\` file for your architecture. Make it executable and run, or use [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) for system integration.
+        
+        ### Available Packages
+        - \`claude-desktop-*-x86_64.rpm\` - For 64-bit Intel/AMD systems
+        - \`claude-desktop-*-aarch64.rpm\` - For 64-bit ARM systems  
+        - \`claude-desktop-*-amd64.AppImage\` - Universal package for 64-bit Intel/AMD
+        - \`claude-desktop-*-arm64.AppImage\` - Universal package for 64-bit ARM
+        
+        ---
+        *This release was automatically generated when a new Claude Desktop version was detected.*
+        EOF
+        )
+        
+        # Create the release
+        gh release create "$NEW_TAG" \
+          --title "Release $NEW_TAG" \
+          --notes "$RELEASE_NOTES" \
+          --latest
+        
+        echo "Release created for $NEW_TAG"
