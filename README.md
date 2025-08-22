@@ -1,5 +1,17 @@
 # Claude Desktop for Linux (Fedora)
 
+## Acknowledgments
+
+This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) and their [Reddit post](https://www.reddit.com/r/ClaudeAI/comments/1hgsmpq/i_successfully_ran_claude_desktop_natively_on/) about running Claude Desktop natively on Linux.
+
+Special thanks to:
+- **k3d3** for the original NixOS implementation and native bindings insights
+- **[emsi](https://github.com/emsi/claude-desktop)** for the title bar fix and alternative implementation approach
+- **[aaddrick](https://github.com/aaddrick/claude-desktop-debian)** for the Debian/Ubuntu implementation
+
+For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
+For Debian/Ubuntu users, please refer to [aaddrick's repository](https://github.com/aaddrick/claude-desktop-debian) for a Debian-specific implementation.
+
 This project provides build scripts to run Claude Desktop natively on Linux systems, with a focus on Fedora and RPM-based distributions. It repackages the official Windows application for Fedora, RHEL, and other RPM-based systems, producing either `.rpm` packages or AppImages.
 
 **Note:** This is an unofficial build script and a Fedora-focused fork. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/Frost26/Claude-Linux-Desktop/issues) in this repository.
@@ -32,9 +44,18 @@ Download the latest `.rpm` or `.AppImage` from the [Releases page](https://githu
 
 #### Prerequisites
 
-- Fedora, RHEL, CentOS, or other RPM-based Linux distribution
+- Fedora, RHEL, CentOS, Rocky Linux, AlmaLinux, openSUSE, or other RPM-based Linux distribution
 - Git
 - Basic build tools (automatically installed by the script)
+- sudo access for dependency installation
+
+**Note:** The build script automatically detects your system architecture (x86_64/aarch64) and installs required dependencies including:
+- p7zip and p7zip-plugins for extraction
+- wget for downloads
+- icoutils for icon processing
+- ImageMagick for image conversion
+- rpm-build for RPM package creation
+- Node.js 20+ (installed locally if system version is insufficient)
 
 #### Build Instructions
 
@@ -42,6 +63,9 @@ Download the latest `.rpm` or `.AppImage` from the [Releases page](https://githu
 # Clone the repository
 git clone https://github.com/Frost26/Claude-Linux-Desktop.git
 cd Claude-Linux-Desktop
+
+# Make the build script executable
+chmod +x build-fedora.sh
 
 # Build an RPM package (default for this fork)
 ./build-fedora.sh --build rpm
@@ -51,6 +75,7 @@ cd Claude-Linux-Desktop
 
 # Build with custom options
 ./build-fedora.sh --build rpm --clean no  # Keep intermediate files
+./build-fedora.sh --test-flags              # Test argument parsing
 ```
 
 #### Installing the Built Package
@@ -78,9 +103,24 @@ chmod +x ./claude-desktop-*.AppImage
 # Or integrate with your system using Gear Lever
 ```
 
-**Note:** AppImage login requires proper desktop integration. Use [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or manually install the provided `.desktop` file to `~/.local/share/applications/`.
+**Important:** AppImage login requires proper desktop integration for the `claude://` URL scheme to work correctly.
 
-**Automatic Updates:** AppImages downloaded from GitHub releases include embedded update information and work seamlessly with Gear Lever for automatic updates. Locally-built AppImages can be manually configured for updates in Gear Lever.
+**Recommended:** Use [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) for proper AppImage integration:
+```bash
+# Install Gear Lever via Flatpak
+flatpak install flathub it.mijorus.gearlever
+```
+
+**Manual Integration:** If not using Gear Lever, install the generated `.desktop` file:
+```bash
+cp claude-desktop-appimage.desktop ~/.local/share/applications/
+update-desktop-database ~/.local/share/applications/
+```
+
+**Automatic Updates:** 
+- AppImages from GitHub releases include embedded update information
+- Gear Lever automatically handles updates from GitHub releases
+- Locally-built AppImages can be manually configured for updates in Gear Lever
 
 ## Configuration
 
@@ -133,14 +173,35 @@ If the window doesn't scale correctly on first launch:
 
 This allows the application to save display settings properly.
 
+### Build Issues
+
+If you encounter permission errors during build:
+```bash
+# Ensure the script is executable
+chmod +x build-fedora.sh
+
+# If sudo authentication fails
+sudo -v  # Validate sudo credentials
+```
+
+If Node.js version issues occur, the script will automatically download and install Node.js 20.18.1 locally.
+
 ### AppImage Sandbox Warning
 
-AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
+AppImages run with `--no-sandbox` due to Electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
 
 For enhanced security, consider:
-- Using the .rpm package instead
+- Using the .rpm package instead (recommended for system-wide installation)
 - Running the AppImage within a separate sandbox (e.g., bubblewrap)
 - Using Gear Lever's integrated AppImage management for better isolation
+
+### Architecture Support
+
+The build script automatically detects and supports:
+- **x86_64** (Intel/AMD 64-bit)
+- **aarch64** (ARM 64-bit)
+
+Both architectures support RPM and AppImage output formats.
 
 ## Technical Details
 
@@ -166,17 +227,21 @@ The build script (`build-fedora.sh`) handles:
 
 ### Updating for New Releases
 
-The script automatically detects system architecture and downloads the appropriate version. If Claude Desktop's download URLs change, update the `CLAUDE_DOWNLOAD_URL` variables in `build-fedora.sh`.
+The script automatically detects system architecture and downloads the appropriate version. Current supported Claude Desktop architectures:
+- AMD64: `Claude-Setup-x64.exe`
+- ARM64: `Claude-Setup-arm64.exe`
 
-## Acknowledgments
+If Claude Desktop's download URLs change, update the `CLAUDE_DOWNLOAD_URL` variables in `build-fedora.sh`.
 
-This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) and their [Reddit post](https://www.reddit.com/r/ClaudeAI/comments/1hgsmpq/i_successfully_ran_claude_desktop_natively_on/) about running Claude Desktop natively on Linux.
+### Security Features
 
-Special thanks to:
-- **k3d3** for the original NixOS implementation and native bindings insights
-- **[emsi](https://github.com/emsi/claude-desktop)** for the title bar fix and alternative implementation approach
-
-For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
+The build process includes multiple security enhancements:
+- Input validation and sanitization
+- Secure file extraction with directory traversal prevention
+- Package name whitelisting
+- Checksum verification for Node.js downloads
+- File integrity checking with backup creation
+- Secure temporary directory creation
 
 ## License
 
