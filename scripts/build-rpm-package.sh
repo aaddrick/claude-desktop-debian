@@ -308,8 +308,17 @@ fi
 
 # Determine Electron executable path
 ELECTRON_EXEC="electron" # Default to global
-LOCAL_ELECTRON_PATH="%{_libdir}/$PACKAGE_NAME/node_modules/electron/dist/electron" # Correct path to executable
-if [ -f "\$LOCAL_ELECTRON_PATH" ]; then
+
+# Try to find local Electron in architecture-specific directories
+LOCAL_ELECTRON_PATH=""
+for libdir in "/usr/lib64" "/usr/lib"; do
+    if [ -f "\$libdir/$PACKAGE_NAME/node_modules/electron/dist/electron" ]; then
+        LOCAL_ELECTRON_PATH="\$libdir/$PACKAGE_NAME/node_modules/electron/dist/electron"
+        break
+    fi
+done
+
+if [ -n "\$LOCAL_ELECTRON_PATH" ] && [ -f "\$LOCAL_ELECTRON_PATH" ]; then
     ELECTRON_EXEC="\$LOCAL_ELECTRON_PATH"
     echo "Using local Electron: \$ELECTRON_EXEC" >> "\$LOG_FILE"
 else
@@ -318,6 +327,7 @@ else
         echo "Using global Electron: \$ELECTRON_EXEC" >> "\$LOG_FILE"
     else
         echo "Error: Electron executable not found" >> "\$LOG_FILE"
+        echo "Searched paths: /usr/lib64/$PACKAGE_NAME/node_modules/electron/dist/electron, /usr/lib/$PACKAGE_NAME/node_modules/electron/dist/electron" >> "\$LOG_FILE"
         # Optionally, display an error to the user via zenity or kdialog if available
         if command -v zenity &> /dev/null; then
             zenity --error --text="Claude Desktop cannot start because the Electron framework is missing. Please ensure Electron is installed globally or reinstall Claude Desktop."
@@ -329,7 +339,21 @@ else
 fi
 
 # Base command arguments array, starting with app path
-APP_PATH="%{_libdir}/$PACKAGE_NAME/app.asar"
+# Determine app path based on where files were installed
+APP_PATH=""
+for libdir in "/usr/lib64" "/usr/lib"; do
+    if [ -f "\$libdir/$PACKAGE_NAME/app.asar" ]; then
+        APP_PATH="\$libdir/$PACKAGE_NAME/app.asar"
+        APP_DIR="\$libdir/$PACKAGE_NAME"
+        break
+    fi
+done
+
+if [ -z "\$APP_PATH" ]; then
+    echo "Error: app.asar not found in expected locations" >> "\$LOG_FILE"
+    exit 1
+fi
+
 ELECTRON_ARGS=("\$APP_PATH")
 
 # Add compatibility flags
@@ -345,7 +369,6 @@ if [ "\$IS_WAYLAND" = true ]; then
 fi
 
 # Change to the application directory
-APP_DIR="%{_libdir}/$PACKAGE_NAME"
 echo "Changing directory to \$APP_DIR" >> "\$LOG_FILE"
 cd "\$APP_DIR" || { echo "Failed to cd to \$APP_DIR" >> "\$LOG_FILE"; exit 1; }
 
