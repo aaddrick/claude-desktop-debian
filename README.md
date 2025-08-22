@@ -1,4 +1,4 @@
-# Claude Desktop for Linux (Fedora Fork)
+# Claude Desktop for Linux (Fedora)
 
 This project provides build scripts to run Claude Desktop natively on Linux systems, with a focus on Fedora and RPM-based distributions. It repackages the official Windows application for Fedora, RHEL, and other RPM-based systems, producing either `.rpm` packages or AppImages.
 
