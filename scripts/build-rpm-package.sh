@@ -308,7 +308,7 @@ fi
 
 # Determine Electron executable path
 ELECTRON_EXEC="electron" # Default to global
-LOCAL_ELECTRON_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/electron" # Correct path to executable
+LOCAL_ELECTRON_PATH="%{_libdir}/$PACKAGE_NAME/node_modules/electron/dist/electron" # Correct path to executable
 if [ -f "\$LOCAL_ELECTRON_PATH" ]; then
     ELECTRON_EXEC="\$LOCAL_ELECTRON_PATH"
     echo "Using local Electron: \$ELECTRON_EXEC" >> "\$LOG_FILE"
@@ -329,7 +329,7 @@ else
 fi
 
 # Base command arguments array, starting with app path
-APP_PATH="/usr/lib/$PACKAGE_NAME/app.asar"
+APP_PATH="%{_libdir}/$PACKAGE_NAME/app.asar"
 ELECTRON_ARGS=("\$APP_PATH")
 
 # Add compatibility flags
@@ -345,7 +345,7 @@ if [ "\$IS_WAYLAND" = true ]; then
 fi
 
 # Change to the application directory
-APP_DIR="/usr/lib/$PACKAGE_NAME"
+APP_DIR="%{_libdir}/$PACKAGE_NAME"
 echo "Changing directory to \$APP_DIR" >> "\$LOG_FILE"
 cd "\$APP_DIR" || { echo "Failed to cd to \$APP_DIR" >> "\$LOG_FILE"; exit 1; }
 
@@ -425,7 +425,7 @@ update-desktop-database %{_datadir}/applications &> /dev/null || true
 # Set correct permissions for chrome-sandbox if electron is packaged locally
 echo "Setting chrome-sandbox permissions..."
 SANDBOX_PATH=""
-LOCAL_SANDBOX_PATH="/usr/lib/%{name}/node_modules/electron/dist/chrome-sandbox"
+LOCAL_SANDBOX_PATH="%{_libdir}/%{name}/node_modules/electron/dist/chrome-sandbox"
 if [ -f "\$LOCAL_SANDBOX_PATH" ]; then
     SANDBOX_PATH="\$LOCAL_SANDBOX_PATH"
 fi
