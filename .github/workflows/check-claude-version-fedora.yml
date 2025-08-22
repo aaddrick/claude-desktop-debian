@@ -1,7 +1,12 @@
 name: Check Claude Desktop Version (Fedora)
 # IMPORTANT: This workflow requires a Personal Access Token (PAT) to function properly
-# Create a PAT with 'repo' and 'workflow' scopes and add it as a secret named GH_PAT
+# Create a PAT with 'repo' and 'workflow' scopes and add it as a secret named CLAUDE_DESKTOP_TOKEN
 # Without it, the workflow cannot update variables and will fail to prevent duplicate releases
+# 
+# SECURITY NOTE: 
+# - Token should have minimal required permissions (repo, workflow)
+# - Token should be rotated regularly
+# - Consider using GitHub App tokens for better security
 
 on:
   schedule:
@@ -23,11 +28,18 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0 # Need full history for tags
-        token: ${{ secrets.CD_F }} # PAT required for pushing tags
+        token: ${{ secrets.CLAUDE_DESKTOP_TOKEN }} # PAT required for pushing tags
     
     - name: Set up environment
       run: |
-        dnf install -y p7zip wget git which findutils
+        # Install only required packages with explicit versions where possible
+        dnf install -y p7zip-20.* wget-1.* git-2.* which findutils
+        
+        # Verify installed packages
+        which 7z wget git || {
+          echo "ERROR: Required tools not properly installed"
+          exit 1
+        }
     
     - name: Download and check Claude version
       id: check_version
@@ -39,8 +51,15 @@ jobs:
         WORK_DIR=$(mktemp -d)
         cd "$WORK_DIR"
         
-        if ! wget -q -O Claude-Setup-x64.exe "$CLAUDE_DOWNLOAD_URL"; then
+        # Download with timeout and retry mechanism
+        if ! timeout 300 wget -q --tries=3 --timeout=30 -O Claude-Setup-x64.exe "$CLAUDE_DOWNLOAD_URL"; then
           echo "Failed to download Claude Desktop installer"
+          exit 1
+        fi
+        
+        # Basic security check - verify file is not empty
+        if [ ! -s Claude-Setup-x64.exe ]; then
+          echo "ERROR: Downloaded file is empty"
           exit 1
         fi
         
@@ -79,7 +98,7 @@ jobs:
     - name: Check if update needed
       id: check_update
       env:
-        GH_TOKEN: ${{ secrets.CD_F }}
+        GH_TOKEN: ${{ secrets.CLAUDE_DESKTOP_TOKEN }}
       run: |
         CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
         REPO_VERSION="${{ vars.REPO_VERSION }}"
@@ -105,16 +124,23 @@ jobs:
     - name: Update version variable and create tag
       if: steps.check_update.outputs.update_needed == 'true'
       env:
-        GH_TOKEN: ${{ secrets.CD_F }}
+        GH_TOKEN: ${{ secrets.CLAUDE_DESKTOP_TOKEN }}
       run: |
         CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
         NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
         
-        # Check if we have a PAT
+        # Check if we have a PAT and validate it
         if [ -z "$GH_TOKEN" ]; then
-          echo "ERROR: CD_F secret is not configured"
+          echo "ERROR: CLAUDE_DESKTOP_TOKEN secret is not configured"
           echo "This workflow requires a Personal Access Token to update repository variables"
-          echo "Please create a PAT with 'repo' and 'workflow' scopes and add it as CD_F secret"
+          echo "Please create a PAT with 'repo' and 'workflow' scopes and add it as CLAUDE_DESKTOP_TOKEN secret"
+          exit 1
+        fi
+        
+        # Validate token has required permissions
+        if ! gh auth status >/dev/null 2>&1; then
+          echo "ERROR: GitHub token authentication failed"
+          echo "Please verify the CLAUDE_DESKTOP_TOKEN secret is valid and has required permissions"
           exit 1
         fi
         
@@ -138,7 +164,7 @@ jobs:
     - name: Create release
       if: steps.check_update.outputs.update_needed == 'true'
       env:
-        GH_TOKEN: ${{ secrets.CD_F }}
+        GH_TOKEN: ${{ secrets.CLAUDE_DESKTOP_TOKEN }}
       run: |
         NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
         CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"

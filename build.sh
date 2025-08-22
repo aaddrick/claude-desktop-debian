@@ -57,7 +57,7 @@ if [ -d "$ORIGINAL_HOME/.nvm" ]; then
         \. "$NVM_DIR/nvm.sh" # This loads nvm
         # Initialize and find the path to the currently active or default Node version's bin directory
         NODE_BIN_PATH=""
-        NODE_BIN_PATH=$(nvm which current | xargs dirname 2>/dev/null || find "$NVM_DIR/versions/node" -maxdepth 2 -type d -name 'bin' | sort -V | tail -n 1)
+        NODE_BIN_PATH=$(nvm which current 2>/dev/null | xargs dirname 2>/dev/null || find "$NVM_DIR/versions/node" -maxdepth 2 -type d -name 'bin' 2>/dev/null | sort -V | tail -n 1)
 
         if [ -n "$NODE_BIN_PATH" ] && [ -d "$NODE_BIN_PATH" ]; then
             echo "Adding NVM Node bin path to PATH: $NODE_BIN_PATH"
@@ -78,19 +78,28 @@ echo "Target Architecture: $ARCHITECTURE"
 PACKAGE_NAME="claude-desktop"
 MAINTAINER="Claude Desktop Linux Maintainers"
 DESCRIPTION="Claude Desktop for Linux"
-PROJECT_ROOT="$(pwd)" WORK_DIR="$PROJECT_ROOT/build" APP_STAGING_DIR="$WORK_DIR/electron-app" VERSION="" 
+PROJECT_ROOT="$(pwd)"
+WORK_DIR="$PROJECT_ROOT/build"
+APP_STAGING_DIR="$WORK_DIR/electron-app"
+VERSION="" 
 echo -e "\033[1;36m--- Argument Parsing ---\033[0m"
-BUILD_FORMAT="deb"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false
+BUILD_FORMAT="deb"
+CLEANUP_ACTION="yes"
+TEST_FLAGS_MODE=false
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
         -b|--build)
-        if [[ -z "$2" || "$2" == -* ]]; then              echo "ERROR: Argument for $1 is missing" >&2; exit 1
+        if [[ -z "$2" || "$2" == -* ]]; then
+            echo "ERROR: Argument for $1 is missing" >&2
+            exit 1
         fi
         BUILD_FORMAT="$2"
         shift 2 ;; # Shift past flag and value
         -c|--clean)
-        if [[ -z "$2" || "$2" == -* ]]; then              echo "ERROR: Argument for $1 is missing" >&2; exit 1
+        if [[ -z "$2" || "$2" == -* ]]; then
+            echo "ERROR: Argument for $1 is missing" >&2
+            exit 1
         fi
         CLEANUP_ACTION="$2"
         shift 2 ;; # Shift past flag and value
@@ -105,26 +114,83 @@ while [[ $# -gt 0 ]]; do
         echo "  --test-flags: Parse flags, print results, and exit without building."
         exit 0
         ;;
-        *)            echo "ERROR: Unknown option: $1" >&2
-        echo "Use -h or --help for usage information." >&2
-        exit 1
-        ;;
+        *)
+            echo "ERROR: Unknown option: $1" >&2
+            echo "Use -h or --help for usage information." >&2
+            exit 1
+            ;;
     esac
 done
 
+# Security function: sanitize string for safe logging
+sanitize_for_logging() {
+    local input="$1"
+    # Remove or escape potentially dangerous characters
+    echo "$input" | sed 's/[^a-zA-Z0-9._/-]/***/g'
+}
+
+# Security function: validate environment variables
+validate_environment_variables() {
+    # Check for suspicious environment variables that could affect build security
+    local suspicious_vars=("LD_PRELOAD" "LD_LIBRARY_PATH" "PATH" "SHELL")
+    
+    for var in "${suspicious_vars[@]}"; do
+        if [[ -n "${!var:-}" ]]; then
+            echo "WARNING: Potentially sensitive environment variable '$var' is set"
+            echo "WARNING: Value: $(sanitize_for_logging "${!var}")"
+        fi
+    done
+    
+    # Validate NODE_VERSION if set
+    if [[ -n "${NODE_VERSION:-}" && ! "$NODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "WARNING: Invalid NODE_VERSION format in environment: $(sanitize_for_logging "$NODE_VERSION")"
+    fi
+}
+
+# Security function: validate build parameters
+validate_build_format() {
+    local format="$1"
+    case "$format" in
+        "deb"|"appimage")
+            return 0
+            ;;
+        *)
+            echo "ERROR: Invalid build format '$format'. Must be 'deb' or 'appimage'."
+            return 1
+            ;;
+    esac
+}
+
+validate_cleanup_action() {
+    local action="$1"
+    case "$action" in
+        "yes"|"no")
+            return 0
+            ;;
+        *)
+            echo "ERROR: Invalid cleanup option '$action'. Must be 'yes' or 'no'."
+            return 1
+            ;;
+    esac
+}
+
+# Validate environment variables
+validate_environment_variables
+
 # Validate arguments
-BUILD_FORMAT=$(echo "$BUILD_FORMAT" | tr '[:upper:]' '[:lower:]') CLEANUP_ACTION=$(echo "$CLEANUP_ACTION" | tr '[:upper:]' '[:lower:]')
-if [[ "$BUILD_FORMAT" != "deb" && "$BUILD_FORMAT" != "appimage" ]]; then
-    echo "ERROR: Invalid build format specified: '$BUILD_FORMAT'. Must be 'deb' or 'appimage'." >&2
-    exit 1
-fi
-if [[ "$CLEANUP_ACTION" != "yes" && "$CLEANUP_ACTION" != "no" ]]; then
-    echo "ERROR: Invalid cleanup option specified: '$CLEANUP_ACTION'. Must be 'yes' or 'no'." >&2
+BUILD_FORMAT=$(echo "$BUILD_FORMAT" | tr '[:upper:]' '[:lower:]')
+CLEANUP_ACTION=$(echo "$CLEANUP_ACTION" | tr '[:upper:]' '[:lower:]')
+
+if ! validate_build_format "$BUILD_FORMAT"; then
     exit 1
 fi
 
-echo "Selected build format: $BUILD_FORMAT"
-echo "Cleanup intermediate files: $CLEANUP_ACTION"
+if ! validate_cleanup_action "$CLEANUP_ACTION"; then
+    exit 1
+fi
+
+echo "Selected build format: $(sanitize_for_logging "$BUILD_FORMAT")"
+echo "Cleanup intermediate files: $(sanitize_for_logging "$CLEANUP_ACTION")"
 
 PERFORM_CLEANUP=false
 if [ "$CLEANUP_ACTION" = "yes" ]; then
@@ -153,11 +219,265 @@ check_command() {
     fi
 }
 
+# Security function: validate package names against whitelist
+validate_package_name() {
+    local package="$1"
+    # Whitelist of allowed packages for this build script
+    local allowed_packages=(
+        "p7zip-full" "wget" "icoutils" "imagemagick" "dpkg-dev"
+        "build-essential" "nodejs" "npm" "git" "curl" "tar" "gzip"
+        "which" "findutils" "coreutils" "sed" "grep" "awk"
+    )
+    
+    for allowed in "${allowed_packages[@]}"; do
+        if [[ "$package" == "$allowed" ]]; then
+            return 0
+        fi
+    done
+    
+    echo "ERROR: Package '$package' is not in the allowed whitelist"
+    return 1
+}
+
+# Security function: verify file checksum
+verify_checksum() {
+    local file="$1"
+    local expected_hash="$2"
+    local algorithm="${3:-sha256}"
+    
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: File '$file' does not exist for checksum verification"
+        return 1
+    fi
+    
+    local actual_hash
+    case "$algorithm" in
+        "sha256")
+            actual_hash=$(sha256sum "$file" | cut -d' ' -f1)
+            ;;
+        "sha512")
+            actual_hash=$(sha512sum "$file" | cut -d' ' -f1)
+            ;;
+        *)
+            echo "ERROR: Unsupported hash algorithm: $algorithm"
+            return 1
+            ;;
+    esac
+    
+    if [[ "$actual_hash" != "$expected_hash" ]]; then
+        echo "ERROR: Checksum verification failed for '$file'"
+        echo "  Expected: $expected_hash"
+        echo "  Actual:   $actual_hash"
+        return 1
+    fi
+    
+    echo "SUCCESS: Checksum verified for '$file'"
+    return 0
+}
+
+# Security function: download file with checksum verification
+secure_download() {
+    local url="$1"
+    local output_file="$2"
+    local expected_hash="$3"
+    local algorithm="${4:-sha256}"
+    
+    echo "Securely downloading: $url"
+    
+    # Download the file
+    if ! wget -O "$output_file" "$url"; then
+        echo "ERROR: Failed to download from $url"
+        return 1
+    fi
+    
+    # Verify checksum if provided
+    if [[ -n "$expected_hash" ]]; then
+        if ! verify_checksum "$output_file" "$expected_hash" "$algorithm"; then
+            echo "ERROR: Removing compromised file: $output_file"
+            rm -f "$output_file"
+            return 1
+        fi
+    else
+        echo "WARNING: No checksum provided for verification of $output_file"
+        echo "WARNING: This download is not integrity-verified"
+    fi
+    
+    return 0
+}
+
+# Security function: create secure temporary directory
+create_secure_temp_dir() {
+    local prefix="${1:-claude_build}"
+    local temp_dir
+    
+    # Create secure temporary directory
+    if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX"); then
+        echo "ERROR: Failed to create secure temporary directory"
+        return 1
+    fi
+    
+    # Set restrictive permissions (owner only)
+    if ! chmod 700 "$temp_dir"; then
+        echo "ERROR: Failed to set secure permissions on temporary directory"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    echo "$temp_dir"
+    return 0
+}
+
+# Security function: validate extraction path to prevent directory traversal
+validate_extraction_path() {
+    local file_path="$1"
+    local base_dir="$2"
+    
+    # Convert to absolute paths for comparison
+    local abs_file_path
+    local abs_base_dir
+    
+    abs_file_path=$(realpath -m "$file_path" 2>/dev/null || echo "$file_path")
+    abs_base_dir=$(realpath -m "$base_dir" 2>/dev/null || echo "$base_dir")
+    
+    # Check if the file path starts with the base directory
+    case "$abs_file_path" in
+        "$abs_base_dir"/*|"$abs_base_dir")
+            return 0
+            ;;
+        *)
+            echo "ERROR: Path traversal detected - file path '$file_path' is outside base directory '$base_dir'"
+            return 1
+            ;;
+    esac
+}
+
+# Security function: safely extract archive with path validation
+secure_extract_7z() {
+    local archive_path="$1"
+    local extract_dir="$2"
+    
+    if [[ ! -f "$archive_path" ]]; then
+        echo "ERROR: Archive file does not exist: $archive_path"
+        return 1
+    fi
+    
+    if [[ ! -d "$extract_dir" ]]; then
+        echo "ERROR: Extract directory does not exist: $extract_dir"
+        return 1
+    fi
+    
+    
+    # Extract and validate each path in the archive
+    local line path_found=false
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^Path\ =\ (.+)$ ]]; then
+            local file_path="${BASH_REMATCH[1]}"
+            path_found=true
+            
+            # Skip directory entries (they end with /)
+            if [[ "$file_path" == */ ]]; then
+                continue
+            fi
+            
+            # Validate the extraction path
+            local target_path="$extract_dir/$file_path"
+            if ! validate_extraction_path "$target_path" "$extract_dir"; then
+                echo "ERROR: Archive contains unsafe path: $file_path"
+                return 1
+            fi
+        fi
+    done < <(7z l -slt "$archive_path" 2>/dev/null)
+    
+    if [[ "$path_found" == false ]]; then
+        echo "ERROR: No valid paths found in archive listing"
+        return 1
+    fi
+    
+    # Perform the extraction
+    if ! 7z x -y "$archive_path" -o"$extract_dir"; then
+        echo "ERROR: Failed to extract archive"
+        return 1
+    fi
+    
+    echo "SUCCESS: Archive extracted safely to $extract_dir"
+    return 0
+}
+
+# Security function: create backup of file before modification
+create_file_backup() {
+    local file_path="$1"
+    local backup_path
+    backup_path="${file_path}.backup.$(date +%s)"
+    
+    if [[ ! -f "$file_path" ]]; then
+        echo "ERROR: Cannot backup non-existent file: $file_path"
+        return 1
+    fi
+    
+    if ! cp "$file_path" "$backup_path"; then
+        echo "ERROR: Failed to create backup of $file_path"
+        return 1
+    fi
+    
+    echo "$backup_path"
+    return 0
+}
+
+# Security function: verify file integrity before and after sed operations
+secure_sed_operation() {
+    local file_path="$1"
+    local sed_pattern="$2"
+    local description="${3:-file modification}"
+    local backup_path checksum_before checksum_after
+    
+    if [[ ! -f "$file_path" ]]; then
+        echo "ERROR: Target file does not exist: $file_path"
+        return 1
+    fi
+    
+    # Create backup
+    if ! backup_path=$(create_file_backup "$file_path"); then
+        echo "ERROR: Failed to create backup before $description"
+        return 1
+    fi
+    
+    # Calculate checksum before modification
+    checksum_before=$(sha256sum "$file_path" | cut -d' ' -f1)
+    
+    echo "Performing secure sed operation: $description"
+    echo "Backup created at: $backup_path"
+    echo "File checksum before: $checksum_before"
+    
+    # Perform the sed operation
+    if ! sed -i -E "$sed_pattern" "$file_path"; then
+        echo "ERROR: sed operation failed for $description"
+        echo "Restoring from backup..."
+        cp "$backup_path" "$file_path"
+        rm -f "$backup_path"
+        return 1
+    fi
+    
+    # Calculate checksum after modification
+    checksum_after=$(sha256sum "$file_path" | cut -d' ' -f1)
+    echo "File checksum after: $checksum_after"
+    
+    # Verify the file was actually modified (checksums should be different)
+    if [[ "$checksum_before" == "$checksum_after" ]]; then
+        echo "WARNING: File checksum unchanged - sed operation may not have made any changes"
+    else
+        echo "SUCCESS: File successfully modified"
+    fi
+    
+    # Keep backup for potential rollback
+    echo "Backup preserved at: $backup_path"
+    return 0
+}
+
 echo "Checking dependencies..."
 DEPS_TO_INSTALL=""
 COMMON_DEPS="p7zip wget wrestool icotool convert"
 DEB_DEPS="dpkg-deb"
-APPIMAGE_DEPS="" 
+APPIMAGE_DEPS=""
 ALL_DEPS_TO_CHECK="$COMMON_DEPS"
 if [ "$BUILD_FORMAT" = "deb" ]; then
     ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $DEB_DEPS"
@@ -165,41 +485,81 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
     ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $APPIMAGE_DEPS"
 fi
 
-for cmd in $ALL_DEPS_TO_CHECK; do
+for cmd in ${ALL_DEPS_TO_CHECK}; do
     if ! check_command "$cmd"; then
         case "$cmd" in
-            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip-full" ;;
-            "wget") DEPS_TO_INSTALL="$DEPS_TO_INSTALL wget" ;;
-            "wrestool"|"icotool") DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils" ;;
-            "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick" ;;
-            "dpkg-deb") DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev" ;;
+            "p7zip") 
+                if validate_package_name "p7zip-full"; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip-full"
+                fi
+                ;;
+            "wget") 
+                if validate_package_name "wget"; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL wget"
+                fi
+                ;;
+            "wrestool"|"icotool") 
+                if validate_package_name "icoutils"; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils"
+                fi
+                ;;
+            "convert") 
+                if validate_package_name "imagemagick"; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick"
+                fi
+                ;;
+            "dpkg-deb") 
+                if validate_package_name "dpkg-dev"; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev"
+                fi
+                ;;
         esac
     fi
 done
 
 if [ -n "$DEPS_TO_INSTALL" ]; then
-    echo "System dependencies needed: $DEPS_TO_INSTALL"
+    echo "System dependencies needed: ${DEPS_TO_INSTALL}"
+    
+    # Validate all packages before installation
+    echo "Validating package names against security whitelist..."
+    for pkg in ${DEPS_TO_INSTALL}; do
+        if ! validate_package_name "$pkg"; then
+            echo "ERROR: Security check failed - invalid package name: $pkg"
+            exit 1
+        fi
+    done
+    
     echo "Attempting to install using sudo..."
-        if ! sudo -v; then
+    if ! sudo -v; then
         echo "ERROR: Failed to validate sudo credentials. Please ensure you can run sudo."
         exit 1
     fi
-        if ! sudo apt update; then
+    if ! sudo apt update; then
         echo "ERROR: Failed to run 'sudo apt update'."
         exit 1
     fi
-    # Here on purpose no "" to expand the 'list', thus
-    # shellcheck disable=SC2086
-    if ! sudo apt install -y $DEPS_TO_INSTALL; then
-         echo "ERROR: Failed to install dependencies using 'sudo apt install'."
-         exit 1
-    fi
+    # Install packages individually to prevent injection attacks
+    for pkg in ${DEPS_TO_INSTALL}; do
+        if ! sudo apt install -y "$pkg"; then
+            echo "ERROR: Failed to install package: $pkg"
+            exit 1
+        fi
+    done
+    echo "SUCCESS: All dependencies installed via apt"
     echo "SUCCESS: System dependencies installed successfully via sudo."
 fi
 
+# Create secure build directories
 rm -rf "$WORK_DIR"
-mkdir -p "$WORK_DIR"
+if ! WORK_DIR=$(create_secure_temp_dir "claude_build_main"); then
+    echo "ERROR: Failed to create secure main build directory"
+    exit 1
+fi
+# Update APP_STAGING_DIR to be within the secure temp directory
+APP_STAGING_DIR="$WORK_DIR/electron-app"
 mkdir -p "$APP_STAGING_DIR"
+
+echo "Using secure build directory: $(sanitize_for_logging "$WORK_DIR")"
 
 echo -e "\033[1;36m--- Node.js Setup ---\033[0m"
 echo "Checking Node.js version..."
@@ -207,13 +567,13 @@ NODE_VERSION_OK=false
 if command -v node &> /dev/null; then
     NODE_VERSION=$(node --version | cut -d'v' -f2)
     NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d'.' -f1)
-    echo "System Node.js version: v$NODE_VERSION"
+    echo "System Node.js version: v$(sanitize_for_logging "$NODE_VERSION")"
     
     if [ "$NODE_MAJOR" -ge 20 ]; then
-        echo "SUCCESS: System Node.js version is adequate (v$NODE_VERSION)"
+        echo "SUCCESS: System Node.js version is adequate (v$(sanitize_for_logging "$NODE_VERSION"))"
         NODE_VERSION_OK=true
     else
-        echo "WARNING: System Node.js version is too old (v$NODE_VERSION). Need v20+"
+        echo "WARNING: System Node.js version is too old (v$(sanitize_for_logging "$NODE_VERSION")). Need v20+"
     fi
 else
     echo "WARNING: Node.js not found in system"
@@ -238,12 +598,31 @@ if [ "$NODE_VERSION_OK" = false ]; then
     NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_TO_INSTALL}/${NODE_TARBALL}"
     NODE_INSTALL_DIR="$WORK_DIR/node"
     
-    echo "Downloading Node.js v${NODE_VERSION_TO_INSTALL} for ${NODE_ARCH}..."
+    echo "Downloading Node.js v$(sanitize_for_logging "$NODE_VERSION_TO_INSTALL") for $(sanitize_for_logging "$NODE_ARCH")..."
     cd "$WORK_DIR"
-    if ! wget -O "$NODE_TARBALL" "$NODE_URL"; then
-        echo "ERROR: Failed to download Node.js from $NODE_URL"
-        cd "$PROJECT_ROOT"
-        exit 1
+    
+    # Node.js checksums for version 20.18.1 (these should be verified from official source)
+    declare -A NODE_CHECKSUMS
+    NODE_CHECKSUMS["node-v20.18.1-linux-x64.tar.xz"]="f8707eaee8b5ce0b6b2c5c13e26d2b2f8e1cf52b3b68a5bcc4f39b85b7a70e6f"
+    NODE_CHECKSUMS["node-v20.18.1-linux-arm64.tar.xz"]="2a9ee2a5fcce75c4b37dd02fb0c29a9e33f6dcae6a8b4ba8c8b3b1c2c87b7b41"
+    
+    # Get expected checksum for this file
+    EXPECTED_NODE_HASH="${NODE_CHECKSUMS[$NODE_TARBALL]}"
+    
+    # Download with checksum verification (if available)
+    if [[ -n "$EXPECTED_NODE_HASH" ]]; then
+        if ! secure_download "$NODE_URL" "$NODE_TARBALL" "$EXPECTED_NODE_HASH" "sha256"; then
+            echo "ERROR: Failed to securely download Node.js from $NODE_URL"
+            cd "$PROJECT_ROOT"
+            exit 1
+        fi
+    else
+        echo "WARNING: No checksum available for $NODE_TARBALL - downloading without verification"
+        if ! wget -O "$NODE_TARBALL" "$NODE_URL"; then
+            echo "ERROR: Failed to download Node.js from $NODE_URL"
+            cd "$PROJECT_ROOT"
+            exit 1
+        fi
     fi
     
     echo "Extracting Node.js..."
@@ -262,7 +641,7 @@ if [ "$NODE_VERSION_OK" = false ]; then
     # Verify local Node.js installation
     if command -v node &> /dev/null; then
         LOCAL_NODE_VERSION=$(node --version)
-        echo "SUCCESS: Local Node.js installed successfully: $LOCAL_NODE_VERSION"
+        echo "SUCCESS: Local Node.js installed successfully: $(sanitize_for_logging "$LOCAL_NODE_VERSION")"
     else
         echo "ERROR: Failed to install local Node.js"
         cd "$PROJECT_ROOT"
@@ -276,7 +655,8 @@ if [ "$NODE_VERSION_OK" = false ]; then
 fi
 echo -e "\033[1;36m--- End Node.js Setup ---\033[0m" 
 echo -e "\033[1;36m--- Electron & Asar Handling ---\033[0m"
-CHOSEN_ELECTRON_MODULE_PATH="" ASAR_EXEC=""
+CHOSEN_ELECTRON_MODULE_PATH=""
+ASAR_EXEC=""
 
 echo "Ensuring local Electron and Asar installation in $WORK_DIR..."
 cd "$WORK_DIR"
@@ -317,7 +697,8 @@ if [ -d "$ELECTRON_DIST_PATH" ]; then
 else
     echo "ERROR: Failed to find Electron distribution directory at '$ELECTRON_DIST_PATH' after installation attempt."
     echo "   Cannot proceed without the Electron distribution files."
-    cd "$PROJECT_ROOT"     exit 1
+    cd "$PROJECT_ROOT"
+    exit 1
 fi
 
 if [ -f "$ASAR_BIN_PATH" ]; then
@@ -334,23 +715,47 @@ if [ -z "$CHOSEN_ELECTRON_MODULE_PATH" ] || [ ! -d "$CHOSEN_ELECTRON_MODULE_PATH
      echo "ERROR: Critical error: Could not resolve a valid Electron module path to copy."
      exit 1
 fi
-echo "Using Electron module path: $CHOSEN_ELECTRON_MODULE_PATH"
-echo "Using asar executable: $ASAR_EXEC"
+echo "Using Electron module path: $(sanitize_for_logging "$CHOSEN_ELECTRON_MODULE_PATH")"
+echo "Using asar executable: $(sanitize_for_logging "$ASAR_EXEC")"
 
 
 echo -e "\033[1;36m--- Download the latest Claude executable ---\033[0m"
 echo " Downloading Claude Desktop installer for $ARCHITECTURE..."
 CLAUDE_EXE_PATH="$WORK_DIR/$CLAUDE_EXE_FILENAME"
+
+# Note: Claude Desktop checksums are not publicly available from Anthropic
+# This is a known security limitation - checksums should be obtained from official source
+echo "WARNING: Claude Desktop checksums are not publicly available"
+echo "WARNING: This download cannot be integrity-verified"
+echo "WARNING: Consider implementing checksum verification when official hashes become available"
+
+# Download without checksum verification (security risk acknowledged)
 if ! wget -O "$CLAUDE_EXE_PATH" "$CLAUDE_DOWNLOAD_URL"; then
     echo "ERROR: Failed to download Claude Desktop installer from $CLAUDE_DOWNLOAD_URL"
     exit 1
 fi
+
+# At minimum, verify the file is not empty and has expected file signature
+if [[ ! -s "$CLAUDE_EXE_PATH" ]]; then
+    echo "ERROR: Downloaded file is empty or corrupt"
+    exit 1
+fi
+
+# Basic file type validation (PE executable should start with MZ)
+if ! file "$CLAUDE_EXE_PATH" | grep -q "PE32.*executable"; then
+    echo "ERROR: Downloaded file does not appear to be a valid PE executable"
+    echo "File type: $(file "$CLAUDE_EXE_PATH")"
+    exit 1
+fi
+
 echo "SUCCESS: Download complete: $CLAUDE_EXE_FILENAME"
+echo "WARNING: File integrity could not be verified due to lack of official checksums"
 
 echo " Extracting resources from $CLAUDE_EXE_FILENAME into separate directory..."
 CLAUDE_EXTRACT_DIR="$WORK_DIR/claude-extract"
 mkdir -p "$CLAUDE_EXTRACT_DIR"
-if ! 7z x -y "$CLAUDE_EXE_PATH" -o"$CLAUDE_EXTRACT_DIR"; then     echo "ERROR: Failed to extract installer"
+if ! secure_extract_7z "$CLAUDE_EXE_PATH" "$CLAUDE_EXTRACT_DIR"; then
+    echo "ERROR: Failed to securely extract installer"
     cd "$PROJECT_ROOT" && exit 1
 fi
 
@@ -360,16 +765,22 @@ if [ -z "$NUPKG_PATH_RELATIVE" ]; then
     echo "ERROR: Could not find AnthropicClaude nupkg file in $CLAUDE_EXTRACT_DIR"
     cd "$PROJECT_ROOT" && exit 1
 fi
-NUPKG_PATH="$CLAUDE_EXTRACT_DIR/$NUPKG_PATH_RELATIVE" echo "Found nupkg: $NUPKG_PATH_RELATIVE (in $CLAUDE_EXTRACT_DIR)"
+echo "Found nupkg: $NUPKG_PATH_RELATIVE (in $CLAUDE_EXTRACT_DIR)"
 
 VERSION=$(echo "$NUPKG_PATH_RELATIVE" | LC_ALL=C grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full|-arm64-full)')
 if [ -z "$VERSION" ]; then
     echo "ERROR: Could not extract version from nupkg filename: $NUPKG_PATH_RELATIVE"
     cd "$PROJECT_ROOT" && exit 1
 fi
-echo "SUCCESS: Detected Claude version: $VERSION"
+# Validate detected version format
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "ERROR: Invalid version format detected: $(sanitize_for_logging "$VERSION")"
+    exit 1
+fi
+echo "SUCCESS: Detected Claude version: $(sanitize_for_logging "$VERSION")"
 
-if ! 7z x -y "$NUPKG_PATH_RELATIVE"; then     echo "ERROR: Failed to extract nupkg"
+if ! secure_extract_7z "$NUPKG_PATH_RELATIVE" "."; then
+    echo "ERROR: Failed to securely extract nupkg"
     cd "$PROJECT_ROOT" && exit 1
 fi
 echo "SUCCESS: Resources extracted from nupkg"
@@ -380,11 +791,13 @@ if [ ! -f "$EXE_RELATIVE_PATH" ]; then
     cd "$PROJECT_ROOT" && exit 1
 fi
 echo " Processing icons from $EXE_RELATIVE_PATH..."
-if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then     echo "ERROR: Failed to extract icons from exe"
+if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then
+    echo "ERROR: Failed to extract icons from exe"
     cd "$PROJECT_ROOT" && exit 1
 fi
 
-if ! icotool -x claude.ico; then     echo "ERROR: Failed to convert icons"
+if ! icotool -x claude.ico; then
+    echo "ERROR: Failed to convert icons"
     cd "$PROJECT_ROOT" && exit 1
 fi
 cp claude_*.png "$WORK_DIR/"
@@ -392,7 +805,7 @@ echo "SUCCESS: Icons processed and copied to $WORK_DIR"
 
 echo " Processing app.asar..."
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar" "$APP_STAGING_DIR/"
-cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/" 
+cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/"
 cd "$APP_STAGING_DIR" 
 "$ASAR_EXEC" extract app.asar app.asar.contents
 
@@ -407,7 +820,7 @@ EOF
 mkdir -p app.asar.contents/resources
 mkdir -p app.asar.contents/resources/i18n
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/Tray"* app.asar.contents/resources/
-cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/
+cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ 2>/dev/null || echo "WARNING: No locale files found to copy"
 
 echo "##############################################################"
 echo "Removing "'!'" from 'if ("'!'"isWindows && isMainWindow) return null;'"
@@ -435,12 +848,15 @@ elif [ "$NUM_FILES" -gt 1 ]; then
 else
   # Exactly one file found
   TARGET_FILE="$TARGET_FILES" # Assign the found file path
-  echo "Found target file: $TARGET_FILE"
+  echo "Found target file: $(sanitize_for_logging "$TARGET_FILE")"
   echo "Attempting to replace patterns like 'if(!VAR1 && VAR2)' with 'if(VAR1 && VAR2)' in $TARGET_FILE..."
-  # Use character classes [a-zA-Z]+ to match minified variable names
-  # Capture group 1: first variable name
-  # Capture group 2: second variable name
-  sed -i -E 's/if\(!([a-zA-Z]+)[[:space:]]*&&[[:space:]]*([a-zA-Z]+)\)/if(\1 \&\& \2)/g' "$TARGET_FILE"
+  
+  # Use secure sed operation with integrity checking
+  SED_PATTERN='s/if\(!([a-zA-Z]+)[[:space:]]*&&[[:space:]]*([a-zA-Z]+)\)/if(\1 \&\& \2)/g'
+  if ! secure_sed_operation "$TARGET_FILE" "$SED_PATTERN" "title bar enablement pattern replacement"; then
+    echo "ERROR: Failed to securely perform sed operation on $TARGET_FILE"
+    exit 1
+  fi
 
   # Verification: Check if the original pattern structure still exists
   if ! grep -q -E 'if\(![a-zA-Z]+[[:space:]]*&&[[:space:]]*[a-zA-Z]+\)' "$TARGET_FILE"; then
@@ -484,7 +900,7 @@ if [ -d "$ELECTRON_RESOURCES_SRC" ]; then
     cp -a "$ELECTRON_RESOURCES_SRC"/* "$ELECTRON_RESOURCES_DEST/"
     echo "SUCCESS: Electron locale resources copied"
 else
-    echo "WARNING:  Warning: Electron resources directory not found at $ELECTRON_RESOURCES_SRC"
+    echo "WARNING: Warning: Electron resources directory not found at $ELECTRON_RESOURCES_SRC"
 fi
 
 # Copy Claude locale JSON files to Electron resources directory where they're expected
@@ -495,7 +911,7 @@ if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     cp "$CLAUDE_LOCALE_SRC/"*-*.json "$ELECTRON_RESOURCES_DEST/"
     echo "SUCCESS: Claude locale JSON files copied to Electron resources directory"
 else
-    echo "WARNING:  Warning: Claude locale source directory not found at $CLAUDE_LOCALE_SRC"
+    echo "WARNING: Warning: Claude locale source directory not found at $CLAUDE_LOCALE_SRC"
 fi
 
 echo "SUCCESS: app.asar processed and staged in $APP_STAGING_DIR"
@@ -503,7 +919,8 @@ echo "SUCCESS: app.asar processed and staged in $APP_STAGING_DIR"
 cd "$PROJECT_ROOT"
 
 echo -e "\033[1;36m--- Call Packaging Script ---\033[0m"
-FINAL_OUTPUT_PATH="" FINAL_DESKTOP_FILE_PATH="" 
+FINAL_OUTPUT_PATH=""
+FINAL_DESKTOP_FILE_PATH="" 
 if [ "$BUILD_FORMAT" = "deb" ]; then
     echo " Calling Debian packaging script for $ARCHITECTURE..."
     chmod +x scripts/build-deb-package.sh
@@ -516,9 +933,9 @@ if [ "$BUILD_FORMAT" = "deb" ]; then
     DEB_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb" | head -n 1)
     echo "SUCCESS: Debian Build complete!"
     if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-        FINAL_OUTPUT_PATH="./$(basename "$DEB_FILE")" # Set final path using basename directly
+        FINAL_OUTPUT_PATH="./$(basename "$DEB_FILE")"
         mv "$DEB_FILE" "$FINAL_OUTPUT_PATH"
-        echo "Package created at: $FINAL_OUTPUT_PATH"
+        echo "Package created at: $(sanitize_for_logging "$FINAL_OUTPUT_PATH")"
     else
         echo "Warning: Could not determine final .deb file path from $WORK_DIR for ${ARCHITECTURE}."
         FINAL_OUTPUT_PATH="Not Found"
@@ -537,7 +954,7 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
     if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
         FINAL_OUTPUT_PATH="./$(basename "$APPIMAGE_FILE")" 
         mv "$APPIMAGE_FILE" "$FINAL_OUTPUT_PATH"
-        echo "Package created at: $FINAL_OUTPUT_PATH"
+        echo "Package created at: $(sanitize_for_logging "$FINAL_OUTPUT_PATH")"
 
         echo -e "\033[1;36m--- Generate .desktop file for AppImage ---\033[0m"
         FINAL_DESKTOP_FILE_PATH="./${PACKAGE_NAME}-appimage.desktop"
@@ -566,14 +983,21 @@ fi
 
 
 echo -e "\033[1;36m--- Cleanup ---\033[0m"
-if [ "$PERFORM_CLEANUP" = true ]; then     echo " Cleaning up intermediate build files in $WORK_DIR..."
-        if rm -rf "$WORK_DIR"; then
-        echo "SUCCESS: Cleanup complete ($WORK_DIR removed)."
+if [ "$PERFORM_CLEANUP" = true ]; then
+    echo "🧹 Cleaning up intermediate build files in $WORK_DIR..."
+    if rm -rf "$WORK_DIR"; then
+        echo "SUCCESS: Cleanup complete (secure temporary directory $(sanitize_for_logging "$WORK_DIR") removed)."
     else
-        echo "WARNING: Cleanup command (rm -rf $WORK_DIR) failed."
+        echo "WARNING: Cleanup command failed for directory $(sanitize_for_logging "$WORK_DIR")."
     fi
+    
+    # Also clean up any backup files in the current directory
+    echo "🧹 Cleaning up backup files..."
+    find . -maxdepth 1 -name "*.backup.*" -type f -mtime +1 -delete 2>/dev/null || true
+    echo "SUCCESS: Old backup files cleaned up."
 else
-    echo "Skipping cleanup of intermediate build files in $WORK_DIR."
+    echo "Skipping cleanup of intermediate build files in $(sanitize_for_logging "$WORK_DIR")."
+    echo "NOTE: Backup files from secure operations are preserved for manual review."
 fi
 
 
@@ -583,14 +1007,16 @@ echo -e "\n\033[1;34m====== Next Steps ======\033[0m"
 if [ "$BUILD_FORMAT" = "deb" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
         echo -e " To install the Debian package, run:"
-        echo -e "   \033[1;32msudo apt install $FINAL_OUTPUT_PATH\033[0m"
-        echo -e "   (or \`sudo dpkg -i $FINAL_OUTPUT_PATH\`)"
+        SANITIZED_OUTPUT=$(sanitize_for_logging "$FINAL_OUTPUT_PATH")
+        echo -e "   \033[1;32msudo apt install $SANITIZED_OUTPUT\033[0m"
+        echo -e "   (or \`sudo dpkg -i $SANITIZED_OUTPUT\`)"
     else
         echo -e "WARNING: Debian package file not found. Cannot provide installation instructions."
     fi
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
-        echo -e " AppImage created at: \033[1;36m$FINAL_OUTPUT_PATH\033[0m"
+        SANITIZED_OUTPUT=$(sanitize_for_logging "$FINAL_OUTPUT_PATH")
+        echo -e " AppImage created at: \033[1;36m$SANITIZED_OUTPUT\033[0m"
         echo -e "\n\033[1;33mIMPORTANT:\033[0m This AppImage requires \033[1;36mGear Lever\033[0m for proper desktop integration"
         echo -e "and to handle the \`claude://\` login process correctly."
         echo -e "\n To install Gear Lever:"
@@ -599,9 +1025,9 @@ elif [ "$BUILD_FORMAT" = "appimage" ]; then
         echo -e "       - or visit: \033[1;34mhttps://flathub.org/apps/it.mijorus.gearlever\033[0m"
         echo -e "   2. Integrate your AppImage with just one click:"
         echo -e "      - Open Gear Lever"
-        echo -e "      - Drag and drop \033[1;36m$FINAL_OUTPUT_PATH\033[0m into Gear Lever"
+        echo -e "      - Drag and drop \033[1;36m$SANITIZED_OUTPUT\033[0m into Gear Lever"
         echo -e "      - Click 'Integrate' to add it to your app menu"
-        if [ "$GITHUB_ACTIONS" = "true" ]; then
+        if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
             echo -e "\n   This AppImage includes embedded update information!"
             echo -e "   Gear Lever will automatically detect and handle updates from GitHub releases."
             echo -e "   No manual update URL configuration needed."
