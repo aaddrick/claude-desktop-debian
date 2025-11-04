@@ -392,9 +392,103 @@ echo "✓ Icons processed and copied to $WORK_DIR"
 
 echo "⚙️ Processing app.asar..."
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar" "$APP_STAGING_DIR/"
-cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/" 
-cd "$APP_STAGING_DIR" 
+cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/"
+cd "$APP_STAGING_DIR"
 "$ASAR_EXEC" extract app.asar app.asar.contents
+
+echo "Creating BrowserWindow frame fix wrapper..."
+# Get the original main entry point first
+ORIGINAL_MAIN=$(node -e "const pkg = require('./app.asar.contents/package.json'); console.log(pkg.main);")
+echo "Original main entry: $ORIGINAL_MAIN"
+
+# Create the wrapper that intercepts electron module
+cat > app.asar.contents/frame-fix-wrapper.js << 'EOFFIX'
+// Inject frame fix before main app loads
+const Module = require('module');
+const originalRequire = Module.prototype.require;
+
+console.log('[Frame Fix] Wrapper loaded');
+
+Module.prototype.require = function(id) {
+  const module = originalRequire.apply(this, arguments);
+
+  if (id === 'electron') {
+    console.log('[Frame Fix] Intercepting electron module');
+    const OriginalBrowserWindow = module.BrowserWindow;
+
+    module.BrowserWindow = class BrowserWindowWithFrame extends OriginalBrowserWindow {
+      constructor(options) {
+        console.log('[Frame Fix] BrowserWindow constructor called');
+        if (process.platform === 'linux') {
+          options = options || {};
+          const originalFrame = options.frame;
+          // Force native frame
+          options.frame = true;
+          // Remove custom titlebar options
+          delete options.titleBarStyle;
+          delete options.titleBarOverlay;
+          console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
+        }
+        super(options);
+      }
+    };
+
+    // Copy static methods and properties (but NOT prototype, that's already set by extends)
+    for (const key of Object.getOwnPropertyNames(OriginalBrowserWindow)) {
+      if (key !== 'prototype' && key !== 'length' && key !== 'name') {
+        try {
+          const descriptor = Object.getOwnPropertyDescriptor(OriginalBrowserWindow, key);
+          if (descriptor) {
+            Object.defineProperty(module.BrowserWindow, key, descriptor);
+          }
+        } catch (e) {
+          // Ignore errors for non-configurable properties
+        }
+      }
+    }
+  }
+
+  return module;
+};
+EOFFIX
+
+# Create new entry point that loads fix then original main
+cat > app.asar.contents/frame-fix-entry.js << EOFENTRY
+// Load frame fix first
+require('./frame-fix-wrapper.js');
+// Then load original main
+require('./${ORIGINAL_MAIN}');
+EOFENTRY
+
+echo "Searching and patching BrowserWindow creation in main process files..."
+# Find all JavaScript files that create BrowserWindow
+find app.asar.contents/.vite/build -type f -name "*.js" -exec grep -l "BrowserWindow" {} \; > /tmp/bw-files.txt
+
+# Patch each file to force frame: true
+while IFS= read -r file; do
+    if [ -f "$file" ]; then
+        echo "Patching $file for native frames..."
+        # Replace frame:false with frame:true
+        sed -i 's/frame[[:space:]]*:[[:space:]]*false/frame:true/g' "$file"
+        sed -i 's/frame[[:space:]]*:[[:space:]]*!0/frame:true/g' "$file"
+        sed -i 's/frame[[:space:]]*:[[:space:]]*!1/frame:true/g' "$file"
+        # Replace titleBarStyle with empty to disable custom titlebar
+        sed -i 's/titleBarStyle[[:space:]]*:[[:space:]]*[^,}]*/titleBarStyle:""/g' "$file"
+        echo "✓ Patched $file"
+    fi
+done < /tmp/bw-files.txt
+rm -f /tmp/bw-files.txt
+
+echo "Modifying package.json to load frame fix..."
+# Update package.json to use our entry point
+node -e "
+const fs = require('fs');
+const pkg = require('./app.asar.contents/package.json');
+pkg.originalMain = pkg.main;
+pkg.main = 'frame-fix-entry.js';
+fs.writeFileSync('./app.asar.contents/package.json', JSON.stringify(pkg, null, 2));
+console.log('Updated package.json main to frame-fix-entry.js');
+"
 
 echo "Creating stub native module..."
 cat > app.asar.contents/node_modules/claude-native/index.js << EOF

@@ -152,7 +152,15 @@ if [ "\$IS_WAYLAND" = true ]; then
   ELECTRON_ARGS+=("--enable-wayland-ime")
   ELECTRON_ARGS+=("--wayland-text-input-version=3")
   echo "Enabled native Wayland support with GlobalShortcuts Portal" >> "\$LOG_FILE"
+else
+  # X11 session - ensure native window decorations
+  echo "X11 session detected, enabling native window decorations" >> "\$LOG_FILE"
 fi
+
+# Force disable custom titlebar for all sessions
+ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
+# Try to force native frame
+export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
 # Change to the application directory
 APP_DIR="/usr/lib/$PACKAGE_NAME"
