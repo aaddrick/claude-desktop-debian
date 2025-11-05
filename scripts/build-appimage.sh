@@ -113,7 +113,15 @@ if [ "\$IS_WAYLAND" = true ]; then
   ELECTRON_ARGS+=("--ozone-platform=wayland")
   ELECTRON_ARGS+=("--enable-wayland-ime")
   ELECTRON_ARGS+=("--wayland-text-input-version=3")
+else
+  # X11 session - ensure native window decorations
+  echo "AppRun: X11 session detected, enabling native window decorations."
 fi
+
+# Force disable custom titlebar for all sessions
+ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
+# Try to force native frame
+export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
 # Change to the application resources directory (where app.asar is)
 cd "\$APPDIR/usr/lib" || exit 1
