@@ -1,168 +1,157 @@
 name: Check Claude Desktop Version
-# IMPORTANT: This workflow requires a Personal Access Token (PAT) to function properly
-# Create a PAT with 'repo' and 'workflow' scopes and add it as a secret named GH_PAT
-# Without it, the workflow cannot update variables and will fail to prevent duplicate releases
-
 on:
   schedule:
-    # Run daily at 1 AM UTC
     - cron: "0 1 * * *"
-  workflow_dispatch: # Allow manual triggering for testing
+  workflow_dispatch:
 
 permissions:
-  contents: write  # For creating tags and releases
+  contents: write
 
 jobs:
   check-version:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0 # Need full history for tags
-        token: ${{ secrets.GH_PAT }} # PAT required for pushing tags
-    
-    - name: Set up environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y p7zip-full wget
-    
-    - name: Download and check Claude version
-      id: check_version
-      run: |
-        # Download URLs for both architectures (we'll check amd64)
-        CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
-        
-        echo "Downloading Claude Desktop installer to check version..."
-        WORK_DIR=$(mktemp -d)
-        cd "$WORK_DIR"
-        
-        if ! wget -q -O Claude-Setup-x64.exe "$CLAUDE_DOWNLOAD_URL"; then
-          echo "Failed to download Claude Desktop installer"
-          exit 1
-        fi
-        
-        echo "Extracting installer..."
-        EXTRACT_DIR="$WORK_DIR/extract"
-        mkdir -p "$EXTRACT_DIR"
-        
-        if ! 7z x -y Claude-Setup-x64.exe -o"$EXTRACT_DIR" > /dev/null 2>&1; then
-          echo "Failed to extract installer"
-          exit 1
-        fi
-        
-        cd "$EXTRACT_DIR"
-        NUPKG_FILE=$(find . -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
-        
-        if [ -z "$NUPKG_FILE" ]; then
-          echo "Could not find AnthropicClaude nupkg file"
-          exit 1
-        fi
-        
-        # Extract version from nupkg filename
-        CLAUDE_VERSION=$(echo "$NUPKG_FILE" | grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full|-arm64-full)')
-        
-        if [ -z "$CLAUDE_VERSION" ]; then
-          echo "Could not extract version from nupkg filename"
-          exit 1
-        fi
-        
-        echo "Detected Claude Desktop version: $CLAUDE_VERSION"
-        echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
-        
-        # Clean up
-        cd /
-        rm -rf "$WORK_DIR"
-    
-    - name: Check if update needed
-      id: check_update
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
-        REPO_VERSION="${{ vars.REPO_VERSION }}"
-        STORED_CLAUDE_VERSION="${{ vars.CLAUDE_DESKTOP_VERSION }}"
-        
-        echo "Current stored Claude version: $STORED_CLAUDE_VERSION"
-        echo "Detected Claude version: $CLAUDE_VERSION"
-        echo "Repository version: $REPO_VERSION"
-        
-        if [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
-          echo "New Claude Desktop version detected!"
-          echo "update_needed=true" >> $GITHUB_OUTPUT
-          
-          # Construct the new tag
-          NEW_TAG="v${REPO_VERSION}+claude${CLAUDE_VERSION}"
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "New tag will be: $NEW_TAG"
-        else
-          echo "Claude Desktop version unchanged"
-          echo "update_needed=false" >> $GITHUB_OUTPUT
-        fi
-    
-    - name: Update version variable and create tag
-      if: steps.check_update.outputs.update_needed == 'true'
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
-        NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
-        
-        # Check if we have a PAT
-        if [ -z "$GH_TOKEN" ]; then
-          echo "❌ Error: GH_PAT secret is not configured"
-          echo "This workflow requires a Personal Access Token to update repository variables"
-          echo "Please create a PAT with 'repo' and 'workflow' scopes and add it as GH_PAT secret"
-          exit 1
-        fi
-        
-        echo "Updating CLAUDE_DESKTOP_VERSION variable to $CLAUDE_VERSION"
-        gh variable set CLAUDE_DESKTOP_VERSION --body "$CLAUDE_VERSION"
-        
-        echo "Creating and pushing new tag: $NEW_TAG"
-        
-        # Configure git
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        
-        # Create annotated tag
-        git tag -a "$NEW_TAG" -m "Update to Claude Desktop $CLAUDE_VERSION"
-        
-        # Push the tag
-        git push origin "$NEW_TAG"
-        
-        echo "Successfully created tag $NEW_TAG"
-    
-    - name: Create release
-      if: steps.check_update.outputs.update_needed == 'true'
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
-        CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
-        
-        # Create release notes using heredoc
-        RELEASE_NOTES=$(cat <<EOF
-        ## Claude Desktop Update
-        
-        This release updates the packaged Claude Desktop version to **$CLAUDE_VERSION**.
-        
-        ### What's Changed
-        - Updated Claude Desktop to version $CLAUDE_VERSION
-        
-        ### Installation
-        Download the appropriate package for your architecture from the assets below.
-        
-        ---
-        *This release was automatically generated when a new Claude Desktop version was detected.*
-        EOF
-        )
-        
-        # Create the release
-        gh release create "$NEW_TAG" \
-          --title "Release $NEW_TAG" \
-          --notes "$RELEASE_NOTES" \
-          --latest
-        
-        echo "Release created for $NEW_TAG"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full wget
+
+      - name: Download and check Claude version
+        id: check_version
+        run: |
+          CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
+
+          WORK_DIR=$(mktemp -d)
+          cd "$WORK_DIR"
+
+          if ! wget -q -O Claude-Setup-x64.exe "$CLAUDE_DOWNLOAD_URL"; then
+            echo "Failed to download Claude Desktop installer"
+            exit 1
+          fi
+
+          EXTRACT_DIR="$WORK_DIR/extract"
+          mkdir -p "$EXTRACT_DIR"
+
+          if ! 7z x -y Claude-Setup-x64.exe -o"$EXTRACT_DIR" > /dev/null 2>&1; then
+            echo "Failed to extract installer"
+            exit 1
+          fi
+
+          cd "$EXTRACT_DIR"
+          NUPKG_FILE=$(find . -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
+
+          if [ -z "$NUPKG_FILE" ]; then
+            echo "Could not find AnthropicClaude nupkg file"
+            exit 1
+          fi
+
+          # Extract version from nupkg filename
+          CLAUDE_VERSION=$(echo "$NUPKG_FILE" | grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full|-arm64-full)')
+
+          if [ -z "$CLAUDE_VERSION" ]; then
+            echo "Could not extract version from nupkg filename"
+            exit 1
+          fi
+
+          echo "Detected Claude Desktop version: $CLAUDE_VERSION"
+          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
+
+          # Clean up
+          cd /
+          rm -rf "$WORK_DIR"
+
+      - name: Check if update needed
+        id: check_update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+          REPO_VERSION="${{ vars.REPO_VERSION }}"
+          STORED_CLAUDE_VERSION="${{ vars.CLAUDE_DESKTOP_VERSION }}"
+
+          echo "Current stored Claude version: $STORED_CLAUDE_VERSION"
+          echo "Detected Claude version: $CLAUDE_VERSION"
+          echo "Repository version: $REPO_VERSION"
+
+          if [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
+            echo "New Claude Desktop version detected!"
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            
+            # Construct the new tag
+            NEW_TAG="v${REPO_VERSION}+claude${CLAUDE_VERSION}"
+            echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "New tag will be: $NEW_TAG"
+          else
+            echo "Claude Desktop version unchanged"
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version variable and create tag
+        if: steps.check_update.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+          NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
+
+          # Check if we have a PAT
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Error: GH_PAT secret is not configured"
+            exit 1
+          fi
+
+          gh variable set CLAUDE_DESKTOP_VERSION --body "$CLAUDE_VERSION"
+
+          echo "Creating and pushing new tag: $NEW_TAG"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create annotated tag
+          git tag -a "$NEW_TAG" -m "Update to Claude Desktop $CLAUDE_VERSION"
+
+          # Push the tag
+          git push origin "$NEW_TAG"
+
+          echo "Successfully created tag $NEW_TAG"
+
+      - name: Create release
+        if: steps.check_update.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
+          CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+
+          # Create release notes using heredoc
+          RELEASE_NOTES=$(cat <<EOF
+          ## Claude Desktop Update
+
+          This release updates the packaged Claude Desktop version to **$CLAUDE_VERSION**.
+
+          ### What's Changed
+          - Updated Claude Desktop to version $CLAUDE_VERSION
+
+          ### Installation
+          Download the appropriate package for your architecture from the assets below.
+
+          ---
+          *This release was automatically generated when a new Claude Desktop version was detected.*
+          EOF
+          )
+
+          # Create the release
+          gh release create "$NEW_TAG" \
+            --title "Release $NEW_TAG" \
+            --notes "$RELEASE_NOTES" \
+            --latest
+
+          echo "Release created for $NEW_TAG"
