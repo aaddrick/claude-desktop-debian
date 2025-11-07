@@ -26,18 +26,22 @@ mkdir -p "$APPDIR_PATH/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$APPDIR_PATH/usr/share/applications"
 
 echo "📦 Staging application files into AppDir..."
-# Copy the core application files (asar, unpacked resources, node_modules if present)
-# Explicitly copy required components to ensure hidden files/dirs like .bin are included
-if [ -f "$APP_STAGING_DIR/app.asar" ]; then
-    cp -a "$APP_STAGING_DIR/app.asar" "$APPDIR_PATH/usr/lib/"
-fi
-if [ -d "$APP_STAGING_DIR/app.asar.unpacked" ]; then
-    cp -a "$APP_STAGING_DIR/app.asar.unpacked" "$APPDIR_PATH/usr/lib/"
-fi
+# Copy node_modules first to set up Electron directory structure
 if [ -d "$APP_STAGING_DIR/node_modules" ]; then
     echo "Copying node_modules from staging to AppDir..."
     cp -a "$APP_STAGING_DIR/node_modules" "$APPDIR_PATH/usr/lib/"
 fi
+
+# Install app.asar in Electron's resources directory where process.resourcesPath points
+RESOURCES_DIR="$APPDIR_PATH/usr/lib/node_modules/electron/dist/resources"
+mkdir -p "$RESOURCES_DIR"
+if [ -f "$APP_STAGING_DIR/app.asar" ]; then
+    cp -a "$APP_STAGING_DIR/app.asar" "$RESOURCES_DIR/"
+fi
+if [ -d "$APP_STAGING_DIR/app.asar.unpacked" ]; then
+    cp -a "$APP_STAGING_DIR/app.asar.unpacked" "$RESOURCES_DIR/"
+fi
+echo "✓ Application files copied to Electron resources directory"
 
 # Ensure Electron is bundled within the AppDir for portability
 # Check if electron was copied into the staging dir's node_modules
@@ -100,7 +104,8 @@ fi
 # Path to the bundled Electron executable
 # Use the path relative to AppRun within the 'electron/dist' module directory
 ELECTRON_EXEC="\$APPDIR/usr/lib/node_modules/electron/dist/electron"
-APP_PATH="\$APPDIR/usr/lib/app.asar"
+# App is now in Electron's resources directory
+APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
 
 # Base command arguments array
 # Add --no-sandbox flag to avoid sandbox issues within AppImage
@@ -123,8 +128,8 @@ ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
-# Change to the application resources directory (where app.asar is)
-cd "\$APPDIR/usr/lib" || exit 1
+# Change to the Electron resources directory (where app.asar is)
+cd "\$APPDIR/usr/lib/node_modules/electron/dist/resources" || exit 1
 
 # Define log file path in user's home directory
 LOG_FILE="\$HOME/claude-desktop-launcher.log"

@@ -58,15 +58,19 @@ echo "✓ Icons installed"
 
 # --- Copy Application Files ---
 echo "📦 Copying application files from $APP_STAGING_DIR..."
-cp "$APP_STAGING_DIR/app.asar" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
-cp -r "$APP_STAGING_DIR/app.asar.unpacked" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
 
-# Copy local electron if it was packaged (check if node_modules exists in staging)
+# Copy local electron first if it was packaged (check if node_modules exists in staging)
 if [ -d "$APP_STAGING_DIR/node_modules" ]; then
     echo "Copying packaged electron..."
     cp -r "$APP_STAGING_DIR/node_modules" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
 fi
-echo "✓ Application files copied"
+
+# Install app.asar in Electron's resources directory where process.resourcesPath points
+RESOURCES_DIR="$INSTALL_DIR/lib/$PACKAGE_NAME/node_modules/electron/dist/resources"
+mkdir -p "$RESOURCES_DIR"
+cp "$APP_STAGING_DIR/app.asar" "$RESOURCES_DIR/"
+cp -r "$APP_STAGING_DIR/app.asar.unpacked" "$RESOURCES_DIR/"
+echo "✓ Application files copied to Electron resources directory"
 
 # --- Create Desktop Entry ---
 echo "📝 Creating desktop entry..."
@@ -139,7 +143,8 @@ else
 fi
 
 # Base command arguments array, starting with app path
-APP_PATH="/usr/lib/$PACKAGE_NAME/app.asar"
+# App is now in Electron's resources directory
+APP_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/resources/app.asar"
 ELECTRON_ARGS=("\$APP_PATH")
 
 # Add compatibility flags
@@ -162,8 +167,8 @@ ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
-# Change to the application directory
-APP_DIR="/usr/lib/$PACKAGE_NAME"
+# Change to the Electron resources directory where app.asar lives
+APP_DIR="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/resources"
 echo "Changing directory to \$APP_DIR" >> "\$LOG_FILE"
 cd "\$APP_DIR" || { echo "Failed to cd to \$APP_DIR" >> "\$LOG_FILE"; exit 1; }
 
