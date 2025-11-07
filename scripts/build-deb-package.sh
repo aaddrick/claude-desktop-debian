@@ -167,8 +167,8 @@ ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
-# Change to the Electron resources directory where app.asar lives
-APP_DIR="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/resources"
+# Change to the application directory (not resources dir - app needs this as base)
+APP_DIR="/usr/lib/$PACKAGE_NAME"
 echo "Changing directory to \$APP_DIR" >> "\$LOG_FILE"
 cd "\$APP_DIR" || { echo "Failed to cd to \$APP_DIR" >> "\$LOG_FILE"; exit 1; }
 

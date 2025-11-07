@@ -128,9 +128,6 @@ ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
-# Change to the Electron resources directory (where app.asar is)
-cd "\$APPDIR/usr/lib/node_modules/electron/dist/resources" || exit 1
-
 # Define log file path in user's home directory
 LOG_FILE="\$HOME/claude-desktop-launcher.log"
 
