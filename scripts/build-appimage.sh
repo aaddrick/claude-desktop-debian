@@ -135,9 +135,9 @@ LOG_FILE="\$HOME/claude-desktop-launcher.log"
 cd "\$HOME" || exit 1
 
 # Execute Electron with app path, flags, and script arguments passed to AppRun
-# Redirect stdout and stderr to the log file (append)
-echo "AppRun: Executing \$ELECTRON_EXEC \${ELECTRON_ARGS[@]} \$@ >> \$LOG_FILE 2>&1"
-exec "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" >> "\$LOG_FILE" 2>&1
+# Redirect stdout and stderr to the log file (reset on each launch)
+echo "AppRun: Executing \$ELECTRON_EXEC \${ELECTRON_ARGS[@]} \$@ > \$LOG_FILE 2>&1"
+exec "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" > "\$LOG_FILE" 2>&1
 EOF
 chmod +x "$APPDIR_PATH/AppRun"
 echo "✓ AppRun script created (with logging to \$HOME/claude-desktop-launcher.log, --no-sandbox, and CWD set to \$HOME)"
