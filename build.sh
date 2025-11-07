@@ -374,22 +374,6 @@ if ! 7z x -y "$NUPKG_PATH_RELATIVE"; then     echo "❌ Failed to extract nupkg"
 fi
 echo "✓ Resources extracted from nupkg"
 
-EXE_RELATIVE_PATH="lib/net45/claude.exe" # Check if this path is correct for arm64 too
-if [ ! -f "$EXE_RELATIVE_PATH" ]; then
-    echo "❌ Cannot find claude.exe at expected path within extraction dir: $CLAUDE_EXTRACT_DIR/$EXE_RELATIVE_PATH"
-    cd "$PROJECT_ROOT" && exit 1
-fi
-echo "🎨 Processing icons from $EXE_RELATIVE_PATH..."
-if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then     echo "❌ Failed to extract icons from exe"
-    cd "$PROJECT_ROOT" && exit 1
-fi
-
-if ! icotool -x claude.ico; then     echo "❌ Failed to convert icons"
-    cd "$PROJECT_ROOT" && exit 1
-fi
-cp claude_*.png "$WORK_DIR/"
-echo "✓ Icons processed and copied to $WORK_DIR"
-
 echo "⚙️ Processing app.asar..."
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar" "$APP_STAGING_DIR/"
 cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/"
@@ -530,7 +514,7 @@ EOF
 
 mkdir -p app.asar.contents/resources
 mkdir -p app.asar.contents/resources/i18n
-cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/Tray"* app.asar.contents/resources/
+
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/
 
 echo "##############################################################"
@@ -641,8 +625,42 @@ else
     echo "⚠️  Warning: Electron resources directory not found at $ELECTRON_RESOURCES_SRC"
 fi
 
-# Copy Claude locale JSON files to Electron resources directory where they're expected
+echo -e "\033[1;36m--- Icon Processing ---\033[0m"
+# Extract application icons from Windows executable
+cd "$CLAUDE_EXTRACT_DIR"
+EXE_RELATIVE_PATH="lib/net45/claude.exe"
+if [ ! -f "$EXE_RELATIVE_PATH" ]; then
+    echo "❌ Cannot find claude.exe at expected path within extraction dir: $CLAUDE_EXTRACT_DIR/$EXE_RELATIVE_PATH"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "🎨 Extracting application icons from $EXE_RELATIVE_PATH..."
+if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then
+    echo "❌ Failed to extract icons from exe"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+
+if ! icotool -x claude.ico; then
+    echo "❌ Failed to convert icons"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+cp claude_*.png "$WORK_DIR/"
+echo "✓ Application icons extracted and copied to $WORK_DIR"
+
+cd "$PROJECT_ROOT"
+
+# Copy tray icon files to Electron resources directory for runtime access
 CLAUDE_LOCALE_SRC="$CLAUDE_EXTRACT_DIR/lib/net45/resources"
+echo "🖼️  Copying tray icon files to Electron resources directory..."
+if [ -d "$CLAUDE_LOCALE_SRC" ]; then
+    # Tray icons must be in filesystem (not inside asar) for Electron Tray API to access them
+    cp "$CLAUDE_LOCALE_SRC/Tray"* "$ELECTRON_RESOURCES_DEST/" 2>/dev/null || echo "⚠️  Warning: No tray icon files found at $CLAUDE_LOCALE_SRC/Tray*"
+    echo "✓ Tray icon files copied to Electron resources directory"
+else
+    echo "⚠️  Warning: Claude resources directory not found at $CLAUDE_LOCALE_SRC"
+fi
+echo -e "\033[1;36m--- End Icon Processing ---\033[0m"
+
+# Copy Claude locale JSON files to Electron resources directory where they're expected
 echo "Copying Claude locale JSON files to Electron resources directory..."
 if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     # Copy Claude's locale JSON files to the Electron resources directory
