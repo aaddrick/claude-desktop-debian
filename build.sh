@@ -560,6 +560,23 @@ else
 fi
 echo "##############################################################"
 
+echo "Patching BI() function to prevent concurrent calls and add DBus cleanup delay..."
+# Make BI() async
+sed -i 's/function BI(){/async function BI(){/g' app.asar.contents/.vite/build/index.js
+
+# Add mutex guard at start of function and auto-release with setTimeout
+# Pattern: async function BI(){const t=
+# Replace: async function BI(){if(BI._running)return;BI._running=true;setTimeout(()=>BI._running=false,500);const t=
+sed -i 's/async function BI(){const t=/async function BI(){if(BI._running)return;BI._running=true;setTimeout(()=>BI._running=false,500);const t=/g' app.asar.contents/.vite/build/index.js
+
+# Add delay after Tray destroy for DBus cleanup
+# Pattern: Yn&&(Yn.destroy(),Yn=null)
+# Replace: Yn&&(Yn.destroy(),Yn=null,await new Promise(r=>setTimeout(r,50)))
+sed -i 's/Yn&&(Yn\.destroy(),Yn=null)/Yn\&\&(Yn.destroy(),Yn=null,await new Promise(r=>setTimeout(r,50)))/g' app.asar.contents/.vite/build/index.js
+
+echo "✓ BI() function patched with mutex and DBus cleanup delay"
+echo "##############################################################"
+
 "$ASAR_EXEC" pack app.asar.contents app.asar
 
 mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/claude-native"
