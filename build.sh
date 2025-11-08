@@ -560,21 +560,58 @@ else
 fi
 echo "##############################################################"
 
-echo "Patching BI() function to prevent concurrent calls and add DBus cleanup delay..."
-# Make BI() async
-sed -i 's/function BI(){/async function BI(){/g' app.asar.contents/.vite/build/index.js
+echo "Patching tray menu handler function to prevent concurrent calls and add DBus cleanup delay..."
 
-# Add mutex guard at start of function and auto-release with setTimeout
-# Pattern: async function BI(){const t=
-# Replace: async function BI(){if(BI._running)return;BI._running=true;setTimeout(()=>BI._running=false,500);const t=
-sed -i 's/async function BI(){const t=/async function BI(){if(BI._running)return;BI._running=true;setTimeout(()=>BI._running=false,500);const t=/g' app.asar.contents/.vite/build/index.js
+# Step 1: Extract function name from menuBarEnabled listener
+# Pattern: on("menuBarEnabled",()=>{FUNCNAME()})
+TRAY_FUNC=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K\w+(?=\(\)\})' app.asar.contents/.vite/build/index.js)
+if [ -z "$TRAY_FUNC" ]; then
+    echo "❌ Failed to extract tray menu function name"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "  Found tray function: $TRAY_FUNC"
 
-# Add delay after Tray destroy for DBus cleanup
-# Pattern: Yn&&(Yn.destroy(),Yn=null)
-# Replace: Yn&&(Yn.destroy(),Yn=null,await new Promise(r=>setTimeout(r,50)))
-sed -i 's/Yn&&(Yn\.destroy(),Yn=null)/Yn\&\&(Yn.destroy(),Yn=null,await new Promise(r=>setTimeout(r,50)))/g' app.asar.contents/.vite/build/index.js
+# Step 2: Extract tray variable name (the variable set to null before the function)
+# Pattern: });let TRAYVAR=null;function FUNCNAME (may or may not be async yet)
+TRAY_VAR=$(grep -oP "\}\);let \K\w+(?==null;(?:async )?function ${TRAY_FUNC})" app.asar.contents/.vite/build/index.js)
+if [ -z "$TRAY_VAR" ]; then
+    echo "❌ Failed to extract tray variable name"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "  Found tray variable: $TRAY_VAR"
 
-echo "✓ BI() function patched with mutex and DBus cleanup delay"
+# Step 3: Make the function async (if not already)
+sed -i "s/function ${TRAY_FUNC}(){/async function ${TRAY_FUNC}(){/g" app.asar.contents/.vite/build/index.js
+
+# Step 4: Extract first const variable name in the function
+# Pattern: async function FUNCNAME(){if(FUNCNAME._running)...const VARNAME=
+# (after mutex is added) or async function FUNCNAME(){const VARNAME= (before mutex)
+FIRST_CONST=$(grep -oP "async function ${TRAY_FUNC}\(\)\{(?:if\(${TRAY_FUNC}\._running\)[^}]*?)?const \K\w+(?==)" app.asar.contents/.vite/build/index.js | head -1)
+if [ -z "$FIRST_CONST" ]; then
+    echo "❌ Failed to extract first const variable name in function"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "  Found first const variable: $FIRST_CONST"
+
+# Step 5: Add mutex guard at start of function (only if not already present)
+if ! grep -q "${TRAY_FUNC}._running" app.asar.contents/.vite/build/index.js; then
+    sed -i "s/async function ${TRAY_FUNC}(){const ${FIRST_CONST}=/async function ${TRAY_FUNC}(){if(${TRAY_FUNC}._running)return;${TRAY_FUNC}._running=true;setTimeout(()=>${TRAY_FUNC}._running=false,500);const ${FIRST_CONST}=/g" app.asar.contents/.vite/build/index.js
+    echo "  ✓ Added mutex guard to ${TRAY_FUNC}()"
+else
+    echo "  ℹ️  Mutex guard already present in ${TRAY_FUNC}()"
+fi
+
+# Step 6: Add delay after Tray destroy for DBus cleanup (only if not already present)
+if ! grep -q "await new Promise.*setTimeout" app.asar.contents/.vite/build/index.js | grep -q "${TRAY_VAR}"; then
+    # Pattern: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null)
+    # Replace: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null,await new Promise(r=>setTimeout(r,50)))
+    sed -i "s/${TRAY_VAR}\&\&(${TRAY_VAR}\.destroy(),${TRAY_VAR}=null)/${TRAY_VAR}\&\&(${TRAY_VAR}.destroy(),${TRAY_VAR}=null,await new Promise(r=>setTimeout(r,50)))/g" app.asar.contents/.vite/build/index.js
+    echo "  ✓ Added DBus cleanup delay after ${TRAY_VAR}.destroy()"
+else
+    echo "  ℹ️  DBus cleanup delay already present for ${TRAY_VAR}"
+fi
+
+echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
 "$ASAR_EXEC" pack app.asar.contents app.asar
