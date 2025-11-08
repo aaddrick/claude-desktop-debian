@@ -128,8 +128,10 @@ ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
-# Define log file path in user's home directory
-LOG_FILE="\$HOME/claude-desktop-launcher.log"
+# Define log file path following XDG Base Directory specification
+LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/claude-desktop-debian"
+mkdir -p "\$LOG_DIR"
+LOG_FILE="\$LOG_DIR/launcher.log"
 
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
 cd "\$HOME" || exit 1
@@ -140,7 +142,7 @@ echo "AppRun: Executing \$ELECTRON_EXEC \${ELECTRON_ARGS[@]} \$@ > \$LOG_FILE 2>
 exec "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" > "\$LOG_FILE" 2>&1
 EOF
 chmod +x "$APPDIR_PATH/AppRun"
-echo "✓ AppRun script created (with logging to \$HOME/claude-desktop-launcher.log, --no-sandbox, and CWD set to \$HOME)"
+echo "✓ AppRun script created (with logging to \$XDG_CACHE_HOME/claude-desktop-debian/launcher.log, --no-sandbox, and CWD set to \$HOME)"
 
 # --- Create Desktop Entry (Bundled inside AppDir) ---
 echo "📝 Creating bundled desktop entry..."

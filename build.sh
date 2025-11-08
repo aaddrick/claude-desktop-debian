@@ -374,22 +374,6 @@ if ! 7z x -y "$NUPKG_PATH_RELATIVE"; then     echo "❌ Failed to extract nupkg"
 fi
 echo "✓ Resources extracted from nupkg"
 
-EXE_RELATIVE_PATH="lib/net45/claude.exe" # Check if this path is correct for arm64 too
-if [ ! -f "$EXE_RELATIVE_PATH" ]; then
-    echo "❌ Cannot find claude.exe at expected path within extraction dir: $CLAUDE_EXTRACT_DIR/$EXE_RELATIVE_PATH"
-    cd "$PROJECT_ROOT" && exit 1
-fi
-echo "🎨 Processing icons from $EXE_RELATIVE_PATH..."
-if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then     echo "❌ Failed to extract icons from exe"
-    cd "$PROJECT_ROOT" && exit 1
-fi
-
-if ! icotool -x claude.ico; then     echo "❌ Failed to convert icons"
-    cd "$PROJECT_ROOT" && exit 1
-fi
-cp claude_*.png "$WORK_DIR/"
-echo "✓ Icons processed and copied to $WORK_DIR"
-
 echo "⚙️ Processing app.asar..."
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar" "$APP_STAGING_DIR/"
 cp -a "$CLAUDE_EXTRACT_DIR/lib/net45/resources/app.asar.unpacked" "$APP_STAGING_DIR/"
@@ -530,7 +514,7 @@ EOF
 
 mkdir -p app.asar.contents/resources
 mkdir -p app.asar.contents/resources/i18n
-cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/Tray"* app.asar.contents/resources/
+
 cp "$CLAUDE_EXTRACT_DIR/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/
 
 echo "##############################################################"
@@ -574,6 +558,60 @@ else
     exit 1
   fi
 fi
+echo "##############################################################"
+
+echo "Patching tray menu handler function to prevent concurrent calls and add DBus cleanup delay..."
+
+# Step 1: Extract function name from menuBarEnabled listener
+# Pattern: on("menuBarEnabled",()=>{FUNCNAME()})
+TRAY_FUNC=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K\w+(?=\(\)\})' app.asar.contents/.vite/build/index.js)
+if [ -z "$TRAY_FUNC" ]; then
+    echo "❌ Failed to extract tray menu function name"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "  Found tray function: $TRAY_FUNC"
+
+# Step 2: Extract tray variable name (the variable set to null before the function)
+# Pattern: });let TRAYVAR=null;function FUNCNAME (may or may not be async yet)
+TRAY_VAR=$(grep -oP "\}\);let \K\w+(?==null;(?:async )?function ${TRAY_FUNC})" app.asar.contents/.vite/build/index.js)
+if [ -z "$TRAY_VAR" ]; then
+    echo "❌ Failed to extract tray variable name"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "  Found tray variable: $TRAY_VAR"
+
+# Step 3: Make the function async (if not already)
+sed -i "s/function ${TRAY_FUNC}(){/async function ${TRAY_FUNC}(){/g" app.asar.contents/.vite/build/index.js
+
+# Step 4: Extract first const variable name in the function
+# Pattern: async function FUNCNAME(){if(FUNCNAME._running)...const VARNAME=
+# (after mutex is added) or async function FUNCNAME(){const VARNAME= (before mutex)
+FIRST_CONST=$(grep -oP "async function ${TRAY_FUNC}\(\)\{(?:if\(${TRAY_FUNC}\._running\)[^}]*?)?const \K\w+(?==)" app.asar.contents/.vite/build/index.js | head -1)
+if [ -z "$FIRST_CONST" ]; then
+    echo "❌ Failed to extract first const variable name in function"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "  Found first const variable: $FIRST_CONST"
+
+# Step 5: Add mutex guard at start of function (only if not already present)
+if ! grep -q "${TRAY_FUNC}._running" app.asar.contents/.vite/build/index.js; then
+    sed -i "s/async function ${TRAY_FUNC}(){const ${FIRST_CONST}=/async function ${TRAY_FUNC}(){if(${TRAY_FUNC}._running)return;${TRAY_FUNC}._running=true;setTimeout(()=>${TRAY_FUNC}._running=false,500);const ${FIRST_CONST}=/g" app.asar.contents/.vite/build/index.js
+    echo "  ✓ Added mutex guard to ${TRAY_FUNC}()"
+else
+    echo "  ℹ️  Mutex guard already present in ${TRAY_FUNC}()"
+fi
+
+# Step 6: Add delay after Tray destroy for DBus cleanup (only if not already present)
+if ! grep -q "await new Promise.*setTimeout" app.asar.contents/.vite/build/index.js | grep -q "${TRAY_VAR}"; then
+    # Pattern: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null)
+    # Replace: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null,await new Promise(r=>setTimeout(r,50)))
+    sed -i "s/${TRAY_VAR}\&\&(${TRAY_VAR}\.destroy(),${TRAY_VAR}=null)/${TRAY_VAR}\&\&(${TRAY_VAR}.destroy(),${TRAY_VAR}=null,await new Promise(r=>setTimeout(r,50)))/g" app.asar.contents/.vite/build/index.js
+    echo "  ✓ Added DBus cleanup delay after ${TRAY_VAR}.destroy()"
+else
+    echo "  ℹ️  DBus cleanup delay already present for ${TRAY_VAR}"
+fi
+
+echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
 "$ASAR_EXEC" pack app.asar.contents app.asar
@@ -641,8 +679,42 @@ else
     echo "⚠️  Warning: Electron resources directory not found at $ELECTRON_RESOURCES_SRC"
 fi
 
-# Copy Claude locale JSON files to Electron resources directory where they're expected
+echo -e "\033[1;36m--- Icon Processing ---\033[0m"
+# Extract application icons from Windows executable
+cd "$CLAUDE_EXTRACT_DIR"
+EXE_RELATIVE_PATH="lib/net45/claude.exe"
+if [ ! -f "$EXE_RELATIVE_PATH" ]; then
+    echo "❌ Cannot find claude.exe at expected path within extraction dir: $CLAUDE_EXTRACT_DIR/$EXE_RELATIVE_PATH"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+echo "🎨 Extracting application icons from $EXE_RELATIVE_PATH..."
+if ! wrestool -x -t 14 "$EXE_RELATIVE_PATH" -o claude.ico; then
+    echo "❌ Failed to extract icons from exe"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+
+if ! icotool -x claude.ico; then
+    echo "❌ Failed to convert icons"
+    cd "$PROJECT_ROOT" && exit 1
+fi
+cp claude_*.png "$WORK_DIR/"
+echo "✓ Application icons extracted and copied to $WORK_DIR"
+
+cd "$PROJECT_ROOT"
+
+# Copy tray icon files to Electron resources directory for runtime access
 CLAUDE_LOCALE_SRC="$CLAUDE_EXTRACT_DIR/lib/net45/resources"
+echo "🖼️  Copying tray icon files to Electron resources directory..."
+if [ -d "$CLAUDE_LOCALE_SRC" ]; then
+    # Tray icons must be in filesystem (not inside asar) for Electron Tray API to access them
+    cp "$CLAUDE_LOCALE_SRC/Tray"* "$ELECTRON_RESOURCES_DEST/" 2>/dev/null || echo "⚠️  Warning: No tray icon files found at $CLAUDE_LOCALE_SRC/Tray*"
+    echo "✓ Tray icon files copied to Electron resources directory"
+else
+    echo "⚠️  Warning: Claude resources directory not found at $CLAUDE_LOCALE_SRC"
+fi
+echo -e "\033[1;36m--- End Icon Processing ---\033[0m"
+
+# Copy Claude locale JSON files to Electron resources directory where they're expected
 echo "Copying Claude locale JSON files to Electron resources directory..."
 if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     # Copy Claude's locale JSON files to the Electron resources directory
