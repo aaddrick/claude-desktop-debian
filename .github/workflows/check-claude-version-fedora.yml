@@ -32,9 +32,9 @@ jobs:
     
     - name: Set up environment
       run: |
-        # Install only required packages with explicit versions where possible
-        dnf install -y p7zip-20.* wget-1.* git-2.* which findutils
-        
+        # Install required packages (version pinning removed for Fedora 42 compatibility)
+        dnf install -y p7zip p7zip-plugins wget git which findutils
+
         # Verify installed packages
         which 7z wget git || {
           echo "ERROR: Required tools not properly installed"
