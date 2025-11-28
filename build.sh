@@ -10,12 +10,12 @@ cat /etc/os-release && uname -m && dpkg --print-architecture
 
 # Set variables based on detected architecture
 if [ "$HOST_ARCH" = "amd64" ]; then
-    CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
+    CLAUDE_DOWNLOAD_URL="https://claude.ai/api/desktop/win32/x64/exe/latest/redirect"
     ARCHITECTURE="amd64"
     CLAUDE_EXE_FILENAME="Claude-Setup-x64.exe"
     echo "Configured for amd64 build."
 elif [ "$HOST_ARCH" = "arm64" ]; then
-    CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-arm64/Claude-Setup-arm64.exe"
+    CLAUDE_DOWNLOAD_URL="https://claude.ai/api/desktop/win32/arm64/exe/latest/redirect"
     ARCHITECTURE="arm64"
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
     echo "Configured for arm64 build."
@@ -341,7 +341,7 @@ echo "Using asar executable: $ASAR_EXEC"
 echo -e "\033[1;36m--- Download the latest Claude executable ---\033[0m"
 echo "📥 Downloading Claude Desktop installer for $ARCHITECTURE..."
 CLAUDE_EXE_PATH="$WORK_DIR/$CLAUDE_EXE_FILENAME"
-if ! wget -O "$CLAUDE_EXE_PATH" "$CLAUDE_DOWNLOAD_URL"; then
+if ! curl -Lo "$CLAUDE_EXE_PATH" "$CLAUDE_DOWNLOAD_URL" -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-US,en;q=0.5' -H 'Connection: keep-alive' -H 'Sec-Ch-Ua: "Chromium";v="128", "Not;A=Brand";v="24", "Brave";v="128"' -H 'Sec-Ch-Ua-Mobile: ?0' -H 'Sec-Ch-Ua-Platform: "Windows"' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate' -H 'Sec-Fetch-Site: none' -H 'Sec-Fetch-User: ?1' -H 'Sec-Gpc: 1' -H 'Upgrade-Insecure-Requests: 1' -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' --compressed; then
     echo "❌ Failed to download Claude Desktop installer from $CLAUDE_DOWNLOAD_URL"
     exit 1
 fi
@@ -475,7 +475,7 @@ console.log('Updated package.json main to frame-fix-entry.js');
 "
 
 echo "Creating stub native module..."
-cat > app.asar.contents/node_modules/claude-native/index.js << 'EOF'
+cat > app.asar.contents/node_modules/@ant/claude-native/index.js << 'EOF'
 // Stub implementation of claude-native for Linux
 const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
 Object.freeze(KeyboardKey);
@@ -614,10 +614,20 @@ fi
 echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
+
+# Allow claude code installation
+if ! grep -q 'process.arch==="arm64"?"linux-arm64":"linux-x64"' app.asar.contents/.vite/build/index.js; then
+    sed -i 's/if(process.platform==="win32")return"win32-x64";/if(process.platform==="win32")return"win32-x64";if(process.platform==="linux")return process.arch==="arm64"?"linux-arm64":"linux-x64";/' app.asar.contents/.vite/build/index.js
+    echo "✓ Added support for linux claude code binary"
+else
+    echo "ℹ️  Linux claude code binary support already present"
+fi
+
+
 "$ASAR_EXEC" pack app.asar.contents app.asar
 
-mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/claude-native"
-cat > "$APP_STAGING_DIR/app.asar.unpacked/node_modules/claude-native/index.js" << 'EOF'
+mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native"
+cat > "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native/index.js" << 'EOF'
 // Stub implementation of claude-native for Linux
 const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
 Object.freeze(KeyboardKey);
