@@ -475,7 +475,8 @@ console.log('Updated package.json main to frame-fix-entry.js');
 "
 
 echo "Creating stub native module..."
-cat > app.asar.contents/node_modules/claude-native/index.js << 'EOF'
+mkdir -p app.asar.contents/node_modules/@ant/claude-native
+cat > app.asar.contents/node_modules/@ant/claude-native/index.js << 'EOF'
 // Stub implementation of claude-native for Linux
 const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
 Object.freeze(KeyboardKey);
@@ -614,10 +615,20 @@ fi
 echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
+
+# Allow claude code installation
+if ! grep -q 'process.arch==="arm64"?"linux-arm64":"linux-x64"' app.asar.contents/.vite/build/index.js; then
+    sed -i 's/if(process.platform==="win32")return"win32-x64";/if(process.platform==="win32")return"win32-x64";if(process.platform==="linux")return process.arch==="arm64"?"linux-arm64":"linux-x64";/' app.asar.contents/.vite/build/index.js
+    echo "✓ Added support for linux claude code binary"
+else
+    echo "ℹ️  Linux claude code binary support already present"
+fi
+
+
 "$ASAR_EXEC" pack app.asar.contents app.asar
 
-mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/claude-native"
-cat > "$APP_STAGING_DIR/app.asar.unpacked/node_modules/claude-native/index.js" << 'EOF'
+mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native"
+cat > "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native/index.js" << 'EOF'
 // Stub implementation of claude-native for Linux
 const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
 Object.freeze(KeyboardKey);
