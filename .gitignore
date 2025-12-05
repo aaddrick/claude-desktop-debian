@@ -19,3 +19,6 @@ Thumbs.db
 *.desktop
 *.deb
 *.exe
+
+.claude/
+CLAUDE.md
