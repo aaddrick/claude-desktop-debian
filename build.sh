@@ -615,6 +615,12 @@ fi
 echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
+# Fix quick window submit issue by adding blur() call before hide()
+if ! grep -q 'e.blur(),e.hide()' app.asar.contents/.vite/build/index.js; then
+    sed -i 's/e.hide()/e.blur(),e.hide()/' app.asar.contents/.vite/build/index.js
+    echo "✓ Added blur() call to fix quick window submit issue"
+fi
+
 
 # Allow claude code installation
 if ! grep -q 'process.arch==="arm64"?"linux-arm64":"linux-x64"' app.asar.contents/.vite/build/index.js; then
