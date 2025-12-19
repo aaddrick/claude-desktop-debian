@@ -10,12 +10,12 @@ cat /etc/os-release && uname -m && dpkg --print-architecture
 
 # Set variables based on detected architecture
 if [ "$HOST_ARCH" = "amd64" ]; then
-    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/1.0.1768/Claude-67d01376d0e9d08b328455f6db9e63b0d603506a.exe"
+    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/1.0.2339/Claude-1782e27bb4481b2865073bfb82a97b5b23554636.exe"
     ARCHITECTURE="amd64"
     CLAUDE_EXE_FILENAME="Claude-Setup-x64.exe"
     echo "Configured for amd64 build."
 elif [ "$HOST_ARCH" = "arm64" ]; then
-    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/arm64/1.0.1768/Claude-67d01376d0e9d08b328455f6db9e63b0d603506a.exe"
+    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/arm64/1.0.2339/Claude-1782e27bb4481b2865073bfb82a97b5b23554636.exe"
     ARCHITECTURE="arm64"
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
     echo "Configured for arm64 build."
