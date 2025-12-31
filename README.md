@@ -1,6 +1,9 @@
 # Claude Desktop for Linux
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Debian-based distributions, producing either `.deb` packages or AppImages.
+This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for multiple Linux distributions, producing:
+- **`.deb`** packages for Debian/Ubuntu-based systems
+- **`.rpm`** packages for Fedora/RHEL-based systems
+- **AppImages** for universal Linux support
 
 **Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
 
@@ -32,9 +35,30 @@ Download the latest `.deb` or `.AppImage` from the [Releases page](https://githu
 
 #### Prerequisites
 
-- Debian-based Linux distribution (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
-- Git
-- Basic build tools (automatically installed by the script)
+**Supported Distributions:**
+- **Debian/Ubuntu-based**: Debian, Ubuntu, Linux Mint, MX Linux, etc.
+- **Fedora/RHEL-based**: Fedora, RHEL, CentOS, Rocky Linux, AlmaLinux, etc.
+
+**Dependencies:**
+
+The build script will automatically check for and install missing dependencies. If you prefer to install them manually:
+
+<details>
+<summary>Debian/Ubuntu (click to expand)</summary>
+
+```bash
+sudo apt update
+sudo apt install -y p7zip-full wget icoutils imagemagick nodejs npm dpkg-dev
+```
+</details>
+
+<details>
+<summary>Fedora/RHEL (click to expand)</summary>
+
+```bash
+sudo dnf install -y p7zip p7zip-plugins wget icoutils ImageMagick nodejs npm rpm-build
+```
+</details>
 
 #### Build Instructions
 
@@ -43,24 +67,42 @@ Download the latest `.deb` or `.AppImage` from the [Releases page](https://githu
 git clone https://github.com/aaddrick/claude-desktop-debian.git
 cd claude-desktop-debian
 
-# Build a .deb package (default)
-./build.sh
+# Build a .deb package (default on Debian/Ubuntu)
+./build.sh --build deb
 
-# Build an AppImage
+# Build an .rpm package (for Fedora/RHEL)
+./build.sh --build rpm
+
+# Build an AppImage (universal)
 ./build.sh --build appimage
 
 # Build with custom options
 ./build.sh --build deb --clean no  # Keep intermediate files
 ```
 
+**See also:** [RPM_BUILD_GUIDE.md](RPM_BUILD_GUIDE.md) for detailed RPM package build instructions.
+
 #### Installing the Built Package
 
-**For .deb packages:**
+**For .deb packages (Debian/Ubuntu):**
 ```bash
-sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
+sudo apt install ./claude-desktop_VERSION_ARCHITECTURE.deb
 
+# Or using dpkg:
+sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
 # If you encounter dependency issues:
 sudo apt --fix-broken install
+```
+
+**For .rpm packages (Fedora/RHEL):**
+```bash
+sudo dnf install ./claude-desktop-VERSION-RELEASE.ARCH.rpm
+
+# Or using rpm:
+sudo rpm -ivh ./claude-desktop-VERSION-RELEASE.ARCH.rpm
+
+# On RHEL/CentOS, you may need to use yum:
+sudo yum install ./claude-desktop-VERSION-RELEASE.ARCH.rpm
 ```
 
 **For AppImages:**
@@ -99,10 +141,22 @@ $HOME/claude-desktop-launcher.log
 **For .deb packages:**
 ```bash
 # Remove package
-sudo dpkg -r claude-desktop
+sudo apt remove claude-desktop
+# Or: sudo dpkg -r claude-desktop
 
 # Remove package and configuration
-sudo dpkg -P claude-desktop
+sudo apt purge claude-desktop
+# Or: sudo dpkg -P claude-desktop
+```
+
+**For .rpm packages:**
+```bash
+# Remove package
+sudo dnf remove claude-desktop
+# Or: sudo rpm -e claude-desktop
+
+# On RHEL/CentOS:
+sudo yum remove claude-desktop
 ```
 
 **For AppImages:**
@@ -144,9 +198,10 @@ Claude Desktop is an Electron application distributed for Windows. This project:
 1. Downloads the official Windows installer
 2. Extracts application resources
 3. Replaces Windows-specific native modules with Linux-compatible implementations
-4. Repackages as either:
-   - **Debian package**: Standard system package with full integration
-   - **AppImage**: Portable, self-contained executable
+4. Repackages as:
+   - **Debian package (.deb)**: Standard package for Debian/Ubuntu systems with full integration
+   - **RPM package (.rpm)**: Standard package for Fedora/RHEL systems with full integration
+   - **AppImage**: Portable, self-contained executable for universal Linux support
 
 ### Build Process
 

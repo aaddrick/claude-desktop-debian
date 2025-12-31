@@ -1,20 +1,56 @@
 #!/bin/bash
 set -euo pipefail
 
+# Check for supported Linux distribution first
+DISTRO_TYPE=""
+if [ -f "/etc/debian_version" ]; then
+    DISTRO_TYPE="debian"
+    echo "Detected Debian-based distribution"
+elif [ -f "/etc/fedora-release" ] || [ -f "/etc/redhat-release" ]; then
+    DISTRO_TYPE="fedora"
+    echo "Detected Fedora/RHEL-based distribution"
+else
+    echo "❌ This script requires a Debian-based or Fedora/RHEL-based Linux distribution"
+    exit 1
+fi
+
 # --- Architecture Detection ---
 echo -e "\033[1;36m--- Architecture Detection ---\033[0m"
 echo "⚙️ Detecting system architecture..."
-HOST_ARCH=$(dpkg --print-architecture)
-echo "Detected host architecture: $HOST_ARCH"
-cat /etc/os-release && uname -m && dpkg --print-architecture
+
+# Detect architecture based on distro type
+if [ "$DISTRO_TYPE" = "debian" ]; then
+    HOST_ARCH=$(dpkg --print-architecture)
+    echo "Detected host architecture (dpkg): $HOST_ARCH"
+else
+    # For Fedora/RHEL, use uname -m and convert to standard naming
+    UNAME_ARCH=$(uname -m)
+    case "$UNAME_ARCH" in
+        x86_64)
+            HOST_ARCH="amd64"
+            ;;
+        aarch64)
+            HOST_ARCH="arm64"
+            ;;
+        *)
+            HOST_ARCH="$UNAME_ARCH"
+            ;;
+    esac
+    echo "Detected host architecture (uname): $HOST_ARCH"
+fi
+
+cat /etc/os-release && uname -m
+if command -v dpkg &> /dev/null; then
+    dpkg --print-architecture
+fi
 
 # Set variables based on detected architecture
-if [ "$HOST_ARCH" = "amd64" ]; then
+if [ "$HOST_ARCH" = "amd64" ] || [ "$HOST_ARCH" = "x86_64" ]; then
     CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
     ARCHITECTURE="amd64"
     CLAUDE_EXE_FILENAME="Claude-Setup-x64.exe"
     echo "Configured for amd64 build."
-elif [ "$HOST_ARCH" = "arm64" ]; then
+elif [ "$HOST_ARCH" = "arm64" ] || [ "$HOST_ARCH" = "aarch64" ]; then
     CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-arm64/Claude-Setup-arm64.exe"
     ARCHITECTURE="arm64"
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
@@ -25,12 +61,6 @@ else
 fi
 echo "Target Architecture (detected): $ARCHITECTURE" # Renamed echo
 echo -e "\033[1;36m--- End Architecture Detection ---\033[0m"
-
-
-if [ ! -f "/etc/debian_version" ]; then
-    echo "❌ This script requires a Debian-based Linux distribution"
-    exit 1
-fi
 
 if [ "$EUID" -eq 0 ]; then
    echo "❌ This script should not be run using sudo or as the root user."
@@ -53,11 +83,16 @@ if [ -d "$ORIGINAL_HOME/.nvm" ]; then
     export NVM_DIR="$ORIGINAL_HOME/.nvm"
     if [ -s "$NVM_DIR/nvm.sh" ]; then
         # Source NVM script to set up NVM environment variables temporarily
+        # Save current arguments before sourcing NVM (which tries to process them)
+        SAVED_ARGS=("$@")
+        set -- # Clear arguments temporarily
         # shellcheck disable=SC1091
-        \. "$NVM_DIR/nvm.sh" # This loads nvm
+        \. "$NVM_DIR/nvm.sh" --no-use # This loads nvm without auto-using
+        set -- "${SAVED_ARGS[@]}" # Restore arguments
+
         # Initialize and find the path to the currently active or default Node version's bin directory
         NODE_BIN_PATH=""
-        NODE_BIN_PATH=$(nvm which current | xargs dirname 2>/dev/null || find "$NVM_DIR/versions/node" -maxdepth 2 -type d -name 'bin' | sort -V | tail -n 1)
+        NODE_BIN_PATH=$(nvm which current 2>/dev/null | xargs dirname 2>/dev/null || find "$NVM_DIR/versions/node" -maxdepth 2 -type d -name 'bin' 2>/dev/null | sort -V | tail -n 1)
 
         if [ -n "$NODE_BIN_PATH" ] && [ -d "$NODE_BIN_PATH" ]; then
             echo "Adding NVM Node bin path to PATH: $NODE_BIN_PATH"
@@ -99,8 +134,8 @@ while [[ $# -gt 0 ]]; do
         shift # past argument
         ;;
         -h|--help)
-        echo "Usage: $0 [--build deb|appimage] [--clean yes|no] [--test-flags]"
-        echo "  --build: Specify the build format (deb or appimage). Default: deb"
+        echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--test-flags]"
+        echo "  --build: Specify the build format (deb, rpm, or appimage). Default: deb"
         echo "  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes"
         echo "  --test-flags: Parse flags, print results, and exit without building."
         exit 0
@@ -114,8 +149,8 @@ done
 
 # Validate arguments
 BUILD_FORMAT=$(echo "$BUILD_FORMAT" | tr '[:upper:]' '[:lower:]') CLEANUP_ACTION=$(echo "$CLEANUP_ACTION" | tr '[:upper:]' '[:lower:]')
-if [[ "$BUILD_FORMAT" != "deb" && "$BUILD_FORMAT" != "appimage" ]]; then
-    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'deb' or 'appimage'." >&2
+if [[ "$BUILD_FORMAT" != "deb" && "$BUILD_FORMAT" != "rpm" && "$BUILD_FORMAT" != "appimage" ]]; then
+    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'deb', 'rpm', or 'appimage'." >&2
     exit 1
 fi
 if [[ "$CLEANUP_ACTION" != "yes" && "$CLEANUP_ACTION" != "no" ]]; then
@@ -155,12 +190,21 @@ check_command() {
 
 echo "Checking dependencies..."
 DEPS_TO_INSTALL=""
-COMMON_DEPS="p7zip wget wrestool icotool convert"
+# Different command names on different distros
+if [ "$DISTRO_TYPE" = "debian" ]; then
+    COMMON_DEPS="p7zip wget wrestool icotool convert node npm"
+else
+    # On Fedora/RHEL, p7zip command is called "7z"
+    COMMON_DEPS="7z wget wrestool icotool convert node npm"
+fi
 DEB_DEPS="dpkg-deb"
-APPIMAGE_DEPS="" 
+RPM_DEPS="rpmbuild"
+APPIMAGE_DEPS=""
 ALL_DEPS_TO_CHECK="$COMMON_DEPS"
 if [ "$BUILD_FORMAT" = "deb" ]; then
     ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $DEB_DEPS"
+elif [ "$BUILD_FORMAT" = "rpm" ]; then
+    ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $RPM_DEPS"
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $APPIMAGE_DEPS"
 fi
@@ -168,11 +212,48 @@ fi
 for cmd in $ALL_DEPS_TO_CHECK; do
     if ! check_command "$cmd"; then
         case "$cmd" in
-            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip-full" ;;
+            "p7zip")
+                DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip-full"
+                ;;
+            "7z")
+                DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip p7zip-plugins"
+                ;;
             "wget") DEPS_TO_INSTALL="$DEPS_TO_INSTALL wget" ;;
-            "wrestool"|"icotool") DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils" ;;
-            "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick" ;;
+            "wrestool"|"icotool")
+                if [ "$DISTRO_TYPE" = "debian" ]; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils"
+                else
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils"
+                fi
+                ;;
+            "convert")
+                if [ "$DISTRO_TYPE" = "debian" ]; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick"
+                else
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL ImageMagick"
+                fi
+                ;;
+            "node")
+                if [ "$DISTRO_TYPE" = "debian" ]; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs"
+                else
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL nodejs"
+                fi
+                ;;
+            "npm")
+                # npm is usually included with nodejs, but add it explicitly
+                if [ "$DISTRO_TYPE" = "debian" ]; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL npm"
+                else
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL npm"
+                fi
+                ;;
             "dpkg-deb") DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev" ;;
+            "rpmbuild")
+                if [ "$DISTRO_TYPE" = "fedora" ]; then
+                    DEPS_TO_INSTALL="$DEPS_TO_INSTALL rpm-build"
+                fi
+                ;;
         esac
     fi
 done
@@ -180,19 +261,30 @@ done
 if [ -n "$DEPS_TO_INSTALL" ]; then
     echo "System dependencies needed: $DEPS_TO_INSTALL"
     echo "Attempting to install using sudo..."
-        if ! sudo -v; then
+    if ! sudo -v; then
         echo "❌ Failed to validate sudo credentials. Please ensure you can run sudo."
         exit 1
     fi
+
+    if [ "$DISTRO_TYPE" = "debian" ]; then
         if ! sudo apt update; then
-        echo "❌ Failed to run 'sudo apt update'."
-        exit 1
-    fi
-    # Here on purpose no "" to expand the 'list', thus
-    # shellcheck disable=SC2086
-    if ! sudo apt install -y $DEPS_TO_INSTALL; then
-         echo "❌ Failed to install dependencies using 'sudo apt install'."
-         exit 1
+            echo "❌ Failed to run 'sudo apt update'."
+            exit 1
+        fi
+        # Here on purpose no "" to expand the 'list', thus
+        # shellcheck disable=SC2086
+        if ! sudo apt install -y $DEPS_TO_INSTALL; then
+            echo "❌ Failed to install dependencies using 'sudo apt install'."
+            exit 1
+        fi
+    else
+        # Fedora/RHEL
+        # Here on purpose no "" to expand the 'list', thus
+        # shellcheck disable=SC2086
+        if ! sudo dnf install -y $DEPS_TO_INSTALL; then
+            echo "❌ Failed to install dependencies using 'sudo dnf install'."
+            exit 1
+        fi
     fi
     echo "✓ System dependencies installed successfully via sudo."
 fi
@@ -761,6 +853,36 @@ if [ "$BUILD_FORMAT" = "deb" ]; then
         FINAL_OUTPUT_PATH="Not Found"
     fi
 
+elif [ "$BUILD_FORMAT" = "rpm" ]; then
+    echo "📦 Calling RPM packaging script for $ARCHITECTURE..."
+    chmod +x scripts/build-rpm-package.sh
+
+    # Convert architecture for RPM naming
+    RPM_ARCH="$ARCHITECTURE"
+    if [ "$ARCHITECTURE" = "amd64" ]; then
+        RPM_ARCH="x86_64"
+    elif [ "$ARCHITECTURE" = "arm64" ]; then
+        RPM_ARCH="aarch64"
+    fi
+
+    if ! scripts/build-rpm-package.sh \
+        "$VERSION" "$ARCHITECTURE" "$WORK_DIR" "$APP_STAGING_DIR" \
+        "$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
+        echo "❌ RPM packaging script failed."
+        exit 1
+    fi
+    # Find RPM with pattern that includes dist tag (e.g., .fc43)
+    RPM_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}-${VERSION}-1.*${RPM_ARCH}.rpm" -type f | head -n 1)
+    echo "✓ RPM Build complete!"
+    if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
+        FINAL_OUTPUT_PATH="./$(basename "$RPM_FILE")"
+        mv "$RPM_FILE" "$FINAL_OUTPUT_PATH"
+        echo "Package created at: $FINAL_OUTPUT_PATH"
+    else
+        echo "Warning: Could not determine final .rpm file path from $WORK_DIR for ${RPM_ARCH}."
+        FINAL_OUTPUT_PATH="Not Found"
+    fi
+
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     echo "📦 Calling AppImage packaging script for $ARCHITECTURE..."
     chmod +x scripts/build-appimage.sh
@@ -824,6 +946,16 @@ if [ "$BUILD_FORMAT" = "deb" ]; then
         echo -e "   (or \`sudo dpkg -i $FINAL_OUTPUT_PATH\`)"
     else
         echo -e "⚠️ Debian package file not found. Cannot provide installation instructions."
+    fi
+elif [ "$BUILD_FORMAT" = "rpm" ]; then
+    if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
+        echo -e "📦 To install the RPM package, run:"
+        echo -e "   \033[1;32msudo dnf install $FINAL_OUTPUT_PATH\033[0m"
+        echo -e "   (or \`sudo rpm -ivh $FINAL_OUTPUT_PATH\`)"
+        echo -e "\n💡 On RHEL/CentOS, you may need to use:"
+        echo -e "   \033[1;32msudo yum install $FINAL_OUTPUT_PATH\033[0m"
+    else
+        echo -e "⚠️ RPM package file not found. Cannot provide installation instructions."
     fi
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then

@@ -1,0 +1,330 @@
+#!/bin/bash
+set -e
+
+# Arguments passed from the main script
+VERSION="$1"
+ARCHITECTURE="$2"
+WORK_DIR="$3" # The top-level build directory (e.g., ./build)
+APP_STAGING_DIR="$4" # Directory containing the prepared app files (e.g., ./build/electron-app)
+PACKAGE_NAME="$5"
+MAINTAINER="$6"
+DESCRIPTION="$7"
+
+echo "--- Starting RPM Package Build ---"
+echo "Version: $VERSION"
+echo "Architecture: $ARCHITECTURE"
+echo "Work Directory: $WORK_DIR"
+echo "App Staging Directory: $APP_STAGING_DIR"
+echo "Package Name: $PACKAGE_NAME"
+
+# Convert Debian architecture to RPM architecture
+case "$ARCHITECTURE" in
+    amd64)
+        RPM_ARCH="x86_64"
+        ;;
+    arm64)
+        RPM_ARCH="aarch64"
+        ;;
+    *)
+        echo "❌ Unsupported architecture: $ARCHITECTURE"
+        exit 1
+        ;;
+esac
+echo "RPM Architecture: $RPM_ARCH"
+
+# Set up RPM build directories
+RPM_ROOT="$WORK_DIR/rpmbuild"
+STAGING_DIR="$WORK_DIR/rpm-staging"
+INSTALL_DIR="$STAGING_DIR/usr"
+
+# Clean previous RPM build structure if it exists
+rm -rf "$RPM_ROOT" "$STAGING_DIR"
+
+# Create RPM build directory structure
+echo "Creating RPM build structure in $RPM_ROOT..."
+mkdir -p "$RPM_ROOT"/{BUILD,RPMS,SOURCES,SPECS,SRPMS,BUILDROOT}
+mkdir -p "$INSTALL_DIR/lib/$PACKAGE_NAME"
+mkdir -p "$INSTALL_DIR/share/applications"
+mkdir -p "$INSTALL_DIR/share/icons"
+mkdir -p "$INSTALL_DIR/bin"
+
+# --- Icon Installation ---
+echo "🎨 Installing icons..."
+# Map icon sizes to their corresponding extracted files (relative to WORK_DIR)
+declare -A icon_files=(
+    ["16"]="claude_13_16x16x32.png"
+    ["24"]="claude_11_24x24x32.png"
+    ["32"]="claude_10_32x32x32.png"
+    ["48"]="claude_8_48x48x32.png"
+    ["64"]="claude_7_64x64x32.png"
+    ["256"]="claude_6_256x256x32.png"
+)
+
+for size in 16 24 32 48 64 256; do
+    icon_dir="$INSTALL_DIR/share/icons/hicolor/${size}x${size}/apps"
+    mkdir -p "$icon_dir"
+    icon_source_path="$WORK_DIR/${icon_files[$size]}"
+    if [ -f "$icon_source_path" ]; then
+        echo "Installing ${size}x${size} icon from $icon_source_path..."
+        install -Dm 644 "$icon_source_path" "$icon_dir/claude-desktop.png"
+    else
+        echo "Warning: Missing ${size}x${size} icon at $icon_source_path"
+    fi
+done
+echo "✓ Icons installed"
+
+# --- Copy Application Files ---
+echo "📦 Copying application files from $APP_STAGING_DIR..."
+
+# Copy local electron first if it was packaged (check if node_modules exists in staging)
+if [ -d "$APP_STAGING_DIR/node_modules" ]; then
+    echo "Copying packaged electron..."
+    cp -r "$APP_STAGING_DIR/node_modules" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
+fi
+
+# Install app.asar in Electron's resources directory where process.resourcesPath points
+RESOURCES_DIR="$INSTALL_DIR/lib/$PACKAGE_NAME/node_modules/electron/dist/resources"
+mkdir -p "$RESOURCES_DIR"
+cp "$APP_STAGING_DIR/app.asar" "$RESOURCES_DIR/"
+cp -r "$APP_STAGING_DIR/app.asar.unpacked" "$RESOURCES_DIR/"
+echo "✓ Application files copied to Electron resources directory"
+
+# --- Create Desktop Entry ---
+echo "📝 Creating desktop entry..."
+cat > "$INSTALL_DIR/share/applications/claude-desktop.desktop" << EOF
+[Desktop Entry]
+Name=Claude
+Exec=/usr/bin/claude-desktop %u
+Icon=claude-desktop
+Type=Application
+Terminal=false
+Categories=Office;Utility;
+MimeType=x-scheme-handler/claude;
+StartupWMClass=Claude
+EOF
+echo "✓ Desktop entry created"
+
+# --- Create Launcher Script ---
+echo "🚀 Creating launcher script..."
+cat > "$INSTALL_DIR/bin/claude-desktop" << 'LAUNCHEREOF'
+#!/bin/bash
+LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/launcher.log"
+echo "--- Claude Desktop Launcher Start ---" > "$LOG_FILE"
+echo "Timestamp: $(date)" >> "$LOG_FILE"
+echo "Arguments: $@" >> "$LOG_FILE"
+
+export ELECTRON_FORCE_IS_PACKAGED=true
+
+# Detect if Wayland is likely running
+IS_WAYLAND=false
+if [ ! -z "$WAYLAND_DISPLAY" ]; then
+  IS_WAYLAND=true
+  echo "Wayland detected" >> "$LOG_FILE"
+fi
+
+# Check for display issues and set compatibility mode if needed
+if [ "$IS_WAYLAND" = true ]; then
+  echo "Setting Wayland compatibility mode..." >> "$LOG_FILE"
+  # Use native Wayland backend with GlobalShortcuts Portal support
+  export ELECTRON_OZONE_PLATFORM_HINT=wayland
+  # Keep GPU acceleration enabled for better performance
+  echo "Wayland compatibility mode enabled (using native Wayland backend)" >> "$LOG_FILE"
+elif [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+  echo "No display detected (TTY session) - cannot start graphical application" >> "$LOG_FILE"
+  # No graphical environment detected; display error message in TTY session
+  echo "Error: Claude Desktop requires a graphical desktop environment." >&2
+  echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
+  exit 1
+fi
+
+# Determine Electron executable path
+ELECTRON_EXEC="electron" # Default to global
+LOCAL_ELECTRON_PATH="/usr/lib/claude-desktop/node_modules/electron/dist/electron"
+if [ -f "$LOCAL_ELECTRON_PATH" ]; then
+    ELECTRON_EXEC="$LOCAL_ELECTRON_PATH"
+    echo "Using local Electron: $ELECTRON_EXEC" >> "$LOG_FILE"
+else
+    # Check if global electron exists before declaring it as the choice
+    if command -v electron &> /dev/null; then
+        echo "Using global Electron: $ELECTRON_EXEC" >> "$LOG_FILE"
+    else
+        echo "Error: Electron executable not found (checked local $LOCAL_ELECTRON_PATH and global path)." >> "$LOG_FILE"
+        # Optionally, display an error to the user via zenity or kdialog if available
+        if command -v zenity &> /dev/null; then
+            zenity --error --text="Claude Desktop cannot start because the Electron framework is missing. Please ensure Electron is installed globally or reinstall Claude Desktop."
+        elif command -v kdialog &> /dev/null; then
+            kdialog --error "Claude Desktop cannot start because the Electron framework is missing. Please ensure Electron is installed globally or reinstall Claude Desktop."
+        fi
+        exit 1
+    fi
+fi
+
+# Base command arguments array, starting with app path
+# App is now in Electron's resources directory
+APP_PATH="/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar"
+ELECTRON_ARGS=("$APP_PATH")
+
+# Add compatibility flags
+if [ "$IS_WAYLAND" = true ]; then
+  echo "Adding compatibility flags for Wayland session" >> "$LOG_FILE"
+  ELECTRON_ARGS+=("--no-sandbox")
+  # Enable Wayland features for Electron 37+
+  ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal")
+  ELECTRON_ARGS+=("--ozone-platform=wayland")
+  ELECTRON_ARGS+=("--enable-wayland-ime")
+  ELECTRON_ARGS+=("--wayland-text-input-version=3")
+  echo "Enabled native Wayland support with GlobalShortcuts Portal" >> "$LOG_FILE"
+else
+  # X11 session - ensure native window decorations
+  echo "X11 session detected, enabling native window decorations" >> "$LOG_FILE"
+fi
+
+# Force disable custom titlebar for all sessions
+ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
+# Try to force native frame
+export ELECTRON_USE_SYSTEM_TITLE_BAR=1
+
+# Change to the application directory (not resources dir - app needs this as base)
+APP_DIR="/usr/lib/claude-desktop"
+echo "Changing directory to $APP_DIR" >> "$LOG_FILE"
+cd "$APP_DIR" || { echo "Failed to cd to $APP_DIR" >> "$LOG_FILE"; exit 1; }
+
+# Execute Electron with app path, flags, and script arguments
+# Redirect stdout and stderr to the log file
+FINAL_CMD="\"$ELECTRON_EXEC\" \"${ELECTRON_ARGS[@]}\" \"$@\""
+echo "Executing: $FINAL_CMD" >> "$LOG_FILE"
+"$ELECTRON_EXEC" "${ELECTRON_ARGS[@]}" "$@" >> "$LOG_FILE" 2>&1
+EXIT_CODE=$?
+echo "Electron exited with code: $EXIT_CODE" >> "$LOG_FILE"
+echo "--- Claude Desktop Launcher End ---" >> "$LOG_FILE"
+exit $EXIT_CODE
+LAUNCHEREOF
+chmod +x "$INSTALL_DIR/bin/claude-desktop"
+echo "✓ Launcher script created"
+
+# --- Create RPM Spec File ---
+echo "📄 Creating RPM spec file..."
+SPEC_FILE="$RPM_ROOT/SPECS/${PACKAGE_NAME}.spec"
+
+# Escape special characters in paths for sed
+STAGING_DIR_ESCAPED=$(echo "$STAGING_DIR" | sed 's/[\/&]/\\&/g')
+
+cat > "$SPEC_FILE" << SPECEOF
+Name:           $PACKAGE_NAME
+Version:        $VERSION
+Release:        1%{?dist}
+Summary:        $DESCRIPTION
+
+License:        Proprietary
+URL:            https://claude.ai
+BuildArch:      $RPM_ARCH
+
+# Dependencies (Fedora package names)
+Requires:       nodejs >= 12.0.0
+Requires:       npm
+Requires:       p7zip
+Requires:       p7zip-plugins
+
+%description
+Claude is an AI assistant from Anthropic.
+This package provides the desktop interface for Claude.
+
+Supported on Fedora-based Linux distributions (Fedora, RHEL, CentOS, Rocky Linux, etc.)
+Requires: nodejs (>= 12.0.0), npm
+
+%prep
+# No prep needed - files are already prepared
+
+%build
+# No build needed - this is a binary package
+
+%install
+# Copy files from staging directory to RPM buildroot
+mkdir -p %{buildroot}/usr
+cp -a $STAGING_DIR/usr/* %{buildroot}/usr/
+
+%files
+%defattr(-,root,root,-)
+/usr/bin/claude-desktop
+/usr/lib/$PACKAGE_NAME/
+/usr/share/applications/claude-desktop.desktop
+/usr/share/icons/hicolor/*/apps/claude-desktop.png
+
+%post
+# Update desktop database for MIME types
+echo "Updating desktop database..."
+update-desktop-database /usr/share/applications &> /dev/null || true
+
+# Set correct permissions for chrome-sandbox
+echo "Setting chrome-sandbox permissions..."
+SANDBOX_PATH=""
+LOCAL_SANDBOX_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/chrome-sandbox"
+if [ -f "\$LOCAL_SANDBOX_PATH" ]; then
+    SANDBOX_PATH="\$LOCAL_SANDBOX_PATH"
+fi
+
+if [ -n "\$SANDBOX_PATH" ] && [ -f "\$SANDBOX_PATH" ]; then
+    echo "Found chrome-sandbox at: \$SANDBOX_PATH"
+    chown root:root "\$SANDBOX_PATH" || echo "Warning: Failed to chown chrome-sandbox"
+    chmod 4755 "\$SANDBOX_PATH" || echo "Warning: Failed to chmod chrome-sandbox"
+    echo "Permissions set for \$SANDBOX_PATH"
+else
+    echo "Warning: chrome-sandbox binary not found in local package at \$LOCAL_SANDBOX_PATH. Sandbox may not function correctly."
+fi
+
+%postun
+# Clean up desktop database after uninstall
+if [ \$1 -eq 0 ]; then
+    update-desktop-database /usr/share/applications &> /dev/null || true
+fi
+
+%changelog
+* $(date '+%a %b %d %Y') $MAINTAINER - $VERSION-1
+- Automated build for version $VERSION
+
+SPECEOF
+echo "✓ RPM spec file created"
+
+# --- Build RPM Package ---
+echo "📦 Building RPM package..."
+OUTPUT_DIR="$RPM_ROOT/RPMS/$RPM_ARCH"
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Build the RPM
+echo "Running rpmbuild..."
+if ! rpmbuild -bb \
+    --define "_topdir $RPM_ROOT" \
+    "$SPEC_FILE" 2>&1 | tee "$WORK_DIR/rpmbuild.log"; then
+    echo "❌ Failed to build RPM package"
+    echo "Check the log at: $WORK_DIR/rpmbuild.log"
+    exit 1
+fi
+
+# Find the generated RPM file
+RPM_FILE=$(find "$OUTPUT_DIR" -name "${PACKAGE_NAME}-${VERSION}-*.rpm" | head -n 1)
+
+if [ -z "$RPM_FILE" ] || [ ! -f "$RPM_FILE" ]; then
+    echo "❌ RPM file not found in $OUTPUT_DIR"
+    echo "Expected pattern: ${PACKAGE_NAME}-${VERSION}-*.rpm"
+    echo "Directory contents:"
+    ls -la "$OUTPUT_DIR" || echo "Directory does not exist"
+    exit 1
+fi
+
+# Move the RPM to the main work directory for easy access
+FINAL_RPM="$WORK_DIR/$(basename "$RPM_FILE")"
+mv "$RPM_FILE" "$FINAL_RPM"
+echo "✓ RPM package built successfully: $FINAL_RPM"
+
+# Show package info
+echo ""
+echo "Package information:"
+rpm -qip "$FINAL_RPM" 2>/dev/null || echo "Could not query package info"
+
+echo "--- RPM Package Build Finished ---"
+
+exit 0
