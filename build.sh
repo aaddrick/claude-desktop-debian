@@ -651,17 +651,21 @@ fi
 
 echo -e "\033[1;36m--- Installing node-pty for terminal support ---\033[0m"
 # Install node-pty for Linux terminal support (used by Claude Code)
-cd "$WORK_DIR"
+# Use a separate directory to avoid npm removing other packages from WORK_DIR
+NODE_PTY_BUILD_DIR="$WORK_DIR/node-pty-build"
+mkdir -p "$NODE_PTY_BUILD_DIR"
+cd "$NODE_PTY_BUILD_DIR"
+echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
 echo "Installing node-pty (this will compile native module for Linux)..."
-if npm install node-pty --no-save 2>&1; then
+if npm install node-pty 2>&1; then
     echo "✓ node-pty installed successfully"
 
     # Copy node-pty JavaScript files into the asar
-    if [ -d "$WORK_DIR/node_modules/node-pty" ]; then
+    if [ -d "$NODE_PTY_BUILD_DIR/node_modules/node-pty" ]; then
         echo "Copying node-pty JavaScript files into app.asar.contents..."
         mkdir -p "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty"
-        cp -r "$WORK_DIR/node_modules/node-pty/lib" "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty/"
-        cp "$WORK_DIR/node_modules/node-pty/package.json" "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty/"
+        cp -r "$NODE_PTY_BUILD_DIR/node_modules/node-pty/lib" "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty/"
+        cp "$NODE_PTY_BUILD_DIR/node_modules/node-pty/package.json" "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty/"
         echo "✓ node-pty JavaScript files copied"
     else
         echo "⚠️ node-pty installation directory not found"
@@ -713,10 +717,10 @@ module.exports = {
 EOF
 
 # Copy node-pty native binaries to unpacked directory
-if [ -d "$WORK_DIR/node_modules/node-pty/build/Release" ]; then
+if [ -d "$NODE_PTY_BUILD_DIR/node_modules/node-pty/build/Release" ]; then
     echo "Copying node-pty native binaries to unpacked directory..."
     mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release"
-    cp -r "$WORK_DIR/node_modules/node-pty/build/Release/"* "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release/"
+    cp -r "$NODE_PTY_BUILD_DIR/node_modules/node-pty/build/Release/"* "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release/"
     # Ensure binaries are executable
     chmod +x "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release/"* 2>/dev/null || true
     echo "✓ node-pty native binaries copied"
