@@ -51,6 +51,10 @@ cd claude-desktop-debian
 
 # Build with custom options
 ./build.sh --build deb --clean no  # Keep intermediate files
+
+# Build using a locally downloaded installer
+# (useful when the bundled download URL is outdated)
+./build.sh --exe /path/to/Claude-Setup.exe
 ```
 
 #### Installing the Built Package
@@ -159,7 +163,14 @@ The build script (`build.sh`) handles:
 
 ### Updating for New Releases
 
-The script automatically detects system architecture and downloads the appropriate version. If Claude Desktop's download URLs change, update the `CLAUDE_DOWNLOAD_URL` variables in `build.sh`.
+The script automatically detects system architecture and downloads the appropriate version. If the bundled download URL serves an outdated version, you can:
+
+1. **Use a local installer**: Download the latest installer from [claude.ai/download](https://claude.ai/download) and build with:
+   ```bash
+   ./build.sh --exe /path/to/Claude-Setup.exe
+   ```
+
+2. **Update the URL**: Modify the `CLAUDE_DOWNLOAD_URL` variables in `build.sh`.
 
 ## Acknowledgments
 

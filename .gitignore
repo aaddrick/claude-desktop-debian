@@ -18,6 +18,7 @@ Thumbs.db
 *.AppImage
 *.desktop
 *.deb
+*.exe
 
 .claude/
 CLAUDE.md

@@ -80,7 +80,7 @@ MAINTAINER="Claude Desktop Linux Maintainers"
 DESCRIPTION="Claude Desktop for Linux"
 PROJECT_ROOT="$(pwd)" WORK_DIR="$PROJECT_ROOT/build" APP_STAGING_DIR="$WORK_DIR/electron-app" VERSION="" 
 echo -e "\033[1;36m--- Argument Parsing ---\033[0m"
-BUILD_FORMAT="deb"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false
+BUILD_FORMAT="deb"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false  LOCAL_EXE_PATH=""
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -94,14 +94,20 @@ while [[ $# -gt 0 ]]; do
         fi
         CLEANUP_ACTION="$2"
         shift 2 ;; # Shift past flag and value
+        -e|--exe)
+        if [[ -z "$2" || "$2" == -* ]]; then              echo "❌ Error: Argument for $1 is missing" >&2; exit 1
+        fi
+        LOCAL_EXE_PATH="$2"
+        shift 2 ;; # Shift past flag and value
         --test-flags)
         TEST_FLAGS_MODE=true
         shift # past argument
         ;;
         -h|--help)
-        echo "Usage: $0 [--build deb|appimage] [--clean yes|no] [--test-flags]"
+        echo "Usage: $0 [--build deb|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--test-flags]"
         echo "  --build: Specify the build format (deb or appimage). Default: deb"
         echo "  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes"
+        echo "  --exe:   Use a local Claude installer exe instead of downloading"
         echo "  --test-flags: Parse flags, print results, and exit without building."
         exit 0
         ;;
@@ -339,13 +345,23 @@ echo "Using asar executable: $ASAR_EXEC"
 
 
 echo -e "\033[1;36m--- Download the latest Claude executable ---\033[0m"
-echo "📥 Downloading Claude Desktop installer for $ARCHITECTURE..."
 CLAUDE_EXE_PATH="$WORK_DIR/$CLAUDE_EXE_FILENAME"
-if ! wget -O "$CLAUDE_EXE_PATH" "$CLAUDE_DOWNLOAD_URL"; then
-    echo "❌ Failed to download Claude Desktop installer from $CLAUDE_DOWNLOAD_URL"
-    exit 1
+if [ -n "$LOCAL_EXE_PATH" ]; then
+    echo "📁 Using local Claude installer: $LOCAL_EXE_PATH"
+    if [ ! -f "$LOCAL_EXE_PATH" ]; then
+        echo "❌ Local installer file not found: $LOCAL_EXE_PATH"
+        exit 1
+    fi
+    cp "$LOCAL_EXE_PATH" "$CLAUDE_EXE_PATH"
+    echo "✓ Local installer copied to build directory"
+else
+    echo "📥 Downloading Claude Desktop installer for $ARCHITECTURE..."
+    if ! wget -O "$CLAUDE_EXE_PATH" "$CLAUDE_DOWNLOAD_URL"; then
+        echo "❌ Failed to download Claude Desktop installer from $CLAUDE_DOWNLOAD_URL"
+        exit 1
+    fi
+    echo "✓ Download complete: $CLAUDE_EXE_FILENAME"
 fi
-echo "✓ Download complete: $CLAUDE_EXE_FILENAME"
 
 echo "📦 Extracting resources from $CLAUDE_EXE_FILENAME into separate directory..."
 CLAUDE_EXTRACT_DIR="$WORK_DIR/claude-extract"
