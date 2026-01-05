@@ -161,9 +161,22 @@ The build script (`build.sh`) handles:
 - Native module replacement
 - Package generation based on selected format
 
-### Updating for New Releases
+### Automated Version Detection
 
-The script automatically detects system architecture and downloads the appropriate version. If the bundled download URL serves an outdated version, you can:
+A GitHub Actions workflow runs daily to check for new Claude Desktop releases:
+
+1. Uses Playwright to resolve Anthropic's Cloudflare-protected download redirects
+2. Compares resolved URLs with those in `build.sh`
+3. If a new version is detected:
+   - Updates `build.sh` with new download URLs
+   - Creates a new release tag
+   - Triggers automated builds for both architectures
+
+This ensures the repository stays up-to-date with official releases automatically.
+
+### Manual Updates
+
+If you need to build with a specific version before the automation catches it:
 
 1. **Use a local installer**: Download the latest installer from [claude.ai/download](https://claude.ai/download) and build with:
    ```bash
@@ -179,6 +192,7 @@ This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.
 Special thanks to:
 - **k3d3** for the original NixOS implementation and native bindings insights
 - **[emsi](https://github.com/emsi/claude-desktop)** for the title bar fix and alternative implementation approach
+- **[leobuskin](https://github.com/leobuskin/unofficial-claude-desktop-linux)** for the Playwright-based URL resolution approach
 
 For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
 
