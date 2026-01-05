@@ -479,15 +479,18 @@ while IFS= read -r file; do
 done < /tmp/bw-files.txt
 rm -f /tmp/bw-files.txt
 
-echo "Modifying package.json to load frame fix..."
-# Update package.json to use our entry point
+echo "Modifying package.json to load frame fix and add node-pty..."
+# Update package.json to use our entry point and add node-pty as optional dependency
 node -e "
 const fs = require('fs');
 const pkg = require('./app.asar.contents/package.json');
 pkg.originalMain = pkg.main;
 pkg.main = 'frame-fix-entry.js';
+// Add node-pty as optional dependency for terminal support
+pkg.optionalDependencies = pkg.optionalDependencies || {};
+pkg.optionalDependencies['node-pty'] = '^1.0.0';
 fs.writeFileSync('./app.asar.contents/package.json', JSON.stringify(pkg, null, 2));
-console.log('Updated package.json main to frame-fix-entry.js');
+console.log('Updated package.json: main entry and node-pty dependency');
 "
 
 echo "Creating stub native module..."
@@ -646,6 +649,32 @@ else
     echo "ℹ️  Linux claude code binary support already present"
 fi
 
+echo -e "\033[1;36m--- Installing node-pty for terminal support ---\033[0m"
+# Install node-pty for Linux terminal support (used by Claude Code)
+# Use a separate directory to avoid npm removing other packages from WORK_DIR
+NODE_PTY_BUILD_DIR="$WORK_DIR/node-pty-build"
+mkdir -p "$NODE_PTY_BUILD_DIR"
+cd "$NODE_PTY_BUILD_DIR"
+echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
+echo "Installing node-pty (this will compile native module for Linux)..."
+if npm install node-pty 2>&1; then
+    echo "✓ node-pty installed successfully"
+
+    # Copy node-pty JavaScript files into the asar
+    if [ -d "$NODE_PTY_BUILD_DIR/node_modules/node-pty" ]; then
+        echo "Copying node-pty JavaScript files into app.asar.contents..."
+        mkdir -p "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty"
+        cp -r "$NODE_PTY_BUILD_DIR/node_modules/node-pty/lib" "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty/"
+        cp "$NODE_PTY_BUILD_DIR/node_modules/node-pty/package.json" "$APP_STAGING_DIR/app.asar.contents/node_modules/node-pty/"
+        echo "✓ node-pty JavaScript files copied"
+    else
+        echo "⚠️ node-pty installation directory not found"
+    fi
+else
+    echo "⚠️ Failed to install node-pty - terminal features may not work"
+fi
+cd "$APP_STAGING_DIR"
+echo -e "\033[1;36m--- End node-pty installation ---\033[0m"
 
 "$ASAR_EXEC" pack app.asar.contents app.asar
 
@@ -686,6 +715,18 @@ module.exports = {
   AuthRequest
 };
 EOF
+
+# Copy node-pty native binaries to unpacked directory
+if [ -d "$NODE_PTY_BUILD_DIR/node_modules/node-pty/build/Release" ]; then
+    echo "Copying node-pty native binaries to unpacked directory..."
+    mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release"
+    cp -r "$NODE_PTY_BUILD_DIR/node_modules/node-pty/build/Release/"* "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release/"
+    # Ensure binaries are executable
+    chmod +x "$APP_STAGING_DIR/app.asar.unpacked/node_modules/node-pty/build/Release/"* 2>/dev/null || true
+    echo "✓ node-pty native binaries copied"
+else
+    echo "⚠️ node-pty native binaries not found - terminal features may not work"
+fi
 
 echo "Copying chosen electron installation to staging area..."
 mkdir -p "$APP_STAGING_DIR/node_modules/"
