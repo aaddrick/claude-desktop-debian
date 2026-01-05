@@ -180,11 +180,14 @@ jobs:
             echo "No changes to build.sh"
           else
             git add build.sh
-            git commit -m "Update Claude Desktop download URLs to version $CLAUDE_VERSION
+            git commit -m "$(cat <<COMMIT_MSG
+          Update Claude Desktop download URLs to version $CLAUDE_VERSION
 
-Updated download URLs resolved from official redirect endpoints.
+          Updated download URLs resolved from official redirect endpoints.
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+          COMMIT_MSG
+          )"
             git push
             echo "Changes committed and pushed"
           fi
