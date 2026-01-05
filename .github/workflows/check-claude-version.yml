@@ -18,87 +18,151 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GH_PAT }}
 
-      - name: Set up environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full wget
+          pip install playwright requests
+          playwright install chromium
 
-      - name: Download and check Claude version
-        id: check_version
+      - name: Resolve download URLs
+        id: resolve_urls
         run: |
-          CLAUDE_DOWNLOAD_URL="https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/Claude-Setup-x64.exe"
+          echo "Resolving Claude Desktop download URLs..."
 
-          WORK_DIR=$(mktemp -d)
-          cd "$WORK_DIR"
+          # Run the resolver script - stdout has KEY=VALUE pairs, stderr has status messages
+          python scripts/resolve-download-url.py all --format both > resolved_urls.txt || true
 
-          if ! wget -q -O Claude-Setup-x64.exe "$CLAUDE_DOWNLOAD_URL"; then
-            echo "Failed to download Claude Desktop installer"
+          echo "Resolved URLs:"
+          cat resolved_urls.txt
+
+          # Parse the output
+          AMD64_URL=$(grep "^AMD64_URL=" resolved_urls.txt | cut -d= -f2-)
+          ARM64_URL=$(grep "^ARM64_URL=" resolved_urls.txt | cut -d= -f2-)
+          AMD64_VERSION=$(grep "^AMD64_VERSION=" resolved_urls.txt | cut -d= -f2-)
+          ARM64_VERSION=$(grep "^ARM64_VERSION=" resolved_urls.txt | cut -d= -f2-)
+
+          echo "AMD64 URL: $AMD64_URL"
+          echo "ARM64 URL: $ARM64_URL"
+          echo "AMD64 Version: $AMD64_VERSION"
+          echo "ARM64 Version: $ARM64_VERSION"
+
+          # Use AMD64 version as the canonical version (they should match)
+          CLAUDE_VERSION="${AMD64_VERSION:-$ARM64_VERSION}"
+
+          if [ -z "$AMD64_URL" ]; then
+            echo "::error::Failed to resolve AMD64 download URL"
             exit 1
           fi
 
-          EXTRACT_DIR="$WORK_DIR/extract"
-          mkdir -p "$EXTRACT_DIR"
-
-          if ! 7z x -y Claude-Setup-x64.exe -o"$EXTRACT_DIR" > /dev/null 2>&1; then
-            echo "Failed to extract installer"
-            exit 1
-          fi
-
-          cd "$EXTRACT_DIR"
-          NUPKG_FILE=$(find . -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
-
-          if [ -z "$NUPKG_FILE" ]; then
-            echo "Could not find AnthropicClaude nupkg file"
-            exit 1
-          fi
-
-          # Extract version from nupkg filename
-          CLAUDE_VERSION=$(echo "$NUPKG_FILE" | grep -oP 'AnthropicClaude-\K[0-9]+\.[0-9]+\.[0-9]+(?=-full|-arm64-full)')
-
-          if [ -z "$CLAUDE_VERSION" ]; then
-            echo "Could not extract version from nupkg filename"
-            exit 1
-          fi
-
-          echo "Detected Claude Desktop version: $CLAUDE_VERSION"
+          echo "amd64_url=$AMD64_URL" >> $GITHUB_OUTPUT
+          echo "arm64_url=$ARM64_URL" >> $GITHUB_OUTPUT
           echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
 
-          # Clean up
-          cd /
-          rm -rf "$WORK_DIR"
+      - name: Get current URLs from build.sh
+        id: current_urls
+        run: |
+          # Extract current URLs from build.sh
+          CURRENT_AMD64_URL=$(grep -E 'HOST_ARCH.*=.*"amd64"' -A3 build.sh | grep 'CLAUDE_DOWNLOAD_URL=' | head -1 | sed 's/.*CLAUDE_DOWNLOAD_URL="\([^"]*\)".*/\1/')
+          CURRENT_ARM64_URL=$(grep -E 'HOST_ARCH.*=.*"arm64"' -A3 build.sh | grep 'CLAUDE_DOWNLOAD_URL=' | head -1 | sed 's/.*CLAUDE_DOWNLOAD_URL="\([^"]*\)".*/\1/')
+
+          echo "Current AMD64 URL: $CURRENT_AMD64_URL"
+          echo "Current ARM64 URL: $CURRENT_ARM64_URL"
+
+          echo "current_amd64_url=$CURRENT_AMD64_URL" >> $GITHUB_OUTPUT
+          echo "current_arm64_url=$CURRENT_ARM64_URL" >> $GITHUB_OUTPUT
 
       - name: Check if update needed
         id: check_update
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
-          REPO_VERSION="${{ vars.REPO_VERSION }}"
+          NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
+          NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
+          CURRENT_AMD64_URL="${{ steps.current_urls.outputs.current_amd64_url }}"
+          CURRENT_ARM64_URL="${{ steps.current_urls.outputs.current_arm64_url }}"
+          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
           STORED_CLAUDE_VERSION="${{ vars.CLAUDE_DESKTOP_VERSION }}"
+          REPO_VERSION="${{ vars.REPO_VERSION }}"
 
           echo "Current stored Claude version: $STORED_CLAUDE_VERSION"
           echo "Detected Claude version: $CLAUDE_VERSION"
           echo "Repository version: $REPO_VERSION"
 
-          if [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
-            echo "New Claude Desktop version detected!"
+          UPDATE_NEEDED=false
+
+          # Check if AMD64 URL changed
+          if [ "$NEW_AMD64_URL" != "$CURRENT_AMD64_URL" ]; then
+            echo "AMD64 URL has changed"
+            UPDATE_NEEDED=true
+          fi
+
+          # Check if ARM64 URL changed (only if we got a new one)
+          if [ -n "$NEW_ARM64_URL" ] && [ "$NEW_ARM64_URL" != "$CURRENT_ARM64_URL" ]; then
+            echo "ARM64 URL has changed"
+            UPDATE_NEEDED=true
+          fi
+
+          # Check if version changed
+          if [ -n "$CLAUDE_VERSION" ] && [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
+            echo "Claude version has changed"
+            UPDATE_NEEDED=true
+          fi
+
+          if [ "$UPDATE_NEEDED" = "true" ]; then
+            echo "Update needed!"
             echo "update_needed=true" >> $GITHUB_OUTPUT
-            
+
             # Construct the new tag
             NEW_TAG="v${REPO_VERSION}+claude${CLAUDE_VERSION}"
             echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "New tag will be: $NEW_TAG"
           else
-            echo "Claude Desktop version unchanged"
+            echo "No updates needed"
             echo "update_needed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update version variable and create tag
+      - name: Update build.sh with new URLs
+        if: steps.check_update.outputs.update_needed == 'true'
+        run: |
+          NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
+          NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
+          CURRENT_AMD64_URL="${{ steps.current_urls.outputs.current_amd64_url }}"
+          CURRENT_ARM64_URL="${{ steps.current_urls.outputs.current_arm64_url }}"
+
+          echo "Updating build.sh with new URLs..."
+
+          # Update AMD64 URL
+          if [ -n "$NEW_AMD64_URL" ] && [ "$NEW_AMD64_URL" != "$CURRENT_AMD64_URL" ]; then
+            echo "Updating AMD64 URL..."
+            # Escape special characters for sed
+            ESCAPED_CURRENT=$(printf '%s\n' "$CURRENT_AMD64_URL" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            ESCAPED_NEW=$(printf '%s\n' "$NEW_AMD64_URL" | sed 's/[&/\]/\\&/g')
+            sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" build.sh
+          fi
+
+          # Update ARM64 URL (if we have a new one)
+          if [ -n "$NEW_ARM64_URL" ] && [ "$NEW_ARM64_URL" != "$CURRENT_ARM64_URL" ]; then
+            echo "Updating ARM64 URL..."
+            ESCAPED_CURRENT=$(printf '%s\n' "$CURRENT_ARM64_URL" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            ESCAPED_NEW=$(printf '%s\n' "$NEW_ARM64_URL" | sed 's/[&/\]/\\&/g')
+            sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" build.sh
+          fi
+
+          echo "Updated build.sh:"
+          grep "CLAUDE_DOWNLOAD_URL=" build.sh
+
+      - name: Commit and push changes
         if: steps.check_update.outputs.update_needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
           NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
 
           # Check if we have a PAT
@@ -107,13 +171,28 @@ jobs:
             exit 1
           fi
 
-          gh variable set CLAUDE_DESKTOP_VERSION --body "$CLAUDE_VERSION"
-
-          echo "Creating and pushing new tag: $NEW_TAG"
-
           # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if there are changes to commit
+          if git diff --quiet build.sh; then
+            echo "No changes to build.sh"
+          else
+            git add build.sh
+            git commit -m "Update Claude Desktop download URLs to version $CLAUDE_VERSION
+
+Updated download URLs resolved from official redirect endpoints.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+            git push
+            echo "Changes committed and pushed"
+          fi
+
+          # Update the version variable
+          gh variable set CLAUDE_DESKTOP_VERSION --body "$CLAUDE_VERSION"
+
+          echo "Creating and pushing new tag: $NEW_TAG"
 
           # Create annotated tag
           git tag -a "$NEW_TAG" -m "Update to Claude Desktop $CLAUDE_VERSION"
@@ -129,7 +208,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
-          CLAUDE_VERSION="${{ steps.check_version.outputs.claude_version }}"
+          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
 
           # Create release notes using heredoc
           RELEASE_NOTES=$(cat <<EOF
