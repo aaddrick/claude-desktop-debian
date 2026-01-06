@@ -7,10 +7,10 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 ## Features
 
 - **Native Linux Support**: Run Claude Desktop without virtualization or Wine
-- **MCP Support**: Full Model Context Protocol integration  
+- **MCP Support**: Full Model Context Protocol integration
   Configuration file location: `~/.config/Claude/claude_desktop_config.json`
-- **System Integration**: 
-  - X11 Global hotkey support (Ctrl+Alt+Space)
+- **System Integration**:
+  - Global hotkey support (Ctrl+Alt+Space) - works on X11 and Wayland (via XWayland)
   - System tray integration
   - Desktop environment integration
 
@@ -91,11 +91,27 @@ Model Context Protocol settings are stored in:
 ~/.config/Claude/claude_desktop_config.json
 ```
 
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_USE_WAYLAND` | unset | Set to `1` to use native Wayland instead of XWayland. Note: Global hotkeys won't work in native Wayland mode. |
+
+**Wayland Note:** By default, Claude Desktop uses X11 mode (via XWayland) on Wayland sessions to ensure global hotkeys work. If you prefer native Wayland and don't need global hotkeys:
+
+```bash
+# One-time launch
+CLAUDE_USE_WAYLAND=1 claude-desktop
+
+# Or add to your environment permanently
+export CLAUDE_USE_WAYLAND=1
+```
+
 ### Application Logs
 
 Runtime logs are available at:
 ```
-$HOME/claude-desktop-launcher.log
+~/.cache/claude-desktop-debian/launcher.log
 ```
 
 ## Uninstallation
@@ -129,6 +145,16 @@ If the window doesn't scale correctly on first launch:
 3. Restart the application
 
 This allows the application to save display settings properly.
+
+### Global Hotkey Not Working (Wayland)
+
+If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in native Wayland mode:
+
+1. Check your logs at `~/.cache/claude-desktop-debian/launcher.log`
+2. Look for "Using X11 backend via XWayland" - this means hotkeys should work
+3. If you see "Using native Wayland backend", unset `CLAUDE_USE_WAYLAND` or ensure it's not set to `1`
+
+**Note:** Native Wayland mode doesn't support global hotkeys due to Electron/Chromium limitations with XDG GlobalShortcuts Portal.
 
 ### AppImage Sandbox Warning
 
