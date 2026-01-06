@@ -107,19 +107,22 @@ if [ ! -z "\$WAYLAND_DISPLAY" ]; then
   echo "Wayland detected" >> "\$LOG_FILE"
 fi
 
-# Check for display issues and set compatibility mode if needed
-if [ "\$IS_WAYLAND" = true ]; then
-  echo "Setting Wayland compatibility mode..." >> "\$LOG_FILE"
-  # Use native Wayland backend with GlobalShortcuts Portal support
-  export ELECTRON_OZONE_PLATFORM_HINT=wayland
-  # Keep GPU acceleration enabled for better performance
-  echo "Wayland compatibility mode enabled (using native Wayland backend)" >> "\$LOG_FILE"
-elif [ -z "\$DISPLAY" ] && [ -z "\$WAYLAND_DISPLAY" ]; then
+# Check for display issues
+if [ -z "\$DISPLAY" ] && [ -z "\$WAYLAND_DISPLAY" ]; then
   echo "No display detected (TTY session) - cannot start graphical application" >> "\$LOG_FILE"
-  # No graphical environment detected; display error message in TTY session
   echo "Error: Claude Desktop requires a graphical desktop environment." >&2
   echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
   exit 1
+fi
+
+# Determine display backend mode
+# Default: Use X11/XWayland on Wayland sessions for global hotkey support
+# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys won't work)
+USE_X11_ON_WAYLAND=true
+if [ "\$CLAUDE_USE_WAYLAND" = "1" ]; then
+  USE_X11_ON_WAYLAND=false
+  echo "CLAUDE_USE_WAYLAND=1 set, using native Wayland backend" >> "\$LOG_FILE"
+  echo "Note: Global hotkeys (quick window) may not work in native Wayland mode" >> "\$LOG_FILE"
 fi
 
 # Determine Electron executable path
@@ -149,19 +152,27 @@ fi
 APP_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/resources/app.asar"
 ELECTRON_ARGS=("\$APP_PATH")
 
-# Add compatibility flags
+# Add compatibility flags based on display backend
 if [ "\$IS_WAYLAND" = true ]; then
-  echo "Adding compatibility flags for Wayland session" >> "\$LOG_FILE"
-  ELECTRON_ARGS+=("--no-sandbox")
-  # Enable Wayland features for Electron 37+
-  ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal")
-  ELECTRON_ARGS+=("--ozone-platform=wayland")
-  ELECTRON_ARGS+=("--enable-wayland-ime")
-  ELECTRON_ARGS+=("--wayland-text-input-version=3")
-  echo "Enabled native Wayland support with GlobalShortcuts Portal" >> "\$LOG_FILE"
+  if [ "\$USE_X11_ON_WAYLAND" = true ]; then
+    # Default: Use X11 via XWayland for global hotkey support
+    echo "Using X11 backend via XWayland (for global hotkey support)" >> "\$LOG_FILE"
+    ELECTRON_ARGS+=("--no-sandbox")
+    ELECTRON_ARGS+=("--ozone-platform=x11")
+    echo "To use native Wayland instead, set CLAUDE_USE_WAYLAND=1" >> "\$LOG_FILE"
+  else
+    # Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
+    echo "Using native Wayland backend" >> "\$LOG_FILE"
+    ELECTRON_ARGS+=("--no-sandbox")
+    ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations")
+    ELECTRON_ARGS+=("--ozone-platform=wayland")
+    ELECTRON_ARGS+=("--enable-wayland-ime")
+    ELECTRON_ARGS+=("--wayland-text-input-version=3")
+    echo "Warning: Global hotkeys may not work in native Wayland mode" >> "\$LOG_FILE"
+  fi
 else
-  # X11 session - ensure native window decorations
-  echo "X11 session detected, enabling native window decorations" >> "\$LOG_FILE"
+  # X11 session - no special flags needed
+  echo "X11 session detected" >> "\$LOG_FILE"
 fi
 
 # Force disable custom titlebar for all sessions

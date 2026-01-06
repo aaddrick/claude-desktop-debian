@@ -101,6 +101,14 @@ if [ ! -z "\$WAYLAND_DISPLAY" ]; then
   IS_WAYLAND=true
 fi
 
+# Determine display backend mode
+# Default: Use X11/XWayland on Wayland sessions for global hotkey support
+# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys won't work)
+USE_X11_ON_WAYLAND=true
+if [ "\$CLAUDE_USE_WAYLAND" = "1" ]; then
+  USE_X11_ON_WAYLAND=false
+fi
+
 # Path to the bundled Electron executable
 # Use the path relative to AppRun within the 'electron/dist' module directory
 ELECTRON_EXEC="\$APPDIR/usr/lib/node_modules/electron/dist/electron"
@@ -111,16 +119,23 @@ APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
 # Add --no-sandbox flag to avoid sandbox issues within AppImage
 ELECTRON_ARGS=("--no-sandbox" "\$APP_PATH")
 
-# Add Wayland flags if Wayland is detected
+# Add compatibility flags based on display backend
 if [ "\$IS_WAYLAND" = true ]; then
-  echo "AppRun: Wayland detected, adding flags."
-  ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal")
-  ELECTRON_ARGS+=("--ozone-platform=wayland")
-  ELECTRON_ARGS+=("--enable-wayland-ime")
-  ELECTRON_ARGS+=("--wayland-text-input-version=3")
+  if [ "\$USE_X11_ON_WAYLAND" = true ]; then
+    # Default: Use X11 via XWayland for global hotkey support
+    echo "AppRun: Using X11 backend via XWayland (for global hotkey support)"
+    ELECTRON_ARGS+=("--ozone-platform=x11")
+  else
+    # Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
+    echo "AppRun: Using native Wayland backend (global hotkeys may not work)"
+    ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations")
+    ELECTRON_ARGS+=("--ozone-platform=wayland")
+    ELECTRON_ARGS+=("--enable-wayland-ime")
+    ELECTRON_ARGS+=("--wayland-text-input-version=3")
+  fi
 else
-  # X11 session - ensure native window decorations
-  echo "AppRun: X11 session detected, enabling native window decorations."
+  # X11 session - no special flags needed
+  echo "AppRun: X11 session detected"
 fi
 
 # Force disable custom titlebar for all sessions
