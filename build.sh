@@ -10,12 +10,12 @@ cat /etc/os-release && uname -m && dpkg --print-architecture
 
 # Set variables based on detected architecture
 if [ "$HOST_ARCH" = "amd64" ]; then
-    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/1.0.2768/Claude-21341c944a9d74880b52a77c4f1522f47f52d0da.exe"
+    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/1.0.3218/Claude-8679c9141fe246eb88af18130504c064d14b9004.exe"
     ARCHITECTURE="amd64"
     CLAUDE_EXE_FILENAME="Claude-Setup-x64.exe"
     echo "Configured for amd64 build."
 elif [ "$HOST_ARCH" = "arm64" ]; then
-    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/arm64/1.0.2768/Claude-21341c944a9d74880b52a77c4f1522f47f52d0da.exe"
+    CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/arm64/1.0.3218/Claude-8679c9141fe246eb88af18130504c064d14b9004.exe"
     ARCHITECTURE="arm64"
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
     echo "Configured for arm64 build."
@@ -604,9 +604,9 @@ echo "  Found tray variable: $TRAY_VAR"
 sed -i "s/function ${TRAY_FUNC}(){/async function ${TRAY_FUNC}(){/g" app.asar.contents/.vite/build/index.js
 
 # Step 4: Extract first const variable name in the function
-# Pattern: async function FUNCNAME(){if(FUNCNAME._running)...const VARNAME=
-# (after mutex is added) or async function FUNCNAME(){const VARNAME= (before mutex)
-FIRST_CONST=$(grep -oP "async function ${TRAY_FUNC}\(\)\{(?:if\(${TRAY_FUNC}\._running\)[^}]*?)?const \K\w+(?==)" app.asar.contents/.vite/build/index.js | head -1)
+# Pattern matches any content between function start and first const declaration
+# This handles early return checks and other code that may precede the first const
+FIRST_CONST=$(grep -oP "async function ${TRAY_FUNC}\(\)\{.*?const \K\w+(?==)" app.asar.contents/.vite/build/index.js | head -1)
 if [ -z "$FIRST_CONST" ]; then
     echo "❌ Failed to extract first const variable name in function"
     cd "$PROJECT_ROOT" && exit 1
@@ -615,7 +615,8 @@ echo "  Found first const variable: $FIRST_CONST"
 
 # Step 5: Add mutex guard at start of function (only if not already present)
 if ! grep -q "${TRAY_FUNC}._running" app.asar.contents/.vite/build/index.js; then
-    sed -i "s/async function ${TRAY_FUNC}(){const ${FIRST_CONST}=/async function ${TRAY_FUNC}(){if(${TRAY_FUNC}._running)return;${TRAY_FUNC}._running=true;setTimeout(()=>${TRAY_FUNC}._running=false,500);const ${FIRST_CONST}=/g" app.asar.contents/.vite/build/index.js
+    # Insert mutex check right after function opening brace, before any existing code
+    sed -i "s/async function ${TRAY_FUNC}(){/async function ${TRAY_FUNC}(){if(${TRAY_FUNC}._running)return;${TRAY_FUNC}._running=true;setTimeout(()=>${TRAY_FUNC}._running=false,500);/g" app.asar.contents/.vite/build/index.js
     echo "  ✓ Added mutex guard to ${TRAY_FUNC}()"
 else
     echo "  ℹ️  Mutex guard already present in ${TRAY_FUNC}()"
