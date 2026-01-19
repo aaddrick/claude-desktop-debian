@@ -635,6 +635,19 @@ fi
 echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
+# Fix tray icon to use white icon on Linux (issue #157)
+echo "Patching tray icon to use white icon on Linux (most Linux desktops have dark panels)..."
+if ! grep -q 'TrayIconTemplate-Dark\.png' app.asar.contents/.vite/build/index.js; then
+    # Pattern: Xs?e=ce.nativeTheme.shouldUseDarkColors?"Tray-Win32-Dark.ico":"Tray-Win32.ico":e="TrayIconTemplate.png"
+    # Replace: Xs?e=ce.nativeTheme.shouldUseDarkColors?"Tray-Win32-Dark.ico":"Tray-Win32.ico":e="TrayIconTemplate-Dark.png"
+    # Use TrayIconTemplate-Dark.png (white icon) by default on Linux since most desktops have dark panels
+    sed -i 's/:e="TrayIconTemplate\.png"/:e="TrayIconTemplate-Dark.png"/g' app.asar.contents/.vite/build/index.js
+    echo "✓ Tray icon patched to use TrayIconTemplate-Dark.png (white icon) on Linux"
+else
+    echo "ℹ️  Tray icon already using TrayIconTemplate-Dark.png"
+fi
+echo "##############################################################"
+
 # Fix quick window submit issue by adding blur() call before hide()
 if ! grep -q 'e.blur(),e.hide()' app.asar.contents/.vite/build/index.js; then
     sed -i 's/e.hide()/e.blur(),e.hide()/' app.asar.contents/.vite/build/index.js
