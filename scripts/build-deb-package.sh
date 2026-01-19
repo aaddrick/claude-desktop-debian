@@ -200,10 +200,10 @@ echo "✓ Launcher script created"
 
 # --- Create Control File ---
 echo "📄 Creating control file..."
-# Determine dependencies based on whether electron was packaged
-DEPENDS="nodejs, npm, p7zip-full" # Base dependencies
-# Electron is now always packaged locally, so it's not listed as an external dependency.
-echo "Electron is packaged locally; not adding to external Depends list."
+# Runtime dependencies - Electron is bundled, so nodejs/npm are NOT needed at runtime
+# These are common libs needed by Electron/Chromium that may not be present on minimal systems
+DEPENDS="libnss3, libatk1.0-0, libatk-bridge2.0-0, libcups2, libgtk-3-0, libgbm1, libasound2"
+echo "Using runtime dependencies: $DEPENDS"
 
 cat > "$PACKAGE_ROOT/DEBIAN/control" << EOF
 Package: $PACKAGE_NAME
