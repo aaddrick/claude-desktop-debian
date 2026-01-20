@@ -65,7 +65,8 @@ cat > "$APPDIR_PATH/AppRun" << EOF
 set -e
 
 # Find the location of the AppRun script and the AppImage file itself
-APPDIR=\$(dirname "\$0")
+# Use readlink -f to get absolute path, avoiding issues when we cd later
+APPDIR=\$(dirname "\$(readlink -f "\$0")")
 # Try to get the absolute path of the AppImage file being run
 # $APPIMAGE is often set by the AppImage runtime, otherwise try readlink
 APPIMAGE_PATH="\${APPIMAGE:-}"
