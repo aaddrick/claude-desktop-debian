@@ -616,7 +616,7 @@ echo "  Found first const variable: $FIRST_CONST"
 # Step 5: Add mutex guard at start of function (only if not already present)
 if ! grep -q "${TRAY_FUNC}._running" app.asar.contents/.vite/build/index.js; then
     # Insert mutex check right after function opening brace, before any existing code
-    sed -i "s/async function ${TRAY_FUNC}(){/async function ${TRAY_FUNC}(){if(${TRAY_FUNC}._running)return;${TRAY_FUNC}._running=true;setTimeout(()=>${TRAY_FUNC}._running=false,500);/g" app.asar.contents/.vite/build/index.js
+    sed -i "s/async function ${TRAY_FUNC}(){/async function ${TRAY_FUNC}(){if(${TRAY_FUNC}._running)return;${TRAY_FUNC}._running=true;setTimeout(()=>${TRAY_FUNC}._running=false,1500);/g" app.asar.contents/.vite/build/index.js
     echo "  ✓ Added mutex guard to ${TRAY_FUNC}()"
 else
     echo "  ℹ️  Mutex guard already present in ${TRAY_FUNC}()"
@@ -625,8 +625,9 @@ fi
 # Step 6: Add delay after Tray destroy for DBus cleanup (only if not already present)
 if ! grep -q "await new Promise.*setTimeout" app.asar.contents/.vite/build/index.js | grep -q "${TRAY_VAR}"; then
     # Pattern: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null)
-    # Replace: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null,await new Promise(r=>setTimeout(r,50)))
-    sed -i "s/${TRAY_VAR}\&\&(${TRAY_VAR}\.destroy(),${TRAY_VAR}=null)/${TRAY_VAR}\&\&(${TRAY_VAR}.destroy(),${TRAY_VAR}=null,await new Promise(r=>setTimeout(r,50)))/g" app.asar.contents/.vite/build/index.js
+    # Replace: TRAYVAR&&(TRAYVAR.destroy(),TRAYVAR=null,await new Promise(r=>setTimeout(r,250)))
+    # Note: 250ms delay allows DBus to fully unregister the StatusNotifierItem before creating a new one
+    sed -i "s/${TRAY_VAR}\&\&(${TRAY_VAR}\.destroy(),${TRAY_VAR}=null)/${TRAY_VAR}\&\&(${TRAY_VAR}.destroy(),${TRAY_VAR}=null,await new Promise(r=>setTimeout(r,250)))/g" app.asar.contents/.vite/build/index.js
     echo "  ✓ Added DBus cleanup delay after ${TRAY_VAR}.destroy()"
 else
     echo "  ℹ️  DBus cleanup delay already present for ${TRAY_VAR}"
