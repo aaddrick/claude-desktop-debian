@@ -119,21 +119,11 @@ APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
 # Start with --no-sandbox flag to avoid sandbox issues within AppImage
 ELECTRON_ARGS=("--no-sandbox")
 
-# Collect features to disable (must be combined into single --disable-features flag)
-DISABLE_FEATURES="CustomTitlebar"
-
-# Fix for KDE duplicate tray icons (issue #163)
-# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
-# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
-# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
-# prevents the dual registration.
-if pgrep -x xembedsniproxy > /dev/null 2>&1; then
-  echo "AppRun: xembedsniproxy detected - disabling SNI to prevent duplicate tray icons"
-  DISABLE_FEATURES="\${DISABLE_FEATURES},UseStatusIconLinuxDbus"
-fi
-
-# Add combined disable-features flag (before app path!)
-ELECTRON_ARGS+=("--disable-features=\${DISABLE_FEATURES}")
+# Disable CustomTitlebar for better Linux integration
+# Note: UseStatusIconLinuxDbus flag was removed - it doesn't exist in Electron/Chromium
+# The duplicate tray icon fix is now handled via app.asar patching (increased delays
+# in tray creation to allow DBus cleanup between destroy() and new Tray() calls)
+ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 
 # Add compatibility flags based on display backend
 if [ "\$IS_WAYLAND" = true ]; then
