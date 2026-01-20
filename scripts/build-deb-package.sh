@@ -147,10 +147,27 @@ else
     fi
 fi
 
-# Base command arguments array, starting with app path
 # App is now in Electron's resources directory
 APP_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/resources/app.asar"
-ELECTRON_ARGS=("\$APP_PATH")
+
+# Build Chromium flags array - flags MUST come before app path
+ELECTRON_ARGS=()
+
+# Collect features to disable (must be combined into single --disable-features flag)
+DISABLE_FEATURES="CustomTitlebar"
+
+# Fix for KDE duplicate tray icons (issue #163)
+# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
+# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
+# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
+# prevents the dual registration.
+if pgrep -x xembedsniproxy > /dev/null 2>&1; then
+  echo "xembedsniproxy detected - disabling SNI to prevent duplicate tray icons" >> "\$LOG_FILE"
+  DISABLE_FEATURES="\${DISABLE_FEATURES},UseStatusIconLinuxDbus"
+fi
+
+# Add combined disable-features flag (before app path!)
+ELECTRON_ARGS+=("--disable-features=\${DISABLE_FEATURES}")
 
 # Add compatibility flags based on display backend
 if [ "\$IS_WAYLAND" = true ]; then
@@ -175,18 +192,8 @@ else
   echo "X11 session detected" >> "\$LOG_FILE"
 fi
 
-# Fix for KDE duplicate tray icons (issue #163)
-# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
-# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
-# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
-# prevents the dual registration.
-if pgrep -x xembedsniproxy > /dev/null 2>&1; then
-  echo "xembedsniproxy detected - disabling SNI to prevent duplicate tray icons" >> "\$LOG_FILE"
-  ELECTRON_ARGS+=("--disable-features=UseStatusIconLinuxDbus")
-fi
-
-# Force disable custom titlebar for all sessions
-ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
+# Add app path LAST - Chromium flags must come before this
+ELECTRON_ARGS+=("\$APP_PATH")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 

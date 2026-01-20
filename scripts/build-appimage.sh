@@ -115,9 +115,25 @@ ELECTRON_EXEC="\$APPDIR/usr/lib/node_modules/electron/dist/electron"
 # App is now in Electron's resources directory
 APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
 
-# Base command arguments array
-# Add --no-sandbox flag to avoid sandbox issues within AppImage
-ELECTRON_ARGS=("--no-sandbox" "\$APP_PATH")
+# Build Chromium flags array - flags MUST come before app path
+# Start with --no-sandbox flag to avoid sandbox issues within AppImage
+ELECTRON_ARGS=("--no-sandbox")
+
+# Collect features to disable (must be combined into single --disable-features flag)
+DISABLE_FEATURES="CustomTitlebar"
+
+# Fix for KDE duplicate tray icons (issue #163)
+# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
+# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
+# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
+# prevents the dual registration.
+if pgrep -x xembedsniproxy > /dev/null 2>&1; then
+  echo "AppRun: xembedsniproxy detected - disabling SNI to prevent duplicate tray icons"
+  DISABLE_FEATURES="\${DISABLE_FEATURES},UseStatusIconLinuxDbus"
+fi
+
+# Add combined disable-features flag (before app path!)
+ELECTRON_ARGS+=("--disable-features=\${DISABLE_FEATURES}")
 
 # Add compatibility flags based on display backend
 if [ "\$IS_WAYLAND" = true ]; then
@@ -138,18 +154,8 @@ else
   echo "AppRun: X11 session detected"
 fi
 
-# Fix for KDE duplicate tray icons (issue #163)
-# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
-# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
-# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
-# prevents the dual registration.
-if pgrep -x xembedsniproxy > /dev/null 2>&1; then
-  echo "AppRun: xembedsniproxy detected - disabling SNI to prevent duplicate tray icons"
-  ELECTRON_ARGS+=("--disable-features=UseStatusIconLinuxDbus")
-fi
-
-# Force disable custom titlebar for all sessions
-ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
+# Add app path LAST - Chromium flags must come before this
+ELECTRON_ARGS+=("\$APP_PATH")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
