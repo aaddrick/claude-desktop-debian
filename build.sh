@@ -831,12 +831,14 @@ if [ -d "$CLAUDE_LOCALE_SRC" ]; then
         echo "Processing tray icons for Linux visibility (using $MAGICK_CMD)..."
 
         # Process all TrayIconTemplate variants (including @2x, @3x)
-        # Just make them 100% opaque - multiply alpha by 5 and clamp to 100%
+        # Make all non-transparent pixels 100% opaque using threshold approach.
+        # The original icons have anti-aliased edges with very low alpha (5-20 out of 255).
+        # The -fx "a>0?1:0" sets any non-zero alpha to fully opaque.
         for icon_file in "$ELECTRON_RESOURCES_DEST"/TrayIconTemplate*.png; do
             if [ -f "$icon_file" ]; then
                 icon_name=$(basename "$icon_file")
                 "$MAGICK_CMD" "$icon_file" \
-                    -channel A -evaluate multiply 5 -evaluate min 100% +channel \
+                    -channel A -fx "a>0?1:0" +channel \
                     "PNG32:$icon_file" 2>/dev/null && \
                     echo "  ✓ Processed $icon_name (100% opaque)" || \
                     echo "  ⚠️ Failed to process $icon_name"
