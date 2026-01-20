@@ -175,6 +175,16 @@ else
   echo "X11 session detected" >> "\$LOG_FILE"
 fi
 
+# Fix for KDE duplicate tray icons (issue #163)
+# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
+# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
+# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
+# prevents the dual registration.
+if pgrep -x xembedsniproxy > /dev/null 2>&1; then
+  echo "xembedsniproxy detected - disabling SNI to prevent duplicate tray icons" >> "\$LOG_FILE"
+  ELECTRON_ARGS+=("--disable-features=UseStatusIconLinuxDbus")
+fi
+
 # Force disable custom titlebar for all sessions
 ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 # Try to force native frame
