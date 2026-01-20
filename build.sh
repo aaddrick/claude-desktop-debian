@@ -636,6 +636,22 @@ fi
 echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
+echo "Patching tray icon selection for Linux visibility..."
+# The original code uses TrayIconTemplate.png for non-Windows, which is a macOS-style
+# template icon (light/white). On Linux, this appears invisible on light panels.
+# This patch makes Linux select icons based on theme:
+# - Dark theme (dark panel) -> TrayIconTemplate.png (light icon)
+# - Light theme (light panel) -> TrayIconTemplate-Dark.png (dark icon)
+# Original: io ? e = ... : e = "TrayIconTemplate.png"
+# Patched:  io ? e = ... : e = oe.nativeTheme.shouldUseDarkColors ? "TrayIconTemplate.png" : "TrayIconTemplate-Dark.png"
+if grep -q 'e="TrayIconTemplate\.png"' app.asar.contents/.vite/build/index.js; then
+    sed -i 's/e="TrayIconTemplate\.png"/e=oe.nativeTheme.shouldUseDarkColors?"TrayIconTemplate.png":"TrayIconTemplate-Dark.png"/g' app.asar.contents/.vite/build/index.js
+    echo "✓ Patched tray icon selection for Linux theme support"
+else
+    echo "ℹ️  Tray icon selection pattern not found or already patched"
+fi
+echo "##############################################################"
+
 # Fix quick window submit issue by adding blur() call before hide()
 if ! grep -q 'e.blur(),e.hide()' app.asar.contents/.vite/build/index.js; then
     sed -i 's/e.hide()/e.blur(),e.hide()/' app.asar.contents/.vite/build/index.js
@@ -780,11 +796,54 @@ cd "$PROJECT_ROOT"
 
 # Copy tray icon files to Electron resources directory for runtime access
 CLAUDE_LOCALE_SRC="$CLAUDE_EXTRACT_DIR/lib/net45/resources"
-echo "🖼️  Copying tray icon files to Electron resources directory..."
+echo "🖼️  Copying and processing tray icon files for Linux..."
 if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     # Tray icons must be in filesystem (not inside asar) for Electron Tray API to access them
     cp "$CLAUDE_LOCALE_SRC/Tray"* "$ELECTRON_RESOURCES_DEST/" 2>/dev/null || echo "⚠️  Warning: No tray icon files found at $CLAUDE_LOCALE_SRC/Tray*"
-    echo "✓ Tray icon files copied to Electron resources directory"
+
+    # Process template icons for Linux visibility
+    # The original icons are macOS-style templates (dark shapes, ~20% opacity)
+    # that rely on OS colorization. Linux doesn't do this, so we create solid versions.
+
+    # Determine ImageMagick command (convert is deprecated in IMv7, use magick if available)
+    MAGICK_CMD=""
+    if command -v magick &> /dev/null; then
+        MAGICK_CMD="magick"
+    elif command -v convert &> /dev/null; then
+        MAGICK_CMD="convert"
+    fi
+
+    if [ -n "$MAGICK_CMD" ]; then
+        echo "Processing tray icons for Linux visibility (using $MAGICK_CMD)..."
+
+        # For dark panels: create white/light version by negating and making opaque
+        # TrayIconTemplate.png is used on dark panels (shouldUseDarkColors=true)
+        if [ -f "$ELECTRON_RESOURCES_DEST/TrayIconTemplate.png" ]; then
+            "$MAGICK_CMD" "$ELECTRON_RESOURCES_DEST/TrayIconTemplate.png" \
+                -channel A -evaluate set 100% +channel \
+                -negate \
+                "$ELECTRON_RESOURCES_DEST/TrayIconTemplate.png" 2>/dev/null && \
+                echo "  ✓ Processed TrayIconTemplate.png (light icon for dark panels)" || \
+                echo "  ⚠️ Failed to process TrayIconTemplate.png"
+        fi
+
+        # For light panels: make the dark icon opaque
+        # TrayIconTemplate-Dark.png is used on light panels (shouldUseDarkColors=false)
+        if [ -f "$ELECTRON_RESOURCES_DEST/TrayIconTemplate-Dark.png" ]; then
+            "$MAGICK_CMD" "$ELECTRON_RESOURCES_DEST/TrayIconTemplate-Dark.png" \
+                -channel A -evaluate set 100% +channel \
+                "$ELECTRON_RESOURCES_DEST/TrayIconTemplate-Dark.png" 2>/dev/null && \
+                echo "  ✓ Processed TrayIconTemplate-Dark.png (dark icon for light panels)" || \
+                echo "  ⚠️ Failed to process TrayIconTemplate-Dark.png"
+        fi
+
+        echo "✓ Tray icon files copied and processed"
+    else
+        echo "⚠️  Warning: ImageMagick not found (convert/magick commands unavailable)"
+        echo "   Tray icons will use original macOS template format and may appear invisible."
+        echo "   Install ImageMagick to fix: sudo apt install imagemagick"
+        echo "✓ Tray icon files copied (unprocessed)"
+    fi
 else
     echo "⚠️  Warning: Claude resources directory not found at $CLAUDE_LOCALE_SRC"
 fi
