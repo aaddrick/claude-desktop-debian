@@ -637,15 +637,23 @@ echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}
 echo "##############################################################"
 
 echo "Patching tray icon selection for Linux visibility..."
-# The original code uses TrayIconTemplate.png for non-Windows, which is a macOS-style
-# template icon (light/white). On Linux, this appears invisible on light panels.
-# This patch makes Linux select icons based on theme:
-# - Dark theme (dark panel) -> TrayIconTemplate.png (light icon)
-# - Light theme (light panel) -> TrayIconTemplate-Dark.png (dark icon)
-# Original: io ? e = ... : e = "TrayIconTemplate.png"
-# Patched:  io ? e = ... : e = oe.nativeTheme.shouldUseDarkColors ? "TrayIconTemplate.png" : "TrayIconTemplate-Dark.png"
-if grep -q 'e="TrayIconTemplate\.png"' app.asar.contents/.vite/build/index.js; then
-    sed -i 's/e="TrayIconTemplate\.png"/e=oe.nativeTheme.shouldUseDarkColors?"TrayIconTemplate.png":"TrayIconTemplate-Dark.png"/g' app.asar.contents/.vite/build/index.js
+# The original code always uses TrayIconTemplate.png for non-Windows (Linux/Mac).
+# This is a BLACK icon with ~20% opacity - invisible on dark panels.
+#
+# Icon file contents (macOS naming convention):
+#   TrayIconTemplate.png      = BLACK icon (for light panels)
+#   TrayIconTemplate-Dark.png = WHITE icon (for dark panels, "-Dark" means "for dark mode")
+#
+# This patch adds theme-based selection for Linux:
+#   shouldUseDarkColors=true  (dark panel)  -> TrayIconTemplate-Dark.png (WHITE)
+#   shouldUseDarkColors=false (light panel) -> TrayIconTemplate.png (BLACK)
+#
+# Original: io ? VAR = ... : VAR = "TrayIconTemplate.png"
+# Patched:  io ? VAR = ... : VAR = oe.nativeTheme.shouldUseDarkColors ? "TrayIconTemplate-Dark.png" : "TrayIconTemplate.png"
+#
+# Regex uses \w to match any minified variable name (e, t, n, etc.)
+if grep -qP ':\w="TrayIconTemplate\.png"' app.asar.contents/.vite/build/index.js; then
+    sed -i -E 's/:(\w)="TrayIconTemplate\.png"/:\1=oe.nativeTheme.shouldUseDarkColors?"TrayIconTemplate-Dark.png":"TrayIconTemplate.png"/g' app.asar.contents/.vite/build/index.js
     echo "✓ Patched tray icon selection for Linux theme support"
 else
     echo "ℹ️  Tray icon selection pattern not found or already patched"
@@ -802,8 +810,14 @@ if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     cp "$CLAUDE_LOCALE_SRC/Tray"* "$ELECTRON_RESOURCES_DEST/" 2>/dev/null || echo "⚠️  Warning: No tray icon files found at $CLAUDE_LOCALE_SRC/Tray*"
 
     # Process template icons for Linux visibility
-    # The original icons are macOS-style templates (dark shapes, ~20% opacity)
-    # that rely on OS colorization. Linux doesn't do this, so we create solid versions.
+    # The original icons are macOS-style templates with ~20% opacity.
+    # macOS colorizes these automatically; Linux does not.
+    #
+    # Icon contents (already correct colors, just need opacity fix):
+    #   TrayIconTemplate.png      = BLACK shapes, ~20% opacity (for light panels)
+    #   TrayIconTemplate-Dark.png = WHITE shapes, ~20% opacity (for dark panels)
+    #
+    # We just need to make them 100% opaque - NO color changes needed.
 
     # Determine ImageMagick command (convert is deprecated in IMv7, use magick if available)
     MAGICK_CMD=""
@@ -816,26 +830,18 @@ if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     if [ -n "$MAGICK_CMD" ]; then
         echo "Processing tray icons for Linux visibility (using $MAGICK_CMD)..."
 
-        # For dark panels: create white/light version by negating and making opaque
-        # TrayIconTemplate.png is used on dark panels (shouldUseDarkColors=true)
-        if [ -f "$ELECTRON_RESOURCES_DEST/TrayIconTemplate.png" ]; then
-            "$MAGICK_CMD" "$ELECTRON_RESOURCES_DEST/TrayIconTemplate.png" \
-                -channel A -evaluate set 100% +channel \
-                -negate \
-                "$ELECTRON_RESOURCES_DEST/TrayIconTemplate.png" 2>/dev/null && \
-                echo "  ✓ Processed TrayIconTemplate.png (light icon for dark panels)" || \
-                echo "  ⚠️ Failed to process TrayIconTemplate.png"
-        fi
-
-        # For light panels: make the dark icon opaque
-        # TrayIconTemplate-Dark.png is used on light panels (shouldUseDarkColors=false)
-        if [ -f "$ELECTRON_RESOURCES_DEST/TrayIconTemplate-Dark.png" ]; then
-            "$MAGICK_CMD" "$ELECTRON_RESOURCES_DEST/TrayIconTemplate-Dark.png" \
-                -channel A -evaluate set 100% +channel \
-                "$ELECTRON_RESOURCES_DEST/TrayIconTemplate-Dark.png" 2>/dev/null && \
-                echo "  ✓ Processed TrayIconTemplate-Dark.png (dark icon for light panels)" || \
-                echo "  ⚠️ Failed to process TrayIconTemplate-Dark.png"
-        fi
+        # Process all TrayIconTemplate variants (including @2x, @3x)
+        # Just make them 100% opaque - multiply alpha by 5 and clamp to 100%
+        for icon_file in "$ELECTRON_RESOURCES_DEST"/TrayIconTemplate*.png; do
+            if [ -f "$icon_file" ]; then
+                icon_name=$(basename "$icon_file")
+                "$MAGICK_CMD" "$icon_file" \
+                    -channel A -evaluate multiply 5 -evaluate min 100% +channel \
+                    "PNG32:$icon_file" 2>/dev/null && \
+                    echo "  ✓ Processed $icon_name (100% opaque)" || \
+                    echo "  ⚠️ Failed to process $icon_name"
+            fi
+        done
 
         echo "✓ Tray icon files copied and processed"
     else
