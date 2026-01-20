@@ -65,7 +65,8 @@ cat > "$APPDIR_PATH/AppRun" << EOF
 set -e
 
 # Find the location of the AppRun script and the AppImage file itself
-APPDIR=\$(dirname "\$0")
+# Use readlink -f to get absolute path, avoiding issues when we cd later
+APPDIR=\$(dirname "\$(readlink -f "\$0")")
 # Try to get the absolute path of the AppImage file being run
 # $APPIMAGE is often set by the AppImage runtime, otherwise try readlink
 APPIMAGE_PATH="\${APPIMAGE:-}"
@@ -115,9 +116,14 @@ ELECTRON_EXEC="\$APPDIR/usr/lib/node_modules/electron/dist/electron"
 # App is now in Electron's resources directory
 APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
 
-# Base command arguments array
-# Add --no-sandbox flag to avoid sandbox issues within AppImage
-ELECTRON_ARGS=("--no-sandbox" "\$APP_PATH")
+# Build Chromium flags array - flags MUST come before app path
+# Start with --no-sandbox flag to avoid sandbox issues within AppImage
+ELECTRON_ARGS=("--no-sandbox")
+
+# Disable CustomTitlebar for better Linux integration
+# Note: The duplicate tray icon fix (issue #163) is handled via app.asar patching
+# (increased delays in tray creation to allow DBus cleanup between destroy/create cycles)
+ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
 
 # Add compatibility flags based on display backend
 if [ "\$IS_WAYLAND" = true ]; then
@@ -138,18 +144,8 @@ else
   echo "AppRun: X11 session detected"
 fi
 
-# Fix for KDE duplicate tray icons (issue #163)
-# When xembedsniproxy is running (standard KDE component), Electron registers tray icons
-# via both StatusNotifierItem (SNI) and XEmbed protocols. xembedsniproxy then bridges
-# the XEmbed icon to SNI, creating a duplicate. Disabling UseStatusIconLinuxDbus
-# prevents the dual registration.
-if pgrep -x xembedsniproxy > /dev/null 2>&1; then
-  echo "AppRun: xembedsniproxy detected - disabling SNI to prevent duplicate tray icons"
-  ELECTRON_ARGS+=("--disable-features=UseStatusIconLinuxDbus")
-fi
-
-# Force disable custom titlebar for all sessions
-ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
+# Add app path LAST - Chromium flags must come before this
+ELECTRON_ARGS+=("\$APP_PATH")
 # Try to force native frame
 export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
