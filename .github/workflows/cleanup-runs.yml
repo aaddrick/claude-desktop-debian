@@ -1,0 +1,46 @@
+name: Cleanup Workflow Runs
+run-name: |
+  Cleanup: ${{
+    github.event_name == 'schedule' && 'Weekly scheduled cleanup' ||
+    format('Manual cleanup by @{0}', github.actor)
+  }}
+
+on:
+  schedule:
+    # Run every Thursday at midnight UTC
+    - cron: "0 0 * * 4"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: Delete Non-Release Runs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+
+    steps:
+      - name: Delete workflow runs not tied to release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Fetching workflow runs..."
+
+          # Get all runs where headBranch doesn't start with "v" (release tags)
+          runs_to_delete=$(gh run list --json databaseId,headBranch --limit 1000 -q '.[] | select(.headBranch | startswith("v") | not) | .databaseId')
+
+          if [ -z "$runs_to_delete" ]; then
+            echo "No non-release runs to delete."
+            exit 0
+          fi
+
+          count=$(echo "$runs_to_delete" | wc -l)
+          echo "Found $count runs to delete..."
+
+          # Delete each run
+          echo "$runs_to_delete" | while read -r run_id; do
+            echo "Deleting run $run_id..."
+            gh run delete "$run_id" || echo "Failed to delete run $run_id (may already be deleted)"
+          done
+
+          echo "Cleanup complete!"
