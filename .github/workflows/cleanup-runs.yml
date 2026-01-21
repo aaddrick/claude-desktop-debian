@@ -19,18 +19,26 @@ jobs:
       actions: write
 
     steps:
-      - name: Delete workflow runs not tied to release tags
+      - name: Delete old workflow runs not tied to release tags
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           echo "Fetching workflow runs..."
 
-          # Get all runs where headBranch doesn't start with "v" (release tags)
-          runs_to_delete=$(gh run list --json databaseId,headBranch --limit 1000 -q '.[] | select(.headBranch | startswith("v") | not) | .databaseId')
+          # Calculate cutoff date (3 days ago)
+          cutoff=$(date -u -d '3 days ago' '+%Y-%m-%dT%H:%M:%SZ')
+          echo "Deleting non-release runs older than: $cutoff"
+
+          # Get all runs where:
+          # - headBranch doesn't start with "v" (not a release tag)
+          # - createdAt is older than 3 days
+          runs_to_delete=$(gh run list --json databaseId,headBranch,createdAt --limit 1000 | \
+            jq -r --arg cutoff "$cutoff" \
+            '.[] | select((.headBranch | startswith("v") | not) and (.createdAt < $cutoff)) | .databaseId')
 
           if [ -z "$runs_to_delete" ]; then
-            echo "No non-release runs to delete."
+            echo "No old non-release runs to delete."
             exit 0
           fi
 
