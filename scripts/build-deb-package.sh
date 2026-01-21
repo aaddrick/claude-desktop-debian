@@ -206,23 +206,20 @@ echo "✓ Launcher script created"
 
 # --- Create Control File ---
 echo "📄 Creating control file..."
-# Determine dependencies based on whether electron was packaged
-DEPENDS="nodejs, npm, p7zip-full" # Base dependencies
-# Electron is now always packaged locally, so it's not listed as an external dependency.
-echo "Electron is packaged locally; not adding to external Depends list."
+# Electron is bundled with its own Node.js runtime, so nodejs/npm are not runtime dependencies.
+# p7zip is only used at build time to extract the installer.
+# No external dependencies are required at runtime.
 
 cat > "$PACKAGE_ROOT/DEBIAN/control" << EOF
 Package: $PACKAGE_NAME
 Version: $VERSION
 Architecture: $ARCHITECTURE
 Maintainer: $MAINTAINER
-Depends: $DEPENDS
 Description: $DESCRIPTION
  Claude is an AI assistant from Anthropic.
  This package provides the desktop interface for Claude.
  .
  Supported on Debian-based Linux distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
- Requires: nodejs (>= 12.0.0), npm
 EOF
 echo "✓ Control file created"
 
