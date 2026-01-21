@@ -433,10 +433,49 @@ Module.prototype.require = function(id) {
           console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
         }
         super(options);
-        // Hide menu bar after window creation on Linux
+// Hide menu bar after window creation on Linux
         if (process.platform === 'linux') {
           this.setMenuBarVisibility(false);
           console.log('[Frame Fix] Menu bar visibility set to false');
+
+          // On Linux, WM maximize/unmaximize may not fire resize events properly
+          // This causes content to not resize correctly (issue #84)
+          // Force a bounds recalculation by slightly adjusting window size
+          console.log('[Frame Fix] Setting up maximize/unmaximize listeners for window');
+          const forceResize = (eventName) => {
+            console.log(\`[Frame Fix] forceResize called from \${eventName}\`);
+            console.log(\`[Frame Fix] Window destroyed: \${this.isDestroyed()}\`);
+            setTimeout(() => {
+              if (this.isDestroyed()) {
+                console.log('[Frame Fix] Window was destroyed, aborting');
+                return;
+              }
+              const bounds = this.getBounds();
+              console.log(\`[Frame Fix] Current bounds: \${JSON.stringify(bounds)}\`);
+              // Slightly adjust and restore to force layout recalculation
+              const newBounds = { ...bounds, width: bounds.width + 1 };
+              console.log(\`[Frame Fix] Setting temp bounds: \${JSON.stringify(newBounds)}\`);
+              this.setBounds(newBounds);
+              setTimeout(() => {
+                if (this.isDestroyed()) {
+                  console.log('[Frame Fix] Window was destroyed during resize, aborting');
+                  return;
+                }
+                console.log(\`[Frame Fix] Restoring bounds: \${JSON.stringify(bounds)}\`);
+                this.setBounds(bounds);
+                console.log('[Frame Fix] Forced bounds recalculation complete');
+              }, 50);
+            }, 100);
+          };
+          this.on('maximize', () => {
+            console.log('[Frame Fix] >>> MAXIMIZE EVENT FIRED <<<');
+            forceResize('maximize');
+          });
+          this.on('unmaximize', () => {
+            console.log('[Frame Fix] >>> UNMAXIMIZE EVENT FIRED <<<');
+            forceResize('unmaximize');
+          });
+          console.log('[Frame Fix] Maximize/unmaximize listeners registered');
         }
       }
     };
