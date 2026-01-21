@@ -636,6 +636,40 @@ fi
 echo "✓ Tray menu handler patched: function=${TRAY_FUNC}, tray_var=${TRAY_VAR}, check_var=${FIRST_CONST}"
 echo "##############################################################"
 
+echo "Patching nativeTheme handler to skip tray updates during startup..."
+# Issue #163: Race condition causes duplicate tray icons
+# The nativeTheme.on("updated") event fires during app startup (window initialization)
+# almost simultaneously with the initial i9() call from app.on("ready").
+# Both calls check the mutex guard at nearly the same time, both see false,
+# and both proceed to create tray icons - causing DBus "already exported" errors.
+#
+# Fix: Add a startup timestamp and skip i9() calls in the theme handler during
+# the first 3 seconds of app runtime. This allows the initial tray creation
+# to complete before theme-triggered updates are processed.
+#
+# Original: oe.nativeTheme.on("updated",()=>{VAR!=null&&VAR.isDestroyed()||(FUNC(),TRAYFUNC(),...
+# Patched:  let _trayStartTime=Date.now();oe.nativeTheme.on("updated",()=>{VAR!=null&&VAR.isDestroyed()||(FUNC(),Date.now()-_trayStartTime>3e3&&TRAYFUNC(),...
+#
+# Note: Variable/function names are minified and change between releases.
+# We use $TRAY_FUNC extracted earlier and regex patterns to handle any names.
+
+if ! grep -q "_trayStartTime" app.asar.contents/.vite/build/index.js; then
+    # Step 1: Add timestamp variable before nativeTheme.on("updated"
+    # Pattern handles optional whitespace for both minified and beautified code
+    sed -i -E 's/(oe\.nativeTheme\.on\(\s*"updated"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g' app.asar.contents/.vite/build/index.js
+
+    # Step 2: Wrap the tray function call with timestamp check
+    # Pattern: (ANYFUNC(),TRAYFUNC(), -> (ANYFUNC(),Date.now()-_trayStartTime>3e3&&TRAYFUNC(),
+    # Uses \w+ to match any minified function name before our known TRAY_FUNC
+    # Handles optional whitespace between tokens
+    sed -i -E "s/\((\w+)\(\)\s*,\s*${TRAY_FUNC}\(\)\s*,/(\1(),Date.now()-_trayStartTime>3e3\&\&${TRAY_FUNC}(),/g" app.asar.contents/.vite/build/index.js
+
+    echo "  ✓ Added startup delay check to nativeTheme handler (3 second window)"
+else
+    echo "  ℹ️  Startup delay check already present in nativeTheme handler"
+fi
+echo "##############################################################"
+
 echo "Patching tray icon selection for Linux visibility..."
 # The original code always uses TrayIconTemplate.png for non-Windows (Linux/Mac).
 # This is a BLACK icon with ~20% opacity - invisible on dark panels.
