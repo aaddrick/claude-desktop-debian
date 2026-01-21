@@ -21,4 +21,9 @@ Thumbs.db
 *.exe
 
 .claude/
-CLAUDE.md
+
+# Test build output
+test-build/
+
+# Reference files for source inspection
+build-reference/
