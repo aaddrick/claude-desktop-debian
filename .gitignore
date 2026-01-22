@@ -20,7 +20,6 @@ Thumbs.db
 *.deb
 *.exe
 
-.claude/
 
 # Test build output
 test-build/
