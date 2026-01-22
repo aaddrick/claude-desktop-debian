@@ -37,6 +37,12 @@ Human: <what human did>
 Written by Claude <model-name> via [Claude Code](https://claude.ai/code)
 ```
 
+**For commits**, include a Co-Authored-By trailer:
+
+```
+Co-Authored-By: Claude <claude@anthropic.com>
+```
+
 ## Working with Minified JavaScript
 
 ### Important Guidelines
