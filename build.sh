@@ -401,79 +401,8 @@ echo "Creating BrowserWindow frame fix wrapper..."
 ORIGINAL_MAIN=$(node -e "const pkg = require('./app.asar.contents/package.json'); console.log(pkg.main);")
 echo "Original main entry: $ORIGINAL_MAIN"
 
-# Create the wrapper that intercepts electron module
-cat > app.asar.contents/frame-fix-wrapper.js << 'EOFFIX'
-// Inject frame fix before main app loads
-const Module = require('module');
-const originalRequire = Module.prototype.require;
-
-console.log('[Frame Fix] Wrapper loaded');
-
-Module.prototype.require = function(id) {
-  const module = originalRequire.apply(this, arguments);
-
-  if (id === 'electron') {
-    console.log('[Frame Fix] Intercepting electron module');
-    const OriginalBrowserWindow = module.BrowserWindow;
-    const OriginalMenu = module.Menu;
-
-    module.BrowserWindow = class BrowserWindowWithFrame extends OriginalBrowserWindow {
-      constructor(options) {
-        console.log('[Frame Fix] BrowserWindow constructor called');
-        if (process.platform === 'linux') {
-          options = options || {};
-          const originalFrame = options.frame;
-          // Force native frame
-          options.frame = true;
-          // Hide the menu bar by default (Alt key will toggle it)
-          options.autoHideMenuBar = true;
-          // Remove custom titlebar options
-          delete options.titleBarStyle;
-          delete options.titleBarOverlay;
-          console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
-        }
-        super(options);
-        // Hide menu bar after window creation on Linux
-        if (process.platform === 'linux') {
-          this.setMenuBarVisibility(false);
-          console.log('[Frame Fix] Menu bar visibility set to false');
-        }
-      }
-    };
-
-    // Copy static methods and properties (but NOT prototype, that's already set by extends)
-    for (const key of Object.getOwnPropertyNames(OriginalBrowserWindow)) {
-      if (key !== 'prototype' && key !== 'length' && key !== 'name') {
-        try {
-          const descriptor = Object.getOwnPropertyDescriptor(OriginalBrowserWindow, key);
-          if (descriptor) {
-            Object.defineProperty(module.BrowserWindow, key, descriptor);
-          }
-        } catch (e) {
-          // Ignore errors for non-configurable properties
-        }
-      }
-    }
-
-    // Intercept Menu.setApplicationMenu to hide menu bar on Linux
-    // This catches the app's later calls to setApplicationMenu that would show the menu
-    const originalSetAppMenu = OriginalMenu.setApplicationMenu.bind(OriginalMenu);
-    module.Menu.setApplicationMenu = function(menu) {
-      console.log('[Frame Fix] Intercepting setApplicationMenu');
-      originalSetAppMenu(menu);
-      if (process.platform === 'linux') {
-        // Hide menu bar on all existing windows after menu is set
-        for (const win of module.BrowserWindow.getAllWindows()) {
-          win.setMenuBarVisibility(false);
-        }
-        console.log('[Frame Fix] Menu bar hidden on all windows');
-      }
-    };
-  }
-
-  return module;
-};
-EOFFIX
+# Copy the wrapper that intercepts electron module
+cp "$PROJECT_ROOT/scripts/frame-fix-wrapper.js" app.asar.contents/frame-fix-wrapper.js
 
 # Create new entry point that loads fix then original main
 cat > app.asar.contents/frame-fix-entry.js << EOFENTRY
@@ -518,42 +447,7 @@ console.log('Updated package.json: main entry and node-pty dependency');
 
 echo "Creating stub native module..."
 mkdir -p app.asar.contents/node_modules/@ant/claude-native
-cat > app.asar.contents/node_modules/@ant/claude-native/index.js << 'EOF'
-// Stub implementation of claude-native for Linux
-const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
-Object.freeze(KeyboardKey);
-
-// AuthRequest stub - not available on Linux, will cause fallback to system browser
-class AuthRequest {
-  static isAvailable() {
-    return false;
-  }
-  
-  async start(url, scheme, windowHandle) {
-    throw new Error('AuthRequest not available on Linux');
-  }
-  
-  cancel() {
-    // no-op
-  }
-}
-
-module.exports = { 
-  getWindowsVersion: () => "10.0.0", 
-  setWindowEffect: () => {}, 
-  removeWindowEffect: () => {}, 
-  getIsMaximized: () => false, 
-  flashFrame: () => {}, 
-  clearFlashFrame: () => {}, 
-  showNotification: () => {}, 
-  setProgressBar: () => {}, 
-  clearProgressBar: () => {}, 
-  setOverlayIcon: () => {}, 
-  clearOverlayIcon: () => {}, 
-  KeyboardKey,
-  AuthRequest
-};
-EOF
+cp "$PROJECT_ROOT/scripts/claude-native-stub.js" app.asar.contents/node_modules/@ant/claude-native/index.js
 
 mkdir -p app.asar.contents/resources
 mkdir -p app.asar.contents/resources/i18n
@@ -762,42 +656,7 @@ echo -e "\033[1;36m--- End node-pty installation ---\033[0m"
 "$ASAR_EXEC" pack app.asar.contents app.asar
 
 mkdir -p "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native"
-cat > "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native/index.js" << 'EOF'
-// Stub implementation of claude-native for Linux
-const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
-Object.freeze(KeyboardKey);
-
-// AuthRequest stub - not available on Linux, will cause fallback to system browser
-class AuthRequest {
-  static isAvailable() {
-    return false;
-  }
-  
-  async start(url, scheme, windowHandle) {
-    throw new Error('AuthRequest not available on Linux');
-  }
-  
-  cancel() {
-    // no-op
-  }
-}
-
-module.exports = { 
-  getWindowsVersion: () => "10.0.0", 
-  setWindowEffect: () => {}, 
-  removeWindowEffect: () => {}, 
-  getIsMaximized: () => false, 
-  flashFrame: () => {}, 
-  clearFlashFrame: () => {}, 
-  showNotification: () => {}, 
-  setProgressBar: () => {}, 
-  clearProgressBar: () => {}, 
-  setOverlayIcon: () => {}, 
-  clearOverlayIcon: () => {}, 
-  KeyboardKey,
-  AuthRequest
-};
-EOF
+cp "$PROJECT_ROOT/scripts/claude-native-stub.js" "$APP_STAGING_DIR/app.asar.unpacked/node_modules/@ant/claude-native/index.js"
 
 # Copy node-pty native binaries to unpacked directory
 if [ -d "$NODE_PTY_BUILD_DIR/node_modules/node-pty/build/Release" ]; then
