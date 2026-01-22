@@ -4,31 +4,40 @@ set -euo pipefail
 # --- Architecture Detection ---
 echo -e "\033[1;36m--- Architecture Detection ---\033[0m"
 echo "⚙️ Detecting system architecture..."
-HOST_ARCH=$(dpkg --print-architecture)
+HOST_ARCH=$(uname -m)
 echo "Detected host architecture: $HOST_ARCH"
-cat /etc/os-release && uname -m && dpkg --print-architecture
+cat /etc/os-release && uname -m
 
 # Set variables based on detected architecture
-if [ "$HOST_ARCH" = "amd64" ]; then
+if [ "$HOST_ARCH" = "x86_64" ]; then
     CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/1.1.381/Claude-c2a39e9c82f5a4d51f511f53f532afd276312731.exe"
-    ARCHITECTURE="amd64"
+    ARCHITECTURE="x86_64"
     CLAUDE_EXE_FILENAME="Claude-Setup-x64.exe"
-    echo "Configured for amd64 build."
-elif [ "$HOST_ARCH" = "arm64" ]; then
+    echo "Configured for x86_64 build."
+elif [ "$HOST_ARCH" = "aarch64" ]; then
     CLAUDE_DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/arm64/1.1.381/Claude-c2a39e9c82f5a4d51f511f53f532afd276312731.exe"
-    ARCHITECTURE="arm64"
+    ARCHITECTURE="aarch64"
     CLAUDE_EXE_FILENAME="Claude-Setup-arm64.exe"
-    echo "Configured for arm64 build."
+    echo "Configured for aarch64 build."
 else
-    echo "❌ Unsupported architecture: $HOST_ARCH. This script currently supports amd64 and arm64."
+    echo "❌ Unsupported architecture: $HOST_ARCH. This script currently supports x86_64 and aarch64."
     exit 1
 fi
 echo "Target Architecture (detected): $ARCHITECTURE" # Renamed echo
 echo -e "\033[1;36m--- End Architecture Detection ---\033[0m"
 
 
-if [ ! -f "/etc/debian_version" ]; then
-    echo "❌ This script requires a Debian-based Linux distribution"
+# Check for openSUSE
+if [ ! -f "/etc/os-release" ]; then
+    echo "❌ This script requires /etc/os-release to be present"
+    exit 1
+fi
+
+# shellcheck disable=SC1091
+. /etc/os-release
+if [[ "$ID" != "opensuse"* && "$ID_LIKE" != *"suse"* ]]; then
+    echo "❌ This script requires an openSUSE Linux distribution"
+    echo "   Detected: $NAME ($ID)"
     exit 1
 fi
 
@@ -73,14 +82,13 @@ fi # End of if [ -d "$ORIGINAL_HOME/.nvm" ] check
 
 echo "System Information:"
 echo "Distribution: $(grep "PRETTY_NAME" /etc/os-release | cut -d'"' -f2)"
-echo "Debian version: $(cat /etc/debian_version)"
 echo "Target Architecture: $ARCHITECTURE" 
 PACKAGE_NAME="claude-desktop"
 MAINTAINER="Claude Desktop Linux Maintainers"
 DESCRIPTION="Claude Desktop for Linux"
 PROJECT_ROOT="$(pwd)" WORK_DIR="$PROJECT_ROOT/build" APP_STAGING_DIR="$WORK_DIR/electron-app" VERSION="" 
 echo -e "\033[1;36m--- Argument Parsing ---\033[0m"
-BUILD_FORMAT="deb"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false  LOCAL_EXE_PATH=""
+BUILD_FORMAT="rpm"    CLEANUP_ACTION="yes"  TEST_FLAGS_MODE=false  LOCAL_EXE_PATH=""
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -104,8 +112,8 @@ while [[ $# -gt 0 ]]; do
         shift # past argument
         ;;
         -h|--help)
-        echo "Usage: $0 [--build deb|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--test-flags]"
-        echo "  --build: Specify the build format (deb or appimage). Default: deb"
+        echo "Usage: $0 [--build rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--test-flags]"
+        echo "  --build: Specify the build format (rpm or appimage). Default: rpm"
         echo "  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes"
         echo "  --exe:   Use a local Claude installer exe instead of downloading"
         echo "  --test-flags: Parse flags, print results, and exit without building."
@@ -120,8 +128,8 @@ done
 
 # Validate arguments
 BUILD_FORMAT=$(echo "$BUILD_FORMAT" | tr '[:upper:]' '[:lower:]') CLEANUP_ACTION=$(echo "$CLEANUP_ACTION" | tr '[:upper:]' '[:lower:]')
-if [[ "$BUILD_FORMAT" != "deb" && "$BUILD_FORMAT" != "appimage" ]]; then
-    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'deb' or 'appimage'." >&2
+if [[ "$BUILD_FORMAT" != "rpm" && "$BUILD_FORMAT" != "appimage" ]]; then
+    echo "❌ Invalid build format specified: '$BUILD_FORMAT'. Must be 'rpm' or 'appimage'." >&2
     exit 1
 fi
 if [[ "$CLEANUP_ACTION" != "yes" && "$CLEANUP_ACTION" != "no" ]]; then
@@ -162,11 +170,11 @@ check_command() {
 echo "Checking dependencies..."
 DEPS_TO_INSTALL=""
 COMMON_DEPS="p7zip wget wrestool icotool convert"
-DEB_DEPS="dpkg-deb"
-APPIMAGE_DEPS="" 
+RPM_DEPS="rpmbuild"
+APPIMAGE_DEPS=""
 ALL_DEPS_TO_CHECK="$COMMON_DEPS"
-if [ "$BUILD_FORMAT" = "deb" ]; then
-    ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $DEB_DEPS"
+if [ "$BUILD_FORMAT" = "rpm" ]; then
+    ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $RPM_DEPS"
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     ALL_DEPS_TO_CHECK="$ALL_DEPS_TO_CHECK $APPIMAGE_DEPS"
 fi
@@ -174,11 +182,11 @@ fi
 for cmd in $ALL_DEPS_TO_CHECK; do
     if ! check_command "$cmd"; then
         case "$cmd" in
-            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip-full" ;;
+            "p7zip") DEPS_TO_INSTALL="$DEPS_TO_INSTALL p7zip" ;;
             "wget") DEPS_TO_INSTALL="$DEPS_TO_INSTALL wget" ;;
             "wrestool"|"icotool") DEPS_TO_INSTALL="$DEPS_TO_INSTALL icoutils" ;;
-            "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL imagemagick" ;;
-            "dpkg-deb") DEPS_TO_INSTALL="$DEPS_TO_INSTALL dpkg-dev" ;;
+            "convert") DEPS_TO_INSTALL="$DEPS_TO_INSTALL ImageMagick" ;;
+            "rpmbuild") DEPS_TO_INSTALL="$DEPS_TO_INSTALL rpm-build" ;;
         esac
     fi
 done
@@ -190,14 +198,14 @@ if [ -n "$DEPS_TO_INSTALL" ]; then
         echo "❌ Failed to validate sudo credentials. Please ensure you can run sudo."
         exit 1
     fi
-        if ! sudo apt update; then
-        echo "❌ Failed to run 'sudo apt update'."
+        if ! sudo zypper refresh; then
+        echo "❌ Failed to run 'sudo zypper refresh'."
         exit 1
     fi
     # Here on purpose no "" to expand the 'list', thus
     # shellcheck disable=SC2086
-    if ! sudo apt install -y $DEPS_TO_INSTALL; then
-         echo "❌ Failed to install dependencies using 'sudo apt install'."
+    if ! sudo zypper install -y $DEPS_TO_INSTALL; then
+         echo "❌ Failed to install dependencies using 'sudo zypper install'."
          exit 1
     fi
     echo "✓ System dependencies installed successfully via sudo."
@@ -230,9 +238,9 @@ if [ "$NODE_VERSION_OK" = false ]; then
     echo "Installing Node.js v20 locally in build directory..."
     
     # Determine Node.js download URL based on architecture
-    if [ "$ARCHITECTURE" = "amd64" ]; then
+    if [ "$ARCHITECTURE" = "x86_64" ]; then
         NODE_ARCH="x64"
-    elif [ "$ARCHITECTURE" = "arm64" ]; then
+    elif [ "$ARCHITECTURE" = "aarch64" ]; then
         NODE_ARCH="arm64"
     else
         echo "❌ Unsupported architecture for Node.js: $ARCHITECTURE"
@@ -906,7 +914,7 @@ if [ -d "$CLAUDE_LOCALE_SRC" ]; then
     else
         echo "⚠️  Warning: ImageMagick not found (convert/magick commands unavailable)"
         echo "   Tray icons will use original macOS template format and may appear invisible."
-        echo "   Install ImageMagick to fix: sudo apt install imagemagick"
+        echo "   Install ImageMagick to fix: sudo zypper install ImageMagick"
         echo "✓ Tray icon files copied (unprocessed)"
     fi
 else
@@ -929,24 +937,24 @@ echo "✓ app.asar processed and staged in $APP_STAGING_DIR"
 cd "$PROJECT_ROOT"
 
 echo -e "\033[1;36m--- Call Packaging Script ---\033[0m"
-FINAL_OUTPUT_PATH="" FINAL_DESKTOP_FILE_PATH="" 
-if [ "$BUILD_FORMAT" = "deb" ]; then
-    echo "📦 Calling Debian packaging script for $ARCHITECTURE..."
-    chmod +x scripts/build-deb-package.sh
-    if ! scripts/build-deb-package.sh \
+FINAL_OUTPUT_PATH="" FINAL_DESKTOP_FILE_PATH=""
+if [ "$BUILD_FORMAT" = "rpm" ]; then
+    echo "📦 Calling RPM packaging script for $ARCHITECTURE..."
+    chmod +x scripts/build-rpm-package.sh
+    if ! scripts/build-rpm-package.sh \
         "$VERSION" "$ARCHITECTURE" "$WORK_DIR" "$APP_STAGING_DIR" \
         "$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
-        echo "❌ Debian packaging script failed."
+        echo "❌ RPM packaging script failed."
         exit 1
     fi
-    DEB_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb" | head -n 1)
-    echo "✓ Debian Build complete!"
-    if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-        FINAL_OUTPUT_PATH="./$(basename "$DEB_FILE")" # Set final path using basename directly
-        mv "$DEB_FILE" "$FINAL_OUTPUT_PATH"
+    RPM_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "${PACKAGE_NAME}-${VERSION}-*.${ARCHITECTURE}.rpm" | head -n 1)
+    echo "✓ RPM Build complete!"
+    if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
+        FINAL_OUTPUT_PATH="./$(basename "$RPM_FILE")" # Set final path using basename directly
+        mv "$RPM_FILE" "$FINAL_OUTPUT_PATH"
         echo "Package created at: $FINAL_OUTPUT_PATH"
     else
-        echo "Warning: Could not determine final .deb file path from $WORK_DIR for ${ARCHITECTURE}."
+        echo "Warning: Could not determine final .rpm file path from $WORK_DIR for ${ARCHITECTURE}."
         FINAL_OUTPUT_PATH="Not Found"
     fi
 
@@ -1006,13 +1014,13 @@ fi
 echo "✅ Build process finished."
 
 echo -e "\n\033[1;34m====== Next Steps ======\033[0m"
-if [ "$BUILD_FORMAT" = "deb" ]; then
+if [ "$BUILD_FORMAT" = "rpm" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then
-        echo -e "📦 To install the Debian package, run:"
-        echo -e "   \033[1;32msudo apt install $FINAL_OUTPUT_PATH\033[0m"
-        echo -e "   (or \`sudo dpkg -i $FINAL_OUTPUT_PATH\`)"
+        echo -e "📦 To install the RPM package, run:"
+        echo -e "   \033[1;32msudo zypper install $FINAL_OUTPUT_PATH\033[0m"
+        echo -e "   (or \`sudo rpm -i $FINAL_OUTPUT_PATH\`)"
     else
-        echo -e "⚠️ Debian package file not found. Cannot provide installation instructions."
+        echo -e "⚠️ RPM package file not found. Cannot provide installation instructions."
     fi
 elif [ "$BUILD_FORMAT" = "appimage" ]; then
     if [ "$FINAL_OUTPUT_PATH" != "Not Found" ] && [ -e "$FINAL_OUTPUT_PATH" ]; then

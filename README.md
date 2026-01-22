@@ -1,8 +1,8 @@
-# Claude Desktop for Linux
+# Claude Desktop for openSUSE
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Debian-based distributions, producing either `.deb` packages or AppImages.
+This project provides build scripts to run Claude Desktop natively on openSUSE Linux. It repackages the official Windows application for openSUSE, producing either `.rpm` packages or AppImages.
 
-**Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
+**Note:** This is an unofficial build script forked from [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian) and adapted for openSUSE. For official Claude support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or openSUSE-specific implementation, please [open an issue](https://github.com/comandeo/claude-desktop-opensuse/issues) in this repository.
 
 ## Features
 
@@ -26,13 +26,13 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 ### Using Pre-built Releases
 
-Download the latest `.deb` or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
+Download the latest `.rpm` or `.AppImage` from the [Releases page](https://github.com/comandeo/claude-desktop-opensuse/releases).
 
 ### Building from Source
 
 #### Prerequisites
 
-- Debian-based Linux distribution (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
+- openSUSE Linux distribution (openSUSE Leap, openSUSE Tumbleweed, etc.)
 - Git
 - Basic build tools (automatically installed by the script)
 
@@ -40,17 +40,17 @@ Download the latest `.deb` or `.AppImage` from the [Releases page](https://githu
 
 ```bash
 # Clone the repository
-git clone https://github.com/aaddrick/claude-desktop-debian.git
-cd claude-desktop-debian
+git clone https://github.com/comandeo/claude-desktop-opensuse.git
+cd claude-desktop-opensuse
 
-# Build a .deb package (default)
+# Build an RPM package (default)
 ./build.sh
 
 # Build an AppImage
 ./build.sh --build appimage
 
 # Build with custom options
-./build.sh --build deb --clean no  # Keep intermediate files
+./build.sh --build rpm --clean no  # Keep intermediate files
 
 # Build using a locally downloaded installer
 # (useful when the bundled download URL is outdated)
@@ -59,12 +59,12 @@ cd claude-desktop-debian
 
 #### Installing the Built Package
 
-**For .deb packages:**
+**For RPM packages:**
 ```bash
-sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
+sudo zypper install ./claude-desktop-VERSION-*.ARCHITECTURE.rpm
 
-# If you encounter dependency issues:
-sudo apt --fix-broken install
+# Or using rpm directly:
+sudo rpm -i ./claude-desktop-VERSION-*.ARCHITECTURE.rpm
 ```
 
 **For AppImages:**
@@ -111,18 +111,18 @@ export CLAUDE_USE_WAYLAND=1
 
 Runtime logs are available at:
 ```
-~/.cache/claude-desktop-debian/launcher.log
+~/.cache/claude-desktop-opensuse/launcher.log
 ```
 
 ## Uninstallation
 
-**For .deb packages:**
+**For RPM packages:**
 ```bash
 # Remove package
-sudo dpkg -r claude-desktop
+sudo zypper remove claude-desktop
 
-# Remove package and configuration
-sudo dpkg -P claude-desktop
+# Or using rpm directly
+sudo rpm -e claude-desktop
 ```
 
 **For AppImages:**
@@ -150,7 +150,7 @@ This allows the application to save display settings properly.
 
 If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in native Wayland mode:
 
-1. Check your logs at `~/.cache/claude-desktop-debian/launcher.log`
+1. Check your logs at `~/.cache/claude-desktop-opensuse/launcher.log`
 2. Look for "Using X11 backend via XWayland" - this means hotkeys should work
 3. If you see "Using native Wayland backend", unset `CLAUDE_USE_WAYLAND` or ensure it's not set to `1`
 
@@ -161,7 +161,7 @@ If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in
 AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
 
 For enhanced security, consider:
-- Using the .deb package instead
+- Using the RPM package instead
 - Running the AppImage within a separate sandbox (e.g., bubblewrap)
 - Using Gear Lever's integrated AppImage management for better isolation
 
@@ -175,7 +175,7 @@ Claude Desktop is an Electron application distributed for Windows. This project:
 2. Extracts application resources
 3. Replaces Windows-specific native modules with Linux-compatible implementations
 4. Repackages as either:
-   - **Debian package**: Standard system package with full integration
+   - **RPM package**: Standard openSUSE system package with full integration
    - **AppImage**: Portable, self-contained executable
 
 ### Build Process
