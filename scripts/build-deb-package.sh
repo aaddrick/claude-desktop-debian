@@ -72,6 +72,11 @@ cp "$APP_STAGING_DIR/app.asar" "$RESOURCES_DIR/"
 cp -r "$APP_STAGING_DIR/app.asar.unpacked" "$RESOURCES_DIR/"
 echo "✓ Application files copied to Electron resources directory"
 
+# Copy shared launcher library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cp "$SCRIPT_DIR/launcher-common.sh" "$INSTALL_DIR/lib/$PACKAGE_NAME/"
+echo "✓ Shared launcher library copied"
+
 # --- Create Desktop Entry ---
 echo "📝 Creating desktop entry..."
 cat > "$INSTALL_DIR/share/applications/claude-desktop.desktop" << EOF
@@ -91,114 +96,73 @@ echo "✓ Desktop entry created"
 echo "🚀 Creating launcher script..."
 cat > "$INSTALL_DIR/bin/claude-desktop" << EOF
 #!/bin/bash
-LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/claude-desktop-debian"
-mkdir -p "\$LOG_DIR"
-LOG_FILE="\$LOG_DIR/launcher.log"
-echo "--- Claude Desktop Launcher Start ---" > "\$LOG_FILE"
-echo "Timestamp: \$(date)" >> "\$LOG_FILE"
-echo "Arguments: \$@" >> "\$LOG_FILE"
 
-export ELECTRON_FORCE_IS_PACKAGED=true
+# Source shared launcher library
+source "/usr/lib/$PACKAGE_NAME/launcher-common.sh"
 
-# Detect if Wayland is likely running
-IS_WAYLAND=false
-if [ ! -z "\$WAYLAND_DISPLAY" ]; then
-  IS_WAYLAND=true
-  echo "Wayland detected" >> "\$LOG_FILE"
+# Setup logging and environment
+setup_logging
+setup_electron_env
+
+# Log startup info
+log_message "--- Claude Desktop Launcher Start ---"
+log_message "Timestamp: \$(date)"
+log_message "Arguments: \$@"
+
+# Check for display
+if ! check_display; then
+    log_message "No display detected (TTY session)"
+    echo "Error: Claude Desktop requires a graphical desktop environment." >&2
+    echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
+    exit 1
 fi
 
-# Check for display issues
-if [ -z "\$DISPLAY" ] && [ -z "\$WAYLAND_DISPLAY" ]; then
-  echo "No display detected (TTY session) - cannot start graphical application" >> "\$LOG_FILE"
-  echo "Error: Claude Desktop requires a graphical desktop environment." >&2
-  echo "Please run from within an X11 or Wayland session, not from a TTY." >&2
-  exit 1
-fi
-
-# Determine display backend mode
-# Default: Use X11/XWayland on Wayland sessions for global hotkey support
-# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys won't work)
-USE_X11_ON_WAYLAND=true
-if [ "\$CLAUDE_USE_WAYLAND" = "1" ]; then
-  USE_X11_ON_WAYLAND=false
-  echo "CLAUDE_USE_WAYLAND=1 set, using native Wayland backend" >> "\$LOG_FILE"
-  echo "Note: Global hotkeys (quick window) may not work in native Wayland mode" >> "\$LOG_FILE"
+# Detect display backend
+detect_display_backend
+if [ "\$IS_WAYLAND" = true ]; then
+    log_message "Wayland detected"
 fi
 
 # Determine Electron executable path
-ELECTRON_EXEC="electron" # Default to global
-LOCAL_ELECTRON_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/electron" # Correct path to executable
+ELECTRON_EXEC="electron"
+LOCAL_ELECTRON_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/electron"
 if [ -f "\$LOCAL_ELECTRON_PATH" ]; then
     ELECTRON_EXEC="\$LOCAL_ELECTRON_PATH"
-    echo "Using local Electron: \$ELECTRON_EXEC" >> "\$LOG_FILE"
+    log_message "Using local Electron: \$ELECTRON_EXEC"
 else
-    # Check if global electron exists before declaring it as the choice
     if command -v electron &> /dev/null; then
-        echo "Using global Electron: \$ELECTRON_EXEC" >> "\$LOG_FILE"
+        log_message "Using global Electron: \$ELECTRON_EXEC"
     else
-        echo "Error: Electron executable not found (checked local \$LOCAL_ELECTRON_PATH and global path)." >> "\$LOG_FILE" # Log the correct path checked
-        # Optionally, display an error to the user via zenity or kdialog if available
+        log_message "Error: Electron executable not found"
         if command -v zenity &> /dev/null; then
-            zenity --error --text="Claude Desktop cannot start because the Electron framework is missing. Please ensure Electron is installed globally or reinstall Claude Desktop."
+            zenity --error --text="Claude Desktop cannot start because the Electron framework is missing."
         elif command -v kdialog &> /dev/null; then
-            kdialog --error "Claude Desktop cannot start because the Electron framework is missing. Please ensure Electron is installed globally or reinstall Claude Desktop."
+            kdialog --error "Claude Desktop cannot start because the Electron framework is missing."
         fi
         exit 1
     fi
 fi
 
-# App is now in Electron's resources directory
+# App path
 APP_PATH="/usr/lib/$PACKAGE_NAME/node_modules/electron/dist/resources/app.asar"
 
-# Build Chromium flags array - flags MUST come before app path
-ELECTRON_ARGS=()
+# Build electron args
+build_electron_args "deb"
 
-# Disable CustomTitlebar for better Linux integration
-# Note: The duplicate tray icon fix (issue #163) is handled via app.asar patching
-# (increased delays in tray creation to allow DBus cleanup between destroy/create cycles)
-ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
-
-# Add compatibility flags based on display backend
-if [ "\$IS_WAYLAND" = true ]; then
-  if [ "\$USE_X11_ON_WAYLAND" = true ]; then
-    # Default: Use X11 via XWayland for global hotkey support
-    echo "Using X11 backend via XWayland (for global hotkey support)" >> "\$LOG_FILE"
-    ELECTRON_ARGS+=("--no-sandbox")
-    ELECTRON_ARGS+=("--ozone-platform=x11")
-    echo "To use native Wayland instead, set CLAUDE_USE_WAYLAND=1" >> "\$LOG_FILE"
-  else
-    # Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
-    echo "Using native Wayland backend" >> "\$LOG_FILE"
-    ELECTRON_ARGS+=("--no-sandbox")
-    ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations")
-    ELECTRON_ARGS+=("--ozone-platform=wayland")
-    ELECTRON_ARGS+=("--enable-wayland-ime")
-    ELECTRON_ARGS+=("--wayland-text-input-version=3")
-    echo "Warning: Global hotkeys may not work in native Wayland mode" >> "\$LOG_FILE"
-  fi
-else
-  # X11 session - no special flags needed
-  echo "X11 session detected" >> "\$LOG_FILE"
-fi
-
-# Add app path LAST - Chromium flags must come before this
+# Add app path LAST
 ELECTRON_ARGS+=("\$APP_PATH")
-# Try to force native frame
-export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 
-# Change to the application directory (not resources dir - app needs this as base)
+# Change to application directory
 APP_DIR="/usr/lib/$PACKAGE_NAME"
-echo "Changing directory to \$APP_DIR" >> "\$LOG_FILE"
-cd "\$APP_DIR" || { echo "Failed to cd to \$APP_DIR" >> "\$LOG_FILE"; exit 1; }
+log_message "Changing directory to \$APP_DIR"
+cd "\$APP_DIR" || { log_message "Failed to cd to \$APP_DIR"; exit 1; }
 
-# Execute Electron with app path, flags, and script arguments
-# Redirect stdout and stderr to the log file
-FINAL_CMD="\"\$ELECTRON_EXEC\" \"\${ELECTRON_ARGS[@]}\" \"\$@\""
-echo "Executing: \$FINAL_CMD" >> "\$LOG_FILE"
+# Execute Electron
+log_message "Executing: \$ELECTRON_EXEC \${ELECTRON_ARGS[*]} \$*"
 "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" >> "\$LOG_FILE" 2>&1
 EXIT_CODE=\$?
-echo "Electron exited with code: \$EXIT_CODE" >> "\$LOG_FILE"
-echo "--- Claude Desktop Launcher End ---" >> "\$LOG_FILE"
+log_message "Electron exited with code: \$EXIT_CODE"
+log_message "--- Claude Desktop Launcher End ---"
 exit \$EXIT_CODE
 EOF
 chmod +x "$INSTALL_DIR/bin/claude-desktop"

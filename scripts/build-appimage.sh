@@ -43,6 +43,12 @@ if [ -d "$APP_STAGING_DIR/app.asar.unpacked" ]; then
 fi
 echo "✓ Application files copied to Electron resources directory"
 
+# Copy shared launcher library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$APPDIR_PATH/usr/lib/claude-desktop"
+cp "$SCRIPT_DIR/launcher-common.sh" "$APPDIR_PATH/usr/lib/claude-desktop/"
+echo "✓ Shared launcher library copied"
+
 # Ensure Electron is bundled within the AppDir for portability
 # Check if electron was copied into the staging dir's node_modules
 # The actual executable is usually inside the 'dist' directory
@@ -58,112 +64,48 @@ chmod +x "$BUNDLED_ELECTRON_PATH"
 
 # --- Create AppRun Script ---
 echo "🚀 Creating AppRun script..."
-# Note: We use $VERSION and $PACKAGE_NAME from the build script environment here
-# They will be embedded into the AppRun script.
-cat > "$APPDIR_PATH/AppRun" << EOF
+cat > "$APPDIR_PATH/AppRun" << 'EOF'
 #!/bin/bash
 set -e
 
-# Find the location of the AppRun script and the AppImage file itself
-# Use readlink -f to get absolute path, avoiding issues when we cd later
-APPDIR=\$(dirname "\$(readlink -f "\$0")")
-# Try to get the absolute path of the AppImage file being run
-# $APPIMAGE is often set by the AppImage runtime, otherwise try readlink
-APPIMAGE_PATH="\${APPIMAGE:-}"
-if [ -z "\$APPIMAGE_PATH" ]; then
-    # Find the AppRun script itself, which should be $0
-    # Use readlink -f to get the absolute path, handling symlinks
-    # Go up one level from AppRun's dir to get the AppImage path (usually)
-    # This might be fragile if AppRun is not at the root, but it's standard.
-    APPIMAGE_PATH=\$(readlink -f "\$APPDIR/../$(basename "$APPDIR" .AppDir).AppImage" 2>/dev/null || readlink -f "\$0" 2>/dev/null)
-    # As a final fallback, just use $0, hoping it's the AppImage path
-    if [ -z "\$APPIMAGE_PATH" ] || [ ! -f "\$APPIMAGE_PATH" ]; then
-        APPIMAGE_PATH="\$0"
-    fi
-fi
+# Find the location of the AppRun script
+APPDIR=$(dirname "$(readlink -f "$0")")
 
-# --- Desktop Integration (Handled by Gear Lever) ---
-# The bundled .desktop file (claude-desktop-appimage.desktop) inside the AppImage
-# contains the necessary MimeType=x-scheme-handler/claude; entry.
-# Gear Lever (or similar tools) will use this file to integrate
-# the AppImage with the system, including setting up the URI scheme handler,
-# if the user chooses to integrate. No manual registration is needed here.
-# --- End Desktop Integration ---
+# Source shared launcher library
+source "$APPDIR/usr/lib/claude-desktop/launcher-common.sh"
 
+# Setup logging and environment
+setup_logging
+setup_electron_env
 
-# Set up environment variables if needed (e.g., LD_LIBRARY_PATH)
-# export LD_LIBRARY_PATH="\$APPDIR/usr/lib:\$LD_LIBRARY_PATH"
+# Detect display backend
+detect_display_backend
 
-export ELECTRON_FORCE_IS_PACKAGED=true
+# Log startup info
+log_message "--- Claude Desktop AppImage Start ---"
+log_message "Timestamp: $(date)"
+log_message "Arguments: $@"
+log_message "APPDIR: $APPDIR"
 
-# Detect if Wayland is likely running
-IS_WAYLAND=false
-if [ ! -z "\$WAYLAND_DISPLAY" ]; then
-  IS_WAYLAND=true
-fi
+# Path to the bundled Electron executable and app
+ELECTRON_EXEC="$APPDIR/usr/lib/node_modules/electron/dist/electron"
+APP_PATH="$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
 
-# Determine display backend mode
-# Default: Use X11/XWayland on Wayland sessions for global hotkey support
-# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys won't work)
-USE_X11_ON_WAYLAND=true
-if [ "\$CLAUDE_USE_WAYLAND" = "1" ]; then
-  USE_X11_ON_WAYLAND=false
-fi
-
-# Path to the bundled Electron executable
-# Use the path relative to AppRun within the 'electron/dist' module directory
-ELECTRON_EXEC="\$APPDIR/usr/lib/node_modules/electron/dist/electron"
-# App is now in Electron's resources directory
-APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
-
-# Build Chromium flags array - flags MUST come before app path
-# Start with --no-sandbox flag to avoid sandbox issues within AppImage
-ELECTRON_ARGS=("--no-sandbox")
-
-# Disable CustomTitlebar for better Linux integration
-# Note: The duplicate tray icon fix (issue #163) is handled via app.asar patching
-# (increased delays in tray creation to allow DBus cleanup between destroy/create cycles)
-ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
-
-# Add compatibility flags based on display backend
-if [ "\$IS_WAYLAND" = true ]; then
-  if [ "\$USE_X11_ON_WAYLAND" = true ]; then
-    # Default: Use X11 via XWayland for global hotkey support
-    echo "AppRun: Using X11 backend via XWayland (for global hotkey support)"
-    ELECTRON_ARGS+=("--ozone-platform=x11")
-  else
-    # Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
-    echo "AppRun: Using native Wayland backend (global hotkeys may not work)"
-    ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations")
-    ELECTRON_ARGS+=("--ozone-platform=wayland")
-    ELECTRON_ARGS+=("--enable-wayland-ime")
-    ELECTRON_ARGS+=("--wayland-text-input-version=3")
-  fi
-else
-  # X11 session - no special flags needed
-  echo "AppRun: X11 session detected"
-fi
+# Build electron args (appimage mode adds --no-sandbox)
+build_electron_args "appimage"
 
 # Add app path LAST - Chromium flags must come before this
-ELECTRON_ARGS+=("\$APP_PATH")
-# Try to force native frame
-export ELECTRON_USE_SYSTEM_TITLE_BAR=1
-
-# Define log file path following XDG Base Directory specification
-LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/claude-desktop-debian"
-mkdir -p "\$LOG_DIR"
-LOG_FILE="\$LOG_DIR/launcher.log"
+ELECTRON_ARGS+=("$APP_PATH")
 
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
-cd "\$HOME" || exit 1
+cd "$HOME" || exit 1
 
-# Execute Electron with app path, flags, and script arguments passed to AppRun
-# Redirect stdout and stderr to the log file (reset on each launch)
-echo "AppRun: Executing \$ELECTRON_EXEC \${ELECTRON_ARGS[@]} \$@ > \$LOG_FILE 2>&1"
-exec "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" > "\$LOG_FILE" 2>&1
+# Execute Electron
+log_message "Executing: $ELECTRON_EXEC ${ELECTRON_ARGS[*]} $*"
+exec "$ELECTRON_EXEC" "${ELECTRON_ARGS[@]}" "$@" >> "$LOG_FILE" 2>&1
 EOF
 chmod +x "$APPDIR_PATH/AppRun"
-echo "✓ AppRun script created (with logging to \$XDG_CACHE_HOME/claude-desktop-debian/launcher.log, --no-sandbox, and CWD set to \$HOME)"
+echo "✓ AppRun script created"
 
 # --- Create Desktop Entry (Bundled inside AppDir) ---
 echo "📝 Creating bundled desktop entry..."
