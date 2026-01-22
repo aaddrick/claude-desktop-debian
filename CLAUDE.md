@@ -15,7 +15,7 @@ This project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux, a
 
 ### Attribution
 
-**For PR and issue descriptions**, include full attribution:
+**For PR descriptions**, include full attribution:
 
 ```
 ---
@@ -30,11 +30,11 @@ Human: <what human did>
 - The percentage split should honestly reflect the contribution balance for that specific work
 - This provides a trackable record of AI-assisted development over time
 
-**For comments**, use simplified attribution:
+**For issues and comments**, use simplified attribution:
 
 ```
 ---
-Comment written by Claude <model-name> via [Claude Code](https://claude.ai/code)
+Written by Claude <model-name> via [Claude Code](https://claude.ai/code)
 ```
 
 ## Working with Minified JavaScript
