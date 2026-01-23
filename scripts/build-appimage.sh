@@ -1,226 +1,168 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
 
 # Arguments passed from the main script
-VERSION="$1"
-ARCHITECTURE="$2"
-WORK_DIR="$3" # The top-level build directory (e.g., ./build)
-APP_STAGING_DIR="$4" # Directory containing the prepared app files (e.g., ./build/electron-app)
-PACKAGE_NAME="$5"
-# MAINTAINER and DESCRIPTION might not be directly used by AppImage tools but passed for consistency
+version="$1"
+architecture="$2"
+work_dir="$3"           # The top-level build directory (e.g., ./build)
+app_staging_dir="$4"    # Directory containing the prepared app files
+package_name="$5"
+# MAINTAINER and DESCRIPTION might not be directly used by AppImage tools
+# but passed for consistency
 
-echo "--- Starting AppImage Build ---"
-echo "Version: $VERSION"
-echo "Architecture: $ARCHITECTURE"
-echo "Work Directory: $WORK_DIR"
-echo "App Staging Directory: $APP_STAGING_DIR"
-echo "Package Name: $PACKAGE_NAME"
+echo '--- Starting AppImage Build ---'
+echo "Version: $version"
+echo "Architecture: $architecture"
+echo "Work Directory: $work_dir"
+echo "App Staging Directory: $app_staging_dir"
+echo "Package Name: $package_name"
 
-COMPONENT_ID="io.github.aaddrick.claude-desktop-debian"
+component_id='io.github.aaddrick.claude-desktop-debian'
 # Define AppDir structure path
-APPDIR_PATH="$WORK_DIR/${COMPONENT_ID}.AppDir"
-rm -rf "$APPDIR_PATH"
-mkdir -p "$APPDIR_PATH/usr/bin"
-mkdir -p "$APPDIR_PATH/usr/lib"
-mkdir -p "$APPDIR_PATH/usr/share/icons/hicolor/256x256/apps"
-mkdir -p "$APPDIR_PATH/usr/share/applications"
+appdir_path="$work_dir/${component_id}.AppDir"
+rm -rf "$appdir_path"
+mkdir -p "$appdir_path/usr/bin" || exit 1
+mkdir -p "$appdir_path/usr/lib" || exit 1
+mkdir -p "$appdir_path/usr/share/icons/hicolor/256x256/apps" || exit 1
+mkdir -p "$appdir_path/usr/share/applications" || exit 1
 
-echo "📦 Staging application files into AppDir..."
+echo 'Staging application files into AppDir...'
 # Copy node_modules first to set up Electron directory structure
-if [ -d "$APP_STAGING_DIR/node_modules" ]; then
-    echo "Copying node_modules from staging to AppDir..."
-    cp -a "$APP_STAGING_DIR/node_modules" "$APPDIR_PATH/usr/lib/"
+if [[ -d $app_staging_dir/node_modules ]]; then
+	echo 'Copying node_modules from staging to AppDir...'
+	cp -a "$app_staging_dir/node_modules" "$appdir_path/usr/lib/" || exit 1
 fi
 
 # Install app.asar in Electron's resources directory where process.resourcesPath points
-RESOURCES_DIR="$APPDIR_PATH/usr/lib/node_modules/electron/dist/resources"
-mkdir -p "$RESOURCES_DIR"
-if [ -f "$APP_STAGING_DIR/app.asar" ]; then
-    cp -a "$APP_STAGING_DIR/app.asar" "$RESOURCES_DIR/"
+resources_dir="$appdir_path/usr/lib/node_modules/electron/dist/resources"
+mkdir -p "$resources_dir" || exit 1
+if [[ -f $app_staging_dir/app.asar ]]; then
+	cp -a "$app_staging_dir/app.asar" "$resources_dir/" || exit 1
 fi
-if [ -d "$APP_STAGING_DIR/app.asar.unpacked" ]; then
-    cp -a "$APP_STAGING_DIR/app.asar.unpacked" "$RESOURCES_DIR/"
+if [[ -d $app_staging_dir/app.asar.unpacked ]]; then
+	cp -a "$app_staging_dir/app.asar.unpacked" "$resources_dir/" || exit 1
 fi
-echo "✓ Application files copied to Electron resources directory"
+echo 'Application files copied to Electron resources directory'
+
+# Copy shared launcher library
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$appdir_path/usr/lib/claude-desktop" || exit 1
+cp "$script_dir/launcher-common.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
+echo 'Shared launcher library copied'
 
 # Ensure Electron is bundled within the AppDir for portability
 # Check if electron was copied into the staging dir's node_modules
 # The actual executable is usually inside the 'dist' directory
-BUNDLED_ELECTRON_PATH="$APPDIR_PATH/usr/lib/node_modules/electron/dist/electron"
-echo "Checking for executable at: $BUNDLED_ELECTRON_PATH"
-if [ ! -x "$BUNDLED_ELECTRON_PATH" ]; then # Check if it exists and is executable
-    echo "❌ Electron executable not found or not executable in staging area ($BUNDLED_ELECTRON_PATH)."
-    echo "   AppImage requires Electron to be bundled. Ensure the main script copies it correctly."
-    exit 1
+bundled_electron_path="$appdir_path/usr/lib/node_modules/electron/dist/electron"
+echo "Checking for executable at: $bundled_electron_path"
+if [[ ! -x $bundled_electron_path ]]; then
+	echo 'Electron executable not found or not executable in staging area.' >&2
+	echo "Path checked: $bundled_electron_path" >&2
+	echo 'AppImage requires Electron to be bundled. Ensure the main script copies it correctly.' >&2
+	exit 1
 fi
 # Ensure the bundled electron is executable (redundant check, but safe)
-chmod +x "$BUNDLED_ELECTRON_PATH"
+chmod +x "$bundled_electron_path" || exit 1
 
 # --- Create AppRun Script ---
-echo "🚀 Creating AppRun script..."
-# Note: We use $VERSION and $PACKAGE_NAME from the build script environment here
-# They will be embedded into the AppRun script.
-cat > "$APPDIR_PATH/AppRun" << EOF
-#!/bin/bash
-set -e
+echo 'Creating AppRun script...'
+cat > "$appdir_path/AppRun" << 'EOF'
+#!/usr/bin/env bash
 
-# Find the location of the AppRun script and the AppImage file itself
-# Use readlink -f to get absolute path, avoiding issues when we cd later
-APPDIR=\$(dirname "\$(readlink -f "\$0")")
-# Try to get the absolute path of the AppImage file being run
-# $APPIMAGE is often set by the AppImage runtime, otherwise try readlink
-APPIMAGE_PATH="\${APPIMAGE:-}"
-if [ -z "\$APPIMAGE_PATH" ]; then
-    # Find the AppRun script itself, which should be $0
-    # Use readlink -f to get the absolute path, handling symlinks
-    # Go up one level from AppRun's dir to get the AppImage path (usually)
-    # This might be fragile if AppRun is not at the root, but it's standard.
-    APPIMAGE_PATH=\$(readlink -f "\$APPDIR/../$(basename "$APPDIR" .AppDir).AppImage" 2>/dev/null || readlink -f "\$0" 2>/dev/null)
-    # As a final fallback, just use $0, hoping it's the AppImage path
-    if [ -z "\$APPIMAGE_PATH" ] || [ ! -f "\$APPIMAGE_PATH" ]; then
-        APPIMAGE_PATH="\$0"
-    fi
-fi
+# Find the location of the AppRun script
+appdir=$(dirname "$(readlink -f "$0")")
 
-# --- Desktop Integration (Handled by Gear Lever) ---
-# The bundled .desktop file (claude-desktop-appimage.desktop) inside the AppImage
-# contains the necessary MimeType=x-scheme-handler/claude; entry.
-# Gear Lever (or similar tools) will use this file to integrate
-# the AppImage with the system, including setting up the URI scheme handler,
-# if the user chooses to integrate. No manual registration is needed here.
-# --- End Desktop Integration ---
+# Source shared launcher library
+source "$appdir/usr/lib/claude-desktop/launcher-common.sh"
 
+# Setup logging and environment
+setup_logging || exit 1
+setup_electron_env
 
-# Set up environment variables if needed (e.g., LD_LIBRARY_PATH)
-# export LD_LIBRARY_PATH="\$APPDIR/usr/lib:\$LD_LIBRARY_PATH"
+# Detect display backend
+detect_display_backend
 
-export ELECTRON_FORCE_IS_PACKAGED=true
+# Log startup info
+log_message '--- Claude Desktop AppImage Start ---'
+log_message "Timestamp: $(date)"
+log_message "Arguments: $@"
+log_message "APPDIR: $appdir"
 
-# Detect if Wayland is likely running
-IS_WAYLAND=false
-if [ ! -z "\$WAYLAND_DISPLAY" ]; then
-  IS_WAYLAND=true
-fi
+# Path to the bundled Electron executable and app
+electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
+app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
 
-# Determine display backend mode
-# Default: Use X11/XWayland on Wayland sessions for global hotkey support
-# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys won't work)
-USE_X11_ON_WAYLAND=true
-if [ "\$CLAUDE_USE_WAYLAND" = "1" ]; then
-  USE_X11_ON_WAYLAND=false
-fi
-
-# Path to the bundled Electron executable
-# Use the path relative to AppRun within the 'electron/dist' module directory
-ELECTRON_EXEC="\$APPDIR/usr/lib/node_modules/electron/dist/electron"
-# App is now in Electron's resources directory
-APP_PATH="\$APPDIR/usr/lib/node_modules/electron/dist/resources/app.asar"
-
-# Build Chromium flags array - flags MUST come before app path
-# Start with --no-sandbox flag to avoid sandbox issues within AppImage
-ELECTRON_ARGS=("--no-sandbox")
-
-# Disable CustomTitlebar for better Linux integration
-# Note: The duplicate tray icon fix (issue #163) is handled via app.asar patching
-# (increased delays in tray creation to allow DBus cleanup between destroy/create cycles)
-ELECTRON_ARGS+=("--disable-features=CustomTitlebar")
-
-# Add compatibility flags based on display backend
-if [ "\$IS_WAYLAND" = true ]; then
-  if [ "\$USE_X11_ON_WAYLAND" = true ]; then
-    # Default: Use X11 via XWayland for global hotkey support
-    echo "AppRun: Using X11 backend via XWayland (for global hotkey support)"
-    ELECTRON_ARGS+=("--ozone-platform=x11")
-  else
-    # Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
-    echo "AppRun: Using native Wayland backend (global hotkeys may not work)"
-    ELECTRON_ARGS+=("--enable-features=UseOzonePlatform,WaylandWindowDecorations")
-    ELECTRON_ARGS+=("--ozone-platform=wayland")
-    ELECTRON_ARGS+=("--enable-wayland-ime")
-    ELECTRON_ARGS+=("--wayland-text-input-version=3")
-  fi
-else
-  # X11 session - no special flags needed
-  echo "AppRun: X11 session detected"
-fi
+# Build electron args (appimage mode adds --no-sandbox)
+build_electron_args 'appimage'
 
 # Add app path LAST - Chromium flags must come before this
-ELECTRON_ARGS+=("\$APP_PATH")
-# Try to force native frame
-export ELECTRON_USE_SYSTEM_TITLE_BAR=1
-
-# Define log file path following XDG Base Directory specification
-LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/claude-desktop-debian"
-mkdir -p "\$LOG_DIR"
-LOG_FILE="\$LOG_DIR/launcher.log"
+electron_args+=("$app_path")
 
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
-cd "\$HOME" || exit 1
+cd "$HOME" || exit 1
 
-# Execute Electron with app path, flags, and script arguments passed to AppRun
-# Redirect stdout and stderr to the log file (reset on each launch)
-echo "AppRun: Executing \$ELECTRON_EXEC \${ELECTRON_ARGS[@]} \$@ > \$LOG_FILE 2>&1"
-exec "\$ELECTRON_EXEC" "\${ELECTRON_ARGS[@]}" "\$@" > "\$LOG_FILE" 2>&1
+# Execute Electron
+log_message "Executing: $electron_exec ${electron_args[*]} $*"
+exec "$electron_exec" "${electron_args[@]}" "$@" >> "$log_file" 2>&1
 EOF
-chmod +x "$APPDIR_PATH/AppRun"
-echo "✓ AppRun script created (with logging to \$XDG_CACHE_HOME/claude-desktop-debian/launcher.log, --no-sandbox, and CWD set to \$HOME)"
+chmod +x "$appdir_path/AppRun" || exit 1
+echo 'AppRun script created'
 
 # --- Create Desktop Entry (Bundled inside AppDir) ---
-echo "📝 Creating bundled desktop entry..."
+echo 'Creating bundled desktop entry...'
 # This is the desktop file *inside* the AppImage, used by tools like appimaged
-cat > "$APPDIR_PATH/$COMPONENT_ID.desktop" << EOF
+cat > "$appdir_path/$component_id.desktop" << EOF
 [Desktop Entry]
 Name=Claude
 Exec=AppRun %u
-Icon=$COMPONENT_ID
+Icon=$component_id
 Type=Application
 Terminal=false
 Categories=Network;Utility;
 Comment=Claude Desktop for Linux
 MimeType=x-scheme-handler/claude;
 StartupWMClass=Claude
-X-AppImage-Version=$VERSION
+X-AppImage-Version=$version
 X-AppImage-Name=Claude Desktop
 EOF
 # Also place it in the standard location for tools like appimaged and validation
-mkdir -p "$APPDIR_PATH/usr/share/applications"
-cp "$APPDIR_PATH/$COMPONENT_ID.desktop" "$APPDIR_PATH/usr/share/applications/"
-echo "✓ Bundled desktop entry created and copied to usr/share/applications/"
+mkdir -p "$appdir_path/usr/share/applications" || exit 1
+cp "$appdir_path/$component_id.desktop" "$appdir_path/usr/share/applications/" || exit 1
+echo 'Bundled desktop entry created and copied to usr/share/applications/'
 
 # --- Copy Icons ---
-echo "🎨 Copying icons..."
+echo 'Copying icons...'
 # Use the 256x256 icon as the main AppImage icon
-ICON_SOURCE_PATH="$WORK_DIR/claude_6_256x256x32.png"
-if [ -f "$ICON_SOURCE_PATH" ]; then
-    # Standard location within AppDir
-    cp "$ICON_SOURCE_PATH" "$APPDIR_PATH/usr/share/icons/hicolor/256x256/apps/${COMPONENT_ID}.png"
-    # Top-level icon (used by appimagetool) - Should match the Icon field in the .desktop file
-    cp "$ICON_SOURCE_PATH" "$APPDIR_PATH/${COMPONENT_ID}.png"
-    # Top-level icon without extension (fallback for some tools)
-    cp "$ICON_SOURCE_PATH" "$APPDIR_PATH/${COMPONENT_ID}"
-    # Hidden .DirIcon (fallback for some systems/tools)
-    cp "$ICON_SOURCE_PATH" "$APPDIR_PATH/.DirIcon"
-    echo "✓ Icon copied to standard path, top-level (.png and no ext), and .DirIcon"
+icon_source_path="$work_dir/claude_6_256x256x32.png"
+if [[ -f $icon_source_path ]]; then
+	# Standard location within AppDir
+	cp "$icon_source_path" "$appdir_path/usr/share/icons/hicolor/256x256/apps/${component_id}.png" || exit 1
+	# Top-level icon (used by appimagetool) - Should match the Icon field in .desktop
+	cp "$icon_source_path" "$appdir_path/${component_id}.png" || exit 1
+	# Top-level icon without extension (fallback for some tools)
+	cp "$icon_source_path" "$appdir_path/${component_id}" || exit 1
+	# Hidden .DirIcon (fallback for some systems/tools)
+	cp "$icon_source_path" "$appdir_path/.DirIcon" || exit 1
+	echo 'Icon copied to standard path, top-level (.png and no ext), and .DirIcon'
 else
-    echo "Warning: Missing 256x256 icon at $ICON_SOURCE_PATH. AppImage icon might be missing."
+	echo "Warning: Missing 256x256 icon at $icon_source_path. AppImage icon might be missing."
 fi
 
 # --- Create AppStream Metadata ---
-echo "📄 Creating AppStream metadata..."
-METADATA_DIR="$APPDIR_PATH/usr/share/metainfo"
-mkdir -p "$METADATA_DIR"
+echo 'Creating AppStream metadata...'
+metadata_dir="$appdir_path/usr/share/metainfo"
+mkdir -p "$metadata_dir" || exit 1
 
 # Use the package name for the appdata file name (seems required by appimagetool warning)
 # Use reverse-DNS for component ID and filename, following common practice
-APPDATA_FILE="$METADATA_DIR/${COMPONENT_ID}.appdata.xml" # Filename matches component ID
+appdata_file="$metadata_dir/${component_id}.appdata.xml"
 
 # Generate the AppStream XML file
 # Use MIT license based on LICENSE-MIT file in repo
 # ID follows reverse DNS convention
-cat > "$APPDATA_FILE" << EOF
+cat > "$appdata_file" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>$COMPONENT_ID</id>
+  <id>$component_id</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <developer id="io.github.aaddrick">
@@ -236,9 +178,9 @@ cat > "$APPDATA_FILE" << EOF
     </p>
   </description>
 
-  <launchable type="desktop-id">${COMPONENT_ID}.desktop</launchable> <!-- Reference the actual .desktop file -->
+  <launchable type="desktop-id">${component_id}.desktop</launchable>
 
-  <icon type="stock">${COMPONENT_ID}</icon> <!-- Use the icon name from .desktop -->
+  <icon type="stock">${component_id}</icon>
   <url type="homepage">https://github.com/aaddrick/claude-desktop-debian</url>
   <screenshots>
       <screenshot type="default">
@@ -246,7 +188,7 @@ cat > "$APPDATA_FILE" << EOF
       </screenshot>
   </screenshots>
   <provides>
-    <binary>AppRun</binary> <!-- Provide the actual binary -->
+    <binary>AppRun</binary>
   </provides>
 
   <categories>
@@ -257,113 +199,118 @@ cat > "$APPDATA_FILE" << EOF
   <content_rating type="oars-1.1" />
 
   <releases>
-    <release version="$VERSION" date="$(date +%Y-%m-%d)">
+    <release version="$version" date="$(date +%Y-%m-%d)">
       <description>
-        <p>Version $VERSION.</p>
+        <p>Version $version.</p>
       </description>
     </release>
   </releases>
 
 </component>
 EOF
-echo "✓ AppStream metadata created at $APPDATA_FILE"
+echo "AppStream metadata created at $appdata_file"
 
 
 # --- Get appimagetool ---
-APPIMAGETOOL_PATH=""
+appimagetool_path=''
+
+# Check system PATH first
 if command -v appimagetool &> /dev/null; then
-    APPIMAGETOOL_PATH=$(command -v appimagetool)
-    echo "✓ Found appimagetool in PATH: $APPIMAGETOOL_PATH"
-elif [ -f "$WORK_DIR/appimagetool-x86_64.AppImage" ]; then # Check for specific arch first
-    APPIMAGETOOL_PATH="$WORK_DIR/appimagetool-x86_64.AppImage"
-    echo "✓ Found downloaded x86_64 appimagetool: $APPIMAGETOOL_PATH"
-elif [ -f "$WORK_DIR/appimagetool-aarch64.AppImage" ]; then # Check for other arch
-    APPIMAGETOOL_PATH="$WORK_DIR/appimagetool-aarch64.AppImage"
-    echo "✓ Found downloaded aarch64 appimagetool: $APPIMAGETOOL_PATH"
-else
-    echo "🛠️ Downloading appimagetool..."
-    # Determine architecture for download URL
-    TOOL_ARCH=""
-    case "$ARCHITECTURE" in # Use target ARCHITECTURE passed to script
-        "amd64") TOOL_ARCH="x86_64" ;;
-        "arm64") TOOL_ARCH="aarch64" ;;
-        *) echo "❌ Unsupported architecture for appimagetool download: $ARCHITECTURE"; exit 1 ;;
-    esac
+	appimagetool_path=$(command -v appimagetool)
+	echo "Found appimagetool in PATH: $appimagetool_path"
+fi
 
-    APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${TOOL_ARCH}.AppImage"
-    APPIMAGETOOL_PATH="$WORK_DIR/appimagetool-${TOOL_ARCH}.AppImage"
+# Check for previously downloaded versions
+for arch in x86_64 aarch64; do
+	[[ -n $appimagetool_path ]] && break
+	local_path="$work_dir/appimagetool-${arch}.AppImage"
+	if [[ -f $local_path ]]; then
+		appimagetool_path="$local_path"
+		echo "Found downloaded ${arch} appimagetool: $appimagetool_path"
+	fi
+done
 
-    if wget -q -O "$APPIMAGETOOL_PATH" "$APPIMAGETOOL_URL"; then
-        chmod +x "$APPIMAGETOOL_PATH"
-        echo "✓ Downloaded appimagetool to $APPIMAGETOOL_PATH"
-    else
-        echo "❌ Failed to download appimagetool from $APPIMAGETOOL_URL"
-        rm -f "$APPIMAGETOOL_PATH" # Clean up partial download
-        exit 1
-    fi
+# Download if not found
+if [[ -z $appimagetool_path ]]; then
+	echo 'Downloading appimagetool...'
+	case "$architecture" in
+		amd64) tool_arch='x86_64' ;;
+		arm64) tool_arch='aarch64' ;;
+		*)
+			echo "Unsupported architecture for appimagetool download: $architecture" >&2
+			exit 1
+			;;
+	esac
+
+	appimagetool_url="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${tool_arch}.AppImage"
+	appimagetool_path="$work_dir/appimagetool-${tool_arch}.AppImage"
+
+	if wget -q -O "$appimagetool_path" "$appimagetool_url"; then
+		chmod +x "$appimagetool_path" || exit 1
+		echo "Downloaded appimagetool to $appimagetool_path"
+	else
+		echo "Failed to download appimagetool from $appimagetool_url" >&2
+		rm -f "$appimagetool_path"
+		exit 1
+	fi
 fi
 
 # --- Build AppImage ---
-echo "📦 Building AppImage..."
-OUTPUT_FILENAME="${PACKAGE_NAME}-${VERSION}-${ARCHITECTURE}.AppImage"
-OUTPUT_PATH="$WORK_DIR/$OUTPUT_FILENAME"
+echo 'Building AppImage...'
+output_filename="${package_name}-${version}-${architecture}.AppImage"
+output_path="$work_dir/$output_filename"
+export ARCH="$architecture"
+echo "Using ARCH=$ARCH"
 
-# --- Prepare Update Information (GitHub Actions only) ---
-# Check if running in GitHub Actions workflow
-if [ "$GITHUB_ACTIONS" = "true" ]; then
-    echo "🔄 Running in GitHub Actions - embedding update information for automatic updates..."
-    
-    # Check if zsyncmake is available (required for generating .zsync files)
-    if ! command -v zsyncmake &> /dev/null; then
-        echo "⚠️ zsyncmake not found. Installing zsync package for .zsync file generation..."
-        if command -v apt-get &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y zsync
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y zsync
-        elif command -v zypper &> /dev/null; then
-            sudo zypper install -y zsync
-        else
-            echo "⚠️ Cannot install zsync automatically. .zsync files may not be generated."
-        fi
-    fi
+# Local build - no update information
+if [[ $GITHUB_ACTIONS != 'true' ]]; then
+	echo 'Running locally - building AppImage without update information'
+	echo '(Update info and zsync files are only generated in GitHub Actions for releases)'
 
-    # Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
-    # Using 'latest' tag to always point to the most recent release
-    UPDATE_INFO="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${ARCHITECTURE}.AppImage.zsync"
-    echo "Update info: $UPDATE_INFO"
-
-    # Execute appimagetool with update information
-    export ARCH="$ARCHITECTURE"
-    echo "Using ARCH=$ARCH" # Debug output
-    if "$APPIMAGETOOL_PATH" --updateinformation "$UPDATE_INFO" "$APPDIR_PATH" "$OUTPUT_PATH"; then
-        echo "✓ AppImage built successfully with embedded update info: $OUTPUT_PATH"
-        # Check if zsync file was generated
-        ZSYNC_FILE="${OUTPUT_PATH}.zsync"
-        if [ -f "$ZSYNC_FILE" ]; then
-            echo "✓ zsync file generated: $ZSYNC_FILE"
-            echo "📤 zsync file will be included in release artifacts"
-        else
-            echo "⚠️ zsync file not generated (zsyncmake may not be installed)"
-        fi
-    else
-        echo "❌ Failed to build AppImage using $APPIMAGETOOL_PATH"
-        exit 1
-    fi
-else
-    echo "🏠 Running locally - building AppImage without update information"
-    echo "   (Update info and zsync files are only generated in GitHub Actions for releases)"
-    
-    # Execute appimagetool without update information
-    export ARCH="$ARCHITECTURE"
-    echo "Using ARCH=$ARCH" # Debug output
-    if "$APPIMAGETOOL_PATH" "$APPDIR_PATH" "$OUTPUT_PATH"; then
-        echo "✓ AppImage built successfully: $OUTPUT_PATH"
-    else
-        echo "❌ Failed to build AppImage using $APPIMAGETOOL_PATH"
-        exit 1
-    fi
+	if ! "$appimagetool_path" "$appdir_path" "$output_path"; then
+		echo "Failed to build AppImage using $appimagetool_path" >&2
+		exit 1
+	fi
+	echo "AppImage built successfully: $output_path"
+	echo '--- AppImage Build Finished ---'
+	exit 0
 fi
 
-echo "--- AppImage Build Finished ---"
+# GitHub Actions build - embed update information
+echo 'Running in GitHub Actions - embedding update information for automatic updates...'
+
+# Install zsync if needed for .zsync file generation
+if ! command -v zsyncmake &> /dev/null; then
+	echo 'zsyncmake not found. Installing zsync package for .zsync file generation...'
+	if command -v apt-get &> /dev/null; then
+		sudo apt-get update && sudo apt-get install -y zsync
+	elif command -v dnf &> /dev/null; then
+		sudo dnf install -y zsync
+	elif command -v zypper &> /dev/null; then
+		sudo zypper install -y zsync
+	else
+		echo 'Cannot install zsync automatically. .zsync files may not be generated.'
+	fi
+fi
+
+# Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
+update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
+echo "Update info: $update_info"
+
+if ! "$appimagetool_path" --updateinformation "$update_info" "$appdir_path" "$output_path"; then
+	echo "Failed to build AppImage using $appimagetool_path" >&2
+	exit 1
+fi
+
+echo "AppImage built successfully with embedded update info: $output_path"
+zsync_file="${output_path}.zsync"
+if [[ -f $zsync_file ]]; then
+	echo "zsync file generated: $zsync_file"
+	echo 'zsync file will be included in release artifacts'
+else
+	echo 'zsync file not generated (zsyncmake may not be installed)'
+fi
+
+echo '--- AppImage Build Finished ---'
 
 exit 0

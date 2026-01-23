@@ -279,3 +279,16 @@ gdbus call --session --dest=org.freedesktop.DBus \
   ```
 - **SingletonLock** - If app won't start, check for stale lock: `~/.config/Claude/SingletonLock`
 - **Node version** - Build requires Node.js; the script downloads its own if needed
+- **Claude Desktop version** - A GitHub Action automatically updates the `CLAUDE_DESKTOP_VERSION` repo variable and the URLs in `build.sh` on main when a new version is detected. Before committing `build.sh`, ensure your branch has the latest URLs:
+  ```bash
+  # Check repo variable (source of truth)
+  gh variable get CLAUDE_DESKTOP_VERSION
+
+  # Check current version in build.sh
+  grep -oP 'x64/\K[0-9]+\.[0-9]+\.[0-9]+' build.sh | head -1
+
+  # If outdated, pull URLs from main branch
+  gh api repos/aaddrick/claude-desktop-debian/contents/build.sh?ref=main \
+    --jq '.content' | base64 -d | grep -E "CLAUDE_DOWNLOAD_URL=|claude_download_url="
+  ```
+  Update both amd64 and arm64 URLs in `detect_architecture()` to match main
