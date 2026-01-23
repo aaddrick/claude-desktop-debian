@@ -213,22 +213,29 @@ echo "AppStream metadata created at $appdata_file"
 
 # --- Get appimagetool ---
 appimagetool_path=''
+
+# Check system PATH first
 if command -v appimagetool &> /dev/null; then
 	appimagetool_path=$(command -v appimagetool)
 	echo "Found appimagetool in PATH: $appimagetool_path"
-elif [[ -f $work_dir/appimagetool-x86_64.AppImage ]]; then
-	appimagetool_path="$work_dir/appimagetool-x86_64.AppImage"
-	echo "Found downloaded x86_64 appimagetool: $appimagetool_path"
-elif [[ -f $work_dir/appimagetool-aarch64.AppImage ]]; then
-	appimagetool_path="$work_dir/appimagetool-aarch64.AppImage"
-	echo "Found downloaded aarch64 appimagetool: $appimagetool_path"
-else
+fi
+
+# Check for previously downloaded versions
+for arch in x86_64 aarch64; do
+	[[ -n $appimagetool_path ]] && break
+	local_path="$work_dir/appimagetool-${arch}.AppImage"
+	if [[ -f $local_path ]]; then
+		appimagetool_path="$local_path"
+		echo "Found downloaded ${arch} appimagetool: $appimagetool_path"
+	fi
+done
+
+# Download if not found
+if [[ -z $appimagetool_path ]]; then
 	echo 'Downloading appimagetool...'
-	# Determine architecture for download URL
-	tool_arch=''
 	case "$architecture" in
-		'amd64') tool_arch='x86_64' ;;
-		'arm64') tool_arch='aarch64' ;;
+		amd64) tool_arch='x86_64' ;;
+		arm64) tool_arch='aarch64' ;;
 		*)
 			echo "Unsupported architecture for appimagetool download: $architecture" >&2
 			exit 1
@@ -252,61 +259,56 @@ fi
 echo 'Building AppImage...'
 output_filename="${package_name}-${version}-${architecture}.AppImage"
 output_path="$work_dir/$output_filename"
+export ARCH="$architecture"
+echo "Using ARCH=$ARCH"
 
-# --- Prepare Update Information (GitHub Actions only) ---
-# Check if running in GitHub Actions workflow
-if [[ $GITHUB_ACTIONS == 'true' ]]; then
-	echo 'Running in GitHub Actions - embedding update information for automatic updates...'
-
-	# Check if zsyncmake is available (required for generating .zsync files)
-	if ! command -v zsyncmake &> /dev/null; then
-		echo 'zsyncmake not found. Installing zsync package for .zsync file generation...'
-		if command -v apt-get &> /dev/null; then
-			sudo apt-get update && sudo apt-get install -y zsync
-		elif command -v dnf &> /dev/null; then
-			sudo dnf install -y zsync
-		elif command -v zypper &> /dev/null; then
-			sudo zypper install -y zsync
-		else
-			echo 'Cannot install zsync automatically. .zsync files may not be generated.'
-		fi
-	fi
-
-	# Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
-	# Using 'latest' tag to always point to the most recent release
-	update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
-	echo "Update info: $update_info"
-
-	# Execute appimagetool with update information
-	export ARCH="$architecture"
-	echo "Using ARCH=$ARCH"
-	if "$appimagetool_path" --updateinformation "$update_info" "$appdir_path" "$output_path"; then
-		echo "AppImage built successfully with embedded update info: $output_path"
-		# Check if zsync file was generated
-		zsync_file="${output_path}.zsync"
-		if [[ -f $zsync_file ]]; then
-			echo "zsync file generated: $zsync_file"
-			echo 'zsync file will be included in release artifacts'
-		else
-			echo 'zsync file not generated (zsyncmake may not be installed)'
-		fi
-	else
-		echo "Failed to build AppImage using $appimagetool_path" >&2
-		exit 1
-	fi
-else
+# Local build - no update information
+if [[ $GITHUB_ACTIONS != 'true' ]]; then
 	echo 'Running locally - building AppImage without update information'
 	echo '(Update info and zsync files are only generated in GitHub Actions for releases)'
 
-	# Execute appimagetool without update information
-	export ARCH="$architecture"
-	echo "Using ARCH=$ARCH"
-	if "$appimagetool_path" "$appdir_path" "$output_path"; then
-		echo "AppImage built successfully: $output_path"
-	else
+	if ! "$appimagetool_path" "$appdir_path" "$output_path"; then
 		echo "Failed to build AppImage using $appimagetool_path" >&2
 		exit 1
 	fi
+	echo "AppImage built successfully: $output_path"
+	echo '--- AppImage Build Finished ---'
+	exit 0
+fi
+
+# GitHub Actions build - embed update information
+echo 'Running in GitHub Actions - embedding update information for automatic updates...'
+
+# Install zsync if needed for .zsync file generation
+if ! command -v zsyncmake &> /dev/null; then
+	echo 'zsyncmake not found. Installing zsync package for .zsync file generation...'
+	if command -v apt-get &> /dev/null; then
+		sudo apt-get update && sudo apt-get install -y zsync
+	elif command -v dnf &> /dev/null; then
+		sudo dnf install -y zsync
+	elif command -v zypper &> /dev/null; then
+		sudo zypper install -y zsync
+	else
+		echo 'Cannot install zsync automatically. .zsync files may not be generated.'
+	fi
+fi
+
+# Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
+update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
+echo "Update info: $update_info"
+
+if ! "$appimagetool_path" --updateinformation "$update_info" "$appdir_path" "$output_path"; then
+	echo "Failed to build AppImage using $appimagetool_path" >&2
+	exit 1
+fi
+
+echo "AppImage built successfully with embedded update info: $output_path"
+zsync_file="${output_path}.zsync"
+if [[ -f $zsync_file ]]; then
+	echo "zsync file generated: $zsync_file"
+	echo 'zsync file will be included in release artifacts'
+else
+	echo 'zsync file not generated (zsyncmake may not be installed)'
 fi
 
 echo '--- AppImage Build Finished ---'

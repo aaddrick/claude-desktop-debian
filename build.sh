@@ -72,13 +72,13 @@ detect_architecture() {
 
 	case "$host_arch" in
 		amd64)
-			claude_download_url='https://downloads.claude.ai/releases/win32/x64/1.1.381/Claude-c2a39e9c82f5a4d51f511f53f532afd276312731.exe'
+			claude_download_url='https://downloads.claude.ai/releases/win32/x64/1.1.673/Claude-5a47b0985054af4d65ff00b30b1f621fd225fdb3.exe'
 			architecture='amd64'
 			claude_exe_filename='Claude-Setup-x64.exe'
 			echo 'Configured for amd64 build.'
 			;;
 		arm64)
-			claude_download_url='https://downloads.claude.ai/releases/win32/arm64/1.1.381/Claude-c2a39e9c82f5a4d51f511f53f532afd276312731.exe'
+			claude_download_url='https://downloads.claude.ai/releases/win32/arm64/1.1.673/Claude-5a47b0985054af4d65ff00b30b1f621fd225fdb3.exe'
 			architecture='arm64'
 			claude_exe_filename='Claude-Setup-arm64.exe'
 			echo 'Configured for arm64 build.'
@@ -151,28 +151,16 @@ parse_arguments() {
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build)
+			-b|--build|-c|--clean|-e|--exe)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
 				fi
-				build_format="$2"
-				shift 2
-				;;
-			-c|--clean)
-				if [[ -z ${2:-} || $2 == -* ]]; then
-					echo "Error: Argument for $1 is missing" >&2
-					exit 1
-				fi
-				cleanup_action="$2"
-				shift 2
-				;;
-			-e|--exe)
-				if [[ -z ${2:-} || $2 == -* ]]; then
-					echo "Error: Argument for $1 is missing" >&2
-					exit 1
-				fi
-				local_exe_path="$2"
+				case "$1" in
+					-b|--build) build_format="$2" ;;
+					-c|--clean) cleanup_action="$2" ;;
+					-e|--exe) local_exe_path="$2" ;;
+				esac
 				shift 2
 				;;
 			--test-flags)
@@ -211,10 +199,7 @@ parse_arguments() {
 	echo "Selected build format: $build_format"
 	echo "Cleanup intermediate files: $cleanup_action"
 
-	perform_cleanup=false
-	if [[ $cleanup_action == 'yes' ]]; then
-		perform_cleanup=true
-	fi
+	[[ $cleanup_action == 'yes' ]] && perform_cleanup=true
 
 	section_footer 'Argument Parsing'
 }
@@ -290,54 +275,57 @@ setup_nodejs() {
 		echo 'Node.js not found in system'
 	fi
 
-	if [[ $node_version_ok == false ]]; then
-		echo 'Installing Node.js v20 locally in build directory...'
-
-		local node_arch
-		case "$architecture" in
-			amd64) node_arch='x64' ;;
-			arm64) node_arch='arm64' ;;
-			*)
-				echo "Unsupported architecture for Node.js: $architecture" >&2
-				exit 1
-				;;
-		esac
-
-		local node_version_to_install='20.18.1'
-		local node_tarball="node-v${node_version_to_install}-linux-${node_arch}.tar.xz"
-		local node_url="https://nodejs.org/dist/v${node_version_to_install}/${node_tarball}"
-		local node_install_dir="$work_dir/node"
-
-		echo "Downloading Node.js v${node_version_to_install} for ${node_arch}..."
-		cd "$work_dir" || exit 1
-		if ! wget -O "$node_tarball" "$node_url"; then
-			echo "Failed to download Node.js from $node_url" >&2
-			cd "$project_root" || exit 1
-			exit 1
-		fi
-
-		echo 'Extracting Node.js...'
-		if ! tar -xf "$node_tarball"; then
-			echo 'Failed to extract Node.js tarball' >&2
-			cd "$project_root" || exit 1
-			exit 1
-		fi
-
-		mv "node-v${node_version_to_install}-linux-${node_arch}" "$node_install_dir" || exit 1
-		export PATH="$node_install_dir/bin:$PATH"
-
-		if command -v node &> /dev/null; then
-			echo "Local Node.js installed successfully: $(node --version)"
-		else
-			echo 'Failed to install local Node.js' >&2
-			cd "$project_root" || exit 1
-			exit 1
-		fi
-
-		rm -f "$node_tarball"
-		cd "$project_root" || exit 1
+	if [[ $node_version_ok == true ]]; then
+		section_footer 'Node.js Setup'
+		return 0
 	fi
 
+	# Node.js version inadequate - install locally
+	echo 'Installing Node.js v20 locally in build directory...'
+
+	local node_arch
+	case "$architecture" in
+		amd64) node_arch='x64' ;;
+		arm64) node_arch='arm64' ;;
+		*)
+			echo "Unsupported architecture for Node.js: $architecture" >&2
+			exit 1
+			;;
+	esac
+
+	local node_version_to_install='20.18.1'
+	local node_tarball="node-v${node_version_to_install}-linux-${node_arch}.tar.xz"
+	local node_url="https://nodejs.org/dist/v${node_version_to_install}/${node_tarball}"
+	local node_install_dir="$work_dir/node"
+
+	echo "Downloading Node.js v${node_version_to_install} for ${node_arch}..."
+	cd "$work_dir" || exit 1
+	if ! wget -O "$node_tarball" "$node_url"; then
+		echo "Failed to download Node.js from $node_url" >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+
+	echo 'Extracting Node.js...'
+	if ! tar -xf "$node_tarball"; then
+		echo 'Failed to extract Node.js tarball' >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+
+	mv "node-v${node_version_to_install}-linux-${node_arch}" "$node_install_dir" || exit 1
+	export PATH="$node_install_dir/bin:$PATH"
+
+	if command -v node &> /dev/null; then
+		echo "Local Node.js installed successfully: $(node --version)"
+	else
+		echo 'Failed to install local Node.js' >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+
+	rm -f "$node_tarball"
+	cd "$project_root" || exit 1
 	section_footer 'Node.js Setup'
 }
 
@@ -356,14 +344,8 @@ setup_electron_asar() {
 	local asar_bin_path="$work_dir/node_modules/.bin/asar"
 	local install_needed=false
 
-	if [[ ! -d $electron_dist_path ]]; then
-		echo 'Electron distribution not found.'
-		install_needed=true
-	fi
-	if [[ ! -f $asar_bin_path ]]; then
-		echo 'Asar binary not found.'
-		install_needed=true
-	fi
+	[[ ! -d $electron_dist_path ]] && echo 'Electron distribution not found.' && install_needed=true
+	[[ ! -f $asar_bin_path ]] && echo 'Asar binary not found.' && install_needed=true
 
 	if [[ $install_needed == true ]]; then
 		echo "Installing Electron and Asar locally into $work_dir..."
@@ -564,28 +546,30 @@ patch_titlebar_detection() {
 
 	echo "Searching for '$target_pattern' within '$search_base'..."
 	local target_files
-	target_files=$(find "$search_base" -type f -name "$target_pattern")
-	local num_files
-	num_files=$(echo "$target_files" | grep -c . || echo '0')
+	mapfile -t target_files < <(find "$search_base" -type f -name "$target_pattern")
+	local num_files=${#target_files[@]}
 
-	if (( num_files == 0 )); then
-		echo "Error: No file matching '$target_pattern' found within '$search_base'." >&2
-		exit 1
-	elif (( num_files > 1 )); then
-		echo "Error: Expected exactly one file matching '$target_pattern' within '$search_base', but found $num_files." >&2
-		exit 1
-	else
-		local target_file="$target_files"
-		echo "Found target file: $target_file"
-		sed -i -E 's/if\(!([a-zA-Z]+)[[:space:]]*&&[[:space:]]*([a-zA-Z]+)\)/if(\1 \&\& \2)/g' "$target_file"
-
-		if ! grep -q -E 'if\(![a-zA-Z]+[[:space:]]*&&[[:space:]]*[a-zA-Z]+\)' "$target_file"; then
-			echo "Successfully replaced patterns in $target_file"
-		else
-			echo "Error: Failed to replace patterns in $target_file." >&2
+	case $num_files in
+		0)
+			echo "Error: No file matching '$target_pattern' found within '$search_base'." >&2
 			exit 1
-		fi
-	fi
+			;;
+		1)
+			local target_file="${target_files[0]}"
+			echo "Found target file: $target_file"
+			sed -i -E 's/if\(!([a-zA-Z]+)[[:space:]]*&&[[:space:]]*([a-zA-Z]+)\)/if(\1 \&\& \2)/g' "$target_file"
+
+			if grep -q -E 'if\(![a-zA-Z]+[[:space:]]*&&[[:space:]]*[a-zA-Z]+\)' "$target_file"; then
+				echo "Error: Failed to replace patterns in $target_file." >&2
+				exit 1
+			fi
+			echo "Successfully replaced patterns in $target_file"
+			;;
+		*)
+			echo "Error: Expected exactly one file matching '$target_pattern' within '$search_base', but found $num_files." >&2
+			exit 1
+			;;
+	esac
 	echo '##############################################################'
 }
 
@@ -784,39 +768,40 @@ process_icons() {
 	# Process tray icons
 	local claude_locale_src="$claude_extract_dir/lib/net45/resources"
 	echo 'Copying and processing tray icon files for Linux...'
-	if [[ -d $claude_locale_src ]]; then
-		cp "$claude_locale_src/Tray"* "$electron_resources_dest/" 2>/dev/null || \
-			echo 'Warning: No tray icon files found'
-
-		local magick_cmd=''
-		if command -v magick &> /dev/null; then
-			magick_cmd='magick'
-		elif command -v convert &> /dev/null; then
-			magick_cmd='convert'
-		fi
-
-		if [[ -n $magick_cmd ]]; then
-			echo "Processing tray icons for Linux visibility (using $magick_cmd)..."
-			local icon_file
-			for icon_file in "$electron_resources_dest"/TrayIconTemplate*.png; do
-				if [[ -f $icon_file ]]; then
-					local icon_name
-					icon_name=$(basename "$icon_file")
-					"$magick_cmd" "$icon_file" \
-						-channel A -fx 'a>0?1:0' +channel \
-						"PNG32:$icon_file" 2>/dev/null && \
-						echo "  Processed $icon_name (100% opaque)" || \
-						echo "  Failed to process $icon_name"
-				fi
-			done
-			echo 'Tray icon files copied and processed'
-		else
-			echo 'Warning: ImageMagick not found - tray icons may appear invisible'
-			echo 'Tray icon files copied (unprocessed)'
-		fi
-	else
+	if [[ ! -d $claude_locale_src ]]; then
 		echo "Warning: Claude resources directory not found at $claude_locale_src"
+		section_footer 'Icon Processing'
+		return
 	fi
+
+	cp "$claude_locale_src/Tray"* "$electron_resources_dest/" 2>/dev/null || \
+		echo 'Warning: No tray icon files found'
+
+	# Find ImageMagick command
+	local magick_cmd=''
+	command -v magick &> /dev/null && magick_cmd='magick'
+	[[ -z $magick_cmd ]] && command -v convert &> /dev/null && magick_cmd='convert'
+
+	if [[ -z $magick_cmd ]]; then
+		echo 'Warning: ImageMagick not found - tray icons may appear invisible'
+		echo 'Tray icon files copied (unprocessed)'
+		section_footer 'Icon Processing'
+		return
+	fi
+
+	echo "Processing tray icons for Linux visibility (using $magick_cmd)..."
+	local icon_file icon_name
+	for icon_file in "$electron_resources_dest"/TrayIconTemplate*.png; do
+		[[ ! -f $icon_file ]] && continue
+		icon_name=$(basename "$icon_file")
+		if "$magick_cmd" "$icon_file" -channel A -fx 'a>0?1:0' +channel \
+			"PNG32:$icon_file" 2>/dev/null; then
+			echo "  Processed $icon_name (100% opaque)"
+		else
+			echo "  Failed to process $icon_name"
+		fi
+	done
+	echo 'Tray icon files copied and processed'
 
 	section_footer 'Icon Processing'
 }
@@ -912,15 +897,16 @@ EOF
 
 cleanup_build() {
 	section_header 'Cleanup'
-	if [[ $perform_cleanup == true ]]; then
-		echo "Cleaning up intermediate build files in $work_dir..."
-		if rm -rf "$work_dir"; then
-			echo "Cleanup complete ($work_dir removed)."
-		else
-			echo 'Cleanup command failed.'
-		fi
-	else
+	if [[ $perform_cleanup != true ]]; then
 		echo "Skipping cleanup of intermediate build files in $work_dir."
+		return
+	fi
+
+	echo "Cleaning up intermediate build files in $work_dir..."
+	if rm -rf "$work_dir"; then
+		echo "Cleanup complete ($work_dir removed)."
+	else
+		echo 'Cleanup command failed.'
 	fi
 }
 

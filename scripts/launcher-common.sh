@@ -19,28 +19,20 @@ log_message() {
 # Detect display backend (Wayland vs X11)
 # Sets: is_wayland, use_x11_on_wayland
 detect_display_backend() {
-	# Detect if Wayland is likely running
+	# Detect if Wayland is running
 	is_wayland=false
-	if [[ -n $WAYLAND_DISPLAY ]]; then
-		is_wayland=true
-	fi
+	[[ -n $WAYLAND_DISPLAY ]] && is_wayland=true
 
-	# Determine display backend mode
-	# Default: Use X11/XWayland on Wayland sessions for global hotkey support
-	# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys won't work)
+	# Default: Use X11/XWayland on Wayland for global hotkey support
+	# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys disabled)
 	use_x11_on_wayland=true
-	if [[ $CLAUDE_USE_WAYLAND == '1' ]]; then
-		use_x11_on_wayland=false
-	fi
+	[[ $CLAUDE_USE_WAYLAND == '1' ]] && use_x11_on_wayland=false
 }
 
 # Check if we have a valid display (not running from TTY)
 # Returns: 0 if display available, 1 if not
 check_display() {
-	if [[ -z $DISPLAY && -z $WAYLAND_DISPLAY ]]; then
-		return 1
-	fi
-	return 0
+	[[ -n $DISPLAY || -n $WAYLAND_DISPLAY ]]
 }
 
 # Build Electron arguments array based on display backend
@@ -51,41 +43,34 @@ check_display() {
 build_electron_args() {
 	local package_type="${1:-deb}"
 
-	# Initialize args array
 	electron_args=()
 
 	# AppImage always needs --no-sandbox due to FUSE constraints
-	if [[ $package_type == 'appimage' ]]; then
-		electron_args+=('--no-sandbox')
-	fi
+	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
 	# Disable CustomTitlebar for better Linux integration
 	electron_args+=('--disable-features=CustomTitlebar')
 
-	# Add compatibility flags based on display backend
-	if [[ $is_wayland == true ]]; then
-		if [[ $use_x11_on_wayland == true ]]; then
-			# Default: Use X11 via XWayland for global hotkey support
-			log_message 'Using X11 backend via XWayland (for global hotkey support)'
-			# Deb package needs --no-sandbox for XWayland mode too
-			if [[ $package_type == 'deb' ]]; then
-				electron_args+=('--no-sandbox')
-			fi
-			electron_args+=('--ozone-platform=x11')
-		else
-			# Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
-			log_message 'Using native Wayland backend (global hotkeys may not work)'
-			if [[ $package_type == 'deb' ]]; then
-				electron_args+=('--no-sandbox')
-			fi
-			electron_args+=('--enable-features=UseOzonePlatform,WaylandWindowDecorations')
-			electron_args+=('--ozone-platform=wayland')
-			electron_args+=('--enable-wayland-ime')
-			electron_args+=('--wayland-text-input-version=3')
-		fi
-	else
-		# X11 session - no special flags needed
+	# X11 session - no special flags needed
+	if [[ $is_wayland != true ]]; then
 		log_message 'X11 session detected'
+		return
+	fi
+
+	# Wayland: deb package needs --no-sandbox in both modes
+	[[ $package_type == 'deb' ]] && electron_args+=('--no-sandbox')
+
+	if [[ $use_x11_on_wayland == true ]]; then
+		# Default: Use X11 via XWayland for global hotkey support
+		log_message 'Using X11 backend via XWayland (for global hotkey support)'
+		electron_args+=('--ozone-platform=x11')
+	else
+		# Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
+		log_message 'Using native Wayland backend (global hotkeys may not work)'
+		electron_args+=('--enable-features=UseOzonePlatform,WaylandWindowDecorations')
+		electron_args+=('--ozone-platform=wayland')
+		electron_args+=('--enable-wayland-ime')
+		electron_args+=('--wayland-text-input-version=3')
 	fi
 }
 

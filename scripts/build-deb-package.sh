@@ -32,22 +32,17 @@ mkdir -p "$install_dir/bin" || exit 1
 
 # --- Icon Installation ---
 echo 'Installing icons...'
-# Map icon sizes to their corresponding extracted files (relative to work_dir)
+# Map: size -> filename suffix
 declare -A icon_files=(
-	['16']='claude_13_16x16x32.png'
-	['24']='claude_11_24x24x32.png'
-	['32']='claude_10_32x32x32.png'
-	['48']='claude_8_48x48x32.png'
-	['64']='claude_7_64x64x32.png'
-	['256']='claude_6_256x256x32.png'
+	[16]=13 [24]=11 [32]=10 [48]=8 [64]=7 [256]=6
 )
 
-for size in 16 24 32 48 64 256; do
+for size in "${!icon_files[@]}"; do
 	icon_dir="$install_dir/share/icons/hicolor/${size}x${size}/apps"
 	mkdir -p "$icon_dir" || exit 1
-	icon_source_path="$work_dir/${icon_files[$size]}"
+	icon_source_path="$work_dir/claude_${icon_files[$size]}_${size}x${size}x32.png"
 	if [[ -f $icon_source_path ]]; then
-		echo "Installing ${size}x${size} icon from $icon_source_path..."
+		echo "Installing ${size}x${size} icon..."
 		install -Dm 644 "$icon_source_path" "$icon_dir/claude-desktop.png" || exit 1
 	else
 		echo "Warning: Missing ${size}x${size} icon at $icon_source_path"
