@@ -925,7 +925,8 @@ print_next_steps() {
 		if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
 			echo -e "AppImage created at: \033[1;36m$final_output_path\033[0m"
 			echo -e '\n\033[1;33mIMPORTANT:\033[0m This AppImage requires \033[1;36mGear Lever\033[0m for proper desktop integration'
-			echo -e 'and to handle the `claude://` login process correctly.'
+			# shellcheck disable=SC2016  # backticks intentional for display
+		echo -e 'and to handle the `claude://` login process correctly.'
 			echo -e '\nTo install Gear Lever:'
 			echo -e '   1. Install via Flatpak:'
 			echo -e '      \033[1;32mflatpak install flathub it.mijorus.gearlever\033[0m'
