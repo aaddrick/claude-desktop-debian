@@ -165,6 +165,20 @@ For enhanced security, consider:
 - Running the AppImage within a separate sandbox (e.g., bubblewrap)
 - Using Gear Lever's integrated AppImage management for better isolation
 
+### Authentication Errors (401)
+
+If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).
+
+To fix manually (credit: [MrEdwards007](https://github.com/MrEdwards007)):
+
+1. Close Claude Desktop completely
+2. Edit `~/.config/Claude/config.json`
+3. Remove the line containing `"oauth:tokenCache"` (and any trailing comma if needed)
+4. Save the file and restart Claude Desktop
+5. Log in again when prompted
+
+A scripted solution is also available at the bottom of [this comment](https://github.com/aaddrick/claude-desktop-debian/issues/156#issuecomment-2682547498).
+
 ## Technical Details
 
 ### How It Works
