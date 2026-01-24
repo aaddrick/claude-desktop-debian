@@ -13,6 +13,29 @@ This project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux, a
 - Reference issues in commits and PRs with `#123` or `Fixes #123`
 - After creating a PR, add a comment to the related issue with a summary and link to the PR
 
+### Investigating Issues
+
+For older issues, review the state of the code when the issue was raised - it may have already been addressed:
+
+```bash
+# Get issue creation date
+gh issue view 123 --json createdAt
+
+# Find the commit just before the issue was created
+git log --oneline --until="2025-08-23T08:48:35Z" -1
+
+# View a file at that point in time
+git show <commit>:path/to/file.sh
+
+# Search for relevant changes since the issue was created
+git log --oneline --after="2025-08-23" -- path/to/file.sh
+
+# View a specific commit that may have fixed the issue
+git show <commit>
+```
+
+This helps identify if the issue was already fixed, and allows referencing the specific commit in the response.
+
 ### Attribution
 
 **For PR descriptions**, include full attribution:
