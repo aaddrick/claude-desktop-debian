@@ -204,13 +204,24 @@ jobs:
           name: package-arm64-rpm
           path: incoming/
 
-      - name: Install createrepo_c
-        run: sudo apt-get update && sudo apt-get install -y createrepo-c
+      - name: Install createrepo_c and rpm-sign
+        run: sudo apt-get update && sudo apt-get install -y createrepo-c rpm
 
       - name: Import GPG key
+        id: import_gpg
         uses: crazy-max/ghaction-import-gpg@v6
         with:
           gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+
+      - name: Configure RPM signing
+        run: |
+          # Configure RPM macros for signing
+          cat > ~/.rpmmacros << EOF
+          %_signature gpg
+          %_gpg_name ${{ steps.import_gpg.outputs.keyid }}
+          %__gpg /usr/bin/gpg
+          %__gpg_sign_cmd %{__gpg} gpg --batch --no-verbose --no-armor --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
+          EOF
 
       - name: Update DNF repository
         working-directory: dnf-repo
@@ -219,20 +230,27 @@ jobs:
           mkdir -p rpm/x86_64 rpm/aarch64
 
           # Copy RPMs to appropriate architecture directories
-          for rpm in ../incoming/*.rpm; do
-            filename=$(basename "$rpm")
+          for rpm_file in ../incoming/*.rpm; do
+            filename=$(basename "$rpm_file")
             if [[ "$filename" == *"x86_64"* ]]; then
-              cp "$rpm" rpm/x86_64/
+              cp "$rpm_file" rpm/x86_64/
               echo "Added $filename to x86_64"
             elif [[ "$filename" == *"aarch64"* ]]; then
-              cp "$rpm" rpm/aarch64/
+              cp "$rpm_file" rpm/aarch64/
               echo "Added $filename to aarch64"
             fi
           done
 
-          # Generate repository metadata for each architecture
+          # Sign RPM packages and generate repository metadata for each architecture
           for arch in x86_64 aarch64; do
             if ls rpm/$arch/*.rpm 1> /dev/null 2>&1; then
+              # Sign each RPM package
+              echo "Signing RPM packages for $arch..."
+              for rpm_file in rpm/$arch/*.rpm; do
+                echo "Signing $rpm_file..."
+                rpmsign --addsign "$rpm_file"
+              done
+
               echo "Generating repodata for $arch..."
               createrepo_c --update rpm/$arch/
 
