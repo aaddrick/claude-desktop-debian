@@ -102,3 +102,56 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: artifacts/**/*
+
+  update-apt-repo:
+    name: Update APT Repository
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: apt-repo
+
+      - name: Download AMD64 deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-amd64-deb
+          path: incoming/
+
+      - name: Download ARM64 deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-arm64-deb
+          path: incoming/
+
+      - name: Install reprepro
+        run: sudo apt-get update && sudo apt-get install -y reprepro
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+
+      - name: Add packages to repository
+        working-directory: apt-repo
+        run: |
+          # Add each .deb file to the repository
+          for deb in ../incoming/*.deb; do
+            echo "Adding $deb to repository..."
+            reprepro includedeb stable "$deb"
+          done
+
+      - name: Commit and push changes
+        working-directory: apt-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "Update APT repository for ${{ github.ref_name }}"
+          git push
