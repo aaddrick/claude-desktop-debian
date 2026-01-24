@@ -253,39 +253,34 @@ check_dependencies() {
 	local all_deps="$common_deps"
 
 	# Add format-specific dependencies
-	if [[ $build_format == 'deb' ]]; then
-		all_deps="$all_deps dpkg-deb"
-	elif [[ $build_format == 'rpm' ]]; then
-		all_deps="$all_deps rpmbuild"
-	fi
+	case "$build_format" in
+		deb) all_deps="$all_deps dpkg-deb" ;;
+		rpm) all_deps="$all_deps rpmbuild" ;;
+	esac
+
+	# Command-to-package mappings per distro family
+	declare -A debian_pkgs=(
+		[p7zip]='p7zip-full' [wget]='wget' [wrestool]='icoutils'
+		[icotool]='icoutils' [convert]='imagemagick'
+		[dpkg-deb]='dpkg-dev' [rpmbuild]='rpm'
+	)
+	declare -A rpm_pkgs=(
+		[p7zip]='p7zip p7zip-plugins' [wget]='wget' [wrestool]='icoutils'
+		[icotool]='icoutils' [convert]='ImageMagick'
+		[dpkg-deb]='dpkg' [rpmbuild]='rpm-build'
+	)
 
 	local cmd
 	for cmd in $all_deps; do
 		if ! check_command "$cmd"; then
-			# Map command to package name based on distro
 			case "$distro_family" in
 				debian)
-					case "$cmd" in
-						'p7zip') deps_to_install="$deps_to_install p7zip-full" ;;
-						'wget') deps_to_install="$deps_to_install wget" ;;
-						'wrestool'|'icotool') deps_to_install="$deps_to_install icoutils" ;;
-						'convert') deps_to_install="$deps_to_install imagemagick" ;;
-						'dpkg-deb') deps_to_install="$deps_to_install dpkg-dev" ;;
-						'rpmbuild') deps_to_install="$deps_to_install rpm" ;;
-					esac
+					deps_to_install="$deps_to_install ${debian_pkgs[$cmd]}"
 					;;
 				rpm)
-					case "$cmd" in
-						'p7zip') deps_to_install="$deps_to_install p7zip p7zip-plugins" ;;
-						'wget') deps_to_install="$deps_to_install wget" ;;
-						'wrestool'|'icotool') deps_to_install="$deps_to_install icoutils" ;;
-						'convert') deps_to_install="$deps_to_install ImageMagick" ;;
-						'dpkg-deb') deps_to_install="$deps_to_install dpkg" ;;
-						'rpmbuild') deps_to_install="$deps_to_install rpm-build" ;;
-					esac
+					deps_to_install="$deps_to_install ${rpm_pkgs[$cmd]}"
 					;;
 				*)
-					# For unknown distros, just report the missing command
 					echo "Warning: Cannot auto-install '$cmd' on unknown distro. Please install manually." >&2
 					;;
 			esac
@@ -916,48 +911,41 @@ run_packaging() {
 	section_header 'Call Packaging Script'
 
 	local output_path=''
+	local script_name file_pattern pkg_file
 
-	if [[ $build_format == 'deb' ]]; then
-		echo "Calling Debian packaging script for $architecture..."
-		chmod +x scripts/build-deb-package.sh || exit 1
-		if ! scripts/build-deb-package.sh \
+	case "$build_format" in
+		deb)
+			script_name='build-deb-package.sh'
+			file_pattern="${PACKAGE_NAME}_${version}_${architecture}.deb"
+			;;
+		rpm)
+			script_name='build-rpm-package.sh'
+			file_pattern="${PACKAGE_NAME}-${version}*.rpm"
+			;;
+		appimage)
+			script_name='build-appimage.sh'
+			file_pattern="${PACKAGE_NAME}-${version}-${architecture}.AppImage"
+			;;
+	esac
+
+	if [[ $build_format == 'deb' || $build_format == 'rpm' ]]; then
+		echo "Calling ${build_format^^} packaging script for $architecture..."
+		chmod +x "scripts/$script_name" || exit 1
+		if ! "scripts/$script_name" \
 			"$version" "$architecture" "$work_dir" "$app_staging_dir" \
 			"$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
-			echo 'Debian packaging script failed.' >&2
+			echo "${build_format^^} packaging script failed." >&2
 			exit 1
 		fi
 
-		local deb_file
-		deb_file=$(find "$work_dir" -maxdepth 1 -name "${PACKAGE_NAME}_${version}_${architecture}.deb" | head -n 1)
-		echo 'Debian Build complete!'
-		if [[ -n $deb_file && -f $deb_file ]]; then
-			output_path="./$(basename "$deb_file")"
-			mv "$deb_file" "$output_path" || exit 1
+		pkg_file=$(find "$work_dir" -maxdepth 1 -name "$file_pattern" | head -n 1)
+		echo "${build_format^^} Build complete!"
+		if [[ -n $pkg_file && -f $pkg_file ]]; then
+			output_path="./$(basename "$pkg_file")"
+			mv "$pkg_file" "$output_path" || exit 1
 			echo "Package created at: $output_path"
 		else
-			echo 'Warning: Could not determine final .deb file path.'
-			output_path='Not Found'
-		fi
-
-	elif [[ $build_format == 'rpm' ]]; then
-		echo "Calling RPM packaging script for $architecture..."
-		chmod +x scripts/build-rpm-package.sh || exit 1
-		if ! scripts/build-rpm-package.sh \
-			"$version" "$architecture" "$work_dir" "$app_staging_dir" \
-			"$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
-			echo 'RPM packaging script failed.' >&2
-			exit 1
-		fi
-
-		local rpm_file
-		rpm_file=$(find "$work_dir" -maxdepth 1 -name "${PACKAGE_NAME}-${version}*.rpm" | head -n 1)
-		echo 'RPM Build complete!'
-		if [[ -n $rpm_file && -f $rpm_file ]]; then
-			output_path="./$(basename "$rpm_file")"
-			mv "$rpm_file" "$output_path" || exit 1
-			echo "Package created at: $output_path"
-		else
-			echo 'Warning: Could not determine final .rpm file path.'
+			echo "Warning: Could not determine final .${build_format} file path."
 			output_path='Not Found'
 		fi
 
@@ -1024,23 +1012,27 @@ cleanup_build() {
 print_next_steps() {
 	echo -e '\n\033[1;34m====== Next Steps ======\033[0m'
 
-	if [[ $build_format == 'deb' ]]; then
-		if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
-			echo -e 'To install the Debian package, run:'
-			echo -e "   \033[1;32msudo apt install $final_output_path\033[0m"
-			echo -e "   (or \`sudo dpkg -i $final_output_path\`)"
-		else
-			echo -e 'Debian package file not found. Cannot provide installation instructions.'
-		fi
-	elif [[ $build_format == 'rpm' ]]; then
-		if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
-			echo -e 'To install the RPM package, run:'
-			echo -e "   \033[1;32msudo dnf install $final_output_path\033[0m"
-			echo -e "   (or \`sudo rpm -i $final_output_path\`)"
-		else
-			echo -e 'RPM package file not found. Cannot provide installation instructions.'
-		fi
-	elif [[ $build_format == 'appimage' ]]; then
+	case "$build_format" in
+		deb|rpm)
+			if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
+				local pkg_type install_cmd alt_cmd
+				if [[ $build_format == 'deb' ]]; then
+					pkg_type='Debian'
+					install_cmd="sudo apt install $final_output_path"
+					alt_cmd="sudo dpkg -i $final_output_path"
+				else
+					pkg_type='RPM'
+					install_cmd="sudo dnf install $final_output_path"
+					alt_cmd="sudo rpm -i $final_output_path"
+				fi
+				echo -e "To install the $pkg_type package, run:"
+				echo -e "   \033[1;32m$install_cmd\033[0m"
+				echo -e "   (or \`$alt_cmd\`)"
+			else
+				echo -e "${build_format^^} package file not found. Cannot provide installation instructions."
+			fi
+			;;
+		appimage)
 		if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
 			echo -e "AppImage created at: \033[1;36m$final_output_path\033[0m"
 			echo -e '\n\033[1;33mIMPORTANT:\033[0m This AppImage requires \033[1;36mGear Lever\033[0m for proper desktop integration'
@@ -1062,7 +1054,8 @@ print_next_steps() {
 		else
 			echo -e 'AppImage file not found. Cannot provide usage instructions.'
 		fi
-	fi
+			;;
+	esac
 
 	echo -e '\033[1;34m======================\033[0m'
 }

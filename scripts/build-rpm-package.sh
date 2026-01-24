@@ -101,10 +101,10 @@ else
 	else
 		log_message 'Error: Electron executable not found'
 		if command -v zenity &> /dev/null; then
-			zenity --error \\
+			zenity --error \
 				--text='Claude Desktop cannot start because the Electron framework is missing.'
 		elif command -v kdialog &> /dev/null; then
-			kdialog --error \\
+			kdialog --error \
 				'Claude Desktop cannot start because the Electron framework is missing.'
 		fi
 		exit 1
