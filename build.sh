@@ -121,11 +121,16 @@ detect_distro() {
 }
 
 check_system_requirements() {
+	# Allow running as root in CI/container environments
 	if (( EUID == 0 )); then
-		echo 'This script should not be run using sudo or as the root user.' >&2
-		echo 'It will prompt for sudo password when needed for specific actions.' >&2
-		echo 'Please run as a normal user.' >&2
-		exit 1
+		if [[ -n ${CI:-} || -n ${GITHUB_ACTIONS:-} || -f /.dockerenv ]]; then
+			echo 'Running as root in CI/container environment (allowed)'
+		else
+			echo 'This script should not be run using sudo or as the root user.' >&2
+			echo 'It will prompt for sudo password when needed for specific actions.' >&2
+			echo 'Please run as a normal user.' >&2
+			exit 1
+		fi
 	fi
 
 	original_user=$(whoami)
@@ -289,28 +294,36 @@ check_dependencies() {
 
 	if [[ -n $deps_to_install ]]; then
 		echo "System dependencies needed:$deps_to_install"
-		echo 'Attempting to install using sudo...'
-		if ! sudo -v; then
-			echo 'Failed to validate sudo credentials. Please ensure you can run sudo.' >&2
-			exit 1
+
+		# Determine if we need sudo (skip if already root)
+		local sudo_cmd='sudo'
+		if (( EUID == 0 )); then
+			sudo_cmd=''
+			echo 'Installing as root (no sudo needed)...'
+		else
+			echo 'Attempting to install using sudo...'
+			if ! sudo -v; then
+				echo 'Failed to validate sudo credentials. Please ensure you can run sudo.' >&2
+				exit 1
+			fi
 		fi
 
 		case "$distro_family" in
 			debian)
-				if ! sudo apt update; then
-					echo "Failed to run 'sudo apt update'." >&2
+				if ! $sudo_cmd apt update; then
+					echo "Failed to run 'apt update'." >&2
 					exit 1
 				fi
 				# shellcheck disable=SC2086
-				if ! sudo apt install -y $deps_to_install; then
-					echo "Failed to install dependencies using 'sudo apt install'." >&2
+				if ! $sudo_cmd apt install -y $deps_to_install; then
+					echo "Failed to install dependencies using 'apt install'." >&2
 					exit 1
 				fi
 				;;
 			rpm)
 				# shellcheck disable=SC2086
-				if ! sudo dnf install -y $deps_to_install; then
-					echo "Failed to install dependencies using 'sudo dnf install'." >&2
+				if ! $sudo_cmd dnf install -y $deps_to_install; then
+					echo "Failed to install dependencies using 'dnf install'." >&2
 					exit 1
 				fi
 				;;
@@ -320,7 +333,7 @@ check_dependencies() {
 				exit 1
 				;;
 		esac
-		echo 'System dependencies installed successfully via sudo.'
+		echo 'System dependencies installed successfully.'
 	fi
 }
 
