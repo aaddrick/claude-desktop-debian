@@ -12,6 +12,11 @@ on:
         description: "Suffix for the artifact name (e.g., deb, appimage, rpm)"
         required: true
         type: string
+      release_tag:
+        description: "Optional release tag (e.g., v1.3.2+claude1.1.799) to derive wrapper version"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build:
@@ -38,7 +43,11 @@ jobs:
 
       - name: Run build script
         run: |
-          ./build.sh ${{ inputs.build_flags }}
+          TAG_FLAG=""
+          if [[ -n "${{ inputs.release_tag }}" ]]; then
+            TAG_FLAG="--release-tag ${{ inputs.release_tag }}"
+          fi
+          ./build.sh ${{ inputs.build_flags }} $TAG_FLAG
 
       - name: Upload ARM64 Artifact
         uses: actions/upload-artifact@v4

@@ -47,6 +47,7 @@ jobs:
     with:
       build_flags: ${{ matrix.flags }}
       artifact_suffix: ${{ matrix.artifact_suffix }}
+      release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
   build-arm64:
     name: Build Packages (arm64 - ${{ matrix.artifact_suffix }})
@@ -70,6 +71,7 @@ jobs:
     with:
       build_flags: ${{ matrix.flags }}
       artifact_suffix: ${{ matrix.artifact_suffix }}
+      release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
   release:
     name: Create Release
