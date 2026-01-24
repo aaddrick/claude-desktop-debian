@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Desktop APT Repository</title>
+    <title>Claude Desktop DNF Repository</title>
     <style>
         :root {
             --bg: #1a1a2e;
@@ -150,14 +150,14 @@
 </head>
 <body>
     <div class="container">
-        <h1>Claude Desktop APT Repository</h1>
-        <p class="subtitle">Unofficial Linux packages for Claude Desktop</p>
+        <h1>Claude Desktop DNF Repository</h1>
+        <p class="subtitle">Unofficial Linux packages for Claude Desktop (Fedora/RHEL)</p>
 
         <div class="card">
             <h2>Quick Install</h2>
 
             <div class="step">
-                <div class="step-label">1. Add the GPG key</div>
+                <div class="step-label">1. Add the repository</div>
                 <div class="code-block">
                     <div class="code-header">
                         <button class="copy-btn" onclick="copyCode(this)">
@@ -167,12 +167,12 @@
                             Copy
                         </button>
                     </div>
-                    <pre><code>curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg</code></pre>
+                    <pre><code>sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo</code></pre>
                 </div>
             </div>
 
             <div class="step">
-                <div class="step-label">2. Add the repository</div>
+                <div class="step-label">2. Install</div>
                 <div class="code-block">
                     <div class="code-header">
                         <button class="copy-btn" onclick="copyCode(this)">
@@ -182,22 +182,7 @@
                             Copy
                         </button>
                     </div>
-                    <pre><code>echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list</code></pre>
-                </div>
-            </div>
-
-            <div class="step">
-                <div class="step-label">3. Install</div>
-                <div class="code-block">
-                    <div class="code-header">
-                        <button class="copy-btn" onclick="copyCode(this)">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            Copy
-                        </button>
-                    </div>
-                    <pre><code>sudo apt update && sudo apt install claude-desktop</code></pre>
+                    <pre><code>sudo dnf install claude-desktop</code></pre>
                 </div>
             </div>
         </div>
@@ -205,8 +190,8 @@
         <div class="card">
             <h2>Supported Architectures</h2>
             <div class="architectures">
-                <span class="arch">amd64</span>
-                <span class="arch">arm64</span>
+                <span class="arch">x86_64</span>
+                <span class="arch">aarch64</span>
             </div>
         </div>
 
@@ -222,18 +207,18 @@
                         Copy
                     </button>
                 </div>
-                <pre><code>sudo apt update && sudo apt upgrade</code></pre>
+                <pre><code>sudo dnf upgrade claude-desktop</code></pre>
             </div>
         </div>
 
         <div class="card">
             <h2>Other Distributions</h2>
-            <p>Using Fedora or RHEL?</p>
-            <a href="rpm/" class="distro-link">
+            <p>Using Debian or Ubuntu?</p>
+            <a href="../" class="distro-link">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8z"/>
+                    <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
                 </svg>
-                DNF Repository (Fedora/RHEL)
+                APT Repository (Debian/Ubuntu)
             </a>
         </div>
 
@@ -243,7 +228,7 @@
                 <a href="https://github.com/aaddrick/claude-desktop-debian">GitHub Repository</a>
                 <a href="https://github.com/aaddrick/claude-desktop-debian/releases">Releases</a>
                 <a href="https://github.com/aaddrick/claude-desktop-debian/issues">Report Issues</a>
-                <a href="KEY.gpg">GPG Public Key</a>
+                <a href="../KEY.gpg">GPG Public Key</a>
             </div>
         </div>
 
