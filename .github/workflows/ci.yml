@@ -256,7 +256,7 @@ jobs:
 
               # Sign the repository metadata
               echo "Signing repodata for $arch..."
-              gpg --detach-sign --armor rpm/$arch/repodata/repomd.xml
+              gpg --batch --detach-sign --armor rpm/$arch/repodata/repomd.xml
             fi
           done
 
