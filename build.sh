@@ -11,6 +11,7 @@ distro_family=''  # debian, rpm, or unknown
 claude_download_url=''
 claude_exe_filename=''
 version=''
+release_tag=''  # Optional release tag (e.g., v1.3.2+claude1.1.799) for unique package versions
 build_format=''  # Will be set based on distro if not specified
 cleanup_action='yes'
 perform_cleanup=false
@@ -185,7 +186,7 @@ parse_arguments() {
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build|-c|--clean|-e|--exe)
+			-b|--build|-c|--clean|-e|--exe|-r|--release-tag)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
@@ -194,6 +195,7 @@ parse_arguments() {
 					-b|--build) build_format="$2" ;;
 					-c|--clean) cleanup_action="$2" ;;
 					-e|--exe) local_exe_path="$2" ;;
+					-r|--release-tag) release_tag="$2" ;;
 				esac
 				shift 2
 				;;
@@ -202,11 +204,12 @@ parse_arguments() {
 				shift
 				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--test-flags]"
+				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--release-tag TAG] [--test-flags]"
 				echo '  --build: Specify the build format (deb, rpm, or appimage).'
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
+				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
 				;;
@@ -528,6 +531,19 @@ download_claude_installer() {
 		exit 1
 	fi
 	echo "Detected Claude version: $version"
+
+	# Extract wrapper version from release tag if provided (e.g., v1.3.2+claude1.1.799 -> 1.3.2)
+	if [[ -n $release_tag ]]; then
+		local wrapper_version
+		# Extract version between 'v' and '+claude' (e.g., v1.3.2+claude1.1.799 -> 1.3.2)
+		wrapper_version=$(echo "$release_tag" | LC_ALL=C grep -oP '^v\K[0-9]+\.[0-9]+\.[0-9]+(?=\+claude)')
+		if [[ -n $wrapper_version ]]; then
+			version="${version}-${wrapper_version}"
+			echo "Package version with wrapper suffix: $version"
+		else
+			echo "Warning: Could not extract wrapper version from release tag: $release_tag" >&2
+		fi
+	fi
 
 	if ! 7z x -y "$nupkg_path_relative"; then
 		echo 'Failed to extract nupkg' >&2
