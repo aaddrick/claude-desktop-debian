@@ -1,0 +1,5 @@
+Component: main
+Origin: claude-desktop-debian
+Label: Claude Desktop for Linux
+Architecture: amd64
+Description: Claude Desktop unofficial Linux packages

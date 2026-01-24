@@ -1,0 +1,7 @@
+Origin: claude-desktop-debian
+Label: Claude Desktop for Linux
+Codename: stable
+Architectures: amd64 arm64
+Components: main
+Description: Claude Desktop unofficial Linux packages
+SignWith: 6E29E413B912E0F1

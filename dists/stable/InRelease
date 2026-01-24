@@ -1,0 +1,54 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: claude-desktop-debian
+Label: Claude Desktop for Linux
+Codename: stable
+Date: Sat, 24 Jan 2026 13:49:31 UTC
+Architectures: amd64 arm64
+Components: main
+Description: Claude Desktop unofficial Linux packages
+MD5Sum:
+ d41d8cd98f00b204e9800998ecf8427e 0 main/binary-amd64/Packages
+ 7029066c27ac6f5ef18d660d5741979a 20 main/binary-amd64/Packages.gz
+ 02bfdb0962fdcbc813da34967372124d 152 main/binary-amd64/Release
+ d41d8cd98f00b204e9800998ecf8427e 0 main/binary-arm64/Packages
+ 7029066c27ac6f5ef18d660d5741979a 20 main/binary-arm64/Packages.gz
+ a34b0e690522268f14683fbce7f31005 152 main/binary-arm64/Release
+SHA1:
+ da39a3ee5e6b4b0d3255bfef95601890afd80709 0 main/binary-amd64/Packages
+ 46c6643f07aa7f6bfe7118de926b86defc5087c4 20 main/binary-amd64/Packages.gz
+ 7e6572fbede38f2753bbf46197b1db20fc4c57a0 152 main/binary-amd64/Release
+ da39a3ee5e6b4b0d3255bfef95601890afd80709 0 main/binary-arm64/Packages
+ 46c6643f07aa7f6bfe7118de926b86defc5087c4 20 main/binary-arm64/Packages.gz
+ 9802bd79bf2009c5180e1df0d99da2dc7ba8f2f4 152 main/binary-arm64/Release
+SHA256:
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 main/binary-amd64/Packages
+ 59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2 20 main/binary-amd64/Packages.gz
+ 2a288260d0eff0aee3beac611d50b711a495e6eaf053fffddf35ebdf498b0247 152 main/binary-amd64/Release
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 main/binary-arm64/Packages
+ 59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2 20 main/binary-arm64/Packages.gz
+ 96728c0041e79a804531562cb2d8fb2e94869e09578537b2bc0afacf3de7025e 152 main/binary-arm64/Release
+SHA512:
+ cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e 0 main/binary-amd64/Packages
+ 7e8e93f4a89ce7fae011403e14a1d53544c6e6f6b6010d61129dc27937806d2b03802610d7999eab33a4c36b0f9e001d9d76001b8354087634c1aa9c740c536f 20 main/binary-amd64/Packages.gz
+ 4b121f6f9290a1977d606948cb217c348ebb7aa36ebbc57b9e5a1069487d3029d6847e0738e64ede4e07408baa1a3ab3ccf53b044f7587c88296b971ad26c83a 152 main/binary-amd64/Release
+ cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e 0 main/binary-arm64/Packages
+ 7e8e93f4a89ce7fae011403e14a1d53544c6e6f6b6010d61129dc27937806d2b03802610d7999eab33a4c36b0f9e001d9d76001b8354087634c1aa9c740c536f 20 main/binary-arm64/Packages.gz
+ 81e7c231ec27f8544bc30a2c863af465097bd2b7977f098346c0e82de303baf06d87e86f255dc2b4b9bd3fc3a8a78b8e309f5c964e167346c383e9456b4cc396 152 main/binary-arm64/Release
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAml0zesACgkQeM6R1yqp
+6bn8eg//TLKtj86nGdYMk8VSEqDXjMWj5k7lZm0jSoP2FU5KQ1VIRyTlAsgCbmn/
+n2Pnnn4TpneHEHjwx6V57Hl+XTwTJKOWWAzRAtpRweB1iqAyPwOEeQzoV+ACbnwY
+OXFLk/e88oXI0VQfTG4d2Qunt4v1ZllweQMXqVXrTgKaTHsN/yROhGCEC9SQqyyJ
+3DcIALdn8WbB4LEjn+3jxJq0oeM0LlwHTukmlJYKNPA9F74P2ZsIa3stxUxPAggT
+jO7KatAKRK7nnDfgqL3CavLnUnx9A+w3rd3PY6+rtNMycCM98HztDuFlN2A9O9uI
+e3WTgF+Pb6NcpAkBxS5n9vxO3eK1jKgIy+e3jem4gv091xULMsPFaKDBExmff4zk
+T/fNWSI1xN+bchui4Q6ykHtrfDMYZcZVVWZdq4RAAKmfhFtZGpmZaaAdeDktAOOD
+R4t04/NAvcOQ5MP5dvwPkU1CSxKIAASweFB+OHwu+uQg7Ck1iTG8BBKdjN+GBI8s
+NhamjbGymmyv7U3by6UwqT7CJ9KtuVxDlgMXOi9vphuMpvTM8ptRXl0+YCx4+TeD
+Ykaeg5Lb9kH/cvYvVf9HgtEvKK6L6/ErqZcRDgPkye0kHOCXTWoEcKHyUNVXnSB0
+Z4wkO083/5NQuFzgxzqFkUOSuAhQsUbxEk6W1L+KgxGyZl86Nx0=
+=L4j2
+-----END PGP SIGNATURE-----
