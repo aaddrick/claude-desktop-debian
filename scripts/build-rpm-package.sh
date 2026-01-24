@@ -11,6 +11,19 @@ description="$7"
 
 echo '--- Starting RPM Package Build ---'
 echo "Version: $version"
+
+# RPM Version field cannot contain hyphens. If version contains a hyphen,
+# split into version (before hyphen) and release (after hyphen).
+# e.g., "1.1.799-1.3.3" -> rpm_version="1.1.799", rpm_release="1.3.3"
+if [[ $version == *-* ]]; then
+	rpm_version="${version%%-*}"
+	rpm_release="${version#*-}"
+	echo "RPM Version: $rpm_version"
+	echo "RPM Release: $rpm_release"
+else
+	rpm_version="$version"
+	rpm_release="1"
+fi
 echo "Architecture: $architecture"
 echo "Work Directory: $work_dir"
 echo "App Staging Directory: $app_staging_dir"
@@ -155,8 +168,8 @@ done
 
 cat > "$rpmbuild_dir/SPECS/$package_name.spec" << SPECEOF
 Name:           $package_name
-Version:        $version
-Release:        1%{?dist}
+Version:        $rpm_version
+Release:        $rpm_release%{?dist}
 Summary:        $description
 
 License:        Proprietary
@@ -240,13 +253,14 @@ if ! rpmbuild --define "_topdir $rpmbuild_dir" \
 fi
 
 # Find and move the built RPM (it will be in a subdirectory)
-rpm_file=$(find "$work_dir" -name "${package_name}-${version}*.rpm" -type f | head -n 1)
+rpm_file=$(find "$work_dir" -name "${package_name}-${rpm_version}*.rpm" -type f | head -n 1)
 if [[ -z $rpm_file ]]; then
 	echo 'Could not find built RPM file' >&2
 	exit 1
 fi
 
 # Rename to consistent format at work_dir root
+# Use original $version to maintain filename compatibility with DEB and AppImage
 final_rpm="$work_dir/${package_name}-${version}-1.${rpm_arch}.rpm"
 if [[ $rpm_file != "$final_rpm" ]]; then
 	mv "$rpm_file" "$final_rpm" || exit 1
