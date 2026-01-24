@@ -26,7 +26,7 @@ jobs:
     uses: ./.github/workflows/test-flags.yml
 
   build-amd64:
-    name: Build Packages (amd64 - ${{ matrix.flags || 'defaults' }})
+    name: Build Packages (amd64 - ${{ matrix.artifact_suffix }})
     needs: test-flags
 
     strategy:
@@ -34,8 +34,11 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            flags: ""
+            flags: "--build deb"
             artifact_suffix: "deb"
+          - arch: amd64
+            flags: "--build rpm"
+            artifact_suffix: "rpm"
           - arch: amd64
             flags: "--build appimage --clean no"
             artifact_suffix: "appimage"
@@ -46,7 +49,7 @@ jobs:
       artifact_suffix: ${{ matrix.artifact_suffix }}
 
   build-arm64:
-    name: Build Packages (arm64 - ${{ matrix.flags || 'defaults' }})
+    name: Build Packages (arm64 - ${{ matrix.artifact_suffix }})
     needs: test-flags
 
     strategy:
@@ -54,8 +57,11 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            flags: "--clean no"
+            flags: "--build deb --clean no"
             artifact_suffix: "deb"
+          - arch: arm64
+            flags: "--build rpm"
+            artifact_suffix: "rpm"
           - arch: arm64
             flags: "--build appimage"
             artifact_suffix: "appimage"
@@ -80,6 +86,12 @@ jobs:
           name: package-amd64-deb
           path: artifacts/
 
+      - name: Download AMD64 rpm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-amd64-rpm
+          path: artifacts/
+
       - name: Download AMD64 AppImage artifact
         uses: actions/download-artifact@v4
         with:
@@ -90,6 +102,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: package-arm64-deb
+          path: artifacts/
+
+      - name: Download ARM64 rpm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-arm64-rpm
           path: artifacts/
 
       - name: Download ARM64 AppImage artifact
