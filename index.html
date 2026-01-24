@@ -12,6 +12,7 @@
             --text: #eaeaea;
             --text-dim: #a0a0a0;
             --code-bg: #0f0f1a;
+            --success: #4ade80;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -45,19 +46,62 @@
             font-size: 1.2rem;
             margin-bottom: 1rem;
         }
+        .step {
+            margin-bottom: 1.25rem;
+        }
+        .step:last-child {
+            margin-bottom: 0;
+        }
+        .step-label {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
+        }
+        .code-block {
+            position: relative;
+        }
         pre {
             background: var(--code-bg);
             border-radius: 8px;
             padding: 1rem;
+            padding-right: 3.5rem;
             overflow-x: auto;
-            font-size: 0.9rem;
-            line-height: 1.8;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            margin: 0;
         }
         code {
             font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            color: #dcdcaa;
         }
-        .comment { color: #6a9955; }
-        .cmd { color: #dcdcaa; }
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: transparent;
+            border: 1px solid var(--text-dim);
+            color: var(--text-dim);
+            padding: 0.35rem 0.6rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        .copy-btn:hover {
+            border-color: var(--text);
+            color: var(--text);
+        }
+        .copy-btn.copied {
+            border-color: var(--success);
+            color: var(--success);
+        }
+        .copy-btn svg {
+            width: 14px;
+            height: 14px;
+        }
         a {
             color: var(--accent);
             text-decoration: none;
@@ -69,20 +113,6 @@
             display: flex;
             gap: 1.5rem;
             flex-wrap: wrap;
-        }
-        .links a {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .badge {
-            display: inline-block;
-            background: var(--accent);
-            color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            font-size: 0.8rem;
-            margin-left: 0.5rem;
         }
         .architectures {
             display: flex;
@@ -111,14 +141,45 @@
 
         <div class="card">
             <h2>Quick Install</h2>
-            <pre><code><span class="comment"># Add the GPG key</span>
-<span class="cmd">curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg</span>
 
-<span class="comment"># Add the repository</span>
-<span class="cmd">echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list</span>
+            <div class="step">
+                <div class="step-label">1. Add the GPG key</div>
+                <div class="code-block">
+                    <pre><code>curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg</code></pre>
+                    <button class="copy-btn" onclick="copyCode(this)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
 
-<span class="comment"># Install</span>
-<span class="cmd">sudo apt update && sudo apt install claude-desktop</span></code></pre>
+            <div class="step">
+                <div class="step-label">2. Add the repository</div>
+                <div class="code-block">
+                    <pre><code>echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list</code></pre>
+                    <button class="copy-btn" onclick="copyCode(this)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-label">3. Install</div>
+                <div class="code-block">
+                    <pre><code>sudo apt update && sudo apt install claude-desktop</code></pre>
+                    <button class="copy-btn" onclick="copyCode(this)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div class="card">
@@ -131,8 +192,16 @@
 
         <div class="card">
             <h2>Updates</h2>
-            <p>Once installed, Claude Desktop updates automatically with your system:</p>
-            <pre><code><span class="cmd">sudo apt update && sudo apt upgrade</span></code></pre>
+            <p style="margin-bottom: 1rem;">Once installed, Claude Desktop updates automatically with your system:</p>
+            <div class="code-block">
+                <pre><code>sudo apt update && sudo apt upgrade</code></pre>
+                <button class="copy-btn" onclick="copyCode(this)">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy
+                </button>
+            </div>
         </div>
 
         <div class="card">
@@ -149,5 +218,28 @@
             <p>This is an unofficial project. Claude Desktop is a product of <a href="https://www.anthropic.com">Anthropic</a>.</p>
         </footer>
     </div>
+
+    <script>
+        function copyCode(button) {
+            const codeBlock = button.parentElement.querySelector('code');
+            const text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied!
+                `;
+                button.classList.add('copied');
+
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
 </body>
 </html>
