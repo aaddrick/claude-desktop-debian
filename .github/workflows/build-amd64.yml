@@ -9,19 +9,26 @@ on:
         type: string
         default: ""
       artifact_suffix:
-        description: "Suffix for the artifact name (e.g., deb, appimage)"
+        description: "Suffix for the artifact name (e.g., deb, appimage, rpm)"
         required: true
         type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: ${{ inputs.artifact_suffix == 'rpm' && 'fedora:42' || '' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install FUSE for AppImageTool
+      - name: Install dependencies (Fedora)
+        if: inputs.artifact_suffix == 'rpm'
+        run: |
+          dnf install -y git findutils
+
+      - name: Install FUSE for AppImageTool (Ubuntu)
+        if: inputs.artifact_suffix != 'rpm'
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse2
@@ -39,6 +46,7 @@ jobs:
           name: package-amd64-${{ inputs.artifact_suffix }}
           path: |
             claude-desktop_*.deb
+            claude-desktop-*.rpm
             claude-desktop-*.AppImage
             claude-desktop-*.AppImage.zsync
           if-no-files-found: error

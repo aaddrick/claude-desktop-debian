@@ -7,10 +7,11 @@
 
 # Global variables (set by functions, used throughout)
 architecture=''
+distro_family=''  # debian, rpm, or unknown
 claude_download_url=''
 claude_exe_filename=''
 version=''
-build_format='deb'
+build_format=''  # Will be set based on distro if not specified
 cleanup_action='yes'
 perform_cleanup=false
 test_flags_mode=false
@@ -62,48 +63,74 @@ detect_architecture() {
 	section_header 'Architecture Detection'
 	echo 'Detecting system architecture...'
 
-	local host_arch
-	host_arch=$(dpkg --print-architecture) || {
+	local raw_arch
+	raw_arch=$(uname -m) || {
 		echo 'Failed to detect architecture' >&2
 		exit 1
 	}
-	echo "Detected host architecture: $host_arch"
-	cat /etc/os-release && uname -m && dpkg --print-architecture
+	echo "Detected machine architecture: $raw_arch"
 
-	case "$host_arch" in
-		amd64)
+	case "$raw_arch" in
+		x86_64)
 			claude_download_url='https://downloads.claude.ai/releases/win32/x64/1.1.799/Claude-2e02b656cbbb1f14a5a81a4ed79b1c5ea1427507.exe'
 			architecture='amd64'
 			claude_exe_filename='Claude-Setup-x64.exe'
-			echo 'Configured for amd64 build.'
+			echo 'Configured for amd64 (x86_64) build.'
 			;;
-		arm64)
+		aarch64)
 			claude_download_url='https://downloads.claude.ai/releases/win32/arm64/1.1.799/Claude-2e02b656cbbb1f14a5a81a4ed79b1c5ea1427507.exe'
 			architecture='arm64'
 			claude_exe_filename='Claude-Setup-arm64.exe'
-			echo 'Configured for arm64 build.'
+			echo 'Configured for arm64 (aarch64) build.'
 			;;
 		*)
-			echo "Unsupported architecture: $host_arch. This script currently supports amd64 and arm64." >&2
+			echo "Unsupported architecture: $raw_arch. This script supports x86_64 (amd64) and aarch64 (arm64)." >&2
 			exit 1
 			;;
 	esac
 
-	echo "Target Architecture (detected): $architecture"
+	echo "Target Architecture: $architecture"
 	section_footer 'Architecture Detection'
 }
 
-check_system_requirements() {
-	if [[ ! -f /etc/debian_version ]]; then
-		echo 'This script requires a Debian-based Linux distribution' >&2
-		exit 1
+detect_distro() {
+	section_header 'Distribution Detection'
+	echo 'Detecting Linux distribution family...'
+
+	if [[ -f /etc/debian_version ]]; then
+		distro_family='debian'
+		echo "Detected Debian-based distribution"
+		echo "  Debian version: $(cat /etc/debian_version)"
+	elif [[ -f /etc/fedora-release ]]; then
+		distro_family='rpm'
+		echo "Detected Fedora"
+		echo "  $(cat /etc/fedora-release)"
+	elif [[ -f /etc/redhat-release ]]; then
+		distro_family='rpm'
+		echo "Detected Red Hat-based distribution"
+		echo "  $(cat /etc/redhat-release)"
+	else
+		distro_family='unknown'
+		echo "Warning: Could not detect distribution family"
+		echo "  AppImage build will still work, but native packages (deb/rpm) may not"
 	fi
 
+	echo "Distribution: $(grep 'PRETTY_NAME' /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo 'Unknown')"
+	echo "Distribution family: $distro_family"
+	section_footer 'Distribution Detection'
+}
+
+check_system_requirements() {
+	# Allow running as root in CI/container environments
 	if (( EUID == 0 )); then
-		echo 'This script should not be run using sudo or as the root user.' >&2
-		echo 'It will prompt for sudo password when needed for specific actions.' >&2
-		echo 'Please run as a normal user.' >&2
-		exit 1
+		if [[ -n ${CI:-} || -n ${GITHUB_ACTIONS:-} || -f /.dockerenv ]]; then
+			echo 'Running as root in CI/container environment (allowed)'
+		else
+			echo 'This script should not be run using sudo or as the root user.' >&2
+			echo 'It will prompt for sudo password when needed for specific actions.' >&2
+			echo 'Please run as a normal user.' >&2
+			exit 1
+		fi
 	fi
 
 	original_user=$(whoami)
@@ -137,8 +164,8 @@ check_system_requirements() {
 	fi
 
 	echo 'System Information:'
-	echo "Distribution: $(grep 'PRETTY_NAME' /etc/os-release | cut -d'"' -f2)"
-	echo "Debian version: $(cat /etc/debian_version)"
+	echo "Distribution: $(grep 'PRETTY_NAME' /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo 'Unknown')"
+	echo "Distribution family: $distro_family"
 	echo "Target Architecture: $architecture"
 }
 
@@ -148,6 +175,13 @@ parse_arguments() {
 	project_root="$(pwd)"
 	work_dir="$project_root/build"
 	app_staging_dir="$work_dir/electron-app"
+
+	# Set default build format based on detected distro
+	case "$distro_family" in
+		debian) build_format='deb' ;;
+		rpm) build_format='rpm' ;;
+		*) build_format='appimage' ;;
+	esac
 
 	while (( $# > 0 )); do
 		case "$1" in
@@ -168,8 +202,9 @@ parse_arguments() {
 				shift
 				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--test-flags]"
-				echo '  --build: Specify the build format (deb or appimage). Default: deb'
+				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--test-flags]"
+				echo '  --build: Specify the build format (deb, rpm, or appimage).'
+				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
@@ -187,9 +222,16 @@ parse_arguments() {
 	build_format="${build_format,,}"
 	cleanup_action="${cleanup_action,,}"
 
-	if [[ $build_format != 'deb' && $build_format != 'appimage' ]]; then
-		echo "Invalid build format specified: '$build_format'. Must be 'deb' or 'appimage'." >&2
+	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' ]]; then
+		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', or 'appimage'." >&2
 		exit 1
+	fi
+
+	# Warn if building native package for wrong distro
+	if [[ $build_format == 'deb' && $distro_family != 'debian' ]]; then
+		echo "Warning: Building .deb package on non-Debian system ($distro_family). This may fail." >&2
+	elif [[ $build_format == 'rpm' && $distro_family != 'rpm' ]]; then
+		echo "Warning: Building .rpm package on non-RPM system ($distro_family). This may fail." >&2
 	fi
 	if [[ $cleanup_action != 'yes' && $cleanup_action != 'no' ]]; then
 		echo "Invalid cleanup option specified: '$cleanup_action'. Must be 'yes' or 'no'." >&2
@@ -208,43 +250,85 @@ check_dependencies() {
 	echo 'Checking dependencies...'
 	local deps_to_install=''
 	local common_deps='p7zip wget wrestool icotool convert'
-	local deb_deps='dpkg-deb'
 	local all_deps="$common_deps"
 
-	if [[ $build_format == 'deb' ]]; then
-		all_deps="$all_deps $deb_deps"
-	fi
+	# Add format-specific dependencies
+	case "$build_format" in
+		deb) all_deps="$all_deps dpkg-deb" ;;
+		rpm) all_deps="$all_deps rpmbuild" ;;
+	esac
+
+	# Command-to-package mappings per distro family
+	declare -A debian_pkgs=(
+		[p7zip]='p7zip-full' [wget]='wget' [wrestool]='icoutils'
+		[icotool]='icoutils' [convert]='imagemagick'
+		[dpkg-deb]='dpkg-dev' [rpmbuild]='rpm'
+	)
+	declare -A rpm_pkgs=(
+		[p7zip]='p7zip p7zip-plugins' [wget]='wget' [wrestool]='icoutils'
+		[icotool]='icoutils' [convert]='ImageMagick'
+		[dpkg-deb]='dpkg' [rpmbuild]='rpm-build'
+	)
 
 	local cmd
 	for cmd in $all_deps; do
 		if ! check_command "$cmd"; then
-			case "$cmd" in
-				'p7zip') deps_to_install="$deps_to_install p7zip-full" ;;
-				'wget') deps_to_install="$deps_to_install wget" ;;
-				'wrestool'|'icotool') deps_to_install="$deps_to_install icoutils" ;;
-				'convert') deps_to_install="$deps_to_install imagemagick" ;;
-				'dpkg-deb') deps_to_install="$deps_to_install dpkg-dev" ;;
+			case "$distro_family" in
+				debian)
+					deps_to_install="$deps_to_install ${debian_pkgs[$cmd]}"
+					;;
+				rpm)
+					deps_to_install="$deps_to_install ${rpm_pkgs[$cmd]}"
+					;;
+				*)
+					echo "Warning: Cannot auto-install '$cmd' on unknown distro. Please install manually." >&2
+					;;
 			esac
 		fi
 	done
 
 	if [[ -n $deps_to_install ]]; then
 		echo "System dependencies needed:$deps_to_install"
-		echo 'Attempting to install using sudo...'
-		if ! sudo -v; then
-			echo 'Failed to validate sudo credentials. Please ensure you can run sudo.' >&2
-			exit 1
+
+		# Determine if we need sudo (skip if already root)
+		local sudo_cmd='sudo'
+		if (( EUID == 0 )); then
+			sudo_cmd=''
+			echo 'Installing as root (no sudo needed)...'
+		else
+			echo 'Attempting to install using sudo...'
+			if ! sudo -v; then
+				echo 'Failed to validate sudo credentials. Please ensure you can run sudo.' >&2
+				exit 1
+			fi
 		fi
-		if ! sudo apt update; then
-			echo "Failed to run 'sudo apt update'." >&2
-			exit 1
-		fi
-		# shellcheck disable=SC2086
-		if ! sudo apt install -y $deps_to_install; then
-			echo "Failed to install dependencies using 'sudo apt install'." >&2
-			exit 1
-		fi
-		echo 'System dependencies installed successfully via sudo.'
+
+		case "$distro_family" in
+			debian)
+				if ! $sudo_cmd apt update; then
+					echo "Failed to run 'apt update'." >&2
+					exit 1
+				fi
+				# shellcheck disable=SC2086
+				if ! $sudo_cmd apt install -y $deps_to_install; then
+					echo "Failed to install dependencies using 'apt install'." >&2
+					exit 1
+				fi
+				;;
+			rpm)
+				# shellcheck disable=SC2086
+				if ! $sudo_cmd dnf install -y $deps_to_install; then
+					echo "Failed to install dependencies using 'dnf install'." >&2
+					exit 1
+				fi
+				;;
+			*)
+				echo "Cannot auto-install dependencies on unknown distro." >&2
+				echo "Please install these packages manually: $deps_to_install" >&2
+				exit 1
+				;;
+		esac
+		echo 'System dependencies installed successfully.'
 	fi
 }
 
@@ -827,26 +911,41 @@ run_packaging() {
 	section_header 'Call Packaging Script'
 
 	local output_path=''
+	local script_name file_pattern pkg_file
 
-	if [[ $build_format == 'deb' ]]; then
-		echo "Calling Debian packaging script for $architecture..."
-		chmod +x scripts/build-deb-package.sh || exit 1
-		if ! scripts/build-deb-package.sh \
+	case "$build_format" in
+		deb)
+			script_name='build-deb-package.sh'
+			file_pattern="${PACKAGE_NAME}_${version}_${architecture}.deb"
+			;;
+		rpm)
+			script_name='build-rpm-package.sh'
+			file_pattern="${PACKAGE_NAME}-${version}*.rpm"
+			;;
+		appimage)
+			script_name='build-appimage.sh'
+			file_pattern="${PACKAGE_NAME}-${version}-${architecture}.AppImage"
+			;;
+	esac
+
+	if [[ $build_format == 'deb' || $build_format == 'rpm' ]]; then
+		echo "Calling ${build_format^^} packaging script for $architecture..."
+		chmod +x "scripts/$script_name" || exit 1
+		if ! "scripts/$script_name" \
 			"$version" "$architecture" "$work_dir" "$app_staging_dir" \
 			"$PACKAGE_NAME" "$MAINTAINER" "$DESCRIPTION"; then
-			echo 'Debian packaging script failed.' >&2
+			echo "${build_format^^} packaging script failed." >&2
 			exit 1
 		fi
 
-		local deb_file
-		deb_file=$(find "$work_dir" -maxdepth 1 -name "${PACKAGE_NAME}_${version}_${architecture}.deb" | head -n 1)
-		echo 'Debian Build complete!'
-		if [[ -n $deb_file && -f $deb_file ]]; then
-			output_path="./$(basename "$deb_file")"
-			mv "$deb_file" "$output_path" || exit 1
+		pkg_file=$(find "$work_dir" -maxdepth 1 -name "$file_pattern" | head -n 1)
+		echo "${build_format^^} Build complete!"
+		if [[ -n $pkg_file && -f $pkg_file ]]; then
+			output_path="./$(basename "$pkg_file")"
+			mv "$pkg_file" "$output_path" || exit 1
 			echo "Package created at: $output_path"
 		else
-			echo 'Warning: Could not determine final .deb file path.'
+			echo "Warning: Could not determine final .${build_format} file path."
 			output_path='Not Found'
 		fi
 
@@ -913,15 +1012,27 @@ cleanup_build() {
 print_next_steps() {
 	echo -e '\n\033[1;34m====== Next Steps ======\033[0m'
 
-	if [[ $build_format == 'deb' ]]; then
-		if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
-			echo -e 'To install the Debian package, run:'
-			echo -e "   \033[1;32msudo apt install $final_output_path\033[0m"
-			echo -e "   (or \`sudo dpkg -i $final_output_path\`)"
-		else
-			echo -e 'Debian package file not found. Cannot provide installation instructions.'
-		fi
-	elif [[ $build_format == 'appimage' ]]; then
+	case "$build_format" in
+		deb|rpm)
+			if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
+				local pkg_type install_cmd alt_cmd
+				if [[ $build_format == 'deb' ]]; then
+					pkg_type='Debian'
+					install_cmd="sudo apt install $final_output_path"
+					alt_cmd="sudo dpkg -i $final_output_path"
+				else
+					pkg_type='RPM'
+					install_cmd="sudo dnf install $final_output_path"
+					alt_cmd="sudo rpm -i $final_output_path"
+				fi
+				echo -e "To install the $pkg_type package, run:"
+				echo -e "   \033[1;32m$install_cmd\033[0m"
+				echo -e "   (or \`$alt_cmd\`)"
+			else
+				echo -e "${build_format^^} package file not found. Cannot provide installation instructions."
+			fi
+			;;
+		appimage)
 		if [[ $final_output_path != 'Not Found' && -e $final_output_path ]]; then
 			echo -e "AppImage created at: \033[1;36m$final_output_path\033[0m"
 			echo -e '\n\033[1;33mIMPORTANT:\033[0m This AppImage requires \033[1;36mGear Lever\033[0m for proper desktop integration'
@@ -943,7 +1054,8 @@ print_next_steps() {
 		else
 			echo -e 'AppImage file not found. Cannot provide usage instructions.'
 		fi
-	fi
+			;;
+	esac
 
 	echo -e '\033[1;34m======================\033[0m'
 }
@@ -955,6 +1067,7 @@ print_next_steps() {
 main() {
 	# Phase 1: Setup
 	detect_architecture
+	detect_distro
 	check_system_requirements
 	parse_arguments "$@"
 
