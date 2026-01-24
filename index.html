@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Desktop APT Repository</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --accent: #e94560;
+            --text: #eaeaea;
+            --text-dim: #a0a0a0;
+            --code-bg: #0f0f1a;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .subtitle {
+            color: var(--text-dim);
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        h2 {
+            color: var(--accent);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+        pre {
+            background: var(--code-bg);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-size: 0.9rem;
+            line-height: 1.8;
+        }
+        code {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+        }
+        .comment { color: #6a9955; }
+        .cmd { color: #dcdcaa; }
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .links {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .badge {
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        .architectures {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .arch {
+            background: var(--code-bg);
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Claude Desktop APT Repository</h1>
+        <p class="subtitle">Unofficial Linux packages for Claude Desktop</p>
+
+        <div class="card">
+            <h2>Quick Install</h2>
+            <pre><code><span class="comment"># Add the GPG key</span>
+<span class="cmd">curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg</span>
+
+<span class="comment"># Add the repository</span>
+<span class="cmd">echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list</span>
+
+<span class="comment"># Install</span>
+<span class="cmd">sudo apt update && sudo apt install claude-desktop</span></code></pre>
+        </div>
+
+        <div class="card">
+            <h2>Supported Architectures</h2>
+            <div class="architectures">
+                <span class="arch">amd64</span>
+                <span class="arch">arm64</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Updates</h2>
+            <p>Once installed, Claude Desktop updates automatically with your system:</p>
+            <pre><code><span class="cmd">sudo apt update && sudo apt upgrade</span></code></pre>
+        </div>
+
+        <div class="card">
+            <h2>Links</h2>
+            <div class="links">
+                <a href="https://github.com/aaddrick/claude-desktop-debian">GitHub Repository</a>
+                <a href="https://github.com/aaddrick/claude-desktop-debian/releases">Releases</a>
+                <a href="https://github.com/aaddrick/claude-desktop-debian/issues">Report Issues</a>
+                <a href="KEY.gpg">GPG Public Key</a>
+            </div>
+        </div>
+
+        <footer>
+            <p>This is an unofficial project. Claude Desktop is a product of <a href="https://www.anthropic.com">Anthropic</a>.</p>
+        </footer>
+    </div>
+</body>
+</html>
