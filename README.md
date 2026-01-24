@@ -1,6 +1,6 @@
 # Claude Desktop for Linux
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Debian-based distributions, producing either `.deb` packages or AppImages.
+This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), or distribution-agnostic AppImages.
 
 **Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
 
@@ -44,13 +44,13 @@ Future updates will be installed automatically with your regular system updates 
 
 ### Using Pre-built Releases
 
-Download the latest `.deb` or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
+Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
 
 ### Building from Source
 
 #### Prerequisites
 
-- Debian-based Linux distribution (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
+- Linux distribution (Debian/Ubuntu, Fedora/RHEL, or other)
 - Git
 - Basic build tools (automatically installed by the script)
 
@@ -61,11 +61,13 @@ Download the latest `.deb` or `.AppImage` from the [Releases page](https://githu
 git clone https://github.com/aaddrick/claude-desktop-debian.git
 cd claude-desktop-debian
 
-# Build a .deb package (default)
+# Build with auto-detected format (based on your distro)
 ./build.sh
 
-# Build an AppImage
-./build.sh --build appimage
+# Or specify a format explicitly:
+./build.sh --build deb       # Debian/Ubuntu .deb package
+./build.sh --build rpm       # Fedora/RHEL .rpm package
+./build.sh --build appimage  # Distribution-agnostic AppImage
 
 # Build with custom options
 ./build.sh --build deb --clean no  # Keep intermediate files
@@ -75,14 +77,28 @@ cd claude-desktop-debian
 ./build.sh --exe /path/to/Claude-Setup.exe
 ```
 
+The build script automatically detects your distribution and selects the appropriate package format:
+| Distribution | Default Format | Package Manager |
+|--------------|----------------|-----------------|
+| Debian, Ubuntu, Mint | `.deb` | apt |
+| Fedora, RHEL, CentOS | `.rpm` | dnf |
+| Other | `.AppImage` | - |
+
 #### Installing the Built Package
 
-**For .deb packages:**
+**For .deb packages (Debian/Ubuntu):**
 ```bash
-sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
+sudo apt install ./claude-desktop_VERSION_ARCHITECTURE.deb
+# Or: sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
 
 # If you encounter dependency issues:
 sudo apt --fix-broken install
+```
+
+**For .rpm packages (Fedora/RHEL):**
+```bash
+sudo dnf install ./claude-desktop-VERSION-1.ARCH.rpm
+# Or: sudo rpm -i ./claude-desktop-VERSION-1.ARCH.rpm
 ```
 
 **For AppImages:**
@@ -147,10 +163,18 @@ sudo rm /usr/share/keyrings/claude-desktop.gpg
 **For .deb packages (manual install):**
 ```bash
 # Remove package
-sudo dpkg -r claude-desktop
+sudo apt remove claude-desktop
+# Or: sudo dpkg -r claude-desktop
 
 # Remove package and configuration
 sudo dpkg -P claude-desktop
+```
+
+**For .rpm packages:**
+```bash
+# Remove package
+sudo dnf remove claude-desktop
+# Or: sudo rpm -e claude-desktop
 ```
 
 **For AppImages:**
@@ -216,9 +240,10 @@ Claude Desktop is an Electron application distributed for Windows. This project:
 1. Downloads the official Windows installer
 2. Extracts application resources
 3. Replaces Windows-specific native modules with Linux-compatible implementations
-4. Repackages as either:
-   - **Debian package**: Standard system package with full integration
-   - **AppImage**: Portable, self-contained executable
+4. Repackages as one of:
+   - **Debian package (.deb)**: For Debian, Ubuntu, and derivatives
+   - **RPM package (.rpm)**: For Fedora, RHEL, CentOS, and derivatives
+   - **AppImage**: Portable, distribution-agnostic executable
 
 ### Build Process
 
