@@ -617,6 +617,12 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	cp "$project_root/scripts/claude-native-stub.js" \
 		app.asar.contents/node_modules/@ant/claude-native/index.js || exit 1
 
+	# Create claude-swift stub for Cowork mode (Linux VM replacement)
+	echo 'Creating claude-swift stub for Cowork mode...'
+	mkdir -p app.asar.contents/node_modules/@ant/claude-swift || exit 1
+	cp "$project_root/scripts/claude-swift-stub.js" \
+		app.asar.contents/node_modules/@ant/claude-swift/index.js || exit 1
+
 	mkdir -p app.asar.contents/resources/i18n || exit 1
 	cp "$claude_extract_dir/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ || exit 1
 
@@ -790,6 +796,11 @@ finalize_app_asar() {
 	mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native" || exit 1
 	cp "$project_root/scripts/claude-native-stub.js" \
 		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js" || exit 1
+
+	# Copy claude-swift stub for Cowork mode
+	mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift" || exit 1
+	cp "$project_root/scripts/claude-swift-stub.js" \
+		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift/index.js" || exit 1
 
 	# Copy node-pty native binaries
 	if [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
