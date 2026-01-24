@@ -142,9 +142,10 @@ jobs:
         working-directory: apt-repo
         run: |
           # Add each .deb file to the repository
+          # --section and --priority provide defaults for older packages missing these fields
           for deb in ../incoming/*.deb; do
             echo "Adding $deb to repository..."
-            reprepro includedeb stable "$deb"
+            reprepro --section utils --priority optional includedeb stable "$deb"
           done
 
       - name: Commit and push changes
