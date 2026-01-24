@@ -254,9 +254,9 @@ jobs:
               echo "Generating repodata for $arch..."
               createrepo_c --update rpm/$arch/
 
-              # Sign the repository metadata
+              # Sign the repository metadata (--yes to overwrite existing signature)
               echo "Signing repodata for $arch..."
-              gpg --batch --detach-sign --armor rpm/$arch/repodata/repomd.xml
+              gpg --batch --yes --detach-sign --armor rpm/$arch/repodata/repomd.xml
             fi
           done
 
