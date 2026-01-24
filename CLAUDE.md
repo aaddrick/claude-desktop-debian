@@ -211,6 +211,47 @@ build-reference/
 └── nupkg-contents/               # Optional: full extracted nupkg
 ```
 
+## Adding New Package Formats or Repositories
+
+When adding support for new distribution formats (e.g., RPM, Flatpak, Snap) or package repositories, follow these guidelines to avoid iterative debugging in CI.
+
+### Research Before Implementing
+
+1. **Understand the target system's constraints** - Each package format has specific rules:
+   - Version string formats (e.g., RPM cannot have hyphens in Version field)
+   - Required metadata fields
+   - Signing requirements and tools
+
+2. **Search for existing CI implementations** - Look for "GitHub Actions [format] signing" or similar. Existing workflows reveal required flags, environment setup, and common pitfalls.
+
+3. **Check tool behavior in non-interactive environments** - CI has no TTY. Tools like GPG need flags like `--batch` and `--yes` to work without prompts.
+
+### Consider Concurrency
+
+1. **Multiple jobs writing to the same branch will race** - If APT and DNF repos both push to `gh-pages`, add:
+   - Job dependencies (`needs: [other-job]`), or
+   - Retry loops with `git pull --rebase` before push
+
+2. **External processes may also modify branches** - GitHub Pages deployment runs automatically and can cause push conflicts.
+
+### Test the Full Pipeline
+
+1. **Test CI steps locally first** - Run the signing/packaging commands manually to catch errors before committing.
+
+2. **Use a test tag for new infrastructure** - Create a non-release tag to validate the full CI pipeline before merging to main.
+
+3. **Verify the end-user experience** - After CI succeeds, actually test the install commands from the README on a clean system.
+
+### Common CI Pitfalls
+
+| Issue | Solution |
+|-------|----------|
+| GPG "cannot open /dev/tty" | Add `--batch` flag |
+| GPG "File exists" error | Add `--yes` flag to overwrite |
+| Push rejected (ref changed) | Add `git pull --rebase` before push, with retry loop |
+| Version format invalid | Research target format's version constraints upfront |
+| Signing key not found | Ensure key is imported before signing step, check key ID output |
+
 ## CI/CD
 
 ### Triggering Builds
