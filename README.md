@@ -24,7 +24,7 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 ## Installation
 
-### Using APT Repository (Recommended)
+### Using APT Repository (Debian/Ubuntu - Recommended)
 
 Add the repository for automatic updates via `apt`:
 
@@ -41,6 +41,20 @@ sudo apt install claude-desktop
 ```
 
 Future updates will be installed automatically with your regular system updates (`sudo apt upgrade`).
+
+### Using DNF Repository (Fedora/RHEL - Recommended)
+
+Add the repository for automatic updates via `dnf`:
+
+```bash
+# Add the repository
+sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo
+
+# Install
+sudo dnf install claude-desktop
+```
+
+Future updates will be installed automatically with your regular system updates (`sudo dnf upgrade`).
 
 ### Using Pre-built Releases
 
@@ -150,7 +164,7 @@ Runtime logs are available at:
 
 ## Uninstallation
 
-**For APT repository installations:**
+**For APT repository installations (Debian/Ubuntu):**
 ```bash
 # Remove package
 sudo apt remove claude-desktop
@@ -158,6 +172,15 @@ sudo apt remove claude-desktop
 # Remove the repository and GPG key
 sudo rm /etc/apt/sources.list.d/claude-desktop.list
 sudo rm /usr/share/keyrings/claude-desktop.gpg
+```
+
+**For DNF repository installations (Fedora/RHEL):**
+```bash
+# Remove package
+sudo dnf remove claude-desktop
+
+# Remove the repository
+sudo rm /etc/yum.repos.d/claude-desktop.repo
 ```
 
 **For .deb packages (manual install):**
