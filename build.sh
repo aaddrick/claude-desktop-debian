@@ -949,14 +949,6 @@ run_packaging() {
 			exit 1
 		fi
 
-		# Map architecture to RPM naming
-		local rpm_arch
-		case "$architecture" in
-			amd64) rpm_arch='x86_64' ;;
-			arm64) rpm_arch='aarch64' ;;
-			*) rpm_arch="$architecture" ;;
-		esac
-
 		local rpm_file
 		rpm_file=$(find "$work_dir" -maxdepth 1 -name "${PACKAGE_NAME}-${version}*.rpm" | head -n 1)
 		echo 'RPM Build complete!'

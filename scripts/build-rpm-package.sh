@@ -6,7 +6,7 @@ architecture="$2"
 work_dir="$3"           # The top-level build directory (e.g., ./build)
 app_staging_dir="$4"    # Directory containing the prepared app files
 package_name="$5"
-maintainer="$6"
+# $6 is maintainer (unused in RPM spec, kept for parameter compatibility with deb)
 description="$7"
 
 echo '--- Starting RPM Package Build ---'
