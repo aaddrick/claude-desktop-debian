@@ -173,6 +173,8 @@ echo 'Creating control file...'
 cat > "$package_root/DEBIAN/control" << EOF
 Package: $package_name
 Version: $version
+Section: utils
+Priority: optional
 Architecture: $architecture
 Maintainer: $maintainer
 Description: $description

@@ -24,6 +24,24 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 ## Installation
 
+### Using APT Repository (Recommended)
+
+Add the repository for automatic updates via `apt`:
+
+```bash
+# Add the GPG key
+curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
+
+# Add the repository
+echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list
+
+# Update and install
+sudo apt update
+sudo apt install claude-desktop
+```
+
+Future updates will be installed automatically with your regular system updates (`sudo apt upgrade`).
+
 ### Using Pre-built Releases
 
 Download the latest `.deb` or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
@@ -116,7 +134,17 @@ Runtime logs are available at:
 
 ## Uninstallation
 
-**For .deb packages:**
+**For APT repository installations:**
+```bash
+# Remove package
+sudo apt remove claude-desktop
+
+# Remove the repository and GPG key
+sudo rm /etc/apt/sources.list.d/claude-desktop.list
+sudo rm /usr/share/keyrings/claude-desktop.gpg
+```
+
+**For .deb packages (manual install):**
 ```bash
 # Remove package
 sudo dpkg -r claude-desktop
