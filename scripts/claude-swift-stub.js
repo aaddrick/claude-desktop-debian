@@ -5,21 +5,31 @@
  * Apple's Virtualization Framework. On Linux, we provide a stub that
  * simulates the VM lifecycle but runs Claude Code CLI directly on the host.
  *
- * STATUS: Partial implementation
- * - VM lifecycle simulation: WORKS
- * - Process spawning: WORKS
- * - Stdin communication: WORKS
- * - Stdout communication: DOES NOT WORK (events don't fire in Electron)
+ * SECURITY WARNING: This runs Claude Code directly on the host with full
+ * user permissions, unlike macOS which uses VM isolation. Users should
+ * understand that Claude has access to their entire home directory.
  *
- * The stdout issue blocks Cowork mode from being fully functional.
- * See: https://github.com/chukfinley/claude-desktop-linux/issues/1
+ * STATUS: Experimental
+ * - VM lifecycle simulation: WORKS
+ * - Process spawning via node-pty: WORKS
+ * - Stdin/stdout communication: WORKS
+ * - Terminal resize: WORKS
+ *
+ * For sandboxed execution, consider wrapping with bubblewrap in the future.
  */
 
 const EventEmitter = require("events");
-const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+
+// node-pty for proper TTY handling in Electron
+let pty;
+try {
+  pty = require("node-pty");
+} catch (e) {
+  console.error("[LinuxVM] Failed to load node-pty:", e.message);
+}
 
 const DEBUG = process.env.CLAUDE_LINUX_DEBUG === "1";
 
@@ -40,12 +50,17 @@ class LinuxVMAddon extends EventEmitter {
     this.exitCallback = null;
     this.errorCallback = null;
 
-    log("Linux VM Addon initialized (stub)");
+    log("Linux VM Addon initialized (node-pty mode)");
   }
 
   async startVM(bundlePath, ramSizeGB = 8) {
     log(`startVM: bundle=${bundlePath}, ram=${ramSizeGB}GB`);
     if (this.vmRunning) return;
+
+    if (!pty) {
+      log("ERROR: node-pty not available");
+      throw new Error("node-pty not available - required for Cowork mode");
+    }
 
     // Direct mode - no actual VM, run on host
     this.vmRunning = true;
@@ -56,7 +71,11 @@ class LinuxVMAddon extends EventEmitter {
   async stopVM() {
     log("stopVM");
     for (const [id, proc] of this.processes) {
-      try { proc.kill("SIGTERM"); } catch (e) {}
+      try {
+        proc.kill();
+      } catch (e) {
+        if (DEBUG) log(`Error killing process ${id}:`, e.message);
+      }
     }
     this.processes.clear();
     this.vmRunning = false;
@@ -96,6 +115,11 @@ class LinuxVMAddon extends EventEmitter {
 
   async spawn(sessionId, processName, command, args, cwd, envVars, mounts, isResume, allowedDomains, sharedCwd) {
     log(`spawn: ${processName}, command=${command}`);
+
+    if (!pty) {
+      if (this.errorCallback) this.errorCallback(sessionId, "node-pty not available");
+      return { pid: 0 };
+    }
 
     const homeDir = os.homedir();
 
@@ -142,8 +166,8 @@ class LinuxVMAddon extends EventEmitter {
       try {
         actualCommand = execSync(`which ${basename}`, { encoding: "utf-8" }).trim();
         log(`Found ${basename} at: ${actualCommand}`);
-      } catch {
-        log(`Command not found: ${command}`);
+      } catch (e) {
+        if (DEBUG) log(`which ${basename} failed:`, e.message);
         setTimeout(() => {
           if (this.stderrCallback) this.stderrCallback(sessionId, `Error: ${command} not found\n`);
           if (this.exitCallback) this.exitCallback(sessionId, 127, null);
@@ -172,51 +196,46 @@ class LinuxVMAddon extends EventEmitter {
           mcpConfig.mcpServers = filteredServers;
           spawnArgs[mcpConfigIdx + 1] = JSON.stringify(mcpConfig);
         }
-      } catch (e) {}
+      } catch (e) {
+        if (DEBUG) log("Failed to parse MCP config:", e.message);
+      }
     }
 
-    // Spawn the process
+    // Spawn the process using node-pty
     const spawnEnv = {
       ...process.env,
       ...(envVars || {}),
       TERM: "xterm-256color",
     };
 
-    const proc = spawn(actualCommand, spawnArgs, {
-      cwd: workDir,
-      env: spawnEnv,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    let proc;
+    try {
+      proc = pty.spawn(actualCommand, spawnArgs, {
+        name: "xterm-256color",
+        cols: 120,
+        rows: 40,
+        cwd: workDir,
+        env: spawnEnv,
+      });
+    } catch (e) {
+      if (DEBUG) log("pty.spawn failed:", e.message);
+      if (this.errorCallback) this.errorCallback(sessionId, `Failed to spawn: ${e.message}`);
+      return { pid: 0 };
+    }
 
     this.processes.set(sessionId, proc);
     log(`Spawned PID: ${proc.pid}`);
 
-    const self = this;
-
-    // Set up stdout/stderr handlers
-    // NOTE: These events don't fire in Electron for unknown reasons
-    // This is the main blocker for Cowork mode on Linux
-    proc.stdout.on("data", (data) => {
-      const str = data.toString();
-      log(`stdout: ${str.length} bytes`);
-      if (self.stdoutCallback) self.stdoutCallback(sessionId, str);
+    // Set up data handler (node-pty combines stdout/stderr)
+    proc.onData((data) => {
+      log(`data: ${data.length} bytes`);
+      if (this.stdoutCallback) this.stdoutCallback(sessionId, data);
     });
 
-    proc.stderr.on("data", (data) => {
-      const str = data.toString();
-      log(`stderr: ${str.length} bytes`);
-      if (self.stderrCallback) self.stderrCallback(sessionId, str);
-    });
-
-    proc.on("exit", (code, signal) => {
-      log(`exit: code=${code}, signal=${signal}`);
-      self.processes.delete(sessionId);
-      if (self.exitCallback) self.exitCallback(sessionId, code, signal);
-    });
-
-    proc.on("error", (err) => {
-      log(`error: ${err.message}`);
-      if (self.errorCallback) self.errorCallback(sessionId, err.message);
+    proc.onExit(({ exitCode, signal }) => {
+      log(`exit: code=${exitCode}, signal=${signal}`);
+      this.processes.delete(sessionId);
+      if (this.exitCallback) this.exitCallback(sessionId, exitCode, signal);
     });
 
     proc.id = sessionId;
@@ -234,7 +253,7 @@ class LinuxVMAddon extends EventEmitter {
 
   async writeStdin(sessionId, data) {
     const proc = this.processes.get(sessionId);
-    if (!proc?.stdin) {
+    if (!proc) {
       return { success: false };
     }
 
@@ -250,25 +269,40 @@ class LinuxVMAddon extends EventEmitter {
           dataStr = JSON.stringify(msg);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      // Not JSON, pass through as-is
+    }
 
     // Ensure newline for stream-json format
     if (!dataStr.endsWith("\n")) {
       dataStr += "\n";
     }
 
-    proc.stdin.write(dataStr);
+    proc.write(dataStr);
     return { success: true };
   }
 
   async sendResize(sessionId, cols, rows) {
-    return { success: true };
+    const proc = this.processes.get(sessionId);
+    if (proc) {
+      try {
+        proc.resize(cols, rows);
+        return { success: true };
+      } catch (e) {
+        if (DEBUG) log("resize failed:", e.message);
+      }
+    }
+    return { success: false };
   }
 
   async killProcess(sessionId) {
     const proc = this.processes.get(sessionId);
     if (proc) {
-      proc.kill("SIGTERM");
+      try {
+        proc.kill();
+      } catch (e) {
+        if (DEBUG) log("kill failed:", e.message);
+      }
       this.processes.delete(sessionId);
       return { success: true };
     }
