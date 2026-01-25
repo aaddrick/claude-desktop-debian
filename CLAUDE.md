@@ -4,6 +4,27 @@
 
 This project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux, applying necessary patches for Linux compatibility.
 
+## Code Style
+
+All shell scripts in this project must follow the [Bash Style Guide](STYLEGUIDE.md). Key points:
+
+- Tabs for indentation, lines under 80 characters (exception: URLs and regex patterns)
+- Use `[[ ]]` for conditionals, `$(...)` for command substitution
+- Single quotes for literals, double quotes for expansions
+- Lowercase variables; UPPERCASE only for constants/exports
+- Use `local` in functions, avoid `set -e` and `eval`
+
+### Linting
+
+Shell scripts are checked with `shellcheck` and GitHub Actions workflows with `actionlint` before pushing. When lint issues are found:
+
+1. **Fix the code** - Correct the underlying issue rather than suppressing the warning
+2. **Disable directives are a last resort** - Only use `# shellcheck disable=SCXXXX` when:
+   - The warning is a false positive
+   - The pattern is intentional and unavoidable
+   - Always add a comment explaining why the disable is needed
+3. **Run `/lint` to check manually** - Use this skill to check for issues before pushing
+
 ## GitHub Workflow
 
 ### General Approach
