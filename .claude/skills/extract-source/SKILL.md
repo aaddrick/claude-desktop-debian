@@ -31,61 +31,63 @@ If tools are missing, ask the user to install them:
 
 Do not proceed until all tools are available.
 
-### 2. Get Version Info
+### 2. Get Version and Set Paths
 
 ```bash
 version=$(grep -oP 'x64/\K[0-9]+\.[0-9]+\.[0-9]+' build.sh | head -1)
+ref_dir="$PWD/build-reference"
 echo "Extracting source for version: $version"
+echo "Output directory: $ref_dir"
 ```
+
+**Important**: Save `$ref_dir` and use it in all subsequent commands. Do not use `cd`.
 
 ### 3. Download Windows Installer
 
 ```bash
-mkdir -p build-reference
+mkdir -p "$ref_dir"
 download_url=$(grep -oP "claude_download_url='\\K[^']+(?=')" build.sh | head -1)
-wget -O build-reference/Claude-Setup-x64.exe "$download_url"
+wget -O "$ref_dir/Claude-Setup-x64.exe" "$download_url"
 ```
 
 ### 4. Extract the Installer
 
 ```bash
-cd build-reference || exit 1
-
 # Extract exe (it's a 7z archive)
-7z x -y Claude-Setup-x64.exe -o'exe-contents'
+7z x -y "$ref_dir/Claude-Setup-x64.exe" -o"$ref_dir/exe-contents"
 
 # Find and extract nupkg
-for nupkg in exe-contents/AnthropicClaude-*.nupkg; do
-	7z x -y "$nupkg" -o'exe-contents/nupkg-contents'
+for nupkg in "$ref_dir"/exe-contents/AnthropicClaude-*.nupkg; do
+	7z x -y "$nupkg" -o"$ref_dir/exe-contents/nupkg-contents"
 	break
 done
 
 # Copy out important files
-cp exe-contents/nupkg-contents/lib/net45/resources/app.asar .
-cp -a exe-contents/nupkg-contents/lib/net45/resources/app.asar.unpacked .
+cp "$ref_dir"/exe-contents/nupkg-contents/lib/net45/resources/app.asar "$ref_dir/"
+cp -a "$ref_dir"/exe-contents/nupkg-contents/lib/net45/resources/app.asar.unpacked "$ref_dir/"
 
 # Copy tray icons for reference
-mkdir -p tray-icons
-cp exe-contents/nupkg-contents/lib/net45/resources/*.png tray-icons/ 2>/dev/null || true
-cp exe-contents/nupkg-contents/lib/net45/resources/*.ico tray-icons/ 2>/dev/null || true
+mkdir -p "$ref_dir/tray-icons"
+cp "$ref_dir"/exe-contents/nupkg-contents/lib/net45/resources/*.png "$ref_dir/tray-icons/" 2>/dev/null || true
+cp "$ref_dir"/exe-contents/nupkg-contents/lib/net45/resources/*.ico "$ref_dir/tray-icons/" 2>/dev/null || true
 ```
 
 ### 5. Extract app.asar
 
 ```bash
-npx asar extract app.asar app-extracted
+npx asar extract "$ref_dir/app.asar" "$ref_dir/app-extracted"
 ```
 
 ### 6. Beautify JavaScript
 
 ```bash
-npx prettier --write 'app-extracted/.vite/build/*.js'
+npx prettier --write "$ref_dir/app-extracted/.vite/build/*.js"
 ```
 
 ### 7. Clean Up
 
 ```bash
-rm -rf exe-contents Claude-Setup-x64.exe app.asar app.asar.unpacked
+rm -rf "$ref_dir/exe-contents" "$ref_dir/Claude-Setup-x64.exe" "$ref_dir/app.asar" "$ref_dir/app.asar.unpacked"
 ```
 
 ### 8. Report Results
