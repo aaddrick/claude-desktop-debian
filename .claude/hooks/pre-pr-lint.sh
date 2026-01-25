@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# PreToolUse hook: Run shellcheck and actionlint before PR creation
+# PreToolUse hook: Run shellcheck and actionlint before git push
 #
 # Checks shell scripts and GitHub Actions workflows for issues
-# before allowing gh pr create to proceed.
+# before allowing git push to proceed.
 
 set -o pipefail
 
@@ -19,8 +19,8 @@ if [[ "$tool_name" != 'Bash' ]]; then
 	exit 0
 fi
 
-# Only process gh pr create commands
-if [[ "$command" != *'gh pr create'* ]]; then
+# Only process git push commands
+if [[ "$command" != *'git push'* ]]; then
 	exit 0
 fi
 
@@ -77,9 +77,9 @@ if [[ -n "$changed_workflows" ]]; then
 	check_actionlint "$changed_workflows"
 fi
 
-# If errors found, block the PR creation
+# If errors found, block the push
 if [[ -n "$errors" ]]; then
-	printf '%s\n' 'Lint checks failed. Fix these issues before creating the PR:' >&2
+	printf '%s\n' 'Lint checks failed. Fix these issues before pushing:' >&2
 	printf '\n%s' "$errors" >&2
 	exit 2
 fi
