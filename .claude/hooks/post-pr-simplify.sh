@@ -25,7 +25,6 @@ tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty')
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 
 # Try multiple paths for the response - Bash tool response structure may vary
-response=$(printf '%s' "$input" | jq -r '.tool_response // empty')
 stdout=$(printf '%s' "$input" | jq -r '.tool_response.stdout // .tool_response // empty')
 
 # Only process Bash tool calls
@@ -50,7 +49,8 @@ fi
 printf 'PR URL found, triggering simplifier\n' >> "$debug_log"
 
 # Get the list of changed files for context (as comma-separated list)
-changed_files=$(git diff --name-only main...HEAD 2>/dev/null | head -20 | tr '\n' ', ' | sed 's/,$//')
+changed_files=$(git diff --name-only main...HEAD 2>/dev/null | head -20 | tr '\n' ',')
+changed_files=${changed_files%,}
 
 # Build the reason message (single line, no embedded newlines)
 reason="PR created successfully. Now run the cdd-code-simplifier agent to review and simplify the code in this PR. Changed files: ${changed_files}. Use the Task tool with subagent_type='cdd-code-simplifier' to simplify the PR's changed code. After simplification, commit any changes and push to update the PR."
