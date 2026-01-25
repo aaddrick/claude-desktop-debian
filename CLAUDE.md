@@ -4,6 +4,16 @@
 
 This project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux, applying necessary patches for Linux compatibility.
 
+## Code Style
+
+All shell scripts in this project must follow the [Bash Style Guide](STYLEGUIDE.md). Key points:
+
+- Tabs for indentation, lines under 80 characters (exception: URLs and regex patterns)
+- Use `[[ ]]` for conditionals, `$(...)` for command substitution
+- Single quotes for literals, double quotes for expansions
+- Lowercase variables; UPPERCASE only for constants/exports
+- Use `local` in functions, avoid `set -e` and `eval`
+
 ## GitHub Workflow
 
 ### General Approach
