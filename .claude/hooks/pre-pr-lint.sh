@@ -90,7 +90,7 @@ workflows_checked=0
 [[ -n "$changed_scripts" ]] && scripts_checked=$(printf '%s\n' "$changed_scripts" | wc -l)
 [[ -n "$changed_workflows" ]] && workflows_checked=$(printf '%s\n' "$changed_workflows" | wc -l)
 
-printf 'Pre-PR lint check passed: %d shell scripts, %d workflows checked\n' \
+printf 'Lint check passed: %d shell scripts, %d workflows checked\n' \
 	"$scripts_checked" "$workflows_checked"
 
 exit 0
