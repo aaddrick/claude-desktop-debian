@@ -18,23 +18,22 @@ Ask the user if not specified in `$ARGUMENTS`:
 
 ### 2. Check if Distrobox is Needed
 
-Distrobox is required when building a package format that doesn't match the host:
+Distrobox is required when building a package format that does not match the host:
 
 ```bash
-# Check host distro family
 if [[ -f /etc/debian_version ]]; then
-    host_family="debian"
+	host_family='debian'
 elif [[ -f /etc/redhat-release ]]; then
-    host_family="rpm"
+	host_family='rpm'
 else
-    host_family="unknown"
+	host_family='unknown'
 fi
 ```
 
 **Distrobox rules:**
-- Building `.deb` on non-Debian host → use Debian/Ubuntu distrobox
-- Building `.rpm` on non-RPM host → use Fedora distrobox
-- Building `.appimage` → works on any host (no distrobox needed)
+- Building `.deb` on non-Debian host: use Debian/Ubuntu distrobox
+- Building `.rpm` on non-RPM host: use Fedora distrobox
+- Building `.appimage`: works on any host (no distrobox needed)
 
 ### 3. Run Build
 
@@ -45,13 +44,12 @@ fi
 
 **With distrobox (if needed):**
 ```bash
-# Create container if it doesn't exist
+# Create container if it does not exist
 distrobox create --name claude-build-debian --image ubuntu:22.04 2>/dev/null || true
-# Or for RPM:
-distrobox create --name claude-build-fedora --image fedora:latest 2>/dev/null || true
 
 # Run build inside container
-distrobox enter claude-build-debian -- bash -c "cd $(pwd) && ./build.sh --build FORMAT --clean CLEAN"
+distrobox enter claude-build-debian -- \
+	bash -c "cd $(pwd) && ./build.sh --build FORMAT --clean CLEAN"
 ```
 
 ### 4. Report Results

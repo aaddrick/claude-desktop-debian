@@ -15,20 +15,16 @@ Compare the current version in the repository against the latest available relea
 # From GitHub repo variable (source of truth)
 gh variable get CLAUDE_DESKTOP_VERSION
 
-# Also check what's in build.sh
+# Check what's in build.sh
 grep -oP 'x64/\K[0-9]+\.[0-9]+\.[0-9]+' build.sh | head -1
 ```
 
 ### 2. Check Latest Available Version
 
-The Claude Desktop update endpoint returns version info:
-
 ```bash
-# Check the Windows update feed (same version as would be for Linux)
-curl -s "https://downloads.claude.ai/releases/win32/x64/RELEASES" | head -5
+# Query the Windows update feed (same version as Linux)
+curl -s 'https://downloads.claude.ai/releases/win32/x64/RELEASES' | head -5
 ```
-
-Alternatively, check the download page or known version patterns.
 
 ### 3. Compare and Report
 
@@ -41,7 +37,7 @@ Report:
 
 If a new version is detected:
 
-1. Show the new download URLs that would be needed:
+1. Show the new download URLs:
    ```
    x64: https://downloads.claude.ai/releases/win32/x64/VERSION/Claude-COMMIT.exe
    arm64: https://downloads.claude.ai/releases/win32/arm64/VERSION/Claude-COMMIT.exe

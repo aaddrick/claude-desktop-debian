@@ -11,16 +11,22 @@ Find and run the most recent build output with appropriate logging.
 
 ### 1. Find Most Recent Build
 
-Search for build artifacts in order of preference:
+Search for build artifacts using glob patterns:
 
 ```bash
-# Find most recent artifact by modification time
-latest_appimage=$(ls -t *.AppImage 2>/dev/null | head -1)
-latest_deb=$(ls -t *.deb 2>/dev/null | head -1)
-latest_rpm=$(ls -t *.rpm 2>/dev/null | head -1)
+# Find artifacts by modification time (newest first)
+# Check test-build directory first, then current directory
+for appimage in test-build/*.AppImage *.AppImage; do
+	[[ -f $appimage ]] && break
+done
 
-# Also check test-build directory if it exists
-[[ -d test-build ]] && latest_appimage=$(ls -t test-build/*.AppImage 2>/dev/null | head -1)
+for deb in test-build/*.deb *.deb; do
+	[[ -f $deb ]] && break
+done
+
+for rpm in test-build/*.rpm *.rpm; do
+	[[ -f $rpm ]] && break
+done
 ```
 
 Report which artifact was found and its modification time.
@@ -32,8 +38,7 @@ Report which artifact was found and its modification time.
 **DEB package**: Requires Debian/Ubuntu environment.
 ```bash
 if [[ ! -f /etc/debian_version ]]; then
-    echo "DEB package requires Debian/Ubuntu. Using distrobox..."
-    # Install in distrobox and run
+	echo 'DEB package requires Debian/Ubuntu. Using distrobox...'
 fi
 ```
 
@@ -43,33 +48,29 @@ fi
 
 **For AppImage (most common):**
 ```bash
-# Ensure log directory exists
 mkdir -p ~/.cache/claude-desktop-debian
-
-# Make executable and run with logging
-chmod +x "$latest_appimage"
-"$latest_appimage" 2>&1 | tee ~/.cache/claude-desktop-debian/launcher.log
+chmod +x "$appimage"
+"$appimage" 2>&1 | tee ~/.cache/claude-desktop-debian/launcher.log
 ```
 
 **For installed packages:**
 ```bash
-# Run the installed binary
 claude-desktop 2>&1 | tee ~/.cache/claude-desktop-debian/launcher.log
 ```
 
 ### 4. Monitor Output
 
-While running:
-- Watch for startup errors
-- Note any electron/node warnings
-- Check for tray icon initialization messages
+While running, watch for:
+- Startup errors
+- Electron/node warnings
+- Tray icon initialization messages
 
 Log location: `~/.cache/claude-desktop-debian/launcher.log`
 
 ### 5. Cleanup Reminder
 
 After testing, remind user:
-- Kill processes: `pkill -9 -f "mount_claude"`
+- Kill processes: `pkill -9 -f 'mount_claude'`
 - Check for stale locks: `~/.config/Claude/SingletonLock`
 
 ## Arguments
