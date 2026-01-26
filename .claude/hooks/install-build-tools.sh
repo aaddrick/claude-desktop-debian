@@ -6,6 +6,10 @@
 # packages. Can be run manually via the /setup-build-tools skill or
 # sourced by session-start.sh for full environment setup.
 
+# SC2024: sudo doesn't affect redirects - intentional, log file should be
+# owned by user not root since it's in $HOME/.cache
+# shellcheck disable=SC2024
+
 # Log file for debugging
 log_file="$HOME/.cache/claude-desktop-debian/session-start.log"
 mkdir -p "$(dirname "$log_file")"
