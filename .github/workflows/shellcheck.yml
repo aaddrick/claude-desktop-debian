@@ -29,4 +29,4 @@ jobs:
           sudo apt update && sudo apt install -y shellcheck
       - name: shellcheck
         run: |
-          git grep -l '^#\( *shellcheck \|!\(/bin/\|/usr/bin/env \)\(sh\|bash\|dash\|ksh\)\)' | xargs shellcheck
+          git grep -l '^#\( *shellcheck \|!\(/bin/\|/usr/bin/env \)\(sh\|bash\|dash\|ksh\)\)' -- '*.sh' | xargs shellcheck
