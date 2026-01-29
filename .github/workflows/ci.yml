@@ -26,269 +26,34 @@ jobs:
     uses: ./.github/workflows/test-flags.yml
 
   build-amd64:
-    name: Build Packages (amd64 - ${{ matrix.artifact_suffix }})
+    name: Build AppImage (amd64)
     needs: test-flags
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            flags: "--build deb"
-            artifact_suffix: "deb"
-          - arch: amd64
-            flags: "--build rpm"
-            artifact_suffix: "rpm"
-          - arch: amd64
-            flags: "--build appimage --clean no"
-            artifact_suffix: "appimage"
 
     uses: ./.github/workflows/build-amd64.yml
     with:
-      build_flags: ${{ matrix.flags }}
-      artifact_suffix: ${{ matrix.artifact_suffix }}
-      release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-
-  build-arm64:
-    name: Build Packages (arm64 - ${{ matrix.artifact_suffix }})
-    needs: test-flags
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            flags: "--build deb --clean no"
-            artifact_suffix: "deb"
-          - arch: arm64
-            flags: "--build rpm"
-            artifact_suffix: "rpm"
-          - arch: arm64
-            flags: "--build appimage"
-            artifact_suffix: "appimage"
-
-    uses: ./.github/workflows/build-arm64.yml
-    with:
-      build_flags: ${{ matrix.flags }}
-      artifact_suffix: ${{ matrix.artifact_suffix }}
+      build_flags: "--build appimage --clean no"
+      artifact_suffix: "appimage"
       release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-flags, build-amd64, build-arm64]
+    needs: [test-flags, build-amd64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download AMD64 deb artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-amd64-deb
-          path: artifacts/
-
-      - name: Download AMD64 rpm artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-amd64-rpm
-          path: artifacts/
-
       - name: Download AMD64 AppImage artifact
         uses: actions/download-artifact@v4
         with:
           name: package-amd64-appimage
           path: artifacts/
 
-      - name: Download ARM64 deb artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-deb
-          path: artifacts/
-
-      - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-rpm
-          path: artifacts/
-
-      - name: Download ARM64 AppImage artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-appimage
-          path: artifacts/
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
-
-  update-apt-repo:
-    name: Update APT Repository
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [release]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          path: apt-repo
-
-      - name: Download AMD64 deb artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-amd64-deb
-          path: incoming/
-
-      - name: Download ARM64 deb artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-deb
-          path: incoming/
-
-      - name: Install reprepro
-        run: sudo apt-get update && sudo apt-get install -y reprepro
-
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
-
-      - name: Add packages to repository
-        working-directory: apt-repo
-        run: |
-          # Add each .deb file to the repository
-          # --section and --priority provide defaults for older packages missing these fields
-          for deb in ../incoming/*.deb; do
-            echo "Adding $deb to repository..."
-            reprepro --section utils --priority optional includedeb stable "$deb"
-          done
-
-      - name: Commit and push changes
-        working-directory: apt-repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --staged --quiet || git commit -m "Update APT repository for ${{ github.ref_name }}"
-          # Retry loop to handle concurrent pushes to gh-pages
-          for i in 1 2 3 4 5; do
-            git pull --rebase && git push && break
-            echo "Push failed, retrying in 5 seconds... (attempt $i/5)"
-            sleep 5
-          done
-
-  update-dnf-repo:
-    name: Update DNF Repository
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [release]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          path: dnf-repo
-
-      - name: Download AMD64 rpm artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-amd64-rpm
-          path: incoming/
-
-      - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-arm64-rpm
-          path: incoming/
-
-      - name: Install createrepo_c and rpm-sign
-        run: sudo apt-get update && sudo apt-get install -y createrepo-c rpm
-
-      - name: Import GPG key
-        id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
-
-      - name: Configure RPM signing
-        run: |
-          # Configure RPM macros for signing
-          cat > ~/.rpmmacros << EOF
-          %_signature gpg
-          %_gpg_name ${{ steps.import_gpg.outputs.keyid }}
-          %__gpg /usr/bin/gpg
-          %__gpg_sign_cmd %{__gpg} gpg --batch --no-verbose --no-armor --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
-          EOF
-
-      - name: Update DNF repository
-        working-directory: dnf-repo
-        run: |
-          # Create directory structure
-          mkdir -p rpm/x86_64 rpm/aarch64
-
-          # Copy RPMs to appropriate architecture directories
-          for rpm_file in ../incoming/*.rpm; do
-            filename=$(basename "$rpm_file")
-            if [[ "$filename" == *"x86_64"* ]]; then
-              cp "$rpm_file" rpm/x86_64/
-              echo "Added $filename to x86_64"
-            elif [[ "$filename" == *"aarch64"* ]]; then
-              cp "$rpm_file" rpm/aarch64/
-              echo "Added $filename to aarch64"
-            fi
-          done
-
-          # Sign RPM packages and generate repository metadata for each architecture
-          for arch in x86_64 aarch64; do
-            if ls rpm/$arch/*.rpm 1> /dev/null 2>&1; then
-              # Sign each RPM package
-              echo "Signing RPM packages for $arch..."
-              for rpm_file in rpm/$arch/*.rpm; do
-                echo "Signing $rpm_file..."
-                rpmsign --addsign "$rpm_file"
-              done
-
-              echo "Generating repodata for $arch..."
-              createrepo_c --update rpm/$arch/
-
-              # Sign the repository metadata (--yes to overwrite existing signature)
-              echo "Signing repodata for $arch..."
-              gpg --batch --yes --detach-sign --armor rpm/$arch/repodata/repomd.xml
-            fi
-          done
-
-          # Create .repo file for users (reuses existing KEY.gpg)
-          printf '%s\n' \
-            '[claude-desktop]' \
-            'name=Claude Desktop for Fedora/RHEL' \
-            'baseurl=https://aaddrick.github.io/claude-desktop-debian/rpm/$basearch' \
-            'enabled=1' \
-            'gpgcheck=1' \
-            'repo_gpgcheck=1' \
-            'gpgkey=https://aaddrick.github.io/claude-desktop-debian/KEY.gpg' \
-            > rpm/claude-desktop.repo
-
-      - name: Commit and push changes
-        working-directory: dnf-repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --staged --quiet || git commit -m "Update DNF repository for ${{ github.ref_name }}"
-          # Retry loop to handle concurrent pushes to gh-pages
-          for i in 1 2 3 4 5; do
-            git pull --rebase && git push && break
-            echo "Push failed, retrying in 5 seconds... (attempt $i/5)"
-            sleep 5
-          done
 
   update-aur-repo:
     name: Update AUR Package (DRY RUN)
@@ -418,7 +183,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/pkg -w /pkg archlinux:base bash -c "
             useradd -m builder
-            chown -R builder:builder /pkg
+            find /pkg -maxdepth 1 -not -name .git -not -path /pkg -exec chown -R builder:builder {} +
             su builder -c 'makepkg --printsrcinfo > .SRCINFO'
           "
           echo "=== Generated .SRCINFO ==="
