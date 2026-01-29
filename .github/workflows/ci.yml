@@ -181,11 +181,15 @@ jobs:
       - name: Generate .SRCINFO
         working-directory: aur-repo
         run: |
+          # Run makepkg in Arch container to generate .SRCINFO
           docker run --rm -v "$PWD":/pkg -w /pkg archlinux:base bash -c "
             useradd -m builder
+            chown builder:builder /pkg
             find /pkg -maxdepth 1 -not -name .git -not -path /pkg -exec chown -R builder:builder {} +
             su builder -c 'makepkg --printsrcinfo > .SRCINFO'
           "
+          # Restore ownership after docker (container uid may differ from runner)
+          sudo chown -R "$(id -u):$(id -g)" .
           echo "=== Generated .SRCINFO ==="
           cat .SRCINFO
 
