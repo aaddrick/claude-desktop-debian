@@ -291,7 +291,7 @@ jobs:
           done
 
   update-aur-repo:
-    name: Update AUR Package (DRY RUN)
+    name: Update AUR Package
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [release]
     runs-on: ubuntu-latest
@@ -303,20 +303,10 @@ jobs:
           name: package-amd64-appimage
           path: artifacts/
 
-      - name: List downloaded artifacts
-        run: |
-          echo "=== Artifacts directory ==="
-          ls -lah artifacts/
-          echo ""
-          echo "=== File types ==="
-          file artifacts/* || true
-
       - name: Extract version components from tag
         id: version
         run: |
           tag="${GITHUB_REF_NAME}"
-          echo "Raw tag: $tag"
-
           # Tag format: v1.3.8+claude1.1.799
           # pkgver for AUR: 1.3.8+claude1.1.799
           pkgver="${tag#v}"
@@ -329,23 +319,17 @@ jobs:
 
           echo "pkgver=$pkgver" >> "$GITHUB_OUTPUT"
           echo "appimage_name=$appimage_name" >> "$GITHUB_OUTPUT"
-
-          echo ""
-          echo "=== Parsed version components ==="
-          echo "  pkgver:        $pkgver"
-          echo "  wrapper_ver:   $wrapper_ver"
-          echo "  claude_ver:    $claude_ver"
-          echo "  appimage_name: $appimage_name"
+          echo "Tag: $tag"
+          echo "pkgver: $pkgver"
+          echo "AppImage name: $appimage_name"
 
       - name: Compute AppImage checksum
         id: checksum
         run: |
           appimage="artifacts/${{ steps.version.outputs.appimage_name }}"
-          echo "Expected path: $appimage"
           if [[ ! -f "$appimage" ]]; then
-            echo "::warning::Expected AppImage not found, searching artifacts..."
+            # Fallback: find any AppImage in artifacts
             appimage=$(find artifacts/ -name '*.AppImage' -not -name '*.zsync' | head -1)
-            echo "Fallback found: $appimage"
           fi
           if [[ -z "$appimage" || ! -f "$appimage" ]]; then
             echo "::error::No AppImage found in artifacts"
@@ -354,12 +338,8 @@ jobs:
           fi
           sha256=$(sha256sum "$appimage" | awk '{print $1}')
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
-
-          echo ""
-          echo "=== Checksum result ==="
-          echo "  File:   $(basename "$appimage")"
-          echo "  Size:   $(stat --printf='%s' "$appimage") bytes"
-          echo "  SHA256: $sha256"
+          echo "AppImage: $(basename "$appimage")"
+          echo "SHA256: $sha256"
 
       - name: Configure SSH for AUR
         run: |
@@ -373,32 +353,18 @@ jobs:
             User aur
           EOF
           chmod 600 ~/.ssh/config
-          echo "SSH configured, known_hosts entries:"
-          wc -l ~/.ssh/known_hosts
 
       - name: Clone AUR repository
         run: |
           git clone ssh://aur@aur.archlinux.org/claude-desktop-appimage.git aur-repo
-          echo ""
-          echo "=== AUR repo contents ==="
-          ls -la aur-repo/
-          echo ""
-          echo "=== AUR repo git log ==="
-          git -C aur-repo log --oneline -5
 
       - name: Generate PKGBUILD from template
         working-directory: aur-repo
         run: |
           if [[ ! -f PKGBUILD.template ]]; then
             echo "::error::PKGBUILD.template not found in AUR repository"
-            echo "Available files:"
-            ls -la
             exit 1
           fi
-
-          echo "=== Template before substitution ==="
-          cat PKGBUILD.template
-          echo ""
 
           sed \
             -e 's/%%PKGVER%%/${{ steps.version.outputs.pkgver }}/' \
@@ -408,10 +374,6 @@ jobs:
 
           echo "=== Generated PKGBUILD ==="
           cat PKGBUILD
-          echo ""
-
-          echo "=== Diff template vs generated ==="
-          diff PKGBUILD.template PKGBUILD || true
 
       - name: Generate .SRCINFO
         working-directory: aur-repo
@@ -424,27 +386,15 @@ jobs:
           echo "=== Generated .SRCINFO ==="
           cat .SRCINFO
 
-      - name: Show final state (DRY RUN - no push)
+      - name: Commit and push to AUR
         working-directory: aur-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add PKGBUILD .SRCINFO
-
-          echo "=== git status ==="
-          git status
-
-          echo ""
-          echo "=== git diff --staged ==="
-          git diff --staged
-
           if git diff --staged --quiet; then
-            echo ""
-            echo "No changes detected - PKGBUILD is already up to date"
-          else
-            echo ""
-            echo "=== Would commit with message ==="
-            echo "Update to v${{ steps.version.outputs.pkgver }}"
-            echo ""
-            echo "DRY RUN: skipping git commit and push"
+            echo "No changes to commit"
+            exit 0
           fi
+          git commit -m "Update to v${{ steps.version.outputs.pkgver }}"
+          git push
