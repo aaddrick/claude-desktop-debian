@@ -68,9 +68,9 @@ jobs:
         id: current_urls
         run: |
           # Extract current URLs from build.sh
-          # The refactored build.sh uses lowercase variable names and single quotes in a case statement
-          CURRENT_AMD64_URL=$(grep -E "amd64\)" -A1 build.sh | grep -oP "claude_download_url='\\K[^']+")
-          CURRENT_ARM64_URL=$(grep -E "arm64\)" -A1 build.sh | grep -oP "claude_download_url='\\K[^']+")
+          # The build.sh case statement uses x86_64/aarch64 patterns with claude_download_url on the next line
+          CURRENT_AMD64_URL=$(grep -E "x86_64\)" -A1 build.sh | grep -oP "claude_download_url='\\K[^']+")
+          CURRENT_ARM64_URL=$(grep -E "aarch64\)" -A1 build.sh | grep -oP "claude_download_url='\\K[^']+")
 
           echo "Current AMD64 URL: $CURRENT_AMD64_URL"
           echo "Current ARM64 URL: $CURRENT_ARM64_URL"
