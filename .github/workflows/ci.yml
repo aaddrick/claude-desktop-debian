@@ -261,7 +261,7 @@ jobs:
 
               # Sign the repository metadata (--yes to overwrite existing signature)
               echo "Signing repodata for $arch..."
-              gpg --batch --yes --detach-sign --armor rpm/$arch/repodata/repomd.xml
+              gpg --batch --yes --default-key "${{ steps.import_gpg.outputs.keyid }}" --detach-sign --armor rpm/$arch/repodata/repomd.xml
             fi
           done
 
