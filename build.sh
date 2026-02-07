@@ -16,6 +16,7 @@ build_format=''  # Will be set based on distro if not specified
 cleanup_action='yes'
 perform_cleanup=false
 test_flags_mode=false
+enable_cowork=false
 local_exe_path=''
 original_user=''
 original_home=''
@@ -203,13 +204,18 @@ parse_arguments() {
 				test_flags_mode=true
 				shift
 				;;
+			--cowork)
+				enable_cowork=true
+				shift
+				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--release-tag TAG] [--test-flags]"
+				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--release-tag TAG] [--cowork] [--test-flags]"
 				echo '  --build: Specify the build format (deb, rpm, or appimage).'
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
 				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
+				echo '  --cowork: Enable experimental Cowork mode support (runs Claude Code on host without VM isolation)'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
 				;;
@@ -618,10 +624,12 @@ console.log('Updated package.json: main entry and node-pty dependency');
 		app.asar.contents/node_modules/@ant/claude-native/index.js || exit 1
 
 	# Create claude-swift stub for Cowork mode (Linux VM replacement)
-	echo 'Creating claude-swift stub for Cowork mode...'
-	mkdir -p app.asar.contents/node_modules/@ant/claude-swift || exit 1
-	cp "$project_root/scripts/claude-swift-stub.js" \
-		app.asar.contents/node_modules/@ant/claude-swift/index.js || exit 1
+	if [[ $enable_cowork == true ]]; then
+		echo 'Creating claude-swift stub for Cowork mode...'
+		mkdir -p app.asar.contents/node_modules/@ant/claude-swift || exit 1
+		cp "$project_root/scripts/claude-swift-stub.js" \
+			app.asar.contents/node_modules/@ant/claude-swift/index.js || exit 1
+	fi
 
 	mkdir -p app.asar.contents/resources/i18n || exit 1
 	cp "$claude_extract_dir/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ || exit 1
@@ -798,9 +806,11 @@ finalize_app_asar() {
 		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js" || exit 1
 
 	# Copy claude-swift stub for Cowork mode
-	mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift" || exit 1
-	cp "$project_root/scripts/claude-swift-stub.js" \
-		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift/index.js" || exit 1
+	if [[ $enable_cowork == true ]]; then
+		mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift" || exit 1
+		cp "$project_root/scripts/claude-swift-stub.js" \
+			"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift/index.js" || exit 1
+	fi
 
 	# Copy node-pty native binaries
 	if [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
@@ -1103,6 +1113,7 @@ main() {
 		echo '--- Test Flags Mode Enabled ---'
 		echo "Build Format: $build_format"
 		echo "Clean Action: $cleanup_action"
+		echo "Cowork Mode: $enable_cowork"
 		echo 'Exiting without build.'
 		exit 0
 	fi
