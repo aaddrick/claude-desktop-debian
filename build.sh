@@ -23,6 +23,7 @@ project_root=''
 work_dir=''
 app_staging_dir=''
 chosen_electron_module_path=''
+electron_var=''
 asar_exec=''
 claude_extract_dir=''
 electron_resources_dest=''
@@ -623,11 +624,47 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	# Patch title bar detection
 	patch_titlebar_detection
 
+	# Extract electron module variable name for tray patches
+	echo 'Extracting electron module variable name from minified source...'
+	electron_var=$(grep -oP '\b\w+(?=\s*=\s*require\("electron"\))' \
+		app.asar.contents/.vite/build/index.js | head -1)
+	if [[ -z $electron_var ]]; then
+		# Fallback: extract from Tray constructor
+		electron_var=$(grep -oP '(?<=new )\w+(?=\.Tray\b)' \
+			app.asar.contents/.vite/build/index.js | head -1)
+	fi
+	if [[ -z $electron_var ]]; then
+		echo 'Failed to extract electron module variable name' >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+	echo "  Found electron variable: $electron_var"
+
+	# Fix upstream minifier bug: incorrect variable references to nativeTheme
+	echo 'Fixing any incorrect nativeTheme variable references...'
+	local wrong_refs
+	wrong_refs=$(grep -oP '\b\w+(?=\.nativeTheme)' \
+		app.asar.contents/.vite/build/index.js | sort -u \
+		| grep -v "^${electron_var}$" || true)
+	if [[ -n $wrong_refs ]]; then
+		local wrong_ref
+		for wrong_ref in $wrong_refs; do
+			echo "  Replacing incorrect reference: ${wrong_ref}.nativeTheme -> ${electron_var}.nativeTheme"
+			sed -i -E "s/\b${wrong_ref}\.nativeTheme/${electron_var}.nativeTheme/g" \
+				app.asar.contents/.vite/build/index.js
+		done
+	else
+		echo '  All nativeTheme references are correct'
+	fi
+
 	# Patch tray menu handler
 	patch_tray_menu_handler
 
 	# Patch tray icon selection
 	patch_tray_icon_selection
+
+	# Patch menuBarEnabled to default to true when unset
+	patch_menu_bar_default
 
 	# Patch quick window
 	patch_quick_window
@@ -719,7 +756,7 @@ patch_tray_menu_handler() {
 	# Patch nativeTheme handler
 	echo 'Patching nativeTheme handler to skip tray updates during startup...'
 	if ! grep -q '_trayStartTime' app.asar.contents/.vite/build/index.js; then
-		sed -i -E 's/(oe\.nativeTheme\.on\(\s*"updated"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g' app.asar.contents/.vite/build/index.js
+		sed -i -E "s/(${electron_var}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" app.asar.contents/.vite/build/index.js
 		sed -i -E "s/\((\w+)\(\)\s*,\s*${tray_func}\(\)\s*,/(\1(),Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" app.asar.contents/.vite/build/index.js
 		echo '  Added startup delay check to nativeTheme handler (3 second window)'
 	fi
@@ -729,10 +766,36 @@ patch_tray_menu_handler() {
 patch_tray_icon_selection() {
 	echo 'Patching tray icon selection for Linux visibility...'
 	if grep -qP ':\w="TrayIconTemplate\.png"' app.asar.contents/.vite/build/index.js; then
-		sed -i -E 's/:(\w)="TrayIconTemplate\.png"/:\1=oe.nativeTheme.shouldUseDarkColors?"TrayIconTemplate-Dark.png":"TrayIconTemplate.png"/g' app.asar.contents/.vite/build/index.js
+		sed -i -E "s/:(\w)=\"TrayIconTemplate\.png\"/:\1=${electron_var}.nativeTheme.shouldUseDarkColors?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" app.asar.contents/.vite/build/index.js
 		echo 'Patched tray icon selection for Linux theme support'
 	else
 		echo 'Tray icon selection pattern not found or already patched'
+	fi
+	echo '##############################################################'
+}
+
+patch_menu_bar_default() {
+	echo 'Patching menuBarEnabled to default to true when unset...'
+
+	# Extract the variable name assigned from the menuBarEnabled config getter
+	local menu_bar_var
+	menu_bar_var=$(grep -oP 'const \K\w+(?=\s*=\s*\w+\("menuBarEnabled"\))' \
+		app.asar.contents/.vite/build/index.js | head -1)
+	if [[ -z $menu_bar_var ]]; then
+		echo '  Could not extract menuBarEnabled variable name'
+		echo '##############################################################'
+		return
+	fi
+	echo "  Found menuBarEnabled variable: $menu_bar_var"
+
+	# The tray creation check uses a comma operator: ...,!!t){
+	# Change !!t to t!==false so undefined (missing config) defaults to true
+	if grep -qP ",\s*!!${menu_bar_var}\s*\)" app.asar.contents/.vite/build/index.js; then
+		sed -i -E "s/,\s*!!${menu_bar_var}\s*\)/,${menu_bar_var}!==false)/g" \
+			app.asar.contents/.vite/build/index.js
+		echo '  Patched menuBarEnabled to default to true'
+	else
+		echo '  menuBarEnabled pattern not found or already patched'
 	fi
 	echo '##############################################################'
 }
