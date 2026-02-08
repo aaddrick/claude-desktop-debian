@@ -161,6 +161,16 @@ jobs:
       - name: Add packages to repository
         working-directory: apt-repo
         run: |
+          # Remove existing versions to allow re-uploads and wrapper version bumps
+          # (reprepro rejects new files with same name but different checksums)
+          for deb in ../incoming/*.deb; do
+            pkg_name=$(dpkg-deb -f "$deb" Package)
+            if reprepro list stable "$pkg_name" 2>/dev/null | grep -q .; then
+              echo "Removing existing $pkg_name from repository..."
+              reprepro remove stable "$pkg_name"
+            fi
+          done
+
           # Add each .deb file to the repository
           # --section and --priority provide defaults for older packages missing these fields
           for deb in ../incoming/*.deb; do
