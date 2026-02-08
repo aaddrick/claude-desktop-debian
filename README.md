@@ -1,6 +1,6 @@
 # Claude Desktop for Linux
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), or distribution-agnostic AppImages.
+This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), distribution-agnostic AppImages, and an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch Linux.
 
 **Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
 
@@ -56,6 +56,20 @@ sudo dnf install claude-desktop
 
 Future updates will be installed automatically with your regular system updates (`sudo dnf upgrade`).
 
+### Using AUR (Arch Linux)
+
+The [`claude-desktop-appimage`](https://aur.archlinux.org/packages/claude-desktop-appimage) package is available on the AUR and is automatically updated with each release.
+
+```bash
+# Using yay
+yay -S claude-desktop-appimage
+
+# Or using paru
+paru -S claude-desktop-appimage
+```
+
+The AUR package installs the AppImage build of Claude Desktop.
+
 ### Using Pre-built Releases
 
 Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
@@ -96,6 +110,7 @@ The build script automatically detects your distribution and selects the appropr
 |--------------|----------------|-----------------|
 | Debian, Ubuntu, Mint | `.deb` | apt |
 | Fedora, RHEL, CentOS | `.rpm` | dnf |
+| Arch Linux | `.AppImage` (via AUR) | yay/paru |
 | Other | `.AppImage` | - |
 
 #### Installing the Built Package
@@ -181,6 +196,18 @@ sudo dnf remove claude-desktop
 
 # Remove the repository
 sudo rm /etc/yum.repos.d/claude-desktop.repo
+```
+
+**For AUR installations (Arch Linux):**
+```bash
+# Using yay
+yay -R claude-desktop-appimage
+
+# Or using paru
+paru -R claude-desktop-appimage
+
+# Or using pacman directly
+sudo pacman -R claude-desktop-appimage
 ```
 
 **For .deb packages (manual install):**
@@ -309,6 +336,24 @@ Special thanks to:
 - **k3d3** for the original NixOS implementation and native bindings insights
 - **[emsi](https://github.com/emsi/claude-desktop)** for the title bar fix and alternative implementation approach
 - **[leobuskin](https://github.com/leobuskin/unofficial-claude-desktop-linux)** for the Playwright-based URL resolution approach
+- **[yarikoptic](https://github.com/yarikoptic)** for codespell support and shellcheck compliance
+- **[IamGianluca](https://github.com/IamGianluca)** for build dependency check improvements
+- **[ing03201](https://github.com/ing03201)** for IBus/Fcitx5 input method support
+- **[ajescudero](https://github.com/ajescudero)** for pinning @electron/asar for Node compatibility
+- **[delorenj](https://github.com/delorenj)** for Wayland compatibility support
+- **[Regen-forest](https://github.com/Regen-forest)** for suggesting Gear Lever as AppImageLauncher replacement
+- **[niekvugteveen](https://github.com/niekvugteveen)** for fixing Debian packaging permissions
+- **[speleoalex](https://github.com/speleoalex)** for native window decorations support
+- **[imaginalnika](https://github.com/imaginalnika)** for moving logs to `~/.cache/`
+- **[richardspicer](https://github.com/richardspicer)** for the menu bar visibility fix on Linux
+- **[jacobfrantz1](https://github.com/jacobfrantz1)** for Claude Desktop code preview support and quick window submit fix
+- **[janfrederik](https://github.com/janfrederik)** for the `--exe` flag to use a local installer
+- **[MrEdwards007](https://github.com/MrEdwards007)** for discovering the OAuth token cache fix
+- **[lizthegrey](https://github.com/lizthegrey)** for version update contributions
+- **[mathys-lopinto](https://github.com/mathys-lopinto)** for the AUR package and automated deployment
+- **[pkuijpers](https://github.com/pkuijpers)** for root cause analysis of the RPM repo GPG signing issue
+- **[dlepold](https://github.com/dlepold)** for identifying the tray icon variable name bug with a working fix
+- **[Voork1144](https://github.com/Voork1144)** for detailed analysis of the tray icon minifier bug
 
 For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
 
