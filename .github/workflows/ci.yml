@@ -325,29 +325,34 @@ jobs:
 
       - name: Compute AppImage checksum
         id: checksum
+        env:
+          APPIMAGE_NAME: ${{ steps.version.outputs.appimage_name }}
         run: |
-          appimage="artifacts/${{ steps.version.outputs.appimage_name }}"
+          appimage="artifacts/${APPIMAGE_NAME}"
           if [[ ! -f "$appimage" ]]; then
-            # Fallback: find any AppImage in artifacts
-            appimage=$(find artifacts/ -name '*.AppImage' -not -name '*.zsync' | head -1)
-          fi
-          if [[ -z "$appimage" || ! -f "$appimage" ]]; then
-            echo "::error::No AppImage found in artifacts"
+            echo "::error::Expected AppImage not found: ${APPIMAGE_NAME}"
+            echo "Available artifacts:"
             ls -la artifacts/
             exit 1
           fi
           sha256=$(sha256sum "$appimage" | awk '{print $1}')
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
-          echo "AppImage: $(basename "$appimage")"
+          echo "AppImage: ${APPIMAGE_NAME}"
           echo "SHA256: $sha256"
 
       - name: Configure SSH for AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
         run: |
+          if [[ -z "$AUR_SSH_KEY" ]]; then
+            echo "::error::AUR_SSH_PRIVATE_KEY secret is not configured"
+            exit 1
+          fi
           mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
+          echo "$AUR_SSH_KEY" > ~/.ssh/aur
           chmod 600 ~/.ssh/aur
           ssh-keyscan -t ed25519,rsa aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
-          cat > ~/.ssh/config << 'EOF'
+          cat > ~/.ssh/config <<-'EOF'
           Host aur.archlinux.org
             IdentityFile ~/.ssh/aur
             User aur
@@ -360,6 +365,10 @@ jobs:
 
       - name: Generate PKGBUILD from template
         working-directory: aur-repo
+        env:
+          PKGVER: ${{ steps.version.outputs.pkgver }}
+          APPIMAGE_NAME: ${{ steps.version.outputs.appimage_name }}
+          SHA256: ${{ steps.checksum.outputs.sha256 }}
         run: |
           if [[ ! -f PKGBUILD.template ]]; then
             echo "::error::PKGBUILD.template not found in AUR repository"
@@ -367,9 +376,9 @@ jobs:
           fi
 
           sed \
-            -e 's/%%PKGVER%%/${{ steps.version.outputs.pkgver }}/' \
-            -e 's/%%APPIMAGE_NAME%%/${{ steps.version.outputs.appimage_name }}/' \
-            -e 's/%%SHA256_APPIMAGE%%/${{ steps.checksum.outputs.sha256 }}/' \
+            -e "s/%%PKGVER%%/${PKGVER}/" \
+            -e "s/%%APPIMAGE_NAME%%/${APPIMAGE_NAME}/" \
+            -e "s/%%SHA256_APPIMAGE%%/${SHA256}/" \
             PKGBUILD.template > PKGBUILD
 
       - name: Generate .SRCINFO
@@ -386,6 +395,8 @@ jobs:
 
       - name: Commit and push to AUR
         working-directory: aur-repo
+        env:
+          PKGVER: ${{ steps.version.outputs.pkgver }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -394,5 +405,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Update to v${{ steps.version.outputs.pkgver }}"
+          git commit -m "Update to v${PKGVER}"
           git push
