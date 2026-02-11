@@ -4,44 +4,44 @@ Hash: SHA512
 Origin: claude-desktop-debian
 Label: Claude Desktop for Linux
 Codename: stable
-Date: Tue, 10 Feb 2026 01:44:40 UTC
+Date: Wed, 11 Feb 2026 01:44:25 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Claude Desktop unofficial Linux packages
 MD5Sum:
- dc19f8f78dbdea1ea59c2931832907b2 634 main/binary-amd64/Packages
- e1564b13ef51311ccbf2d2021f20d754 425 main/binary-amd64/Packages.gz
+ e6ae9d80346ff702cd128131bf0e0f60 634 main/binary-amd64/Packages
+ 7cc1b43c313271fa165763d43d816500 424 main/binary-amd64/Packages.gz
  02bfdb0962fdcbc813da34967372124d 152 main/binary-amd64/Release
- c383b56bc4d9cda47da98e5099462527 634 main/binary-arm64/Packages
- ec1917b2c1a06c8e3df51844ec4a52de 424 main/binary-arm64/Packages.gz
+ 91f169ddbc21b38e625a2c4af40e4057 634 main/binary-arm64/Packages
+ 57320105b579c13227c35d1fa86164ca 422 main/binary-arm64/Packages.gz
  a34b0e690522268f14683fbce7f31005 152 main/binary-arm64/Release
 SHA1:
- 55779411263b3e66ecb3c729699e9cfaf65d1851 634 main/binary-amd64/Packages
- 86a10138a5d862c871ea9a89e74aa8469cacd922 425 main/binary-amd64/Packages.gz
+ b23518dfbc7f2def3546a0889f0d4d26f5f9fd4f 634 main/binary-amd64/Packages
+ 8657f8a82819bf9c5ef31b331b1a906d46a5dab9 424 main/binary-amd64/Packages.gz
  7e6572fbede38f2753bbf46197b1db20fc4c57a0 152 main/binary-amd64/Release
- 651e5e198183c1e3d0ce94c6c23309a450402943 634 main/binary-arm64/Packages
- 72165b00bcc6028b4b6de104ad08fafffbb82b66 424 main/binary-arm64/Packages.gz
+ 19d5beb24e66a24a9e10f4f1e967d7c2893b4c93 634 main/binary-arm64/Packages
+ 587c3c7cec485ba8886e11b37558a24d9e25ae37 422 main/binary-arm64/Packages.gz
  9802bd79bf2009c5180e1df0d99da2dc7ba8f2f4 152 main/binary-arm64/Release
 SHA256:
- 17f547641c8c504801889df3226bc72e26d8958d3c0b41a06a2d881f70f2e392 634 main/binary-amd64/Packages
- 797ef2fcf70e122e8d6d723bd6a5b670864f5c00217b6637c38375ea3f744ee8 425 main/binary-amd64/Packages.gz
+ feefd4321eb7bf5a3f9ba88e42b2e5a6ea3b1876d0d759f0747891e1e72538ab 634 main/binary-amd64/Packages
+ d4198f1a5b8f725289ec94bdd35020e6f0dbbff4e19d82b77b9a6ac0d9592708 424 main/binary-amd64/Packages.gz
  2a288260d0eff0aee3beac611d50b711a495e6eaf053fffddf35ebdf498b0247 152 main/binary-amd64/Release
- 6311b8aa676aa8249e54dd717875ef733dfda797e50c54d5cc8318885c321dc5 634 main/binary-arm64/Packages
- 5785e235c5d36c9d8e4c8e698e9a0ebd3146d20d3a79ee2b85301d72a75a325d 424 main/binary-arm64/Packages.gz
+ 825323c5ab1603d453834f5aa4e68db8312c699f611e63829223e29f19d541e3 634 main/binary-arm64/Packages
+ 61b2d4aed42df542ed0cf444b21add8ef3616a0a8d00f25f6d4ba04ac6dda398 422 main/binary-arm64/Packages.gz
  96728c0041e79a804531562cb2d8fb2e94869e09578537b2bc0afacf3de7025e 152 main/binary-arm64/Release
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAmmKjYgACgkQeM6R1yqp
-6bmcMg/+JYwkswDjB4amOQyq4b/QE9Ov9jcQDAdQKfuhCbu/MBi4Uipv+PZmaWtF
-dO788/H7SfXzgKwlpN4op8b7AA5GU2FPmNXDS+bko47+2UyKHO3xIjhx6rWtFkiu
-atIdtGc80zdDBLVBqBURmdNeYNiH7PRN1M4mV8Bh7GuUXRsKI2wDp/1Gc51JaxoS
-mMMaNhl4yTrSZkOBOJtGPpBf2BYSTGZiSWkK9TFP6NWn60FKT/Uze+WUFPJfrfsa
-jXHy9QlBhgGMpWKZDLbMkH3q4AxFt7SrP/r0+eyAmXPEhyDqaFjO7fOzSsM7W1O5
-QEtSQGXMAJHSUNQmidSZ+0gHQcuKGc6LUA/Ps7RBNApmNJM9uWuozTI6IQ9WrRxO
-VqMos8Oe5o31wihzvWTpGxvm3F3yhgcepQYz8a+Gea9C/fVI4ybyHspH/mQFigPv
-dmGR/rfuVv/ce0x/lWzLUNtoQrw3QDpHf5zgWGIH4t3PE2XkvsQI3oZolOkAvwdS
-7Z8I+5D1K4oipPPXdCsztj43Ncr+C/qqH8QQYsNROWd0VSSoQaE8fGOC0UFv70bo
-G/wy/EfopWH93R08VHhpTE0/F/PRcX5YqUFm9Zv3MiozL8/x0A0SEyfgJe9AyH2X
-4qxhHVLX85vXyT8GCXU5ZoQ/zIbczR6bruOijkSLyNh7y6DGIyM=
-=/gUQ
+iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAmmL3vkACgkQeM6R1yqp
+6bkpERAAg767IhMzkCt3MB3qhqmRku5sC8u3FKr7VpfKLCJCE2IQ1bb0BkWnbhOE
+F8cYIuTSr4hUvYfAsyr9OQ2lBN1zRiYd5Ng08mnfTGqyIwu/qpyU+WZp4XDmuqUW
+zGD5RlKirUjZpCTdy2DS3gmXUUpbwALMyn5R8R/JDEOcm53vVSdjmfWcJYzzcw8u
+ShZ4YXMmRagLJvpvlimQf8Wp+vigeEgqwEYvP9Mxd1r1Tqm80csa9LV89sOZfHN3
+Rz1zu15GzOOoQviG4VRffhfVjeVj/MzyIPrAdi3iEPmKBeRRS1AJOww+010ukZBT
+RctKJt4/lVoY7HK+1RvBNRXsWhgulDkMvX2qNebsLj/W1QIcXbwyIw2rLowlSdLg
+DZtQlVQzakXVNPk5l6PSBoFWIlcgAvar4XVSkmclHUAyf/Ko3GY7XDtn8TOfdhIf
+d8BOBgzT5F6Kui20AapX8q/+H/l3mPZID/iJ55GJEM9jPv4klydcDoXkdyAmobev
+FkzKLa2nSBxNTrqTttHZtN7Qa7sgkPWvNInw5E1Ph5eJw8tlF5DKwDlm0NT/QlF4
+67oDJvI/cSPq5mEoHh27rpXoffecTBxHCgpTJSFgZJ6hBDRt3kXue6yjYYH6F9p0
+xkfq2yWw0iG1ywcrt5f9fjUwUZJp0js5nQM+KaUm5BEeHPgLnyg=
+=EF5M
 -----END PGP SIGNATURE-----
