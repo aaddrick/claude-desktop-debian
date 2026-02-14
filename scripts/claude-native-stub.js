@@ -1,6 +1,17 @@
 // Stub implementation of claude-native for Linux
+// Uses Electron's native Linux support where possible instead of no-ops
 const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 61, Alt: 40, CapsLock: 56, Escape: 85, Space: 276, PageUp: 251, PageDown: 250, End: 83, Home: 154, LeftArrow: 175, UpArrow: 282, RightArrow: 262, DownArrow: 81, Delete: 79, Meta: 187 };
 Object.freeze(KeyboardKey);
+
+// Helper: get the focused BrowserWindow (lazy-loaded to avoid circular deps)
+function getWindow() {
+  try {
+    const { BrowserWindow } = require('electron');
+    return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
+  } catch {
+    return null;
+  }
+}
 
 // AuthRequest stub - not available on Linux, will cause fallback to system browser
 class AuthRequest {
@@ -21,12 +32,38 @@ module.exports = {
   getWindowsVersion: () => "10.0.0",
   setWindowEffect: () => {},
   removeWindowEffect: () => {},
-  getIsMaximized: () => false,
-  flashFrame: () => {},
-  clearFlashFrame: () => {},
+
+  // Functional on Linux via Electron's native support
+  getIsMaximized: () => {
+    const win = getWindow();
+    return win ? win.isMaximized() : false;
+  },
+
+  // Fixes: #149 - KDE Plasma: Window demands attention
+  // flashFrame is natively supported on Linux Electron
+  flashFrame: (flash) => {
+    const win = getWindow();
+    if (win) win.flashFrame(typeof flash === 'boolean' ? flash : true);
+  },
+  clearFlashFrame: () => {
+    const win = getWindow();
+    if (win) win.flashFrame(false);
+  },
+
   showNotification: () => {},
-  setProgressBar: () => {},
-  clearProgressBar: () => {},
+
+  // Progress bar is natively supported on Linux (Unity/KDE/GNOME)
+  setProgressBar: (progress) => {
+    const win = getWindow();
+    if (win && typeof progress === 'number') {
+      win.setProgressBar(Math.max(0, Math.min(1, progress)));
+    }
+  },
+  clearProgressBar: () => {
+    const win = getWindow();
+    if (win) win.setProgressBar(-1);
+  },
+
   setOverlayIcon: () => {},
   clearOverlayIcon: () => {},
   KeyboardKey,

@@ -21,12 +21,31 @@ log_message() {
 detect_display_backend() {
 	# Detect if Wayland is running
 	is_wayland=false
-	[[ -n $WAYLAND_DISPLAY ]] && is_wayland=true
+	[[ -n "${WAYLAND_DISPLAY:-}" ]] && is_wayland=true
 
 	# Default: Use X11/XWayland on Wayland for global hotkey support
 	# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys disabled)
 	use_x11_on_wayland=true
-	[[ $CLAUDE_USE_WAYLAND == '1' ]] && use_x11_on_wayland=false
+	[[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]] && use_x11_on_wayland=false
+
+	# Fixes: #226 - Auto-detect compositors that require native Wayland
+	# Niri, Sway, and Hyprland don't support XWayland well
+	if [[ $is_wayland == true && $use_x11_on_wayland == true ]]; then
+		local compositor=""
+		# Detect Niri via its socket or XDG_CURRENT_DESKTOP
+		if [[ -n "${NIRI_SOCKET:-}" ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == *"niri"* ]]; then
+			compositor="Niri"
+		elif [[ "${XDG_CURRENT_DESKTOP:-}" == *"sway"* ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == *"Sway"* ]]; then
+			compositor="Sway"
+		elif [[ "${XDG_CURRENT_DESKTOP:-}" == *"Hyprland"* ]]; then
+			compositor="Hyprland"
+		fi
+
+		if [[ -n "$compositor" ]]; then
+			log_message "$compositor compositor detected - forcing native Wayland"
+			use_x11_on_wayland=false
+		fi
+	fi
 }
 
 # Check if we have a valid display (not running from TTY)
