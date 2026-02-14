@@ -846,6 +846,11 @@ patch_quick_window() {
 		sed -i 's/e.hide()/e.blur(),e.hide()/' app.asar.contents/.vite/build/index.js
 		echo 'Added blur() call to fix quick window submit issue'
 	fi
+
+	if ! grep -q 'frame:!1.*e\.hide()' app.asar.contents/.vite/build/index.js; then
+		sed -i 's/frame:true\(.*e\.hide()\)/frame:!1\1/' app.asar.contents/.vite/build/index.js
+		echo 'Restored frameless for Quick Entry window'
+	fi
 }
 
 patch_linux_claude_code() {
