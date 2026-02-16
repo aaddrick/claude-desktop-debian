@@ -4,6 +4,14 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 **Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
 
+---
+
+> **⚠️ EXPERIMENTAL: Cowork Mode Support**
+> This project includes **experimental support for Cowork mode** (opt-in with `--cowork yes` during build).
+> **Important:** Cowork mode on Linux is **NOT sandboxed**. Unlike macOS, there is no VM isolation—Claude Code runs directly on your host system with full user permissions. A proper VM-based implementation is planned for the future. Use at your own risk and only enable this feature if you understand the security implications.
+
+---
+
 ## Features
 
 - **Native Linux Support**: Run Claude Desktop without virtualization or Wine
