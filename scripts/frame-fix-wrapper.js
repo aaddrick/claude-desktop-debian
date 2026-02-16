@@ -96,7 +96,9 @@ Module.prototype.require = function(id) {
               // Only applies to main windows; popups don't need resize jiggle
               const [w, h] = this.getSize();
               this.setSize(w + 1, h + 1);
-              setTimeout(() => this.setSize(w, h), 50);
+              setTimeout(() => {
+                if (!this.isDestroyed()) this.setSize(w, h);
+              }, 50);
             }
           });
 
