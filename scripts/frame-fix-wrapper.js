@@ -5,12 +5,11 @@ const originalRequire = Module.prototype.require;
 console.log('[Frame Fix] Wrapper loaded');
 
 // Detect if a window intends to be frameless (popup/Quick Entry)
-// Uses the app's own frame:false intent rather than fragile pixel heuristics
-// Fixes: #223 - Quick Entry window shows unwanted frame on KDE Plasma Wayland
-// Fixes: #231 item 1 - Rework detection to use frame:false intent
+// Uses the app's own frame/titleBarStyle intent rather than pixel heuristics
+// On macOS, frameless windows use titleBarStyle:'hidden' instead of frame:false
 function isPopupWindow(options) {
   if (!options) return false;
-  return options.frame === false;
+  return options.frame === false || options.titleBarStyle === 'hidden';
 }
 
 // CSS injection for Linux scrollbar styling
@@ -58,7 +57,10 @@ Module.prototype.require = function(id) {
             // Note: skipTaskbar intentionally not set - the original app
             // never sets it, and it breaks Alt+Tab on Xfce/tiling WMs (#231)
             options.frame = false;
-            console.log('[Frame Fix] Popup detected (frame:false), keeping frameless');
+            // Remove macOS-specific titlebar options that don't apply on Linux
+            delete options.titleBarStyle;
+            delete options.titleBarOverlay;
+            console.log('[Frame Fix] Popup detected, keeping frameless');
           } else {
             // Main window: force native frame
             options.frame = true;
