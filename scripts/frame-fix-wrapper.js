@@ -91,21 +91,28 @@ Module.prototype.require = function(id) {
           this.on('show', () => {
             this.setMenuBarVisibility(false);
           });
-          this.on('ready-to-show', () => {
-            this.setMenuBarVisibility(false);
-          });
 
-          // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
-          this.on('focus', () => {
-            this.flashFrame(false);
-          });
-
-          // Fixes: #84 - Content not sized correctly unless resized
+          // Consolidate ready-to-show handling into single once() handler
+          // (ready-to-show only fires once per window lifecycle)
           this.once('ready-to-show', () => {
-            const [w, h] = this.getSize();
-            this.setSize(w + 1, h + 1);
-            setTimeout(() => this.setSize(w, h), 50);
+            this.setMenuBarVisibility(false);
+
+            if (!popup) {
+              // Fixes: #84 - Content not sized correctly unless resized
+              // Only applies to main windows; popups don't need resize jiggle
+              const [w, h] = this.getSize();
+              this.setSize(w + 1, h + 1);
+              setTimeout(() => this.setSize(w, h), 50);
+            }
           });
+
+          if (!popup) {
+            // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
+            // Only main windows need flashFrame clearing; popups are transient
+            this.on('focus', () => {
+              this.flashFrame(false);
+            });
+          }
 
           console.log('[Frame Fix] Linux patches applied');
         }
