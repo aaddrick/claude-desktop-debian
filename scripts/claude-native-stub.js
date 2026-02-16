@@ -49,8 +49,7 @@ module.exports = {
 
   // Fixes: #149 - KDE Plasma: Window demands attention
   // flashFrame is natively supported on Linux Electron.
-  // Note: frame-fix-wrapper.js auto-clears flashFrame on window focus
-  // (see the 'focus' event handler in BrowserWindowWithFrame constructor).
+  // frame-fix-wrapper.js auto-clears on window focus.
   flashFrame: (flash) => {
     const win = getWindow();
     if (win) win.flashFrame(typeof flash === 'boolean' ? flash : true);

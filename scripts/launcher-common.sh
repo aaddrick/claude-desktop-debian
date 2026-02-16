@@ -35,19 +35,11 @@ detect_display_backend() {
 	# XDG_CURRENT_DESKTOP can be colon-separated (e.g. "niri:GNOME");
 	# glob matching with *niri* handles this correctly.
 	if [[ $is_wayland == true && $use_x11_on_wayland == true ]]; then
-		local desktop
-		desktop="${XDG_CURRENT_DESKTOP:-}"
+		local desktop="${XDG_CURRENT_DESKTOP:-}"
 		desktop="${desktop,,}"
 
-		local compositor=""
-		if [[ -n "${NIRI_SOCKET:-}" ]] \
-			|| [[ "$desktop" == *"niri"* ]]; then
-			compositor="Niri"
-		fi
-
-		if [[ -n "$compositor" ]]; then
-			log_message \
-				"$compositor detected - forcing native Wayland"
+		if [[ -n "${NIRI_SOCKET:-}" || "$desktop" == *niri* ]]; then
+			log_message "Niri detected - forcing native Wayland"
 			use_x11_on_wayland=false
 		fi
 	fi

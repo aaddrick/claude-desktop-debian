@@ -58,7 +58,7 @@ Module.prototype.require = function(id) {
             // Note: skipTaskbar intentionally not set - the original app
             // never sets it, and it breaks Alt+Tab on Xfce/tiling WMs (#231)
             options.frame = false;
-            console.log('[Frame Fix] Popup window detected (frame:false intent), keeping frameless');
+            console.log('[Frame Fix] Popup detected (frame:false), keeping frameless');
           } else {
             // Main window: force native frame
             options.frame = true;
@@ -87,8 +87,7 @@ Module.prototype.require = function(id) {
             this.setMenuBarVisibility(false);
           });
 
-          // Consolidate ready-to-show handling into single once() handler
-          // (ready-to-show only fires once per window lifecycle)
+          // ready-to-show fires once per window lifecycle
           this.once('ready-to-show', () => {
             this.setMenuBarVisibility(false);
 
@@ -103,10 +102,8 @@ Module.prototype.require = function(id) {
 
           if (!popup) {
             // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
-            // Only main windows need flashFrame clearing; popups are transient
-            // Note: flashFrame() is called by the app via claude-native-stub.js
-            // (see flashFrame/clearFlashFrame exports). This handler auto-clears
-            // the attention state when the user focuses the window.
+            // Auto-clear flashFrame attention state when the user focuses
+            // the window (flashFrame is set via claude-native-stub.js)
             this.on('focus', () => {
               this.flashFrame(false);
             });
