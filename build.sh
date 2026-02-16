@@ -129,7 +129,7 @@ check_system_requirements() {
 			echo 'Running as root in CI/container environment (allowed)'
 		else
 			echo 'This script should not be run using sudo or as the root user.' >&2
-			echo 'It will prompt for sudo password when needed for specific actions.' >&2
+			echo 'It will use sudo when needed for specific actions (may prompt for password).' >&2
 			echo 'Please run as a normal user.' >&2
 			exit 1
 		fi
@@ -301,7 +301,10 @@ check_dependencies() {
 			echo 'Installing as root (no sudo needed)...'
 		else
 			echo 'Attempting to install using sudo...'
-			if ! sudo -v; then
+			# Check if we can sudo without a password first
+			if sudo -n true 2>/dev/null; then
+				echo 'Passwordless sudo detected.'
+			elif ! sudo -v; then
 				echo 'Failed to validate sudo credentials. Please ensure you can run sudo.' >&2
 				exit 1
 			fi
