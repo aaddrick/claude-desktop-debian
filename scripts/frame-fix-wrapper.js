@@ -77,7 +77,7 @@ Module.prototype.require = function(id) {
           // Fixes: #172 - Menu bar still visible despite disabling flags
           this.setMenuBarVisibility(false);
 
-          // Inject CSS for improved rendering
+          // Inject CSS for Linux scrollbar styling
           this.webContents.on('did-finish-load', () => {
             this.webContents.insertCSS(LINUX_CSS).catch(() => {});
           });
