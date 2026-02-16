@@ -356,6 +356,7 @@ Special thanks to:
 - **[Voork1144](https://github.com/Voork1144)** for detailed analysis of the tray icon minifier bug
 - **[milog1994](https://github.com/milog1994)** for Linux UX improvements including popup detection, functional stubs, and Wayland compositor support
 - **[jarrodcolburn](https://github.com/jarrodcolburn)** for passwordless sudo support in container/CI environments
+- **[chukfinley](https://github.com/chukfinley)** for experimental Cowork mode support on Linux
 
 For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
 
