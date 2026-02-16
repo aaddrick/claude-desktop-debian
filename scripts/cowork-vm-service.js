@@ -25,6 +25,8 @@
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { spawn: spawnProcess, execSync } = require('child_process');
 const { EventEmitter } = require('events');
 
 // ============================================================
@@ -43,27 +45,29 @@ const LOG_FILE = path.join(
     process.env.HOME || '/tmp',
     '.config', 'Claude', 'logs', 'cowork_vm_daemon.log'
 );
-function _writeLog(level, args) {
+function formatArgs(args) {
+    return args.map(a => typeof a === 'string' ? a : JSON.stringify(a))
+        .join(' ');
+}
+
+function writeLog(level, args) {
     const ts = new Date().toISOString();
-    const msg = `${ts} [${level}] ${LOG_PREFIX} ` +
-        args.map(a => typeof a === 'string' ? a : JSON.stringify(a))
-            .join(' ') + '\n';
+    const msg = `${ts} [${level}] ${LOG_PREFIX} ${formatArgs(args)}\n`;
     try {
         fs.appendFileSync(LOG_FILE, msg);
-    } catch (e) {
+    } catch (_) {
         // Ignore write errors (dir may not exist yet)
     }
 }
 
 function log(...args) {
-    if (DEBUG) {
-        _writeLog('debug', args);
-        console.log(LOG_PREFIX, ...args);
-    }
+    if (!DEBUG) return;
+    writeLog('debug', args);
+    console.log(LOG_PREFIX, ...args);
 }
 
 function logError(...args) {
-    _writeLog('error', args);
+    writeLog('error', args);
     console.error(LOG_PREFIX, ...args);
 }
 
@@ -213,9 +217,6 @@ class VMManager extends EventEmitter {
         // The SDK daemon runs the command inside bubblewrap sandbox
 
         // Phase 1 stub: Run directly on host (like old swift stub)
-        const { spawn } = require('child_process');
-        const os = require('os');
-
         let workDir = cwd || os.homedir();
         if (sharedCwdPath) {
             workDir = path.join(os.homedir(), sharedCwdPath);
@@ -238,7 +239,6 @@ class VMManager extends EventEmitter {
         } else if (!fs.existsSync(command)) {
             const basename = path.basename(command);
             try {
-                const { execSync } = require('child_process');
                 actualCommand = execSync(`which ${basename}`,
                     { encoding: 'utf-8' }).trim();
                 log(`spawn: resolved via which: ${actualCommand}`);
@@ -259,37 +259,29 @@ class VMManager extends EventEmitter {
         }
 
         // Build a clean environment for the spawned process.
-        // Strip from the daemon's inherited env (from Electron):
-        //   - CLAUDECODE: triggers "cannot be launched inside another session"
-        //   - ELECTRON_*: not needed for the CLI process
-        //   - CLAUDE_CODE_*: daemon inherited these from Electron, but the
-        //     app provides its own set via the env param below
-        const cleanEnv = {};
-        for (const [k, v] of Object.entries(process.env)) {
-            if (k.startsWith('CLAUDE_CODE_') ||
-                k === 'CLAUDECODE' ||
-                k === 'ELECTRON_RUN_AS_NODE' ||
-                k === 'ELECTRON_NO_ASAR') {
-                continue;
-            }
-            cleanEnv[k] = v;
-        }
+        // From daemon env: strip CLAUDECODE (triggers "cannot be launched
+        // inside another session"), ELECTRON_*, and CLAUDE_CODE_* (the app
+        // provides its own set via the env param).
+        // From app env: keep everything except CLAUDECODE and ELECTRON_*.
+        const BLOCKED_KEYS = new Set([
+            'CLAUDECODE', 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ASAR',
+        ]);
 
-        // The app-provided env contains vars Claude Code needs to operate
-        // (API keys, OAuth tokens, entrypoint, etc.). Keep all of these
-        // EXCEPT the session-detection var CLAUDECODE.
-        const cleanAppEnv = {};
-        for (const [k, v] of Object.entries(env || {})) {
-            if (k === 'CLAUDECODE' ||
-                k === 'ELECTRON_RUN_AS_NODE' ||
-                k === 'ELECTRON_NO_ASAR') {
-                continue;
+        const filterEnv = (source, stripPrefixes = []) => {
+            const result = {};
+            for (const [k, v] of Object.entries(source)) {
+                if (BLOCKED_KEYS.has(k)) continue;
+                if (stripPrefixes.some(p => k.startsWith(p))) continue;
+                result[k] = v;
             }
-            cleanAppEnv[k] = v;
-        }
+            return result;
+        };
 
-        // Build merged env, then fix VM guest paths
-        const mergedEnv = { ...cleanEnv, ...cleanAppEnv, TERM: 'xterm-256color' };
+        const mergedEnv = {
+            ...filterEnv(process.env, ['CLAUDE_CODE_']),
+            ...filterEnv(env || {}),
+            TERM: 'xterm-256color',
+        };
 
         // CLAUDE_CONFIG_DIR from the app points to a VM guest path
         // (/sessions/<name>/mnt/.claude) that doesn't exist on the host.
@@ -303,24 +295,24 @@ class VMManager extends EventEmitter {
         // Filter out args that reference VM guest paths (/sessions/...).
         // Flags like --add-dir and --plugin-dir point to paths inside the VM
         // that don't exist on the host.
-        let cleanArgs = args || [];
-        const filteredArgs = [];
-        for (let i = 0; i < cleanArgs.length; i++) {
-            if ((cleanArgs[i] === '--add-dir' || cleanArgs[i] === '--plugin-dir') &&
-                i + 1 < cleanArgs.length &&
-                cleanArgs[i + 1].startsWith('/sessions/')) {
-                log(`spawn: removing ${cleanArgs[i]} ${cleanArgs[i + 1]} (VM guest path)`);
+        const rawArgs = args || [];
+        const cleanArgs = [];
+        const guestPathFlags = new Set(['--add-dir', '--plugin-dir']);
+        for (let i = 0; i < rawArgs.length; i++) {
+            if (guestPathFlags.has(rawArgs[i]) &&
+                i + 1 < rawArgs.length &&
+                rawArgs[i + 1].startsWith('/sessions/')) {
+                log(`spawn: removing ${rawArgs[i]} ${rawArgs[i + 1]} (VM guest path)`);
                 i++; // skip the value too
                 continue;
             }
-            filteredArgs.push(cleanArgs[i]);
+            cleanArgs.push(rawArgs[i]);
         }
-        cleanArgs = filteredArgs;
 
         log(`spawn: command=${actualCommand}, args=${JSON.stringify(cleanArgs)}`);
         log(`spawn: cwd=${workDir}`);
 
-        const proc = spawn(actualCommand, cleanArgs, {
+        const proc = spawnProcess(actualCommand, cleanArgs, {
             cwd: workDir,
             env: mergedEnv,
             stdio: ['pipe', 'pipe', 'pipe'],
@@ -405,7 +397,6 @@ class VMManager extends EventEmitter {
 
         // Phase 3: Set up 9p or virtiofs share with QEMU
         // For now, return the host path directly
-        const os = require('os');
         const guestPath = path.join(os.homedir(), subpath || '');
         return { guestPath };
     }
@@ -431,7 +422,6 @@ class VMManager extends EventEmitter {
         // The app downloads Claude Code to ~/sdkSubpath/version/claude
         // Track this path so spawn() can use the correct binary
         if (sdkSubpath && version) {
-            const os = require('os');
             const candidatePath = path.join(
                 os.homedir(), sdkSubpath, version, 'claude'
             );

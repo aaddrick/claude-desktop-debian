@@ -640,12 +640,10 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	patch_cowork_linux
 
 	# Copy cowork VM service daemon for Linux Cowork mode
-	if [[ -f "$project_root/scripts/cowork-vm-service.js" ]]; then
-		echo 'Installing cowork VM service daemon...'
-		cp "$project_root/scripts/cowork-vm-service.js" \
-			app.asar.contents/cowork-vm-service.js || exit 1
-		echo 'Cowork VM service daemon installed'
-	fi
+	echo 'Installing cowork VM service daemon...'
+	cp "$project_root/scripts/cowork-vm-service.js" \
+		app.asar.contents/cowork-vm-service.js || exit 1
+	echo 'Cowork VM service daemon installed'
 }
 
 patch_titlebar_detection() {
@@ -872,7 +870,7 @@ patch_cowork_linux() {
 	# All complex patches are done via node to avoid shell escaping issues
 	# with minified JavaScript. Uses unique string anchors and dynamic
 	# variable extraction to be version-agnostic per CLAUDE.md guidelines.
-	INDEX_JS="$index_js" SVC_PATH="cowork-vm-service.js" node << 'COWORK_PATCH'
+	if ! INDEX_JS="$index_js" SVC_PATH="cowork-vm-service.js" node << 'COWORK_PATCH'
 const fs = require('fs');
 const indexJs = process.env.INDEX_JS;
 let code = fs.readFileSync(indexJs, 'utf8');
@@ -1090,10 +1088,8 @@ if (patchCount < 4) {
     console.log('  WARNING: Some patches failed - Cowork mode may not work');
 }
 COWORK_PATCH
-
-	local patch_exit=$?
-	if (( patch_exit != 0 )); then
-		echo 'WARNING: Cowork Linux patches failed (exit code: '"$patch_exit"')' >&2
+	then
+		echo 'WARNING: Cowork Linux patches failed' >&2
 		echo 'Cowork mode may not be available on Linux' >&2
 	fi
 
@@ -1138,13 +1134,11 @@ finalize_app_asar() {
 	cp "$project_root/scripts/claude-native-stub.js" \
 		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js" || exit 1
 
-	# Copy cowork VM service daemon (must be unpacked for child_process.spawn)
-	if [[ -f "$project_root/scripts/cowork-vm-service.js" ]]; then
-		echo 'Copying cowork VM service daemon to unpacked directory...'
-		cp "$project_root/scripts/cowork-vm-service.js" \
-			"$app_staging_dir/app.asar.unpacked/cowork-vm-service.js" || exit 1
-		echo 'Cowork VM service daemon copied to unpacked'
-	fi
+	# Copy cowork VM service daemon (must be unpacked for child_process.fork)
+	echo 'Copying cowork VM service daemon to unpacked directory...'
+	cp "$project_root/scripts/cowork-vm-service.js" \
+		"$app_staging_dir/app.asar.unpacked/cowork-vm-service.js" || exit 1
+	echo 'Cowork VM service daemon copied to unpacked'
 
 	# Copy node-pty native binaries
 	if [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
