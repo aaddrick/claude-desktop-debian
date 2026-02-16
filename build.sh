@@ -609,12 +609,6 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	cp "$project_root/scripts/claude-native-stub.js" \
 		app.asar.contents/node_modules/@ant/claude-native/index.js || exit 1
 
-	# Create claude-swift stub for Cowork mode (Linux VM replacement)
-	echo 'Creating claude-swift stub for Cowork mode...'
-	mkdir -p app.asar.contents/node_modules/@ant/claude-swift || exit 1
-	cp "$project_root/scripts/claude-swift-stub.js" \
-		app.asar.contents/node_modules/@ant/claude-swift/index.js || exit 1
-
 	mkdir -p app.asar.contents/resources/i18n || exit 1
 	cp "$claude_extract_dir/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ || exit 1
 
@@ -641,6 +635,15 @@ console.log('Updated package.json: main entry and node-pty dependency');
 
 	# Add Linux Claude Code support
 	patch_linux_claude_code
+
+	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
+	patch_cowork_linux
+
+	# Copy cowork VM service daemon for Linux Cowork mode
+	echo 'Installing cowork VM service daemon...'
+	cp "$project_root/scripts/cowork-vm-service.js" \
+		app.asar.contents/cowork-vm-service.js || exit 1
+	echo 'Cowork VM service daemon installed'
 }
 
 patch_titlebar_detection() {
@@ -854,6 +857,245 @@ patch_linux_claude_code() {
 	fi
 }
 
+patch_cowork_linux() {
+	echo 'Patching Cowork mode for Linux...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	if ! grep -q 'vmClient (TypeScript)' "$index_js"; then
+		echo '  Cowork mode code not found in this version, skipping'
+		echo '##############################################################'
+		return
+	fi
+
+	# All complex patches are done via node to avoid shell escaping issues
+	# with minified JavaScript. Uses unique string anchors and dynamic
+	# variable extraction to be version-agnostic per CLAUDE.md guidelines.
+	if ! INDEX_JS="$index_js" SVC_PATH="cowork-vm-service.js" node << 'COWORK_PATCH'
+const fs = require('fs');
+const indexJs = process.env.INDEX_JS;
+let code = fs.readFileSync(indexJs, 'utf8');
+let patchCount = 0;
+
+// ============================================================
+// Patch 1: Platform check - allow Linux through fz()
+// Pattern: VAR!=="darwin"&&VAR!=="win32" (unique in platform gate)
+// Anchor: appears before 'Unsupported platform:' string
+// ============================================================
+const platformGateRe = /(\w+)(\s*!==\s*"darwin"\s*&&\s*)\1(\s*!==\s*"win32")/g;
+const origCode = code;
+code = code.replace(platformGateRe, (match, varName, mid, end) => {
+    // Only patch the instance near the "Unsupported platform" error
+    const matchIdx = origCode.indexOf(match);
+    const nearbyText = origCode.substring(matchIdx, matchIdx + 200);
+    if (nearbyText.includes('Unsupported platform')) {
+        return `${varName}${mid}${varName}${end}&&${varName}!=="linux"`;
+    }
+    return match;
+});
+if (code !== origCode) {
+    console.log('  Patched platform check to allow Linux');
+    patchCount++;
+} else {
+    // Try without backreference (in case minifier uses different var names)
+    const simpleRe = /(!=="darwin"\s*&&\s*\w+\s*!=="win32")([\s\S]{0,50}Unsupported platform)/;
+    const simpleMatch = code.match(simpleRe);
+    if (simpleMatch) {
+        const varMatch = simpleMatch[0].match(/(\w+)\s*!==\s*"win32"/);
+        if (varMatch) {
+            code = code.replace(simpleMatch[1],
+                simpleMatch[1] + '&&' + varMatch[1] + '!=="linux"');
+            console.log('  Patched platform check to allow Linux (fallback)');
+            patchCount++;
+        }
+    }
+}
+
+// ============================================================
+// Patch 2: Module loading - use TypeScript VM client on Linux
+// Anchor: unique string "vmClient (TypeScript)"
+// Extracts the win32 platform variable, adds Linux OR condition
+// ============================================================
+const vmClientLogMatch = code.match(/(\w+)(\s*\?\s*"vmClient \(TypeScript\)")/);
+if (vmClientLogMatch) {
+    const win32Var = vmClientLogMatch[1];
+
+    // 2a: Patch the log/description line
+    // FROM: WIN32VAR?"vmClient (TypeScript)"
+    // TO:   (WIN32VAR||process.platform==="linux")?"vmClient (TypeScript)"
+    // Use negative lookbehind to avoid double-patching
+    const logRe = new RegExp(
+        '(?<!\\|\\|process\\.platform==="linux"\\))' +
+        win32Var.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        '(\\s*\\?\\s*"vmClient \\(TypeScript\\)")'
+    );
+    if (logRe.test(code)) {
+        code = code.replace(logRe,
+            '(' + win32Var + '||process.platform==="linux")$1');
+        console.log('  Patched VM client log check for Linux');
+        patchCount++;
+    }
+
+    // 2b: Patch the actual module assignment
+    // Beautified: WIN32VAR ? (df = { vm: bYe }) : (df = ...)
+    // Minified:   WIN32VAR?df={vm:bYe}:df=...
+    // Handle both: outer parens are optional in minified code
+    const assignRe = new RegExp(
+        '(?<!\\|\\|process\\.platform==="linux"\\)?)' +
+        win32Var.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        '(\\s*\\?\\s*\\(?\\s*\\w+\\s*=\\s*\\{\\s*vm\\s*:\\s*\\w+\\s*\\}\\s*\\)?)'
+    );
+    if (assignRe.test(code)) {
+        code = code.replace(assignRe,
+            '(' + win32Var + '||process.platform==="linux")$1');
+        console.log('  Patched VM module assignment for Linux');
+        patchCount++;
+    }
+} else {
+    console.log('  WARNING: Could not find vmClient variable for module loading patch');
+}
+
+// ============================================================
+// Patch 3: Socket path - use Unix domain socket on Linux
+// Anchor: unique string "cowork-vm-service" in pipe path
+// ============================================================
+const pipeMatch = code.match(/(\w+)(\s*=\s*)"([^"]*\\\\[^"]*cowork-vm-service[^"]*)"/);
+if (pipeMatch) {
+    const pipeVar = pipeMatch[1];
+    const assign = pipeMatch[2];
+    const pipeStr = pipeMatch[3];
+    const oldExpr = pipeVar + assign + '"' + pipeStr + '"';
+    const newExpr = pipeVar + assign +
+        'process.platform==="linux"?' +
+        '(process.env.XDG_RUNTIME_DIR||"/tmp")+"/cowork-vm-service.sock"' +
+        ':"' + pipeStr + '"';
+    code = code.replace(oldExpr, newExpr);
+    console.log('  Patched socket path for Linux Unix domain socket');
+    patchCount++;
+} else {
+    console.log('  WARNING: Could not find pipe path for socket patch');
+}
+
+// ============================================================
+// Patch 4: Bundle manifest - add Linux entries to Ln.files
+// Anchor: find files:{darwin: near rootfs.img checksum pattern
+// Uses empty arrays so C$() returns true (vacuous truth),
+// meaning no downloads are needed for Linux.
+// ============================================================
+if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
+    !code.includes('linux:{')) {
+    // Find the manifest SHA (40-char hex near files:{)
+    const shaRe = /sha\s*:\s*"([a-f0-9]{40})"/;
+    const shaMatch = code.match(shaRe);
+    if (shaMatch) {
+        // Find 'files:' or 'files :' after the sha
+        const shaIdx = code.indexOf(shaMatch[0]);
+        const afterSha = code.indexOf('files', shaIdx);
+        if (afterSha !== -1 && afterSha - shaIdx < 200) {
+            // Find the opening brace of files object
+            const filesOpen = code.indexOf('{', afterSha);
+            if (filesOpen !== -1) {
+                // Count braces to find the closing of the files object
+                let depth = 1;
+                let pos = filesOpen + 1;
+                while (depth > 0 && pos < code.length) {
+                    if (code[pos] === '{') depth++;
+                    else if (code[pos] === '}') depth--;
+                    pos++;
+                }
+                // pos is just after the closing } of files
+                // Insert linux entry before that closing }
+                const insertPos = pos - 1;
+                const linuxEntry =
+                    ',linux:{x64:[],arm64:[]}';
+                code = code.substring(0, insertPos) +
+                    linuxEntry + code.substring(insertPos);
+                console.log('  Added Linux entries to bundle manifest');
+                patchCount++;
+            }
+        }
+    }
+    if (!code.includes('linux:{x64:[]')) {
+        console.log('  WARNING: Could not add Linux bundle manifest entries');
+    }
+}
+
+// ============================================================
+// Patch 5: MSIX check bypass for Linux
+// The fz() function checks: if(t==="win32"&&!ga()) for MSIX
+// This is already gated to win32, so no change needed.
+// ============================================================
+
+// ============================================================
+// Patch 6: Auto-launch service daemon on first connection attempt
+// Anchor: unique string "VM service not running. The service failed to start."
+// Inject auto-spawn logic before the retry delay in Ma()
+// ============================================================
+const serviceErrorStr = 'VM service not running. The service failed to start.';
+const serviceErrorIdx = code.indexOf(serviceErrorStr);
+if (serviceErrorIdx !== -1) {
+    // The retry delay is AFTER the error string in the catch block:
+    //   throw i ? new Error("VM service not running...") : n;
+    //   await new Promise(a=>setTimeout(a,delay))
+    const searchEnd = Math.min(code.length, serviceErrorIdx + 300);
+    const searchRegion = code.substring(serviceErrorIdx, searchEnd);
+    const retryMatch = searchRegion.match(
+        /await new Promise\((\w+)=>\s*setTimeout\(\1,\s*(\w+)\)\)/
+    );
+    if (retryMatch) {
+        const retryStr = retryMatch[0];
+        const retryOffset = searchRegion.indexOf(retryStr);
+        const retryAbsIdx = serviceErrorIdx + retryOffset;
+        // Inject auto-launch before the retry delay
+        // Service script is in app.asar.unpacked/ (not inside asar, since
+        // child_process cannot execute scripts from inside an asar).
+        // Uses fork() instead of spawn() because process.execPath in Electron
+        // is the Electron binary - spawn would trigger "file open" handling
+        // instead of executing the script as Node.js.
+        const svcPath = process.env.SVC_PATH || 'cowork-vm-service.js';
+        // Always try to launch - the service daemon handles dedup
+        // (tests existing socket, exits if active, cleans stale and starts)
+        // Don't check socket existence here since stale sockets cause ECONNREFUSED
+        const autoLaunch =
+            'process.platform==="linux"&&!Ma._svcLaunched&&(Ma._svcLaunched=true,' +
+            '(()=>{try{' +
+            'const _d=require("path").join(process.resourcesPath,' +
+            '"app.asar.unpacked","' + svcPath + '");' +
+            'if(require("fs").existsSync(_d)){' +
+            'const _c=require("child_process").fork(_d,[],' +
+            '{detached:true,stdio:"ignore",env:{...process.env,' +
+            'ELECTRON_RUN_AS_NODE:"1"}});_c.unref()}' +
+            '}catch(_e){console.error("[cowork-autolaunch]",_e)}})()),';
+        code = code.substring(0, retryAbsIdx) +
+            autoLaunch + code.substring(retryAbsIdx);
+        console.log('  Added service daemon auto-launch on Linux');
+        patchCount++;
+    } else {
+        console.log('  WARNING: Could not find retry delay for auto-launch patch');
+    }
+} else {
+    console.log('  WARNING: Could not find VM service error string for auto-launch');
+}
+
+// ============================================================
+// Patch 7: Skip Windows-specific smol-bin.vhdx copy on Linux
+// The code already checks: if(process.platform==="win32")
+// No change needed - win32-gated code is skipped on Linux.
+// ============================================================
+
+fs.writeFileSync(indexJs, code);
+console.log(`  Applied ${patchCount} cowork patches`);
+if (patchCount < 4) {
+    console.log('  WARNING: Some patches failed - Cowork mode may not work');
+}
+COWORK_PATCH
+	then
+		echo 'WARNING: Cowork Linux patches failed' >&2
+		echo 'Cowork mode may not be available on Linux' >&2
+	fi
+
+	echo '##############################################################'
+}
+
 install_node_pty() {
 	section_header 'Installing node-pty for terminal support'
 
@@ -892,10 +1134,11 @@ finalize_app_asar() {
 	cp "$project_root/scripts/claude-native-stub.js" \
 		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js" || exit 1
 
-	# Copy claude-swift stub for Cowork mode
-	mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift" || exit 1
-	cp "$project_root/scripts/claude-swift-stub.js" \
-		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-swift/index.js" || exit 1
+	# Copy cowork VM service daemon (must be unpacked for child_process.fork)
+	echo 'Copying cowork VM service daemon to unpacked directory...'
+	cp "$project_root/scripts/cowork-vm-service.js" \
+		"$app_staging_dir/app.asar.unpacked/cowork-vm-service.js" || exit 1
+	echo 'Cowork VM service daemon copied to unpacked'
 
 	# Copy node-pty native binaries
 	if [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
