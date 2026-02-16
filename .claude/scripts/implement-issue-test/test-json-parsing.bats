@@ -735,7 +735,7 @@ FIXTURE_EOF
 
 @test "BINARY: JSON with high ASCII characters" {
 	# Characters > 127 might cause issues
-	local json='{"data":"caf\xc3\xa9"}'  # UTF-8 for "cafe" with accent
+	local json='{"data":"\xc3\xa9"}'  # UTF-8 for e-with-accent
 
 	local result
 	result=$(echo "$json" | jq -c '.' 2>&1) || true

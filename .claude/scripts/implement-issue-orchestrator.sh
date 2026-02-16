@@ -127,7 +127,8 @@ LOG_FILE=""
 STAGE_COUNTER=0
 
 log() {
-    local msg="[$(date -Iseconds)] $*"
+    local msg
+    msg="[$(date -Iseconds)] $*"
     if [[ -n "$LOG_FILE" ]]; then
         printf '%s\n' "$msg" >> "$LOG_FILE"
     fi
@@ -135,7 +136,8 @@ log() {
 }
 
 log_error() {
-    local msg="[$(date -Iseconds)] ERROR: $*"
+    local msg
+    msg="[$(date -Iseconds)] ERROR: $*"
     if [[ -n "$LOG_FILE" ]]; then
         printf '%s\n' "$msg" >> "$LOG_FILE"
     fi
@@ -192,33 +194,6 @@ init_status() {
         }' > "$STATUS_FILE"
 
     log "Initialized status file: $STATUS_FILE"
-    sync_status_to_log
-}
-
-update_stage() {
-    local stage="$1"
-    local status="$2"
-    local extra_field="${3:-}"
-    local extra_value="${4:-}"
-
-    if [[ -n "$extra_field" ]]; then
-        jq --arg stage "$stage" \
-           --arg status "$status" \
-           --arg field "$extra_field" \
-           --arg value "$extra_value" \
-           '.stages[$stage].status = $status |
-            .stages[$stage][$field] = $value |
-            .current_stage = $stage |
-            .last_update = (now | todate)' \
-           "$STATUS_FILE" > "${STATUS_FILE}.tmp" && mv "${STATUS_FILE}.tmp" "$STATUS_FILE"
-    else
-        jq --arg stage "$stage" \
-           --arg status "$status" \
-           '.stages[$stage].status = $status |
-            .current_stage = $stage |
-            .last_update = (now | todate)' \
-           "$STATUS_FILE" > "${STATUS_FILE}.tmp" && mv "${STATUS_FILE}.tmp" "$STATUS_FILE"
-    fi
     sync_status_to_log
 }
 
@@ -372,12 +347,16 @@ load_resume_state() {
     RESUME_TASK=$(jq -r '.current_task // 0' "$status_path")
     RESUME_TASKS_JSON=$(jq -c '.tasks // []' "$status_path")
 
-    # Restore iteration counters
+    # Restore iteration counters (reserved for future resume functionality)
+    # shellcheck disable=SC2034
     RESUME_QUALITY_ITERATIONS=$(jq -r '.quality_iterations // 0' "$status_path")
+    # shellcheck disable=SC2034
     RESUME_TEST_ITERATIONS=$(jq -r '.test_iterations // 0' "$status_path")
+    # shellcheck disable=SC2034
     RESUME_PR_ITERATIONS=$(jq -r '.pr_review_iterations // 0' "$status_path")
 
     # Get PR number if it exists
+    # shellcheck disable=SC2034
     RESUME_PR_NUMBER=$(jq -r '.stages.pr.pr_number // empty' "$status_path")
 }
 
@@ -422,9 +401,13 @@ BRANCH=""
 RESUME_STAGE=""
 RESUME_TASK=""
 RESUME_TASKS_JSON=""
+# shellcheck disable=SC2034 # Reserved for future resume functionality
 RESUME_QUALITY_ITERATIONS=0
+# shellcheck disable=SC2034
 RESUME_TEST_ITERATIONS=0
+# shellcheck disable=SC2034
 RESUME_PR_ITERATIONS=0
+# shellcheck disable=SC2034
 RESUME_PR_NUMBER=""
 
 if [[ "$RESUME_MODE" == "logdir" ]]; then
@@ -660,7 +643,8 @@ run_stage() {
     local schema_file="$3"
     local agent="${4:-}"
 
-    local stage_log="$LOG_BASE/stages/$(next_stage_log "$stage_name")"
+    local stage_log
+    stage_log="$LOG_BASE/stages/$(next_stage_log "$stage_name")"
 
     # Validate schema file exists
     if [[ ! -f "$SCHEMA_DIR/$schema_file" ]]; then
@@ -692,9 +676,11 @@ run_stage() {
         --json-schema "$schema" \
         2>&1) || exit_code=$?
 
-    printf '%s\n' "=== $stage_name output ===" >> "$stage_log"
-    printf '%s\n' "$output" >> "$stage_log"
-    printf '%s\n' "=== exit code: $exit_code ===" >> "$stage_log"
+    {
+        printf '%s\n' "=== $stage_name output ==="
+        printf '%s\n' "$output"
+        printf '%s\n' "=== exit code: $exit_code ==="
+    } >> "$stage_log"
 
     # Check timeout
     if (( exit_code == 124 )); then
