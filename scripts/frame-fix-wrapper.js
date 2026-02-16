@@ -13,7 +13,7 @@ function isPopupWindow(options) {
   return options.frame === false;
 }
 
-// CSS injection for improved Linux rendering
+// CSS injection for Linux scrollbar styling
 // Respects both light and dark themes via prefers-color-scheme
 const LINUX_CSS = `
   /* Scrollbar styling - thin, unobtrusive, adapts to theme */
@@ -34,11 +34,6 @@ const LINUX_CSS = `
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(200, 200, 200, 0.4);
     }
-  }
-  /* Improved font rendering on Linux */
-  body {
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
   }
 `;
 
