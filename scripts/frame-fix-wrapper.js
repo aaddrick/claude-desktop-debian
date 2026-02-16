@@ -104,6 +104,9 @@ Module.prototype.require = function(id) {
           if (!popup) {
             // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
             // Only main windows need flashFrame clearing; popups are transient
+            // Note: flashFrame() is called by the app via claude-native-stub.js
+            // (see flashFrame/clearFlashFrame exports). This handler auto-clears
+            // the attention state when the user focuses the window.
             this.on('focus', () => {
               this.flashFrame(false);
             });
