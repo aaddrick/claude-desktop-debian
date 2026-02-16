@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error"]},
+    "commit": {"type": "string"},
+    "files_simplified": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "changes_made": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "summary": {"type": "string"},
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status", "summary"]
+}

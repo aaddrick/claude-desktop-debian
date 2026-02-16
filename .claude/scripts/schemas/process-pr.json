@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Structured output from process-pr skill for batch processing",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["merged", "changes_requested", "error", "rate_limit"],
+      "description": "Final status of PR processing"
+    },
+    "follow_up_issues": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "Issue numbers created as follow-ups from code review"
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message if status is error or rate_limit"
+    }
+  },
+  "required": ["status"]
+}

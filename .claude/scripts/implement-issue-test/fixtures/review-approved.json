@@ -1,0 +1,8 @@
+{
+    "result": "approved",
+    "structured_output": {
+        "status": "success",
+        "result": "approved",
+        "comments": "Code looks good. All standards followed."
+    }
+}

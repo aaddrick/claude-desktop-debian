@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "result": {"enum": ["passed", "failed"]},
+    "total_tests": {"type": "integer"},
+    "passed_tests": {"type": "integer"},
+    "failed_tests": {"type": "integer"},
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "test": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "summary": {"type": "string"}
+  },
+  "required": ["result", "summary"]
+}

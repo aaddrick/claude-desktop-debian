@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error"]},
+    "context": {
+      "type": "object",
+      "properties": {
+        "issue_title": {"type": "string"},
+        "issue_body": {"type": "string"},
+        "related_files": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status"]
+}

@@ -1,0 +1,11 @@
+{
+    "result": "passed",
+    "structured_output": {
+        "status": "success",
+        "result": "passed",
+        "tests_run": 42,
+        "tests_passed": 42,
+        "tests_failed": 0,
+        "failures": []
+    }
+}

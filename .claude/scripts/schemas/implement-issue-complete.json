@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error", "max_iterations"]},
+    "pr_number": {"type": "integer"},
+    "branch": {"type": "string"},
+    "decisions": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "reviews_passed": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "summary": {"type": "string"},
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status", "summary"]
+}

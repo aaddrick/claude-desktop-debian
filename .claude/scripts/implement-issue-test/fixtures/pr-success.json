@@ -1,0 +1,8 @@
+{
+    "result": "PR created successfully",
+    "structured_output": {
+        "status": "success",
+        "pr_number": 456,
+        "pr_url": "https://github.com/aaddrick/claude-desktop-debian/pull/456"
+    }
+}

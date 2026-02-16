@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error"]},
+    "approach": {"type": "string"},
+    "rationale": {"type": "string"},
+    "risks": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "summary": {"type": "string"},
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status", "summary"]
+}

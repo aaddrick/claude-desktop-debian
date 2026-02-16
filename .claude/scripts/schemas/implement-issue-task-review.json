@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "result": {"enum": ["passed", "failed"]},
+    "suggested_improvements": {"enum": ["yes", "no"]},
+    "comments": {"type": "string"}
+  },
+  "required": ["result", "suggested_improvements"]
+}

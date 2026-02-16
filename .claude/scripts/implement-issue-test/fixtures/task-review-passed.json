@@ -1,0 +1,9 @@
+{
+    "result": "Task review completed",
+    "structured_output": {
+        "status": "success",
+        "result": "passed",
+        "suggested_improvements": "no",
+        "comments": "Task implementation meets requirements."
+    }
+}

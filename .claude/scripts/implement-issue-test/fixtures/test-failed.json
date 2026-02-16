@@ -1,0 +1,20 @@
+{
+    "result": "failed",
+    "structured_output": {
+        "status": "success",
+        "result": "failed",
+        "tests_run": 42,
+        "tests_passed": 40,
+        "tests_failed": 2,
+        "failures": [
+            {
+                "test": "UserTest::testCreateUser",
+                "message": "Expected status 201, got 500"
+            },
+            {
+                "test": "UserTest::testValidation",
+                "message": "Validation should fail for empty email"
+            }
+        ]
+    }
+}

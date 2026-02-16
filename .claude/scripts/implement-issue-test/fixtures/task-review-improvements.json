@@ -1,0 +1,9 @@
+{
+    "result": "Task review completed with suggestions",
+    "structured_output": {
+        "status": "success",
+        "result": "passed",
+        "suggested_improvements": "yes",
+        "comments": "Implementation works but could be improved:\n1. Add input validation\n2. Consider caching"
+    }
+}

@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "result": {"enum": ["approved", "changes_requested"]},
+    "comments": {"type": "string"},
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {"enum": ["major", "minor"]},
+          "description": {"type": "string"},
+          "file": {"type": "string"},
+          "line": {"type": "integer"}
+        }
+      }
+    },
+    "summary": {"type": "string"}
+  },
+  "required": ["result", "summary"]
+}

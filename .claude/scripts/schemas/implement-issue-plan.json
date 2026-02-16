@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error"]},
+    "plan_path": {"type": "string"},
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "description": {"type": "string"},
+          "agent": {"type": "string"}
+        },
+        "required": ["id", "description", "agent"]
+      }
+    },
+    "summary": {"type": "string"},
+    "task_list_markdown": {"type": "string"},
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status", "summary", "task_list_markdown"]
+}

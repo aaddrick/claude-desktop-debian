@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error"]},
+    "worktree": {"type": "string"},
+    "branch": {"type": "string"},
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status"]
+}

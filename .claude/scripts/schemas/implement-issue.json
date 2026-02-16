@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Structured output from implement-issue skill for batch processing",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["success", "error", "rate_limit"],
+      "description": "Final status of the implementation attempt"
+    },
+    "pr_number": {
+      "type": "integer",
+      "description": "PR number if created successfully"
+    },
+    "branch": {
+      "type": "string",
+      "description": "Feature branch name (e.g., issue-123-fix-auth)"
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message if status is error or rate_limit"
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["fetch", "research", "plan", "implement", "test", "review", "pr"],
+      "description": "Stage where error occurred (only present on error)"
+    }
+  },
+  "required": ["status"]
+}

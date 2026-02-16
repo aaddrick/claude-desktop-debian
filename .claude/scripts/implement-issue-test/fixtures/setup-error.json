@@ -1,0 +1,10 @@
+{
+    "result": "Setup failed due to invalid issue",
+    "structured_output": {
+        "status": "error",
+        "error": "Issue #999 not found",
+        "worktree": null,
+        "branch": null,
+        "tasks": []
+    }
+}

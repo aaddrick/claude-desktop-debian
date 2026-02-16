@@ -1,0 +1,7 @@
+{
+    "result": "Rate limit exceeded. Please wait 30 minutes before retrying.",
+    "structured_output": {
+        "status": "rate_limit",
+        "error": "Too many requests. Retry after 1800 seconds."
+    }
+}

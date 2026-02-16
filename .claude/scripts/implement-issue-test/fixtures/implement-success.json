@@ -1,0 +1,11 @@
+{
+    "result": "Implementation completed",
+    "structured_output": {
+        "status": "success",
+        "commit": "abc1234def5678",
+        "files_changed": [
+            "build.sh",
+            "launcher.sh"
+        ]
+    }
+}

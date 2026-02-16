@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["success", "error"]},
+    "pr_number": {"type": "integer"},
+    "pr_url": {"type": "string"},
+    "error": {"type": ["string", "null"]}
+  },
+  "required": ["status"]
+}

@@ -1,0 +1,8 @@
+{
+    "result": "changes_requested",
+    "structured_output": {
+        "status": "success",
+        "result": "changes_requested",
+        "comments": "Please fix the following:\n1. Missing error handling in download_installer\n2. build.sh should validate extracted paths\n3. Variable naming inconsistent"
+    }
+}
