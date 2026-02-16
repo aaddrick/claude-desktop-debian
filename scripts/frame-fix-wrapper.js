@@ -4,13 +4,13 @@ const originalRequire = Module.prototype.require;
 
 console.log('[Frame Fix] Wrapper loaded');
 
-// Detect if a window is a popup/Quick Entry window (small dimensions)
+// Detect if a window intends to be frameless (popup/Quick Entry)
+// Uses the app's own frame:false intent rather than fragile pixel heuristics
 // Fixes: #223 - Quick Entry window shows unwanted frame on KDE Plasma Wayland
+// Fixes: #231 item 1 - Rework detection to use frame:false intent
 function isPopupWindow(options) {
   if (!options) return false;
-  const w = options.width || 0;
-  const h = options.height || 0;
-  return (w > 0 && w < 600) || (h > 0 && h < 400);
+  return options.frame === false;
 }
 
 // CSS injection for improved Linux rendering
@@ -60,9 +60,10 @@ Module.prototype.require = function(id) {
 
           if (popup) {
             // Popup/Quick Entry windows: keep frameless for proper UX
+            // Note: skipTaskbar intentionally not set - the original app
+            // never sets it, and it breaks Alt+Tab on Xfce/tiling WMs (#231)
             options.frame = false;
-            options.skipTaskbar = true;
-            console.log('[Frame Fix] Popup window detected, keeping frameless');
+            console.log('[Frame Fix] Popup window detected (frame:false intent), keeping frameless');
           } else {
             // Main window: force native frame
             options.frame = true;
