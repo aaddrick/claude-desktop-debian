@@ -29,20 +29,25 @@ detect_display_backend() {
 	[[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]] && use_x11_on_wayland=false
 
 	# Fixes: #226 - Auto-detect compositors that require native Wayland
-	# Niri, Sway, and Hyprland don't support XWayland well
+	# Only Niri is auto-forced: it has no XWayland support.
+	# Sway and Hyprland have working XWayland, so users on those
+	# compositors who want native Wayland can set CLAUDE_USE_WAYLAND=1.
+	# XDG_CURRENT_DESKTOP can be colon-separated (e.g. "niri:GNOME");
+	# glob matching with *niri* handles this correctly.
 	if [[ $is_wayland == true && $use_x11_on_wayland == true ]]; then
+		local desktop
+		desktop="${XDG_CURRENT_DESKTOP:-}"
+		desktop="${desktop,,}"
+
 		local compositor=""
-		# Detect Niri via its socket or XDG_CURRENT_DESKTOP
-		if [[ -n "${NIRI_SOCKET:-}" ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == *"niri"* ]]; then
+		if [[ -n "${NIRI_SOCKET:-}" ]] \
+			|| [[ "$desktop" == *"niri"* ]]; then
 			compositor="Niri"
-		elif [[ "${XDG_CURRENT_DESKTOP:-}" == *"sway"* ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == *"Sway"* ]]; then
-			compositor="Sway"
-		elif [[ "${XDG_CURRENT_DESKTOP:-}" == *"Hyprland"* ]]; then
-			compositor="Hyprland"
 		fi
 
 		if [[ -n "$compositor" ]]; then
-			log_message "$compositor compositor detected - forcing native Wayland"
+			log_message \
+				"$compositor detected - forcing native Wayland"
 			use_x11_on_wayland=false
 		fi
 	fi
