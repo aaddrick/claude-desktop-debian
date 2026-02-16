@@ -159,6 +159,7 @@ acquire_lock() {
     echo $$ > "$LOCK_FILE"
 }
 
+# shellcheck disable=SC2317,SC2329 # Called indirectly via trap
 release_lock() {
     if [[ -f "$LOCK_FILE" ]] && [[ "$(cat "$LOCK_FILE" 2>/dev/null)" == "$$" ]]; then
         rm -f "$LOCK_FILE"
@@ -399,9 +400,6 @@ cleanup_worktree() {
         return
     fi
 
-    local worktree_branch
-    worktree_branch=$(jq -r '.branch // empty' "$issue_status_file" 2>/dev/null)
-
     log "Cleaning up worktree for issue #$issue_num: $worktree_path"
 
     if git worktree remove "$worktree_path" --force 2>/dev/null; then
@@ -454,9 +452,11 @@ process_issue() {
         --status-file "$issue_status_file" \
         2>&1) || impl_exit=$?
 
-    echo "=== implement-issue output ===" >> "$issue_log"
-    echo "$impl_output" >> "$issue_log"
-    echo "=== exit code: $impl_exit ===" >> "$issue_log"
+    {
+        echo "=== implement-issue output ==="
+        echo "$impl_output"
+        echo "=== exit code: $impl_exit ==="
+    } >> "$issue_log"
 
     # Parse result from status file
     local impl_status="error"
@@ -527,9 +527,11 @@ process_issue() {
         --json-schema "$PROCESS_SCHEMA" \
         2>&1) || proc_exit=$?
 
-    echo "=== process-pr output ===" >> "$issue_log"
-    echo "$proc_output" >> "$issue_log"
-    echo "=== exit code: $proc_exit ===" >> "$issue_log"
+    {
+        echo "=== process-pr output ==="
+        echo "$proc_output"
+        echo "=== exit code: $proc_exit ==="
+    } >> "$issue_log"
 
     # Update session ID
     session_id=$(echo "$proc_output" | jq -r '.session_id // empty' 2>/dev/null)

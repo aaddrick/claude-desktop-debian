@@ -582,22 +582,10 @@ require('./frame-fix-wrapper.js');
 require('./${original_main}');
 EOFENTRY
 
-	# Patch BrowserWindow creation
-	echo 'Searching and patching BrowserWindow creation in main process files...'
-	find app.asar.contents/.vite/build -type f -name '*.js' -exec grep -l 'BrowserWindow' {} \; > /tmp/bw-files.txt
-
-	local file
-	while IFS= read -r file; do
-		if [[ -f $file ]]; then
-			echo "Patching $file for native frames..."
-			sed -i 's/frame[[:space:]]*:[[:space:]]*false/frame:true/g' "$file"
-			sed -i 's/frame[[:space:]]*:[[:space:]]*!0/frame:true/g' "$file"
-			sed -i 's/frame[[:space:]]*:[[:space:]]*!1/frame:true/g' "$file"
-			sed -i 's/titleBarStyle[[:space:]]*:[[:space:]]*[^,}]*/titleBarStyle:""/g' "$file"
-			echo "Patched $file"
-		fi
-	done < /tmp/bw-files.txt
-	rm -f /tmp/bw-files.txt
+	# BrowserWindow frame/titleBarStyle patching is handled at runtime by
+	# frame-fix-wrapper.js via a Proxy on require('electron'). No sed patches
+	# needed — the wrapper detects popup vs main windows by their options and
+	# applies frame:true/false accordingly.
 
 	# Update package.json
 	echo 'Modifying package.json to load frame fix and add node-pty...'

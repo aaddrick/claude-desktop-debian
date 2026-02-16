@@ -32,7 +32,6 @@ ISSUE_NUMBER="${1:?Usage: batch-runner.sh <issue_number> <base_branch>}"
 BASE_BRANCH="${2:?Usage: batch-runner.sh <issue_number> <base_branch>}"
 
 # Exit codes for different failure types
-EXIT_SUCCESS=0
 EXIT_RATE_LIMIT=10
 EXIT_PARSE_ERROR=20
 EXIT_LOGIC_ERROR=30
@@ -153,13 +152,10 @@ if claude -p "/implement-issue $ISSUE_NUMBER $BASE_BRANCH" \
     --output-format json \
     > "$IMPLEMENT_OUTPUT" 2>&1; then
 
-    IMPLEMENT_STATUS="success"
+    : # success - fall through to PR extraction
 else
-    IMPLEMENT_EXIT_CODE=$?
-
     # Check if rate limited
     if check_rate_limit "$(cat "$IMPLEMENT_OUTPUT")"; then
-        IMPLEMENT_STATUS="rate_limit"
         RATE_INFO=$(extract_rate_limit_info "$(cat "$IMPLEMENT_OUTPUT")")
         RETRY_AFTER=$(echo "$RATE_INFO" | cut -d'|' -f1)
         RESET_AT=$(echo "$RATE_INFO" | cut -d'|' -f2)
@@ -183,9 +179,8 @@ else
         rm -f "$IMPLEMENT_OUTPUT"
         exit $EXIT_RATE_LIMIT
     else
-        IMPLEMENT_STATUS="error"
         # Capture full error but limit to 2000 chars for JSON safety
-        ERROR_MSG=$(cat "$IMPLEMENT_OUTPUT" | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-2000)
+        ERROR_MSG=$(tr '\n' ' ' < "$IMPLEMENT_OUTPUT" | sed 's/"/\\"/g' | cut -c1-2000)
         if [ ${#ERROR_MSG} -eq 2000 ]; then
             ERROR_MSG="${ERROR_MSG}... [truncated, see log file]"
         fi
@@ -261,8 +256,6 @@ if claude -p "/process-pr $PR_NUMBER $ISSUE_NUMBER $BASE_BRANCH" \
         PROCESS_STATUS="approved"
     fi
 else
-    PROCESS_EXIT_CODE=$?
-
     # Check if rate limited
     if check_rate_limit "$(cat "$PROCESS_OUTPUT")"; then
         PROCESS_STATUS="rate_limit"
@@ -291,7 +284,7 @@ else
     else
         PROCESS_STATUS="error"
         # Capture full error but limit to 2000 chars for JSON safety
-        ERROR_MSG=$(cat "$PROCESS_OUTPUT" | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-2000)
+        ERROR_MSG=$(tr '\n' ' ' < "$PROCESS_OUTPUT" | sed 's/"/\\"/g' | cut -c1-2000)
         if [ ${#ERROR_MSG} -eq 2000 ]; then
             ERROR_MSG="${ERROR_MSG}... [truncated, see log file]"
         fi

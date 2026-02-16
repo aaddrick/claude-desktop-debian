@@ -4,16 +4,19 @@ const originalRequire = Module.prototype.require;
 
 console.log('[Frame Fix] Wrapper loaded');
 
-// Detect if a window is a popup/Quick Entry window (small dimensions)
-// Fixes: #223 - Quick Entry window shows unwanted frame on KDE Plasma Wayland
+// Detect if a window intends to be frameless (popup/Quick Entry/About)
+// Quick Entry: titleBarStyle:"", skipTaskbar:true, transparent:true, resizable:false
+// About:       titleBarStyle:"", skipTaskbar:true, resizable:false
+// Main:        titleBarStyle:"", titleBarOverlay:false(linux), resizable (has minWidth)
+// The main window has minWidth set; popups do not.
 function isPopupWindow(options) {
   if (!options) return false;
-  const w = options.width || 0;
-  const h = options.height || 0;
-  return (w > 0 && w < 600) || (h > 0 && h < 400);
+  if (options.frame === false) return true;
+  if (options.titleBarStyle === '' && !options.minWidth) return true;
+  return false;
 }
 
-// CSS injection for improved Linux rendering
+// CSS injection for Linux scrollbar styling
 // Respects both light and dark themes via prefers-color-scheme
 const LINUX_CSS = `
   /* Scrollbar styling - thin, unobtrusive, adapts to theme */
@@ -35,111 +38,144 @@ const LINUX_CSS = `
       background: rgba(200, 200, 200, 0.4);
     }
   }
-  /* Improved font rendering on Linux */
-  body {
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
 `;
 
+// Build the patched BrowserWindow class and Menu interceptor once,
+// on first require('electron'), then reuse via Proxy on every access.
+let PatchedBrowserWindow = null;
+let patchedSetApplicationMenu = null;
+let electronModule = null;
+
 Module.prototype.require = function(id) {
-  const module = originalRequire.apply(this, arguments);
+  const result = originalRequire.apply(this, arguments);
 
   if (id === 'electron') {
-    console.log('[Frame Fix] Intercepting electron module');
-    const OriginalBrowserWindow = module.BrowserWindow;
-    const OriginalMenu = module.Menu;
+    // Build patches once from the real electron module
+    if (!PatchedBrowserWindow) {
+      electronModule = result;
+      const OriginalBrowserWindow = result.BrowserWindow;
+      const OriginalMenu = result.Menu;
 
-    module.BrowserWindow = class BrowserWindowWithFrame extends OriginalBrowserWindow {
-      constructor(options) {
-        console.log('[Frame Fix] BrowserWindow constructor called');
-        if (process.platform === 'linux') {
-          options = options || {};
-          const originalFrame = options.frame;
-          const popup = isPopupWindow(options);
+      PatchedBrowserWindow = class BrowserWindowWithFrame extends OriginalBrowserWindow {
+        constructor(options) {
+          console.log('[Frame Fix] BrowserWindow constructor called');
+          let popup = false;
+          if (process.platform === 'linux') {
+            options = options || {};
+            const originalFrame = options.frame;
+            popup = isPopupWindow(options);
 
-          if (popup) {
-            // Popup/Quick Entry windows: keep frameless for proper UX
-            options.frame = false;
-            options.skipTaskbar = true;
-            console.log('[Frame Fix] Popup window detected, keeping frameless');
-          } else {
-            // Main window: force native frame
-            options.frame = true;
-            // Hide the menu bar by default (Alt key will toggle it)
-            options.autoHideMenuBar = true;
-            // Remove custom titlebar options
-            delete options.titleBarStyle;
-            delete options.titleBarOverlay;
-            console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
+            if (popup) {
+              // Popup/Quick Entry windows: keep frameless for proper UX
+              options.frame = false;
+              // Remove macOS-specific titlebar options that don't apply on Linux
+              delete options.titleBarStyle;
+              delete options.titleBarOverlay;
+              console.log('[Frame Fix] Popup detected, keeping frameless');
+            } else {
+              // Main window: force native frame
+              options.frame = true;
+              // Hide the menu bar by default (Alt key will toggle it)
+              options.autoHideMenuBar = true;
+              // Remove custom titlebar options
+              delete options.titleBarStyle;
+              delete options.titleBarOverlay;
+              console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
+            }
+          }
+          super(options);
+
+          if (process.platform === 'linux') {
+            // Hide menu bar after window creation
+            this.setMenuBarVisibility(false);
+
+            // Inject CSS for Linux scrollbar styling
+            this.webContents.on('did-finish-load', () => {
+              this.webContents.insertCSS(LINUX_CSS).catch(() => {});
+            });
+
+            // Ensure menu bar stays hidden on show events
+            this.on('show', () => {
+              this.setMenuBarVisibility(false);
+            });
+
+            // ready-to-show fires once per window lifecycle
+            this.once('ready-to-show', () => {
+              this.setMenuBarVisibility(false);
+
+              if (!popup) {
+                // Fixes: #84 - Content not sized correctly unless resized
+                const [w, h] = this.getSize();
+                this.setSize(w + 1, h + 1);
+                setTimeout(() => {
+                  if (!this.isDestroyed()) this.setSize(w, h);
+                }, 50);
+              }
+            });
+
+            if (!popup) {
+              // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
+              this.on('focus', () => {
+                this.flashFrame(false);
+              });
+            }
+
+            console.log('[Frame Fix] Linux patches applied');
           }
         }
-        super(options);
+      };
 
-        if (process.platform === 'linux') {
-          // Hide menu bar after window creation
-          // Fixes: #172 - Menu bar still visible despite disabling flags
-          this.setMenuBarVisibility(false);
-
-          // Inject CSS for improved rendering
-          this.webContents.on('did-finish-load', () => {
-            this.webContents.insertCSS(LINUX_CSS).catch(() => {});
-          });
-
-          // Ensure menu bar stays hidden on show events
-          this.on('show', () => {
-            this.setMenuBarVisibility(false);
-          });
-          this.on('ready-to-show', () => {
-            this.setMenuBarVisibility(false);
-          });
-
-          // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
-          this.on('focus', () => {
-            this.flashFrame(false);
-          });
-
-          // Fixes: #84 - Content not sized correctly unless resized
-          this.once('ready-to-show', () => {
-            const [w, h] = this.getSize();
-            this.setSize(w + 1, h + 1);
-            setImmediate(() => this.setSize(w, h));
-          });
-
-          console.log('[Frame Fix] Linux patches applied');
-        }
-      }
-    };
-
-    // Copy static methods and properties (but NOT prototype, that's already set by extends)
-    for (const key of Object.getOwnPropertyNames(OriginalBrowserWindow)) {
-      if (key !== 'prototype' && key !== 'length' && key !== 'name') {
-        try {
-          const descriptor = Object.getOwnPropertyDescriptor(OriginalBrowserWindow, key);
-          if (descriptor) {
-            Object.defineProperty(module.BrowserWindow, key, descriptor);
+      // Copy static methods and properties from original
+      for (const key of Object.getOwnPropertyNames(OriginalBrowserWindow)) {
+        if (key !== 'prototype' && key !== 'length' && key !== 'name') {
+          try {
+            const descriptor = Object.getOwnPropertyDescriptor(OriginalBrowserWindow, key);
+            if (descriptor) {
+              Object.defineProperty(PatchedBrowserWindow, key, descriptor);
+            }
+          } catch (e) {
+            // Ignore errors for non-configurable properties
           }
-        } catch (e) {
-          // Ignore errors for non-configurable properties
         }
       }
+
+      // Intercept Menu.setApplicationMenu to hide menu bar on Linux
+      const originalSetAppMenu = OriginalMenu.setApplicationMenu.bind(OriginalMenu);
+      patchedSetApplicationMenu = function(menu) {
+        console.log('[Frame Fix] Intercepting setApplicationMenu');
+        originalSetAppMenu(menu);
+        if (process.platform === 'linux') {
+          for (const win of PatchedBrowserWindow.getAllWindows()) {
+            if (win.isDestroyed()) continue;
+            win.setMenuBarVisibility(false);
+          }
+          console.log('[Frame Fix] Menu bar hidden on all windows');
+        }
+      };
+
+      console.log('[Frame Fix] Patches built successfully');
     }
 
-    // Intercept Menu.setApplicationMenu to hide menu bar on Linux
-    // This catches the app's later calls to setApplicationMenu that would show the menu
-    const originalSetAppMenu = OriginalMenu.setApplicationMenu.bind(OriginalMenu);
-    module.Menu.setApplicationMenu = function(menu) {
-      console.log('[Frame Fix] Intercepting setApplicationMenu');
-      originalSetAppMenu(menu);
-      if (process.platform === 'linux') {
-        // Hide menu bar on all existing windows after menu is set
-        for (const win of module.BrowserWindow.getAllWindows()) {
-          win.setMenuBarVisibility(false);
+    // Return a Proxy that intercepts property access on the electron module.
+    // This is needed because electron's exports use non-configurable getters,
+    // so we cannot directly reassign module.BrowserWindow.
+    return new Proxy(result, {
+      get(target, prop, receiver) {
+        if (prop === 'BrowserWindow') return PatchedBrowserWindow;
+        if (prop === 'Menu') {
+          // Return a proxy for Menu that intercepts setApplicationMenu
+          const originalMenu = target.Menu;
+          return new Proxy(originalMenu, {
+            get(menuTarget, menuProp) {
+              if (menuProp === 'setApplicationMenu') return patchedSetApplicationMenu;
+              return Reflect.get(menuTarget, menuProp);
+            }
+          });
         }
-        console.log('[Frame Fix] Menu bar hidden on all windows');
+        return Reflect.get(target, prop, receiver);
       }
-    };
+    });
   }
 
-  return module;
+  return result;
 };

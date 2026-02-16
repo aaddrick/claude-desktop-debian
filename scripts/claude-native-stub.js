@@ -4,11 +4,23 @@ const KeyboardKey = { Backspace: 43, Tab: 280, Enter: 261, Shift: 272, Control: 
 Object.freeze(KeyboardKey);
 
 // Helper: get the focused BrowserWindow (lazy-loaded to avoid circular deps)
+// Filters destroyed windows from fallback to avoid errors like
+// flashFrame() on a destroyed window or getIsMaximized() on a popup.
+// Note: isVisible() is intentionally NOT checked — flashFrame() must work
+// on minimized (non-visible) windows, which is its primary use case.
 function getWindow() {
   try {
     const { BrowserWindow } = require('electron');
-    return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
-  } catch {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused) return focused;
+    // TODO: Fallback may return a popup window; callers like
+    // getIsMaximized() may behave unexpectedly on popups.
+    const win = BrowserWindow.getAllWindows().find(
+      (w) => !w.isDestroyed()
+    );
+    return win || null;
+  } catch (e) {
+    console.warn('[Claude Native Stub] getWindow() failed:', e);
     return null;
   }
 }
@@ -40,7 +52,8 @@ module.exports = {
   },
 
   // Fixes: #149 - KDE Plasma: Window demands attention
-  // flashFrame is natively supported on Linux Electron
+  // flashFrame is natively supported on Linux Electron.
+  // frame-fix-wrapper.js auto-clears on window focus.
   flashFrame: (flash) => {
     const win = getWindow();
     if (win) win.flashFrame(typeof flash === 'boolean' ? flash : true);
