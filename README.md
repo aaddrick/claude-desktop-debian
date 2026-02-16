@@ -7,7 +7,7 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 ---
 
 > **⚠️ EXPERIMENTAL: Cowork Mode Support**
-> This project includes **experimental support for Cowork mode** (opt-in with `--cowork yes` during build).
+> This project includes **experimental support for Cowork mode**
 > **Important:** Cowork mode on Linux is **NOT sandboxed**. Unlike macOS, there is no VM isolation—Claude Code runs directly on your host system with full user permissions. A proper VM-based implementation is planned for the future. Use at your own risk and only enable this feature if you understand the security implications.
 
 ---
