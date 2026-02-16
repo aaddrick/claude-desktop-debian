@@ -4,12 +4,15 @@ const originalRequire = Module.prototype.require;
 
 console.log('[Frame Fix] Wrapper loaded');
 
-// Detect if a window intends to be frameless (popup/Quick Entry)
-// Uses the app's own frame/titleBarStyle intent rather than pixel heuristics
-// On macOS, frameless windows use titleBarStyle:'hidden' instead of frame:false
+// Detect if a window intends to be frameless (popup/Quick Entry/About)
+// The app uses titleBarStyle:"" for frameless-intent windows on macOS.
+// Main window also has titleBarStyle:"" but pairs it with titleBarOverlay,
+// so we check for titleBarStyle:"" WITHOUT titleBarOverlay to identify popups.
 function isPopupWindow(options) {
   if (!options) return false;
-  return options.frame === false || options.titleBarStyle === 'hidden';
+  if (options.frame === false) return true;
+  if (options.titleBarStyle === '' && !options.titleBarOverlay) return true;
+  return false;
 }
 
 // CSS injection for Linux scrollbar styling
