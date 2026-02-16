@@ -104,7 +104,7 @@ Module.prototype.require = function(id) {
           this.once('ready-to-show', () => {
             const [w, h] = this.getSize();
             this.setSize(w + 1, h + 1);
-            setImmediate(() => this.setSize(w, h));
+            setTimeout(() => this.setSize(w, h), 50);
           });
 
           console.log('[Frame Fix] Linux patches applied');
