@@ -4,6 +4,44 @@ const originalRequire = Module.prototype.require;
 
 console.log('[Frame Fix] Wrapper loaded');
 
+// Detect if a window is a popup/Quick Entry window (small dimensions)
+// Fixes: #223 - Quick Entry window shows unwanted frame on KDE Plasma Wayland
+function isPopupWindow(options) {
+  if (!options) return false;
+  const w = options.width || 0;
+  const h = options.height || 0;
+  return (w > 0 && w < 600) || (h > 0 && h < 400);
+}
+
+// CSS injection for improved Linux rendering
+// Respects both light and dark themes via prefers-color-scheme
+const LINUX_CSS = `
+  /* Scrollbar styling - thin, unobtrusive, adapts to theme */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.3);
+    border-radius: 4px;
+    transition: background 0.15s ease;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 128, 128, 0.55);
+  }
+  @media (prefers-color-scheme: dark) {
+    ::-webkit-scrollbar-thumb {
+      background: rgba(200, 200, 200, 0.2);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(200, 200, 200, 0.4);
+    }
+  }
+  /* Improved font rendering on Linux */
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+`;
+
 Module.prototype.require = function(id) {
   const module = originalRequire.apply(this, arguments);
 
@@ -18,20 +56,57 @@ Module.prototype.require = function(id) {
         if (process.platform === 'linux') {
           options = options || {};
           const originalFrame = options.frame;
-          // Force native frame
-          options.frame = true;
-          // Hide the menu bar by default (Alt key will toggle it)
-          options.autoHideMenuBar = true;
-          // Remove custom titlebar options
-          delete options.titleBarStyle;
-          delete options.titleBarOverlay;
-          console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
+          const popup = isPopupWindow(options);
+
+          if (popup) {
+            // Popup/Quick Entry windows: keep frameless for proper UX
+            options.frame = false;
+            options.skipTaskbar = true;
+            console.log('[Frame Fix] Popup window detected, keeping frameless');
+          } else {
+            // Main window: force native frame
+            options.frame = true;
+            // Hide the menu bar by default (Alt key will toggle it)
+            options.autoHideMenuBar = true;
+            // Remove custom titlebar options
+            delete options.titleBarStyle;
+            delete options.titleBarOverlay;
+            console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
+          }
         }
         super(options);
-        // Hide menu bar after window creation on Linux
+
         if (process.platform === 'linux') {
+          // Hide menu bar after window creation
+          // Fixes: #172 - Menu bar still visible despite disabling flags
           this.setMenuBarVisibility(false);
-          console.log('[Frame Fix] Menu bar visibility set to false');
+
+          // Inject CSS for improved rendering
+          this.webContents.on('did-finish-load', () => {
+            this.webContents.insertCSS(LINUX_CSS).catch(() => {});
+          });
+
+          // Ensure menu bar stays hidden on show events
+          this.on('show', () => {
+            this.setMenuBarVisibility(false);
+          });
+          this.on('ready-to-show', () => {
+            this.setMenuBarVisibility(false);
+          });
+
+          // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
+          this.on('focus', () => {
+            this.flashFrame(false);
+          });
+
+          // Fixes: #84 - Content not sized correctly unless resized
+          this.once('ready-to-show', () => {
+            const [w, h] = this.getSize();
+            this.setSize(w + 1, h + 1);
+            setImmediate(() => this.setSize(w, h));
+          });
+
+          console.log('[Frame Fix] Linux patches applied');
         }
       }
     };
