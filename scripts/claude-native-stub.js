@@ -13,6 +13,8 @@ function getWindow() {
     const { BrowserWindow } = require('electron');
     const focused = BrowserWindow.getFocusedWindow();
     if (focused) return focused;
+    // TODO: Fallback may return a popup window; callers like
+    // getIsMaximized() may behave unexpectedly on popups.
     const win = BrowserWindow.getAllWindows().find(
       (w) => !w.isDestroyed()
     );

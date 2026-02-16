@@ -139,6 +139,7 @@ Module.prototype.require = function(id) {
       if (process.platform === 'linux') {
         // Hide menu bar on all existing windows after menu is set
         for (const win of module.BrowserWindow.getAllWindows()) {
+          if (win.isDestroyed()) continue;
           win.setMenuBarVisibility(false);
         }
         console.log('[Frame Fix] Menu bar hidden on all windows');
