@@ -24,9 +24,13 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 ### Screenshots
 
-![Claude Desktop running on Linux](https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/main/docs/images/claude-desktop-screenshot1.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/main/docs/images/claude-desktop-screenshot1.png" alt="Claude Desktop running on Linux" />
+</p>
 
-![Global hotkey popup](https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/main/docs/images/claude-desktop-screenshot2.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/main/docs/images/claude-desktop-screenshot2.png" alt="Global hotkey popup" />
+</p>
 
 ## Installation
 
