@@ -262,7 +262,12 @@ fi
 echo 'Building AppImage...'
 output_filename="${package_name}-${version}-${architecture}.AppImage"
 output_path="$work_dir/$output_filename"
-export ARCH="$architecture"
+# appimagetool requires GNU arch names (x86_64/aarch64), not Debian names (amd64/arm64)
+case "$architecture" in
+	amd64) export ARCH='x86_64' ;;
+	arm64) export ARCH='aarch64' ;;
+	*) export ARCH="$architecture" ;;
+esac
 echo "Using ARCH=$ARCH"
 
 # Local build - no update information
