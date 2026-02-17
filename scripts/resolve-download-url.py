@@ -115,6 +115,24 @@ def verify_url_exists(url: str, timeout: int = 10) -> bool:
         return False
 
 
+def derive_mac_url_from_amd64(amd64_url: str) -> str | None:
+    """
+    Derive the macOS universal DMG URL from an AMD64 Windows URL.
+
+    Pattern: /win32/x64/VERSION/Claude-COMMIT.exe -> /darwin/universal/VERSION/Claude-COMMIT.dmg
+    """
+    if not amd64_url:
+        return None
+
+    mac_url = amd64_url
+    mac_url = mac_url.replace("/win32/x64/", "/darwin/universal/")
+    mac_url = re.sub(r'\.exe$', '.dmg', mac_url)
+
+    if mac_url != amd64_url:
+        return mac_url
+    return None
+
+
 def derive_arm64_url_from_amd64(amd64_url: str) -> str | None:
     """
     Derive the ARM64 download URL from an AMD64 URL by pattern substitution.
@@ -198,6 +216,19 @@ def main():
                 print("  ✗ Derived URL does not exist (404)", file=sys.stderr)
         else:
             print("  Could not derive ARM64 URL pattern", file=sys.stderr)
+
+    # Derive macOS universal URL from AMD64 URL and output it
+    if args.arch == "all" and results.get("amd64"):
+        mac_url = derive_mac_url_from_amd64(results["amd64"]["url"])
+        if mac_url:
+            if verify_url_exists(mac_url):
+                print(f"Derived macOS URL: {mac_url} (verified)", file=sys.stderr)
+                if args.format in ("url", "both"):
+                    print(f"MAC_URL={mac_url}")
+            else:
+                print("Derived macOS URL does not exist (404)", file=sys.stderr)
+        else:
+            print("Could not derive macOS URL from AMD64 URL", file=sys.stderr)
 
     # Output results based on format
     for arch, result in results.items():

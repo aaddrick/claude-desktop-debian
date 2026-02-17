@@ -207,6 +207,11 @@ cp -r $app_staging_dir/node_modules %{buildroot}/usr/lib/$package_name/
 cp $app_staging_dir/app.asar %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
 cp -r $app_staging_dir/app.asar.unpacked %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
 
+# Copy claude-ssh binaries if present (SSH Remote Development feature)
+if [ -d $app_staging_dir/claude-ssh ]; then
+	cp -r $app_staging_dir/claude-ssh %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
+fi
+
 # Copy shared launcher library
 cp $script_dir/launcher-common.sh %{buildroot}/usr/lib/$package_name/
 

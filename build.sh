@@ -9,6 +9,7 @@
 architecture=''
 distro_family=''  # debian, rpm, or unknown
 claude_download_url=''
+claude_mac_download_url=''  # macOS universal DMG (for claude-ssh Linux binaries)
 claude_exe_filename=''
 version=''
 release_tag=''  # Optional release tag (e.g., v1.3.2+claude1.1.799) for unique package versions
@@ -71,6 +72,9 @@ detect_architecture() {
 		exit 1
 	}
 	echo "Detected machine architecture: $raw_arch"
+
+	# macOS universal DMG (arch-independent; both Linux arch binaries are included)
+	claude_mac_download_url='https://downloads.claude.ai/releases/darwin/universal/1.1.3189/Claude-1b7b58b8b5060b7d5d19c6863d8f0caef4f0fc97.dmg'
 
 	case "$raw_arch" in
 		x86_64)
@@ -557,6 +561,58 @@ download_claude_installer() {
 	echo 'Resources extracted from nupkg'
 
 	cd "$project_root" || exit 1
+}
+
+download_claude_ssh() {
+	local dmg_path="$work_dir/Claude-mac-universal.dmg"
+	local ssh_extract_dir="$work_dir/claude-ssh-extract"
+	local ssh_dest="$app_staging_dir/claude-ssh"
+
+	section_header 'Download claude-ssh binaries (SSH Remote Development)'
+
+	# Cache: skip download if DMG already present (e.g. --clean no)
+	if [[ ! -f $dmg_path ]]; then
+		echo 'Downloading macOS universal DMG for claude-ssh binaries...'
+		if ! wget -O "$dmg_path" "$claude_mac_download_url"; then
+			echo 'WARNING: Failed to download macOS DMG.' >&2
+			echo 'SSH Remote Development unavailable.' >&2
+			rm -f "$dmg_path"
+			return 0
+		fi
+	else
+		echo "Using cached macOS DMG: $dmg_path"
+	fi
+
+	echo 'Extracting claude-ssh binaries...'
+	mkdir -p "$ssh_extract_dir" || return 0
+
+	if ! 7z e -y "$dmg_path" \
+		-o"$ssh_extract_dir" \
+		'Claude/Claude.app/Contents/Resources/claude-ssh/claude-ssh-linux-amd64' \
+		'Claude/Claude.app/Contents/Resources/claude-ssh/claude-ssh-linux-arm64' \
+		'Claude/Claude.app/Contents/Resources/claude-ssh/version.txt'; then
+		echo 'WARNING: Failed to extract claude-ssh.' >&2
+		echo 'SSH Remote Development unavailable.' >&2
+		return 0
+	fi
+
+	mkdir -p "$ssh_dest" || return 0
+	mv "$ssh_extract_dir/claude-ssh-linux-amd64" "$ssh_dest/" || {
+		echo 'WARNING: Failed to move claude-ssh.' >&2
+		return 0
+	}
+	mv "$ssh_extract_dir/claude-ssh-linux-arm64" "$ssh_dest/" || {
+		echo 'WARNING: Failed to move claude-ssh.' >&2
+		return 0
+	}
+	mv "$ssh_extract_dir/version.txt" "$ssh_dest/" || {
+		echo 'WARNING: Failed to move claude-ssh.' >&2
+		return 0
+	}
+	chmod +x "$ssh_dest/claude-ssh-linux-amd64" "$ssh_dest/claude-ssh-linux-arm64" || true
+
+	echo "claude-ssh binaries installed to $ssh_dest"
+	echo "Version: $(< "$ssh_dest/version.txt")"
 }
 
 #===============================================================================
@@ -1452,6 +1508,7 @@ main() {
 
 	# Phase 2: Download and extract
 	download_claude_installer
+	download_claude_ssh
 
 	# Phase 3: Patch and prepare
 	patch_app_asar

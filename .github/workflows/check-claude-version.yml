@@ -44,11 +44,13 @@ jobs:
           # Parse the output
           AMD64_URL=$(grep "^AMD64_URL=" resolved_urls.txt | cut -d= -f2-)
           ARM64_URL=$(grep "^ARM64_URL=" resolved_urls.txt | cut -d= -f2-)
+          MAC_URL=$(grep "^MAC_URL=" resolved_urls.txt | cut -d= -f2-)
           AMD64_VERSION=$(grep "^AMD64_VERSION=" resolved_urls.txt | cut -d= -f2-)
           ARM64_VERSION=$(grep "^ARM64_VERSION=" resolved_urls.txt | cut -d= -f2-)
 
           echo "AMD64 URL: $AMD64_URL"
           echo "ARM64 URL: $ARM64_URL"
+          echo "MAC URL: $MAC_URL"
           echo "AMD64 Version: $AMD64_VERSION"
           echo "ARM64 Version: $ARM64_VERSION"
 
@@ -60,9 +62,12 @@ jobs:
             exit 1
           fi
 
-          echo "amd64_url=$AMD64_URL" >> $GITHUB_OUTPUT
-          echo "arm64_url=$ARM64_URL" >> $GITHUB_OUTPUT
-          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
+          {
+            echo "amd64_url=$AMD64_URL"
+            echo "arm64_url=$ARM64_URL"
+            echo "mac_url=$MAC_URL"
+            echo "claude_version=$CLAUDE_VERSION"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Get current URLs from build.sh
         id: current_urls
@@ -71,12 +76,17 @@ jobs:
           # The build.sh case statement uses x86_64/aarch64 patterns with claude_download_url on the next line
           CURRENT_AMD64_URL=$(grep -E "x86_64\)" -A1 build.sh | grep -oP "claude_download_url='\\K[^']+")
           CURRENT_ARM64_URL=$(grep -E "aarch64\)" -A1 build.sh | grep -oP "claude_download_url='\\K[^']+")
+          CURRENT_MAC_URL=$(grep -oP "claude_mac_download_url='\\K[^']+" build.sh | head -1)
 
           echo "Current AMD64 URL: $CURRENT_AMD64_URL"
           echo "Current ARM64 URL: $CURRENT_ARM64_URL"
+          echo "Current MAC URL: $CURRENT_MAC_URL"
 
-          echo "current_amd64_url=$CURRENT_AMD64_URL" >> $GITHUB_OUTPUT
-          echo "current_arm64_url=$CURRENT_ARM64_URL" >> $GITHUB_OUTPUT
+          {
+            echo "current_amd64_url=$CURRENT_AMD64_URL"
+            echo "current_arm64_url=$CURRENT_ARM64_URL"
+            echo "current_mac_url=$CURRENT_MAC_URL"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check if update needed
         id: check_update
@@ -85,8 +95,10 @@ jobs:
         run: |
           NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
           NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
+          NEW_MAC_URL="${{ steps.resolve_urls.outputs.mac_url }}"
           CURRENT_AMD64_URL="${{ steps.current_urls.outputs.current_amd64_url }}"
           CURRENT_ARM64_URL="${{ steps.current_urls.outputs.current_arm64_url }}"
+          CURRENT_MAC_URL="${{ steps.current_urls.outputs.current_mac_url }}"
           CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
           STORED_CLAUDE_VERSION="${{ vars.CLAUDE_DESKTOP_VERSION }}"
           REPO_VERSION="${{ vars.REPO_VERSION }}"
@@ -109,6 +121,12 @@ jobs:
             UPDATE_NEEDED=true
           fi
 
+          # Check if macOS URL changed (only if we derived one)
+          if [ -n "$NEW_MAC_URL" ] && [ -n "$CURRENT_MAC_URL" ] && [ "$NEW_MAC_URL" != "$CURRENT_MAC_URL" ]; then
+            echo "macOS URL has changed"
+            UPDATE_NEEDED=true
+          fi
+
           # Check if version changed
           if [ -n "$CLAUDE_VERSION" ] && [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
             echo "Claude version has changed"
@@ -117,15 +135,17 @@ jobs:
 
           if [ "$UPDATE_NEEDED" = "true" ]; then
             echo "Update needed!"
-            echo "update_needed=true" >> $GITHUB_OUTPUT
 
             # Construct the new tag
             NEW_TAG="v${REPO_VERSION}+claude${CLAUDE_VERSION}"
-            echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "New tag will be: $NEW_TAG"
+            {
+              echo "update_needed=true"
+              echo "new_tag=$NEW_TAG"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "No updates needed"
-            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Update build.sh with new URLs
@@ -133,11 +153,14 @@ jobs:
         run: |
           NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
           NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
+          NEW_MAC_URL="${{ steps.resolve_urls.outputs.mac_url }}"
           CURRENT_AMD64_URL="${{ steps.current_urls.outputs.current_amd64_url }}"
           CURRENT_ARM64_URL="${{ steps.current_urls.outputs.current_arm64_url }}"
+          CURRENT_MAC_URL="${{ steps.current_urls.outputs.current_mac_url }}"
 
           echo "Updating build.sh with new URLs..."
 
+          # shellcheck disable=SC2016  # sed patterns: $ and & are regex metacharacters, not shell vars
           # Update AMD64 URL
           if [ -n "$NEW_AMD64_URL" ] && [ "$NEW_AMD64_URL" != "$CURRENT_AMD64_URL" ]; then
             echo "Updating AMD64 URL..."
@@ -147,6 +170,7 @@ jobs:
             sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" build.sh
           fi
 
+          # shellcheck disable=SC2016  # sed patterns: $ and & are regex metacharacters, not shell vars
           # Update ARM64 URL (if we have a new one)
           if [ -n "$NEW_ARM64_URL" ] && [ "$NEW_ARM64_URL" != "$CURRENT_ARM64_URL" ]; then
             echo "Updating ARM64 URL..."
@@ -155,8 +179,17 @@ jobs:
             sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" build.sh
           fi
 
+          # shellcheck disable=SC2016  # sed patterns: $ and & are regex metacharacters, not shell vars
+          # Update macOS URL (if we derived a new one)
+          if [ -n "$NEW_MAC_URL" ] && [ "$NEW_MAC_URL" != "$CURRENT_MAC_URL" ] && [ -n "$CURRENT_MAC_URL" ]; then
+            echo "Updating macOS URL..."
+            ESCAPED_CURRENT=$(printf '%s\n' "$CURRENT_MAC_URL" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            ESCAPED_NEW=$(printf '%s\n' "$NEW_MAC_URL" | sed 's/[&/\]/\\&/g')
+            sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" build.sh
+          fi
+
           echo "Updated build.sh:"
-          grep "claude_download_url=" build.sh
+          grep "claude_download_url=\|claude_mac_download_url=" build.sh
 
       - name: Commit and push changes
         if: steps.check_update.outputs.update_needed == 'true'

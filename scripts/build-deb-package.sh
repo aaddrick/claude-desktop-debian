@@ -64,6 +64,13 @@ resources_dir="$install_dir/lib/$package_name/node_modules/electron/dist/resourc
 mkdir -p "$resources_dir" || exit 1
 cp "$app_staging_dir/app.asar" "$resources_dir/" || exit 1
 cp -r "$app_staging_dir/app.asar.unpacked" "$resources_dir/" || exit 1
+
+# Copy claude-ssh binaries if present (SSH Remote Development feature)
+if [[ -d $app_staging_dir/claude-ssh ]]; then
+	cp -a "$app_staging_dir/claude-ssh" "$resources_dir/" || exit 1
+	echo 'claude-ssh binaries copied'
+fi
+
 echo 'Application files copied to Electron resources directory'
 
 # Copy shared launcher library

@@ -41,6 +41,9 @@ fi
 if [[ -d $app_staging_dir/app.asar.unpacked ]]; then
 	cp -a "$app_staging_dir/app.asar.unpacked" "$resources_dir/" || exit 1
 fi
+if [[ -d $app_staging_dir/claude-ssh ]]; then
+	cp -a "$app_staging_dir/claude-ssh" "$resources_dir/" || exit 1
+fi
 echo 'Application files copied to Electron resources directory'
 
 # Copy shared launcher library
