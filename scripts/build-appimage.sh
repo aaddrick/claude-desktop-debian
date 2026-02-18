@@ -102,7 +102,7 @@ cd "$HOME" || exit 1
 
 # Start Cowork VM daemon using bundled Electron (daemon handles dedup internally)
 cowork_daemon="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js"
-if [[ -f "$cowork_daemon" ]]; then
+if [[ -f $cowork_daemon ]]; then
 	log_message 'Starting Cowork VM daemon...'
 	ELECTRON_RUN_AS_NODE=1 "$electron_exec" "$cowork_daemon" &
 	disown
