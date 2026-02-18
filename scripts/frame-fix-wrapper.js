@@ -99,21 +99,50 @@ Module.prototype.require = function(id) {
               this.setMenuBarVisibility(false);
             });
 
-            // ready-to-show fires once per window lifecycle
-            this.once('ready-to-show', () => {
-              this.setMenuBarVisibility(false);
+            if (!popup) {
+              // Jiggle the window to force Electron to recalculate
+              // WebContentsView bounds. getContentBounds() returns stale
+              // data after frame: true is forced, causing layout breaks on
+              // resize and login/logout transitions. Fixes: #84, #239
+              let jiggling = false;
+              let jigglePending = false;
+              let jiggleTimer = null;
 
-              if (!popup) {
-                // Fixes: #84 - Content not sized correctly unless resized
+              const jiggleWindow = () => {
+                if (this.isDestroyed()) return;
+                if (jiggling) { jigglePending = true; return; }
+                jiggling = true;
+                jigglePending = false;
                 const [w, h] = this.getSize();
                 this.setSize(w + 1, h + 1);
                 setTimeout(() => {
                   if (!this.isDestroyed()) this.setSize(w, h);
+                  setTimeout(() => {
+                    jiggling = false;
+                    if (jigglePending) jiggleWindow();
+                  }, 100);
                 }, 50);
-              }
-            });
+              };
 
-            if (!popup) {
+              // Debounced jiggle after each resize settles. Resizes that
+              // occur during an active jiggle are marked pending so the
+              // layout syncs once the jiggle completes (at most one
+              // follow-up jiggle per active jiggle).
+              this.on('resize', () => {
+                if (jiggling) { jigglePending = true; return; }
+                if (jiggleTimer) clearTimeout(jiggleTimer);
+                jiggleTimer = setTimeout(() => {
+                  jiggleTimer = null;
+                  jiggleWindow();
+                }, 200);
+              });
+
+              // ready-to-show fires once per window lifecycle
+              this.once('ready-to-show', () => {
+                this.setMenuBarVisibility(false);
+                jiggleWindow();
+              });
+
               // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
               this.on('focus', () => {
                 this.flashFrame(false);
