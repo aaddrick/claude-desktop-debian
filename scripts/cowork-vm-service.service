@@ -4,7 +4,8 @@ Documentation=https://github.com/aaddrick/claude-desktop-debian
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node /usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js
+ExecStart=/usr/lib/claude-desktop/node_modules/electron/dist/electron /usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js
+Environment=ELECTRON_RUN_AS_NODE=1
 Restart=on-failure
 RestartSec=3
 
