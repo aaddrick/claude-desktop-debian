@@ -37,6 +37,11 @@ Linux VM (Anthropic rootfs.img from downloads.claude.ai)
 - **`build.sh`** — Added `patch_cowork_linux()` function (6 patches), removed `@ant/claude-swift` stub references, added service daemon to build output
 - **`scripts/cowork-vm-service.js`** — New stub service daemon implementing the Windows pipe protocol over Unix socket
 - **`scripts/claude-swift-stub.js`** — Deleted (replaced by TypeScript VM client approach)
+- **`README.md`** — Restructured into focused docs; cowork warning stays in main README
+- **`docs/BUILDING.md`** — Build instructions, package install, technical details (split from README)
+- **`docs/CONFIGURATION.md`** — MCP config, env vars, Wayland support (split from README)
+- **`docs/TROUBLESHOOTING.md`** — Common issues, uninstall instructions (split from README)
+- **`docs/images/`** — Updated screenshots (app with Cowork tab, global hotkey popup)
 
 ### Patches Applied to index.js (via `patch_cowork_linux()`)
 
