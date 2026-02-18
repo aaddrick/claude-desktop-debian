@@ -100,47 +100,83 @@ Module.prototype.require = function(id) {
             });
 
             if (!popup) {
-              // Jiggle the window to force Electron to recalculate
-              // WebContentsView bounds. getContentBounds() returns stale
-              // data after frame: true is forced, causing layout breaks on
-              // resize and login/logout transitions. Fixes: #84, #239
-              let jiggling = false;
-              let jigglePending = false;
-              let jiggleTimer = null;
+              // Patch getContentBounds() to read from getSize() directly,
+              // bypassing Chromium's LayoutManagerBase cache. The cache is
+              // only invalidated via OnWindowStateChanged() -> ScheduleRelayout()
+              // -> InvalidateLayout(), which requires _NET_WM_STATE atom changes.
+              // KWin's corner-snap/quick-tile never sets those atoms, so the
+              // cache stays stale after tiling. getSize() reads from
+              // Widget/platform window bounds updated by X11 ConfigureNotify
+              // before JS events fire, so it always reflects the real geometry.
+              // Under XWayland, frame overhead is 0x0 (WM draws outside app
+              // bounds), so frameW/H will calibrate to zero. Fixes: #239
+              let frameW = 0;
+              let frameH = 0;
+              let calibrated = false;
+              const origGetContentBounds = this.getContentBounds.bind(this);
 
-              const jiggleWindow = () => {
-                if (this.isDestroyed()) return;
-                if (jiggling) { jigglePending = true; return; }
-                jiggling = true;
-                jigglePending = false;
-                const [w, h] = this.getSize();
-                this.setSize(w + 1, h + 1);
-                setTimeout(() => {
-                  if (!this.isDestroyed()) this.setSize(w, h);
-                  setTimeout(() => {
-                    jiggling = false;
-                    if (jigglePending) jiggleWindow();
-                  }, 100);
-                }, 50);
+              this.getContentBounds = () => {
+                if (calibrated && !this.isDestroyed()) {
+                  const [w, h] = this.getSize();
+                  const width = w - frameW;
+                  const height = h - frameH;
+                  // Guard against stale/invalid getSize() data during
+                  // transitions — fall back rather than set child to 0x0.
+                  if (width > 0 && height > 0) {
+                    return { x: 0, y: 0, width, height };
+                  }
+                }
+                return origGetContentBounds();
               };
 
-              // Debounced jiggle after each resize settles. Resizes that
-              // occur during an active jiggle are marked pending so the
-              // layout syncs once the jiggle completes (at most one
-              // follow-up jiggle per active jiggle).
-              this.on('resize', () => {
-                if (jiggling) { jigglePending = true; return; }
-                if (jiggleTimer) clearTimeout(jiggleTimer);
-                jiggleTimer = setTimeout(() => {
-                  jiggleTimer = null;
-                  jiggleWindow();
-                }, 200);
-              });
+              // For maximize/unmaximize/fullscreen, Chromium's layout cache
+              // is definitively stale (no _NET_WM_STATE atoms for quick-tile).
+              // Re-emit resize twice — immediately and after one frame — so
+              // the app's layout handler runs with fresh getSize() data from
+              // our patched getContentBounds(). Not applied to regular drag
+              // resize, which doesn't have the layout-cache staleness problem.
+              const reemitResize = () => {
+                if (this.isDestroyed()) return;
+                this.emit('resize');
+                setTimeout(() => {
+                  if (!this.isDestroyed()) this.emit('resize');
+                }, 16);
+              };
+
+              this.on('maximize', reemitResize);
+              this.on('unmaximize', reemitResize);
+              this.on('enter-full-screen', reemitResize);
+              this.on('leave-full-screen', reemitResize);
 
               // ready-to-show fires once per window lifecycle
               this.once('ready-to-show', () => {
                 this.setMenuBarVisibility(false);
-                jiggleWindow();
+                // One-time jiggle for initial layout. Fixes: #84
+                const [w, h] = this.getSize();
+                this.setSize(w + 1, h + 1);
+                setTimeout(() => {
+                  if (this.isDestroyed()) return;
+                  this.setSize(w, h);
+                  // Calibrate frame overhead after layout stabilizes.
+                  // origGetContentBounds() is accurate at rest; stale data
+                  // only occurs during active geometry operations. Validate
+                  // the result is sane before accepting it.
+                  setTimeout(() => {
+                    if (this.isDestroyed()) return;
+                    const [winW, winH] = this.getSize();
+                    const cb = origGetContentBounds();
+                    const fw = winW - cb.width;
+                    const fh = winH - cb.height;
+                    // Reject if content bounds are zero or overhead is
+                    // implausibly large (would indicate a bad read).
+                    if (cb.width > 0 && cb.height > 0 && fw >= 0 && fh >= 0
+                        && fw < 200 && fh < 200) {
+                      frameW = fw;
+                      frameH = fh;
+                      calibrated = true;
+                    }
+                  }, 100);
+                }, 50);
               });
 
               // Fixes: #149 - KDE Plasma: Window demands attention on Alt+Tab
