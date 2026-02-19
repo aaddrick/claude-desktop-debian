@@ -126,7 +126,7 @@ Special thanks to:
 - **[mathys-lopinto](https://github.com/mathys-lopinto)** for the AUR package and automated deployment
 - **[pkuijpers](https://github.com/pkuijpers)** for root cause analysis of the RPM repo GPG signing issue
 - **[dlepold](https://github.com/dlepold)** for identifying the tray icon variable name bug with a working fix
-- **[Voork1144](https://github.com/Voork1144)** for detailed analysis of the tray icon minifier bug
+- **[Voork1144](https://github.com/Voork1144)** for detailed analysis of the tray icon minifier bug, root-cause analysis of the Chromium layout cache bug, and the direct child `setBounds()` fix approach
 - **[milog1994](https://github.com/milog1994)** for Linux UX improvements including popup detection, functional stubs, and Wayland compositor support
 - **[jarrodcolburn](https://github.com/jarrodcolburn)** for passwordless sudo support in container/CI environments
 - **[chukfinley](https://github.com/chukfinley)** for experimental Cowork mode support on Linux

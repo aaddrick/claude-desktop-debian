@@ -100,53 +100,51 @@ Module.prototype.require = function(id) {
             });
 
             if (!popup) {
-              // Patch getContentBounds() to read from getSize() directly,
-              // bypassing Chromium's LayoutManagerBase cache. The cache is
-              // only invalidated via OnWindowStateChanged() -> ScheduleRelayout()
-              // -> InvalidateLayout(), which requires _NET_WM_STATE atom changes.
-              // KWin's corner-snap/quick-tile never sets those atoms, so the
-              // cache stays stale after tiling. getSize() reads from
-              // Widget/platform window bounds updated by X11 ConfigureNotify
-              // before JS events fire, so it always reflects the real geometry.
-              // Under XWayland, frame overhead is 0x0 (WM draws outside app
-              // bounds), so frameW/H will calibrate to zero. Fixes: #239
-              let frameW = 0;
-              let frameH = 0;
-              let calibrated = false;
-              const origGetContentBounds = this.getContentBounds.bind(this);
-
-              this.getContentBounds = () => {
-                if (calibrated && !this.isDestroyed()) {
-                  const [w, h] = this.getSize();
-                  const width = w - frameW;
-                  const height = h - frameH;
-                  // Guard against stale/invalid getSize() data during
-                  // transitions — fall back rather than set child to 0x0.
-                  if (width > 0 && height > 0) {
-                    return { x: 0, y: 0, width, height };
-                  }
-                }
-                return origGetContentBounds();
-              };
-
-              // For maximize/unmaximize/fullscreen, Chromium's layout cache
-              // is definitively stale (no _NET_WM_STATE atoms for quick-tile).
-              // Re-emit resize twice — immediately and after one frame — so
-              // the app's layout handler runs with fresh getSize() data from
-              // our patched getContentBounds(). Not applied to regular drag
-              // resize, which doesn't have the layout-cache staleness problem.
-              const reemitResize = () => {
+              // Directly set child view bounds to match content size.
+              // This bypasses Chromium's stale LayoutManagerBase cache
+              // (only invalidated via _NET_WM_STATE atom changes, which
+              // KWin corner-snap/quick-tile never sets). Instead of
+              // monkey-patching getContentBounds() (which causes drag
+              // resize jitter at ~60Hz), we only act on discrete state
+              // changes. Fixes: #239
+              const fixChildBounds = () => {
                 if (this.isDestroyed()) return;
-                this.emit('resize');
-                setTimeout(() => {
-                  if (!this.isDestroyed()) this.emit('resize');
-                }, 16);
+                const children = this.contentView?.children;
+                if (!children || children.length === 0) return;
+                const [cw, ch] = this.getContentSize();
+                if (cw <= 0 || ch <= 0) return;
+                const cur = children[0].getBounds();
+                if (cur.width !== cw || cur.height !== ch) {
+                  children[0].setBounds({ x: 0, y: 0, width: cw, height: ch });
+                }
               };
 
-              this.on('maximize', reemitResize);
-              this.on('unmaximize', reemitResize);
-              this.on('enter-full-screen', reemitResize);
-              this.on('leave-full-screen', reemitResize);
+              // Geometry settles in stages after state changes.
+              // Three passes at 0/16/150ms cover immediate, next-frame,
+              // and compositor-animation-complete timing.
+              const fixAfterStateChange = () => {
+                fixChildBounds();
+                setTimeout(fixChildBounds, 16);
+                setTimeout(fixChildBounds, 150);
+              };
+
+              this.on('maximize', fixAfterStateChange);
+              this.on('unmaximize', fixAfterStateChange);
+              this.on('enter-full-screen', fixAfterStateChange);
+              this.on('leave-full-screen', fixAfterStateChange);
+
+              // KWin corner-snap/quick-tile emits 'moved' but not
+              // 'maximize'/'unmaximize'. Guard with a size-change check
+              // so normal window drags (position-only) are ignored.
+              let lastSize = [0, 0];
+              this.on('moved', () => {
+                if (this.isDestroyed()) return;
+                const [w, h] = this.getSize();
+                if (w !== lastSize[0] || h !== lastSize[1]) {
+                  lastSize = [w, h];
+                  fixAfterStateChange();
+                }
+              });
 
               // ready-to-show fires once per window lifecycle
               this.once('ready-to-show', () => {
@@ -157,25 +155,7 @@ Module.prototype.require = function(id) {
                 setTimeout(() => {
                   if (this.isDestroyed()) return;
                   this.setSize(w, h);
-                  // Calibrate frame overhead after layout stabilizes.
-                  // origGetContentBounds() is accurate at rest; stale data
-                  // only occurs during active geometry operations. Validate
-                  // the result is sane before accepting it.
-                  setTimeout(() => {
-                    if (this.isDestroyed()) return;
-                    const [winW, winH] = this.getSize();
-                    const cb = origGetContentBounds();
-                    const fw = winW - cb.width;
-                    const fh = winH - cb.height;
-                    // Reject if content bounds are zero or overhead is
-                    // implausibly large (would indicate a bad read).
-                    if (cb.width > 0 && cb.height > 0 && fw >= 0 && fh >= 0
-                        && fw < 200 && fh < 200) {
-                      frameW = fw;
-                      frameH = fh;
-                      calibrated = true;
-                    }
-                  }, 100);
+                  fixAfterStateChange();
                 }, 50);
               });
 
