@@ -110,7 +110,7 @@ Module.prototype.require = function(id) {
               const fixChildBounds = () => {
                 if (this.isDestroyed()) return;
                 const children = this.contentView?.children;
-                if (!children || children.length === 0) return;
+                if (!children?.length) return;
                 const [cw, ch] = this.getContentSize();
                 if (cw <= 0 || ch <= 0) return;
                 const cur = children[0].getBounds();
@@ -128,10 +128,10 @@ Module.prototype.require = function(id) {
                 setTimeout(fixChildBounds, 150);
               };
 
-              this.on('maximize', fixAfterStateChange);
-              this.on('unmaximize', fixAfterStateChange);
-              this.on('enter-full-screen', fixAfterStateChange);
-              this.on('leave-full-screen', fixAfterStateChange);
+              for (const evt of ['maximize', 'unmaximize',
+                'enter-full-screen', 'leave-full-screen']) {
+                this.on(evt, fixAfterStateChange);
+              }
 
               // KWin corner-snap/quick-tile emits 'moved' but not
               // 'maximize'/'unmaximize'. Guard with a size-change check
