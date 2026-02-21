@@ -76,7 +76,7 @@ jobs:
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-flags, build-amd64, build-arm64]
+    needs: [test-flags, build-amd64, build-arm64, release-notes]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -118,10 +118,19 @@ jobs:
           name: package-arm64-appimage
           path: artifacts/
 
+      - name: Download release notes
+        id: notes
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: release-notes-summary
+          path: release-notes/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
+          body_path: ${{ steps.notes.outcome == 'success' && 'release-notes/summary.md' || '' }}
 
   update-apt-repo:
     name: Update APT Repository
@@ -422,7 +431,7 @@ jobs:
   release-notes:
     name: Generate Release Notes
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [release]
+    needs: [build-amd64]
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -458,6 +467,12 @@ jobs:
         with:
           fetch-depth: 0
           path: repo
+
+      - name: Download AMD64 AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-amd64-appimage
+          path: artifacts/
 
       - name: Find previous release tags
         id: prev
@@ -504,10 +519,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          appimage=$(find artifacts/ -name '*.AppImage' ! -name '*.zsync' | head -1)
           python versions/scripts/compare-releases.py \
             --old "${{ steps.prev.outputs.tag }}" \
             --new "${GITHUB_REF_NAME}" \
+            --new-appimage "$appimage" \
             --model sonnet \
+            --voice-profile-url "https://raw.githubusercontent.com/aaddrick/written-voice-replication/master/.claude/agents/aaddrick-voice.md" \
             --workdir compare-work
 
       - name: Append wrapper commits to upstream notes
@@ -550,16 +568,10 @@ jobs:
             echo ""
           } > ../compare-work/summary.md
 
-      - name: Update release notes
+      - name: Upload release notes
         if: steps.prev.outputs.type != 'none'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ -f compare-work/summary.md ]]; then
-            gh release edit "${GITHUB_REF_NAME}" \
-              --notes-file compare-work/summary.md \
-              -R "$GITHUB_REPOSITORY"
-            echo "Release notes updated successfully"
-          else
-            echo "::warning::summary.md not found, skipping release notes update"
-          fi
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-summary
+          path: compare-work/summary.md
+          if-no-files-found: warn
