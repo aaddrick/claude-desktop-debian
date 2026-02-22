@@ -5,9 +5,9 @@ artifact_path="${1:?artifact path required}"
 artifact_type="${2:?artifact type required (deb|rpm|appimage)}"
 
 required_paths=(
-	"node_modules/electron/dist/resources/claude-ssh/version.txt"
-	"node_modules/electron/dist/resources/claude-ssh/claude-ssh-linux-amd64"
-	"node_modules/electron/dist/resources/claude-ssh/claude-ssh-linux-arm64"
+	"usr/lib/claude-desktop/node_modules/electron/dist/resources/claude-ssh/version.txt"
+	"usr/lib/claude-desktop/node_modules/electron/dist/resources/claude-ssh/claude-ssh-linux-amd64"
+	"usr/lib/claude-desktop/node_modules/electron/dist/resources/claude-ssh/claude-ssh-linux-arm64"
 )
 
 list_paths() {
