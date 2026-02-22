@@ -16,15 +16,17 @@ list_paths() {
 			dpkg-deb -c "$artifact_path" | awk '{print $6}' | sed 's#^./##'
 			;;
 		rpm)
-			rpm -qpl "$artifact_path" | sed 's#^/usr/lib/claude-desktop/##'
+			rpm -qpl "$artifact_path" | sed 's#^/##'
 			;;
 		appimage)
 			tmp_dir="$(mktemp -d)"
+			cp "$artifact_path" "$tmp_dir/app.AppImage"
+			chmod +x "$tmp_dir/app.AppImage"
 			(
 				cd "$tmp_dir"
-				"$artifact_path" --appimage-extract >/dev/null
-				find squashfs-root/usr/lib/node_modules/electron/dist/resources \
-					-type f | sed 's#^squashfs-root/usr/lib/##'
+				./app.AppImage --appimage-extract >/dev/null
+				find squashfs-root/usr/lib/claude-desktop/node_modules/electron/dist/resources/claude-ssh \
+					-maxdepth 1 -type f | sed 's#^squashfs-root/##'
 			)
 			rm -rf "$tmp_dir"
 			;;
