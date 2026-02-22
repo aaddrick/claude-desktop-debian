@@ -4,6 +4,13 @@ const originalRequire = Module.prototype.require;
 
 console.log('[Frame Fix] Wrapper loaded');
 
+// Menu bar visibility mode, controlled by CLAUDE_MENU_BAR env var:
+//   'auto'    - hidden by default, Alt toggles visibility (current default)
+//   'visible' - always visible, Alt does not toggle (stable layout)
+//   'hidden'  - always hidden, Alt does not toggle
+const MENU_BAR_MODE = (process.env.CLAUDE_MENU_BAR || 'auto').toLowerCase();
+console.log(`[Frame Fix] Menu bar mode: ${MENU_BAR_MODE}`);
+
 // Detect if a window intends to be frameless (popup/Quick Entry/About)
 // Quick Entry: titleBarStyle:"", skipTaskbar:true, transparent:true, resizable:false
 // About:       titleBarStyle:"", skipTaskbar:true, resizable:false
@@ -75,8 +82,10 @@ Module.prototype.require = function(id) {
             } else {
               // Main window: force native frame
               options.frame = true;
-              // Hide the menu bar by default (Alt key will toggle it)
-              options.autoHideMenuBar = true;
+              // Menu bar behavior depends on CLAUDE_MENU_BAR mode:
+              // 'auto' (default): hidden, Alt toggles
+              // 'visible'/'hidden': no Alt toggle
+              options.autoHideMenuBar = (MENU_BAR_MODE === 'auto');
               // Remove custom titlebar options
               delete options.titleBarStyle;
               delete options.titleBarOverlay;
@@ -86,8 +95,10 @@ Module.prototype.require = function(id) {
           super(options);
 
           if (process.platform === 'linux') {
-            // Hide menu bar after window creation
-            this.setMenuBarVisibility(false);
+            // Hide menu bar after window creation (unless user wants it visible)
+            if (MENU_BAR_MODE !== 'visible') {
+              this.setMenuBarVisibility(false);
+            }
 
             // Inject CSS for Linux scrollbar styling
             this.webContents.on('did-finish-load', () => {
@@ -96,7 +107,9 @@ Module.prototype.require = function(id) {
 
             // Ensure menu bar stays hidden on show events
             this.on('show', () => {
-              this.setMenuBarVisibility(false);
+              if (MENU_BAR_MODE !== 'visible') {
+                this.setMenuBarVisibility(false);
+              }
             });
 
             if (!popup) {
@@ -148,7 +161,9 @@ Module.prototype.require = function(id) {
 
               // ready-to-show fires once per window lifecycle
               this.once('ready-to-show', () => {
-                this.setMenuBarVisibility(false);
+                if (MENU_BAR_MODE !== 'visible') {
+                  this.setMenuBarVisibility(false);
+                }
                 // One-time jiggle for initial layout. Fixes: #84
                 const [w, h] = this.getSize();
                 this.setSize(w + 1, h + 1);
@@ -189,7 +204,7 @@ Module.prototype.require = function(id) {
       patchedSetApplicationMenu = function(menu) {
         console.log('[Frame Fix] Intercepting setApplicationMenu');
         originalSetAppMenu(menu);
-        if (process.platform === 'linux') {
+        if (process.platform === 'linux' && MENU_BAR_MODE !== 'visible') {
           for (const win of PatchedBrowserWindow.getAllWindows()) {
             if (win.isDestroyed()) continue;
             win.setMenuBarVisibility(false);
