@@ -71,6 +71,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cp "$script_dir/launcher-common.sh" "$install_dir/lib/$package_name/" || exit 1
 echo 'Shared launcher library copied'
 
+# --- Install systemd User Service ---
+echo 'Installing systemd user service for Cowork VM daemon...'
+mkdir -p "$install_dir/lib/systemd/user" || exit 1
+cp "$script_dir/cowork-vm-service.service" \
+	"$install_dir/lib/systemd/user/cowork-vm-service.service" || exit 1
+echo 'Systemd user service installed'
+
 # --- Create Desktop Entry ---
 echo 'Creating desktop entry...'
 cat > "$install_dir/share/applications/claude-desktop.desktop" << EOF
@@ -214,10 +221,29 @@ else
     echo "Warning: chrome-sandbox binary not found in local package at \$LOCAL_SANDBOX_PATH. Sandbox may not function correctly."
 fi
 
+# Enable Cowork VM service daemon for all users
+echo "Enabling Cowork VM service daemon..."
+systemctl --global enable cowork-vm-service.service 2>/dev/null || true
+
 exit 0
 EOF
 chmod +x "$package_root/DEBIAN/postinst" || exit 1
 echo 'Postinst script created'
+
+# --- Create Prerm Script ---
+echo 'Creating prerm script...'
+cat > "$package_root/DEBIAN/prerm" << EOF
+#!/bin/sh
+set -e
+
+# Disable Cowork VM service daemon
+echo "Disabling Cowork VM service daemon..."
+systemctl --global disable cowork-vm-service.service 2>/dev/null || true
+
+exit 0
+EOF
+chmod +x "$package_root/DEBIAN/prerm" || exit 1
+echo 'Prerm script created'
 
 # --- Build .deb Package ---
 echo 'Building .deb package...'
@@ -230,6 +256,7 @@ chmod 755 "$package_root/DEBIAN" || exit 1
 # Fix script permissions in DEBIAN directory
 echo 'Setting script permissions...'
 chmod 755 "$package_root/DEBIAN/postinst" || exit 1
+chmod 755 "$package_root/DEBIAN/prerm" || exit 1
 
 if ! dpkg-deb --build "$package_root" "$deb_file"; then
 	echo 'Failed to build .deb package' >&2
