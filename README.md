@@ -15,6 +15,7 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 ## Features
 
 - **Native Linux Support**: Run Claude Desktop without virtualization or Wine
+- **SSH Mode Helper Assets**: Packages include `resources/claude-ssh/*` required by remote SSH workflows
 - **MCP Support**: Full Model Context Protocol integration
   Configuration file location: `~/.config/Claude/claude_desktop_config.json`
 - **System Integration**:
