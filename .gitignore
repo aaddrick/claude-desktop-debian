@@ -5,6 +5,9 @@ build_*/
 # Dev folder
 .dev/
 
+# Git worktrees
+.worktrees/
+
 # Reference implementation
 reference/
 
