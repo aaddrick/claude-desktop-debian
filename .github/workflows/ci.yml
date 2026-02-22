@@ -76,7 +76,7 @@ jobs:
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-flags, build-amd64, build-arm64, release-notes]
+    needs: [test-flags, build-amd64, build-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
