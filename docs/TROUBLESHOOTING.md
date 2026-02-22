@@ -11,6 +11,14 @@ Runtime logs are available at:
 
 ## Common Issues
 
+### SSH Mode Error: "Binary not found ... claude-ssh-linux-amd64"
+
+This indicates a broken package missing `resources/claude-ssh`.
+
+Verify with: `dpkg -L claude-desktop | grep 'resources/claude-ssh'`
+
+If empty, reinstall a fixed package release.
+
 ### Window Scaling Issues
 
 If the window doesn't scale correctly on first launch:

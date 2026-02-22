@@ -1198,6 +1198,36 @@ stage_electron() {
 	fi
 }
 
+copy_claude_ssh_resources() {
+	local src="$claude_extract_dir/lib/net45/resources/claude-ssh"
+	local dst="$electron_resources_dest/claude-ssh"
+
+	if [[ ! -d $src ]]; then
+		echo "Required claude-ssh directory missing: $src" >&2
+		exit 1
+	fi
+
+	rm -rf "$dst"
+	cp -a "$src" "$dst" || exit 1
+	chmod +x "$dst"/claude-ssh-linux-* 2>/dev/null || true
+}
+
+verify_claude_ssh_resources() {
+	local base="$electron_resources_dest/claude-ssh"
+	local required=(
+		"$base/version.txt"
+		"$base/claude-ssh-linux-amd64"
+		"$base/claude-ssh-linux-arm64"
+	)
+	local f
+	for f in "${required[@]}"; do
+		if [[ ! -f $f ]]; then
+			echo "Missing required claude-ssh asset: $f" >&2
+			exit 1
+		fi
+	done
+}
+
 process_icons() {
 	section_header 'Icon Processing'
 
@@ -1470,6 +1500,8 @@ main() {
 	install_node_pty
 	finalize_app_asar
 	stage_electron
+	copy_claude_ssh_resources
+	verify_claude_ssh_resources
 	process_icons
 	copy_locale_files
 
