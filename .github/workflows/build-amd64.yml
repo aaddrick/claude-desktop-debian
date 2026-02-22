@@ -49,6 +49,16 @@ jobs:
           fi
           ./build.sh ${{ inputs.build_flags }} $TAG_FLAG
 
+      - name: Verify SSH helper assets in package
+        run: |
+          chmod +x ./scripts/verify-claude-ssh-package.sh
+          case "${{ inputs.artifact_suffix }}" in
+            deb) pkg=$(ls -1 claude-desktop_*.deb | head -1) ;;
+            rpm) pkg=$(ls -1 claude-desktop-*.rpm | head -1) ;;
+            appimage) pkg=$(ls -1 claude-desktop-*.AppImage | grep -v '\.zsync$' | head -1) ;;
+          esac
+          ./scripts/verify-claude-ssh-package.sh "$pkg" "${{ inputs.artifact_suffix }}"
+
       - name: Upload AMD64 Artifact
         uses: actions/upload-artifact@v4
         with:
