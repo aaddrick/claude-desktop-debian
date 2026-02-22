@@ -118,19 +118,183 @@ jobs:
           name: package-arm64-appimage
           path: artifacts/
 
-      - name: Download release notes
-        id: notes
-        uses: actions/download-artifact@v4
+      # --- Release notes generation (inline, with fallback) ---
+
+      - name: Checkout claude-desktop-versions
+        id: checkout_versions
+        uses: actions/checkout@v4
         continue-on-error: true
         with:
-          name: release-notes-summary
-          path: release-notes/
+          repository: aaddrick/claude-desktop-versions
+          path: versions
+
+      - name: Set up Python 3.12
+        if: steps.checkout_versions.outcome == 'success'
+        uses: actions/setup-python@v5
+        continue-on-error: true
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20
+        if: steps.checkout_versions.outcome == 'success'
+        uses: actions/setup-node@v4
+        continue-on-error: true
+        with:
+          node-version: "20"
+
+      - name: Install difftastic
+        if: steps.checkout_versions.outcome == 'success'
+        continue-on-error: true
+        run: |
+          curl -fsSL https://github.com/Wilfred/difftastic/releases/latest/download/difft-x86_64-unknown-linux-gnu.tar.gz \
+            | sudo tar xz -C /usr/local/bin
+
+      - name: Install Node.js tools
+        if: steps.checkout_versions.outcome == 'success'
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code @electron/asar prettier
+
+      - name: Checkout repo for git history
+        id: checkout_repo
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          fetch-depth: 0
+          path: repo
+
+      - name: Find previous release tags
+        id: prev
+        if: steps.checkout_repo.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="${GITHUB_REF_NAME}"
+          current_cv="${current#*+claude}"
+
+          upstream_tag=""
+          any_tag=""
+          while IFS= read -r tag; do
+            # Skip the current tag
+            [[ "$tag" == "$current" ]] && continue
+            # Track the first previous tag (any version)
+            if [[ -z "$any_tag" ]]; then
+              any_tag="$tag"
+            fi
+            # Track the first tag with a different Claude version
+            tag_cv="${tag#*+claude}"
+            if [[ -z "$upstream_tag" && "$tag_cv" != "$current_cv" ]]; then
+              upstream_tag="$tag"
+            fi
+            # Stop once we have both
+            [[ -n "$any_tag" && -n "$upstream_tag" ]] && break
+          done < <(gh release list --limit 50 -R "$GITHUB_REPOSITORY" --json tagName -q '.[].tagName')
+
+          if [[ -n "$upstream_tag" ]]; then
+            echo "type=upstream" >> "$GITHUB_OUTPUT"
+            echo "tag=$upstream_tag" >> "$GITHUB_OUTPUT"
+            echo "Upstream change: $upstream_tag -> $current"
+          elif [[ -n "$any_tag" ]]; then
+            echo "type=wrapper" >> "$GITHUB_OUTPUT"
+            echo "tag=$any_tag" >> "$GITHUB_OUTPUT"
+            echo "Wrapper-only update: $any_tag -> $current"
+          else
+            echo "type=none" >> "$GITHUB_OUTPUT"
+            echo "::warning::No previous release found"
+          fi
+
+      - name: Run compare-releases (upstream change)
+        if: steps.prev.outcome == 'success' && steps.prev.outputs.type == 'upstream'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          appimage=$(find artifacts/ -name '*.AppImage' ! -name '*.zsync' | head -1)
+          python versions/scripts/compare-releases.py \
+            --old "${{ steps.prev.outputs.tag }}" \
+            --new "${GITHUB_REF_NAME}" \
+            --new-appimage "$appimage" \
+            --model sonnet \
+            --voice-profile-url "https://raw.githubusercontent.com/aaddrick/written-voice-replication/master/.claude/agents/aaddrick-voice.md" \
+            --workdir compare-work
+
+      - name: Append wrapper commits to upstream notes
+        if: steps.prev.outcome == 'success' && steps.prev.outputs.type == 'upstream'
+        continue-on-error: true
+        working-directory: repo
+        run: |
+          prev_tag="${{ steps.prev.outputs.tag }}"
+          current="${GITHUB_REF_NAME}"
+          commits=$(git log "${prev_tag}..${current}" --pretty=format:"- %s (%h)" --no-merges)
+
+          if [[ -n "$commits" && -f ../compare-work/summary.md ]]; then
+            {
+              echo ""
+              echo "---"
+              echo ""
+              echo "## Wrapper/Packaging Changes"
+              echo ""
+              echo "The following commits were made to the build wrapper and packaging between ${prev_tag} and ${current}:"
+              echo ""
+              echo "$commits"
+            } >> ../compare-work/summary.md
+          fi
+
+      - name: Generate commit-based notes (wrapper update)
+        if: steps.prev.outcome == 'success' && steps.prev.outputs.type == 'wrapper'
+        continue-on-error: true
+        working-directory: repo
+        run: |
+          prev_tag="${{ steps.prev.outputs.tag }}"
+          current="${GITHUB_REF_NAME}"
+
+          mkdir -p ../compare-work
+          {
+            echo "# Wrapper Update: ${current}"
+            echo ""
+            echo "This release updates the wrapper/packaging only — the upstream Claude Desktop version is unchanged."
+            echo ""
+            echo "## Changes since ${prev_tag}"
+            echo ""
+            git log "${prev_tag}..${current}" --pretty=format:"- %s (%h)" --no-merges
+            echo ""
+          } > ../compare-work/summary.md
+
+      - name: Generate fallback release notes
+        if: ${{ !cancelled() }}
+        run: |
+          # Only generate fallback if AI-generated notes don't exist
+          if [[ -f compare-work/summary.md ]]; then
+            echo "AI-generated release notes found, skipping fallback"
+            exit 0
+          fi
+
+          # Extract Claude version from tag
+          tag="${GITHUB_REF_NAME}"
+          claude_version="${tag#*+claude}"
+
+          mkdir -p compare-work
+          {
+            echo "## Claude Desktop Update"
+            echo ""
+            echo "This release updates the packaged Claude Desktop version to **${claude_version}**."
+            echo ""
+            echo "### What's Changed"
+            echo "- Updated Claude Desktop to version ${claude_version}"
+            echo ""
+            echo "### Installation"
+            echo "Download the appropriate package for your architecture from the assets below."
+            echo ""
+            echo "---"
+            echo "*This release was automatically generated when a new Claude Desktop version was detected.*"
+          } > compare-work/summary.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
-          body_path: ${{ steps.notes.outcome == 'success' && 'release-notes/summary.md' || '' }}
+          body_path: compare-work/summary.md
 
   update-apt-repo:
     name: Update APT Repository
@@ -428,150 +592,3 @@ jobs:
           git commit -m "Update to v${PKGVER}"
           git push
 
-  release-notes:
-    name: Generate Release Notes
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-amd64]
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout claude-desktop-versions
-        uses: actions/checkout@v4
-        with:
-          repository: aaddrick/claude-desktop-versions
-          path: versions
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install difftastic
-        run: |
-          curl -fsSL https://github.com/Wilfred/difftastic/releases/latest/download/difft-x86_64-unknown-linux-gnu.tar.gz \
-            | sudo tar xz -C /usr/local/bin
-
-      - name: Install Node.js tools
-        run: npm install -g @anthropic-ai/claude-code @electron/asar prettier
-
-      - name: Checkout repo for git history
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          path: repo
-
-      - name: Download AMD64 AppImage artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: package-amd64-appimage
-          path: artifacts/
-
-      - name: Find previous release tags
-        id: prev
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          current="${GITHUB_REF_NAME}"
-          current_cv="${current#*+claude}"
-
-          upstream_tag=""
-          any_tag=""
-          while IFS= read -r tag; do
-            # Skip the current tag
-            [[ "$tag" == "$current" ]] && continue
-            # Track the first previous tag (any version)
-            if [[ -z "$any_tag" ]]; then
-              any_tag="$tag"
-            fi
-            # Track the first tag with a different Claude version
-            tag_cv="${tag#*+claude}"
-            if [[ -z "$upstream_tag" && "$tag_cv" != "$current_cv" ]]; then
-              upstream_tag="$tag"
-            fi
-            # Stop once we have both
-            [[ -n "$any_tag" && -n "$upstream_tag" ]] && break
-          done < <(gh release list --limit 50 -R "$GITHUB_REPOSITORY" --json tagName -q '.[].tagName')
-
-          if [[ -n "$upstream_tag" ]]; then
-            echo "type=upstream" >> "$GITHUB_OUTPUT"
-            echo "tag=$upstream_tag" >> "$GITHUB_OUTPUT"
-            echo "Upstream change: $upstream_tag -> $current"
-          elif [[ -n "$any_tag" ]]; then
-            echo "type=wrapper" >> "$GITHUB_OUTPUT"
-            echo "tag=$any_tag" >> "$GITHUB_OUTPUT"
-            echo "Wrapper-only update: $any_tag -> $current"
-          else
-            echo "type=none" >> "$GITHUB_OUTPUT"
-            echo "::warning::No previous release found"
-          fi
-
-      - name: Run compare-releases (upstream change)
-        if: steps.prev.outputs.type == 'upstream'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          appimage=$(find artifacts/ -name '*.AppImage' ! -name '*.zsync' | head -1)
-          python versions/scripts/compare-releases.py \
-            --old "${{ steps.prev.outputs.tag }}" \
-            --new "${GITHUB_REF_NAME}" \
-            --new-appimage "$appimage" \
-            --model sonnet \
-            --voice-profile-url "https://raw.githubusercontent.com/aaddrick/written-voice-replication/master/.claude/agents/aaddrick-voice.md" \
-            --workdir compare-work
-
-      - name: Append wrapper commits to upstream notes
-        if: steps.prev.outputs.type == 'upstream'
-        working-directory: repo
-        run: |
-          prev_tag="${{ steps.prev.outputs.tag }}"
-          current="${GITHUB_REF_NAME}"
-          commits=$(git log "${prev_tag}..${current}" --pretty=format:"- %s (%h)" --no-merges)
-
-          if [[ -n "$commits" && -f ../compare-work/summary.md ]]; then
-            {
-              echo ""
-              echo "---"
-              echo ""
-              echo "## Wrapper/Packaging Changes"
-              echo ""
-              echo "The following commits were made to the build wrapper and packaging between ${prev_tag} and ${current}:"
-              echo ""
-              echo "$commits"
-            } >> ../compare-work/summary.md
-          fi
-
-      - name: Generate commit-based notes (wrapper update)
-        if: steps.prev.outputs.type == 'wrapper'
-        working-directory: repo
-        run: |
-          prev_tag="${{ steps.prev.outputs.tag }}"
-          current="${GITHUB_REF_NAME}"
-
-          mkdir -p ../compare-work
-          {
-            echo "# Wrapper Update: ${current}"
-            echo ""
-            echo "This release updates the wrapper/packaging only — the upstream Claude Desktop version is unchanged."
-            echo ""
-            echo "## Changes since ${prev_tag}"
-            echo ""
-            git log "${prev_tag}..${current}" --pretty=format:"- %s (%h)" --no-merges
-            echo ""
-          } > ../compare-work/summary.md
-
-      - name: Upload release notes
-        if: steps.prev.outputs.type != 'none'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-notes-summary
-          path: compare-work/summary.md
-          if-no-files-found: warn
