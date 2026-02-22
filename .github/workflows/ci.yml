@@ -210,7 +210,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          appimage=$(find artifacts/ -name '*.AppImage' ! -name '*.zsync' | head -1)
+          appimage=$(find artifacts/ -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
           python versions/scripts/compare-releases.py \
             --old "${{ steps.prev.outputs.tag }}" \
             --new "${GITHUB_REF_NAME}" \
