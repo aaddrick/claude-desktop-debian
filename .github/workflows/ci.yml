@@ -190,14 +190,17 @@ jobs:
             [[ -n "$any_tag" && -n "$upstream_tag" ]] && break
           done < <(gh release list --limit 50 -R "$GITHUB_REPOSITORY" --json tagName -q '.[].tagName')
 
-          if [[ -n "$upstream_tag" ]]; then
-            echo "type=upstream" >> "$GITHUB_OUTPUT"
-            echo "tag=$upstream_tag" >> "$GITHUB_OUTPUT"
-            echo "Upstream change: $upstream_tag -> $current"
-          elif [[ -n "$any_tag" ]]; then
-            echo "type=wrapper" >> "$GITHUB_OUTPUT"
-            echo "tag=$any_tag" >> "$GITHUB_OUTPUT"
-            echo "Wrapper-only update: $any_tag -> $current"
+          if [[ -n "$any_tag" ]]; then
+            any_cv="${any_tag#*+claude}"
+            if [[ "$any_cv" != "$current_cv" && -n "$upstream_tag" ]]; then
+              echo "type=upstream" >> "$GITHUB_OUTPUT"
+              echo "tag=$upstream_tag" >> "$GITHUB_OUTPUT"
+              echo "Upstream change: $upstream_tag -> $current"
+            else
+              echo "type=wrapper" >> "$GITHUB_OUTPUT"
+              echo "tag=$any_tag" >> "$GITHUB_OUTPUT"
+              echo "Wrapper-only update: $any_tag -> $current"
+            fi
           else
             echo "type=none" >> "$GITHUB_OUTPUT"
             echo "::warning::No previous release found"
