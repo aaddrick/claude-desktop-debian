@@ -131,6 +131,7 @@ Special thanks to:
 - **[jarrodcolburn](https://github.com/jarrodcolburn)** for passwordless sudo support in container/CI environments
 - **[chukfinley](https://github.com/chukfinley)** for experimental Cowork mode support on Linux
 - **[IliyaBrook](https://github.com/IliyaBrook)** for fixing the platform patch for Claude Desktop >= 1.1.3541 arm64 refactor
+- **[MichaelMKenny](https://github.com/MichaelMKenny)** for diagnosing the `$`-prefixed electron variable bug with root cause analysis and workaround
 
 For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
 

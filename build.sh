@@ -24,6 +24,7 @@ work_dir=''
 app_staging_dir=''
 chosen_electron_module_path=''
 electron_var=''
+electron_var_re=''
 asar_exec=''
 claude_extract_dir=''
 electron_resources_dest=''
@@ -687,10 +688,10 @@ extract_electron_variable() {
 	echo 'Extracting electron module variable name...'
 	local index_js='app.asar.contents/.vite/build/index.js'
 
-	electron_var=$(grep -oP '\b\w+(?=\s*=\s*require\("electron"\))' \
+	electron_var=$(grep -oP '\$?\w+(?=\s*=\s*require\("electron"\))' \
 		"$index_js" | head -1)
 	if [[ -z $electron_var ]]; then
-		electron_var=$(grep -oP '(?<=new )\w+(?=\.Tray\b)' \
+		electron_var=$(grep -oP '(?<=new )\$?\w+(?=\.Tray\b)' \
 			"$index_js" | head -1)
 	fi
 	if [[ -z $electron_var ]]; then
@@ -698,6 +699,7 @@ extract_electron_variable() {
 		cd "$project_root" || exit 1
 		exit 1
 	fi
+	electron_var_re="${electron_var//\$/\\$}"
 	echo "  Found electron variable: $electron_var"
 	echo '##############################################################'
 }
@@ -708,9 +710,9 @@ fix_native_theme_references() {
 
 	local wrong_refs
 	mapfile -t wrong_refs < <(
-		grep -oP '\b\w+(?=\.nativeTheme)' "$index_js" \
+		grep -oP '\$?\w+(?=\.nativeTheme)' "$index_js" \
 			| sort -u \
-			| grep -v "^${electron_var}$" || true
+			| grep -Fxv "$electron_var" || true
 	)
 
 	if (( ${#wrong_refs[@]} == 0 )); then
@@ -719,11 +721,12 @@ fix_native_theme_references() {
 		return
 	fi
 
-	local ref
+	local ref ref_re
 	for ref in "${wrong_refs[@]}"; do
 		echo "  Replacing: $ref.nativeTheme -> $electron_var.nativeTheme"
+		ref_re="${ref//\$/\\$}"
 		sed -i -E \
-			"s/\b${ref}\.nativeTheme/${electron_var}.nativeTheme/g" \
+			"s/${ref_re}\.nativeTheme/${electron_var_re}.nativeTheme/g" \
 			"$index_js"
 	done
 	echo '##############################################################'
@@ -788,7 +791,7 @@ patch_tray_menu_handler() {
 	echo 'Patching nativeTheme handler for startup delay...'
 	if ! grep -q '_trayStartTime' "$index_js"; then
 		sed -i -E \
-			"s/(${electron_var}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" \
+			"s/(${electron_var_re}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" \
 			"$index_js"
 		sed -i -E \
 			"s/\((\w+)\(\)\s*,\s*${tray_func}\(\)\s*,/(\1(),Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
@@ -801,11 +804,11 @@ patch_tray_menu_handler() {
 patch_tray_icon_selection() {
 	echo 'Patching tray icon selection for Linux visibility...'
 	local index_js='app.asar.contents/.vite/build/index.js'
-	local dark_check="$electron_var.nativeTheme.shouldUseDarkColors"
+	local dark_check="${electron_var_re}.nativeTheme.shouldUseDarkColors"
 
-	if grep -qP ':\w="TrayIconTemplate\.png"' "$index_js"; then
+	if grep -qP ':\$?\w="TrayIconTemplate\.png"' "$index_js"; then
 		sed -i -E \
-			"s/:(\w)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
+			"s/:(\\\$?\w)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
 			"$index_js"
 		echo 'Patched tray icon selection for Linux theme support'
 	else
