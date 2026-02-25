@@ -899,7 +899,7 @@ let patchCount = 0;
 const platformGateRe = /(\w+)(\s*!==\s*"darwin"\s*&&\s*)\1(\s*!==\s*"win32")/g;
 const origCode = code;
 code = code.replace(platformGateRe, (match, varName, mid, end) => {
-    // Only patch the instance near the "Unsupported platform" error
+    // Only patch the instance near the "unsupported_platform" code value
     const matchIdx = origCode.indexOf(match);
     const nearbyText = origCode.substring(matchIdx, matchIdx + 200);
     if (nearbyText.includes('unsupported_platform') || nearbyText.includes('Unsupported platform')) {
