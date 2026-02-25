@@ -794,7 +794,7 @@ patch_tray_menu_handler() {
 			"s/(${electron_var_re}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" \
 			"$index_js"
 		sed -i -E \
-			"s/\((\w+)\(\)\s*,\s*${tray_func}\(\)\s*,/(\1(),Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
+			"s/\((\w+\([^)]*\))\s*,\s*${tray_func}\(\)\s*,/(\1,Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
 			"$index_js"
 		echo '  Added startup delay check (3 second window)'
 	fi
@@ -894,7 +894,7 @@ let patchCount = 0;
 // ============================================================
 // Patch 1: Platform check - allow Linux through fz()
 // Pattern: VAR!=="darwin"&&VAR!=="win32" (unique in platform gate)
-// Anchor: appears before 'Unsupported platform:' string
+// Anchor: appears near 'unsupported_platform' code value
 // ============================================================
 const platformGateRe = /(\w+)(\s*!==\s*"darwin"\s*&&\s*)\1(\s*!==\s*"win32")/g;
 const origCode = code;
@@ -902,7 +902,7 @@ code = code.replace(platformGateRe, (match, varName, mid, end) => {
     // Only patch the instance near the "Unsupported platform" error
     const matchIdx = origCode.indexOf(match);
     const nearbyText = origCode.substring(matchIdx, matchIdx + 200);
-    if (nearbyText.includes('Unsupported platform')) {
+    if (nearbyText.includes('unsupported_platform') || nearbyText.includes('Unsupported platform')) {
         return `${varName}${mid}${varName}${end}&&${varName}!=="linux"`;
     }
     return match;
@@ -912,7 +912,7 @@ if (code !== origCode) {
     patchCount++;
 } else {
     // Try without backreference (in case minifier uses different var names)
-    const simpleRe = /(!=="darwin"\s*&&\s*\w+\s*!=="win32")([\s\S]{0,50}Unsupported platform)/;
+    const simpleRe = /(!=="darwin"\s*&&\s*\w+\s*!=="win32")([\s\S]{0,200}unsupported_platform)/;
     const simpleMatch = code.match(simpleRe);
     if (simpleMatch) {
         const varMatch = simpleMatch[0].match(/(\w+)\s*!==\s*"win32"/);
@@ -923,6 +923,12 @@ if (code !== origCode) {
             patchCount++;
         }
     }
+}
+if (code === origCode) {
+    console.error('FATAL: Failed to patch cowork platform gate for Linux.');
+    console.error('The app will crash at startup without this patch.');
+    console.error('The platform check pattern or nearby anchor text may have changed.');
+    process.exit(1);
 }
 
 // ============================================================
