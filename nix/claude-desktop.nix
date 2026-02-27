@@ -111,6 +111,14 @@ stdenvNoCC.mkDerivation {
       fi
     done
 
+    # Install locale JSON files into resources (belt-and-suspenders;
+    # they're also packed inside app.asar at resources/i18n/)
+    for locale_json in build/claude-extract/lib/net45/resources/*-*.json; do
+      if [ -f "$locale_json" ]; then
+        cp "$locale_json" $out/lib/claude-desktop/resources/
+      fi
+    done
+
     # Install .desktop file
     mkdir -p $out/share/applications
     install -Dm644 ${desktopItem}/share/applications/* $out/share/applications/
