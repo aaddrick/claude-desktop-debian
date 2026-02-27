@@ -25,7 +25,7 @@ let
     };
     aarch64-linux = fetchurl {
       url = "https://downloads.claude.ai/releases/win32/arm64/${version}/Claude-d8e39139e1c50f5530ac3da3af80e689710c8ea1.exe";
-      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+      hash = "sha256-PvKw6JpfLIhzbcrfogLltHNKyZfJtHOpOrGb+vcOkSM=";
     };
   };
 
