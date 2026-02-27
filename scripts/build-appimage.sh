@@ -77,6 +77,7 @@ source "$appdir/usr/lib/claude-desktop/launcher-common.sh"
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
+cleanup_stale_lock
 
 # Detect display backend
 detect_display_backend

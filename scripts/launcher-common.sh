@@ -90,6 +90,34 @@ build_electron_args() {
 	fi
 }
 
+# Clean up stale SingletonLock if the owning process is no longer running.
+# Electron uses requestSingleInstanceLock() which silently quits if the lock
+# is held. A stale lock (from a crash or unclean update) blocks all launches
+# with no user-facing error message.
+# The lock is a symlink whose target is "hostname-PID".
+cleanup_stale_lock() {
+	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
+	local lock_file="$config_dir/SingletonLock"
+
+	[[ -L $lock_file ]] || return 0
+
+	local lock_target
+	lock_target="$(readlink "$lock_file" 2>/dev/null)" || return 0
+
+	local lock_pid="${lock_target##*-}"
+
+	# Validate that we extracted a numeric PID
+	[[ $lock_pid =~ ^[0-9]+$ ]] || return 0
+
+	if kill -0 "$lock_pid" 2>/dev/null; then
+		# Process is still running — lock is valid
+		return 0
+	fi
+
+	rm -f "$lock_file"
+	log_message "Removed stale SingletonLock (PID $lock_pid no longer running)"
+}
+
 # Set common environment variables
 setup_electron_env() {
 	export ELECTRON_FORCE_IS_PACKAGED=true

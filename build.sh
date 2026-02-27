@@ -806,9 +806,9 @@ patch_tray_icon_selection() {
 	local index_js='app.asar.contents/.vite/build/index.js'
 	local dark_check="${electron_var_re}.nativeTheme.shouldUseDarkColors"
 
-	if grep -qP ':\$?\w="TrayIconTemplate\.png"' "$index_js"; then
+	if grep -qP ':\$?\w+="TrayIconTemplate\.png"' "$index_js"; then
 		sed -i -E \
-			"s/:(\\\$?\w)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
+			"s/:(\\\$?\w+)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
 			"$index_js"
 		echo 'Patched tray icon selection for Linux theme support'
 	else
