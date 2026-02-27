@@ -1,5 +1,4 @@
 {
-  lib,
   buildFHSEnv,
   claude-desktop,
   nodejs,

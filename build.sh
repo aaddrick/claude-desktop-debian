@@ -7,7 +7,7 @@
 
 # Global variables (set by functions, used throughout)
 architecture=''
-distro_family=''  # debian, rpm, or unknown
+distro_family=''  # debian, rpm, nix, or unknown
 claude_download_url=''
 claude_exe_filename=''
 version=''
@@ -18,6 +18,7 @@ perform_cleanup=false
 test_flags_mode=false
 local_exe_path=''
 node_pty_dir=''
+source_dir=''
 original_user=''
 original_home=''
 project_root=''
@@ -1132,28 +1133,40 @@ COWORK_PATCH
 install_node_pty() {
 	section_header 'Installing node-pty for terminal support'
 
-	node_pty_build_dir="$work_dir/node-pty-build"
-	mkdir -p "$node_pty_build_dir" || exit 1
-	cd "$node_pty_build_dir" || exit 1
-	echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
+	local pty_src_dir=''
 
-	echo 'Installing node-pty (this will compile native module for Linux)...'
-	if npm install node-pty 2>&1; then
-		echo 'node-pty installed successfully'
-
-		if [[ -d $node_pty_build_dir/node_modules/node-pty ]]; then
-			echo 'Copying node-pty JavaScript files into app.asar.contents...'
-			mkdir -p "$app_staging_dir/app.asar.contents/node_modules/node-pty" || exit 1
-			cp -r "$node_pty_build_dir/node_modules/node-pty/lib" \
-				"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
-			cp "$node_pty_build_dir/node_modules/node-pty/package.json" \
-				"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
-			echo 'node-pty JavaScript files copied'
-		else
-			echo 'node-pty installation directory not found'
-		fi
+	if [[ -n $node_pty_dir ]]; then
+		# Use pre-built node-pty (e.g. from Nix)
+		echo "Using pre-built node-pty from $node_pty_dir"
+		pty_src_dir="$node_pty_dir"
 	else
-		echo 'Failed to install node-pty - terminal features may not work'
+		# Build node-pty from npm
+		node_pty_build_dir="$work_dir/node-pty-build"
+		mkdir -p "$node_pty_build_dir" || exit 1
+		cd "$node_pty_build_dir" || exit 1
+		echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
+
+		echo 'Installing node-pty (this compiles native module)...'
+		if npm install node-pty 2>&1; then
+			echo 'node-pty installed successfully'
+			pty_src_dir="$node_pty_build_dir/node_modules/node-pty"
+		else
+			echo 'Failed to install node-pty - terminal features may not work'
+		fi
+	fi
+
+	if [[ -n $pty_src_dir && -d $pty_src_dir ]]; then
+		echo 'Copying node-pty JavaScript files into app.asar.contents...'
+		mkdir -p "$app_staging_dir/app.asar.contents/node_modules/node-pty" || exit 1
+		cp -r "$pty_src_dir/lib" \
+			"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
+		cp "$pty_src_dir/package.json" \
+			"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
+		echo 'node-pty JavaScript files copied'
+	elif [[ -z $pty_src_dir ]]; then
+		echo 'node-pty source directory not set'
+	else
+		echo "node-pty directory not found: $pty_src_dir"
 	fi
 
 	cd "$app_staging_dir" || exit 1
@@ -1174,10 +1187,17 @@ finalize_app_asar() {
 	echo 'Cowork VM service daemon copied to unpacked'
 
 	# Copy node-pty native binaries
-	if [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
+	local pty_release_dir=''
+	if [[ -n $node_pty_dir && -d $node_pty_dir/build/Release ]]; then
+		pty_release_dir="$node_pty_dir/build/Release"
+	elif [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
+		pty_release_dir="$node_pty_build_dir/node_modules/node-pty/build/Release"
+	fi
+
+	if [[ -n $pty_release_dir ]]; then
 		echo 'Copying node-pty native binaries to unpacked directory...'
 		mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release" || exit 1
-		cp -r "$node_pty_build_dir/node_modules/node-pty/build/Release/"* \
+		cp -r "$pty_release_dir/"* \
 			"$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/" || exit 1
 		chmod +x "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/"* 2>/dev/null || true
 		echo 'node-pty native binaries copied'
@@ -1540,13 +1560,17 @@ main() {
 
 	# Phase 3: Patch and prepare
 	patch_app_asar
-	if [[ $build_format != 'nix' ]]; then
-		install_node_pty
-	fi
+	install_node_pty
 	finalize_app_asar
 	if [[ $build_format != 'nix' ]]; then
 		stage_electron
 		copy_locale_files
+	else
+		# Nix installPhase handles Electron staging and locale files.
+		# Set a tray icon destination so process_icons has somewhere to
+		# write them; the Nix installPhase picks them up from here.
+		electron_resources_dest="$app_staging_dir/tray-icons"
+		mkdir -p "$electron_resources_dest" || exit 1
 	fi
 	process_icons
 	copy_ssh_helpers

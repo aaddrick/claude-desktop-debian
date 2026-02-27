@@ -105,7 +105,7 @@ stdenvNoCC.mkDerivation {
     done
 
     # Install tray icons into resources
-    for tray_icon in build/electron-app/node_modules/electron/dist/resources/Tray*; do
+    for tray_icon in build/electron-app/tray-icons/Tray*; do
       if [ -f "$tray_icon" ]; then
         cp "$tray_icon" $out/lib/claude-desktop/resources/
       fi

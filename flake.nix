@@ -26,9 +26,9 @@
       };
 
       flake = {
-        overlays.default = final: prev: let 
+        overlays.default = final: prev: let
           node-pty = final.callPackage ./nix/node-pty.nix { };
-        in  {
+        in {
           claude-desktop = final.callPackage ./nix/claude-desktop.nix {
             inherit node-pty;
           };
