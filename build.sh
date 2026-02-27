@@ -112,6 +112,9 @@ detect_distro() {
 		distro_family='rpm'
 		echo "Detected Red Hat-based distribution"
 		echo "  $(cat /etc/redhat-release)"
+	elif [[ -f /etc/NIXOS ]]; then
+		distro_family='nix'
+		echo "Detected NixOS"
 	else
 		distro_family='unknown'
 		echo "Warning: Could not detect distribution family"
@@ -183,12 +186,13 @@ parse_arguments() {
 	case "$distro_family" in
 		debian) build_format='deb' ;;
 		rpm) build_format='rpm' ;;
+		nix) build_format='nix' ;;
 		*) build_format='appimage' ;;
 	esac
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build|-c|--clean|-e|--exe|-r|--release-tag)
+			-b|--build|-c|--clean|-e|--exe|-r|--release-tag|-s|--source-dir)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
@@ -198,6 +202,7 @@ parse_arguments() {
 					-c|--clean) cleanup_action="$2" ;;
 					-e|--exe) local_exe_path="$2" ;;
 					-r|--release-tag) release_tag="$2" ;;
+					-s|--source-dir) project_root="$2" ;;
 				esac
 				shift 2
 				;;
@@ -206,11 +211,12 @@ parse_arguments() {
 				shift
 				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--release-tag TAG] [--test-flags]"
-				echo '  --build: Specify the build format (deb, rpm, or appimage).'
+				echo "Usage: $0 [--build deb|rpm|appimage|nix] [--clean yes|no] [--exe /path/to/installer.exe] [--source-dir /path] [--release-tag TAG] [--test-flags]"
+				echo '  --build: Specify the build format (deb, rpm, appimage, or nix).'
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
+				echo '  --source-dir: Path to repo root for scripts/ and assets (default: cwd)'
 				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
@@ -223,12 +229,16 @@ parse_arguments() {
 		esac
 	done
 
+	# Recalculate paths if --source-dir changed project_root
+	work_dir="$project_root/build"
+	app_staging_dir="$work_dir/electron-app"
+
 	# Validate arguments
 	build_format="${build_format,,}"
 	cleanup_action="${cleanup_action,,}"
 
-	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' ]]; then
-		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', or 'appimage'." >&2
+	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' && $build_format != 'nix' ]]; then
+		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', 'appimage', or 'nix'." >&2
 		exit 1
 	fi
 
@@ -1293,7 +1303,12 @@ copy_ssh_helpers() {
 	section_header 'SSH Helpers'
 
 	local ssh_src="$claude_extract_dir/lib/net45/resources/claude-ssh"
-	local ssh_dest="$electron_resources_dest/claude-ssh"
+	local ssh_dest
+	if [[ $build_format == 'nix' ]]; then
+		ssh_dest="$app_staging_dir/ssh-helpers/claude-ssh"
+	else
+		ssh_dest="$electron_resources_dest/claude-ssh"
+	fi
 	local binary_name="claude-ssh-linux-$architecture"
 
 	if [[ ! -d "$ssh_src" ]]; then
@@ -1320,6 +1335,12 @@ copy_ssh_helpers() {
 
 run_packaging() {
 	section_header 'Call Packaging Script'
+
+	if [[ $build_format == 'nix' ]]; then
+		echo 'Nix build mode - skipping packaging (Nix derivation handles installation)'
+		section_footer 'Call Packaging Script'
+		return 0
+	fi
 
 	local output_path=''
 	local script_name file_pattern pkg_file
@@ -1491,21 +1512,41 @@ main() {
 		exit 0
 	fi
 
-	check_dependencies
+	if [[ $build_format != 'nix' ]]; then
+		check_dependencies
+	fi
 	setup_work_directory
-	setup_nodejs
-	setup_electron_asar
+
+	if [[ $build_format != 'nix' ]]; then
+		setup_nodejs
+		setup_electron_asar
+	else
+		# Nix provides node and asar in PATH
+		asar_exec=$(command -v asar)
+		if [[ -z $asar_exec ]]; then
+			echo 'Error: asar not found in PATH (expected Nix to provide it)' >&2
+			exit 1
+		fi
+	fi
 
 	# Phase 2: Download and extract
+	if [[ $build_format == 'nix' && -z $local_exe_path ]]; then
+		echo 'Error: --exe is required when --build nix is specified' >&2
+		exit 1
+	fi
 	download_claude_installer
 
 	# Phase 3: Patch and prepare
 	patch_app_asar
-	install_node_pty
+	if [[ $build_format != 'nix' ]]; then
+		install_node_pty
+	fi
 	finalize_app_asar
-	stage_electron
+	if [[ $build_format != 'nix' ]]; then
+		stage_electron
+		copy_locale_files
+	fi
 	process_icons
-	copy_locale_files
 	copy_ssh_helpers
 
 	cd "$project_root" || exit 1
@@ -1517,7 +1558,9 @@ main() {
 	cleanup_build
 
 	echo 'Build process finished.'
-	print_next_steps
+	if [[ $build_format != 'nix' ]]; then
+		print_next_steps
+	fi
 }
 
 # Run main with all script arguments
