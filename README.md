@@ -1,6 +1,6 @@
 # Claude Desktop for Linux
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), distribution-agnostic AppImages, and an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch Linux.
+This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), distribution-agnostic AppImages, an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch Linux, and a Nix flake for NixOS.
 
 **Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
 
@@ -80,6 +80,38 @@ paru -S claude-desktop-appimage
 
 The AUR package installs the AppImage build of Claude Desktop.
 
+### Using Nix Flake (NixOS)
+
+Install directly from the flake:
+
+```bash
+# Basic install
+nix profile install github:aaddrick/claude-desktop-debian
+
+# With MCP server support (FHS environment)
+nix profile install github:aaddrick/claude-desktop-debian#claude-desktop-fhs
+```
+
+Or add to your NixOS configuration:
+
+```nix
+# flake.nix
+{
+  inputs.claude-desktop.url = "github:aaddrick/claude-desktop-debian";
+
+  outputs = { nixpkgs, claude-desktop, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        ({ pkgs, ... }: {
+          nixpkgs.overlays = [ claude-desktop.overlays.default ];
+          environment.systemPackages = [ pkgs.claude-desktop ];
+        })
+      ];
+    };
+  };
+}
+```
+
 ### Using Pre-built Releases
 
 Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
@@ -138,7 +170,7 @@ Special thanks to:
 - **[daa25209](https://github.com/daa25209)** for detailed root cause analysis of the cowork platform gate crash and patch script
 - **[noctuum](https://github.com/noctuum)** for the `CLAUDE_MENU_BAR` env var for configurable menu bar visibility
 
-For NixOS users, please refer to [k3d3's repository](https://github.com/k3d3/claude-desktop-linux-flake) for a Nix-specific implementation.
+This project includes a NixOS flake inspired by [k3d3's original implementation](https://github.com/k3d3/claude-desktop-linux-flake). See the [NixOS installation section](#using-nix-flake-nixos) above.
 
 ## Sponsorship
 
