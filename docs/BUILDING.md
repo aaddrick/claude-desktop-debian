@@ -22,6 +22,7 @@ cd claude-desktop-debian
 ./build.sh --build deb       # Debian/Ubuntu .deb package
 ./build.sh --build rpm       # Fedora/RHEL .rpm package
 ./build.sh --build appimage  # Distribution-agnostic AppImage
+./build.sh --build nix       # Nix derivation (patch only, used by flake)
 
 # Build with custom options
 ./build.sh --build deb --clean no  # Keep intermediate files
@@ -36,6 +37,7 @@ The build script automatically detects your distribution and selects the appropr
 |--------------|----------------|-----------------|
 | Debian, Ubuntu, Mint | `.deb` | apt |
 | Fedora, RHEL, CentOS | `.rpm` | dnf |
+| NixOS | `nix` | nix |
 | Arch Linux | `.AppImage` (via AUR) | yay/paru |
 | Other | `.AppImage` | - |
 
@@ -74,6 +76,23 @@ chmod +x ./claude-desktop-*.AppImage
 
 **Automatic Updates:** AppImages downloaded from GitHub releases include embedded update information and work seamlessly with Gear Lever for automatic updates. Locally-built AppImages can be manually configured for updates in Gear Lever.
 
+### For NixOS
+
+The repository includes a Nix flake. Build and install directly:
+
+```bash
+# Build the package
+nix build .#claude-desktop
+
+# Build the FHS-wrapped variant (for MCP server support)
+nix build .#claude-desktop-fhs
+
+# Run without installing
+nix run .#claude-desktop
+```
+
+For declarative NixOS installation, see the [README](../README.md#using-nix-flake-nixos).
+
 ## Technical Details
 
 ### How It Works
@@ -87,6 +106,7 @@ Claude Desktop is an Electron application distributed for Windows. This project:
    - **Debian package (.deb)**: For Debian, Ubuntu, and derivatives
    - **RPM package (.rpm)**: For Fedora, RHEL, CentOS, and derivatives
    - **AppImage**: Portable, distribution-agnostic executable
+   - **Nix package**: For NixOS, via the included flake
 
 ### Build Process
 
@@ -105,6 +125,7 @@ A GitHub Actions workflow runs daily to check for new Claude Desktop releases:
 2. Compares resolved URLs with those in `build.sh`
 3. If a new version is detected:
    - Updates `build.sh` with new download URLs
+   - Updates `nix/claude-desktop.nix` with new version, URLs, and SRI hashes
    - Creates a new release tag
    - Triggers automated builds for both architectures
 
