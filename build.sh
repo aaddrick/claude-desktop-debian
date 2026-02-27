@@ -626,6 +626,11 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	mkdir -p app.asar.contents/resources/i18n || exit 1
 	cp "$claude_extract_dir/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ || exit 1
 
+	# Copy tray icons into asar so both packaged (process.resourcesPath)
+	# and unpackaged (app.getAppPath()) code paths can find them
+	cp "$claude_extract_dir/lib/net45/resources/Tray"* app.asar.contents/resources/ 2>/dev/null || \
+		echo 'Warning: No tray icon files found for asar inclusion'
+
 	# Patch title bar detection
 	patch_titlebar_detection
 
