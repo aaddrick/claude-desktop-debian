@@ -17,6 +17,7 @@ cleanup_action='yes'
 perform_cleanup=false
 test_flags_mode=false
 local_exe_path=''
+node_pty_dir=''
 original_user=''
 original_home=''
 project_root=''
@@ -192,7 +193,7 @@ parse_arguments() {
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build|-c|--clean|-e|--exe|-r|--release-tag|-s|--source-dir)
+			-b|--build|-c|--clean|-e|--exe|-r|--release-tag|-s|--source-dir|--node-pty-dir)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
@@ -203,6 +204,7 @@ parse_arguments() {
 					-e|--exe) local_exe_path="$2" ;;
 					-r|--release-tag) release_tag="$2" ;;
 					-s|--source-dir) source_dir="$2" ;;
+					--node-pty-dir) node_pty_dir="$2" ;;
 				esac
 				shift 2
 				;;
@@ -217,6 +219,7 @@ parse_arguments() {
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
 				echo '  --source-dir: Path to repo root for scripts/ and assets (default: project root)'
+				echo '  --node-pty-dir: Path to pre-built node-pty package (skips npm install)'
 				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0

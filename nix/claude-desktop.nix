@@ -13,6 +13,7 @@
   python3,
   bash,
   getent,
+  node-pty,
 }:
 let
   pname = "claude-desktop";
@@ -78,6 +79,7 @@ stdenvNoCC.mkDerivation {
     bash ${sourceRoot}/build.sh \
       --exe "$(pwd)/Claude-Setup.exe" \
       --source-dir "${sourceRoot}" \
+      --node-pty-dir "${node-pty}/lib/node_modules/node-pty" \
       --build nix \
       --clean no
 
@@ -91,9 +93,6 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/lib/claude-desktop/resources
     cp build/electron-app/app.asar $out/lib/claude-desktop/resources/
     cp -r build/electron-app/app.asar.unpacked $out/lib/claude-desktop/resources/
-
-    # TODO: node-pty is not in nixpkgs; terminal features (Claude Code)
-    # require it. A future improvement could build it with buildNpmPackage.
 
     # Install icons
     for size in 16 24 32 48 64 256; do
