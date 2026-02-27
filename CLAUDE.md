@@ -303,6 +303,7 @@ gh run download RUN_ID -n artifact-name
 - `claude-desktop-VERSION-amd64.AppImage` - AppImage for x86_64
 - `claude-desktop-VERSION-arm64.deb` - Debian package for ARM64
 - `claude-desktop-VERSION-arm64.AppImage` - AppImage for ARM64
+- `result/` - Nix build output (symlink, gitignored)
 
 ## Testing
 
@@ -310,6 +311,13 @@ gh run download RUN_ID -n artifact-name
 
 ```bash
 ./build.sh --build appimage --clean no
+```
+
+### Nix Build
+
+```bash
+nix build .#claude-desktop
+nix build .#claude-desktop-fhs
 ```
 
 ### Testing AppImage
@@ -373,6 +381,7 @@ gdbus call --session --dest=org.freedesktop.DBus \
   ```
 - **SingletonLock** - If app won't start, check for stale lock: `~/.config/Claude/SingletonLock`
 - **Node version** - Build requires Node.js; the script downloads its own if needed
+- **Nix hashes** - When Claude Desktop version changes, both `build.sh` URLs and `nix/claude-desktop.nix` (version, URLs, SRI hashes) must be updated. The CI handles this automatically.
 - **Claude Desktop version** - A GitHub Action automatically updates the `CLAUDE_DESKTOP_VERSION` repo variable and the URLs in `build.sh` on main when a new version is detected. Before committing `build.sh`, ensure your branch has the latest URLs:
   ```bash
   # Check repo variable (source of truth)
