@@ -8,11 +8,11 @@
   imagemagick,
   nodejs,
   nodePackages,
-  node-pty,
   makeDesktopItem,
   makeWrapper,
   python3,
   bash,
+  getent,
 }:
 let
   pname = "claude-desktop";
@@ -21,7 +21,7 @@ let
   srcs = {
     x86_64-linux = fetchurl {
       url = "https://downloads.claude.ai/releases/win32/x64/${version}/Claude-d8e39139e1c50f5530ac3da3af80e689710c8ea1.exe";
-      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+      hash = "sha256-ngFY1mYwBIZLOYD5I7Lz/v5OexUKNe4MUHcq8VOejI4=";
     };
     aarch64-linux = fetchurl {
       url = "https://downloads.claude.ai/releases/win32/arm64/${version}/Claude-d8e39139e1c50f5530ac3da3af80e689710c8ea1.exe";
@@ -58,6 +58,7 @@ stdenvNoCC.mkDerivation {
     makeWrapper
     bash
     python3
+    getent
   ];
 
   # The exe is not a standard archive — use manual unpack
@@ -91,10 +92,8 @@ stdenvNoCC.mkDerivation {
     cp build/electron-app/app.asar $out/lib/claude-desktop/resources/
     cp -r build/electron-app/app.asar.unpacked $out/lib/claude-desktop/resources/
 
-    # Install node-pty from nixpkgs (build.sh skips npm install in nix mode)
-    mkdir -p $out/lib/claude-desktop/resources/app.asar.unpacked/node_modules/node-pty/build/Release
-    cp -r ${node-pty}/lib/node_modules/node-pty/build/Release/* \
-      $out/lib/claude-desktop/resources/app.asar.unpacked/node_modules/node-pty/build/Release/
+    # TODO: node-pty is not in nixpkgs; terminal features (Claude Code)
+    # require it. A future improvement could build it with buildNpmPackage.
 
     # Install icons
     for size in 16 24 32 48 64 256; do

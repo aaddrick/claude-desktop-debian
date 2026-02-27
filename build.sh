@@ -202,7 +202,7 @@ parse_arguments() {
 					-c|--clean) cleanup_action="$2" ;;
 					-e|--exe) local_exe_path="$2" ;;
 					-r|--release-tag) release_tag="$2" ;;
-					-s|--source-dir) project_root="$2" ;;
+					-s|--source-dir) source_dir="$2" ;;
 				esac
 				shift 2
 				;;
@@ -216,7 +216,7 @@ parse_arguments() {
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
-				echo '  --source-dir: Path to repo root for scripts/ and assets (default: cwd)'
+				echo '  --source-dir: Path to repo root for scripts/ and assets (default: project root)'
 				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
@@ -229,9 +229,8 @@ parse_arguments() {
 		esac
 	done
 
-	# Recalculate paths if --source-dir changed project_root
-	work_dir="$project_root/build"
-	app_staging_dir="$work_dir/electron-app"
+	# source_dir is where scripts/assets live (default: project_root)
+	source_dir="${source_dir:-$project_root}"
 
 	# Validate arguments
 	build_format="${build_format,,}"
@@ -587,7 +586,7 @@ patch_app_asar() {
 	original_main=$(node -e "const pkg = require('./app.asar.contents/package.json'); console.log(pkg.main);")
 	echo "Original main entry: $original_main"
 
-	cp "$project_root/scripts/frame-fix-wrapper.js" app.asar.contents/frame-fix-wrapper.js || exit 1
+	cp "$source_dir/scripts/frame-fix-wrapper.js" app.asar.contents/frame-fix-wrapper.js || exit 1
 
 	cat > app.asar.contents/frame-fix-entry.js << EOFENTRY
 // Load frame fix first
@@ -617,7 +616,7 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	# Create stub native module
 	echo 'Creating stub native module...'
 	mkdir -p app.asar.contents/node_modules/@ant/claude-native || exit 1
-	cp "$project_root/scripts/claude-native-stub.js" \
+	cp "$source_dir/scripts/claude-native-stub.js" \
 		app.asar.contents/node_modules/@ant/claude-native/index.js || exit 1
 
 	mkdir -p app.asar.contents/resources/i18n || exit 1
@@ -652,7 +651,7 @@ console.log('Updated package.json: main entry and node-pty dependency');
 
 	# Copy cowork VM service daemon for Linux Cowork mode
 	echo 'Installing cowork VM service daemon...'
-	cp "$project_root/scripts/cowork-vm-service.js" \
+	cp "$source_dir/scripts/cowork-vm-service.js" \
 		app.asar.contents/cowork-vm-service.js || exit 1
 	echo 'Cowork VM service daemon installed'
 }
@@ -1162,12 +1161,12 @@ finalize_app_asar() {
 	"$asar_exec" pack app.asar.contents app.asar || exit 1
 
 	mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native" || exit 1
-	cp "$project_root/scripts/claude-native-stub.js" \
+	cp "$source_dir/scripts/claude-native-stub.js" \
 		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js" || exit 1
 
 	# Copy cowork VM service daemon (must be unpacked for child_process.fork)
 	echo 'Copying cowork VM service daemon to unpacked directory...'
-	cp "$project_root/scripts/cowork-vm-service.js" \
+	cp "$source_dir/scripts/cowork-vm-service.js" \
 		"$app_staging_dir/app.asar.unpacked/cowork-vm-service.js" || exit 1
 	echo 'Cowork VM service daemon copied to unpacked'
 
