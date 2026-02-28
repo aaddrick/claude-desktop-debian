@@ -189,6 +189,22 @@ run_doctor() {
 		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
 	fi
 
+	# -- Menu bar mode --
+	local menu_bar_mode="${CLAUDE_MENU_BAR:-}"
+	if [[ -n $menu_bar_mode ]]; then
+		case "${menu_bar_mode,,}" in
+			auto|visible|hidden)
+				_pass "Menu bar mode: ${menu_bar_mode,,} (CLAUDE_MENU_BAR=$menu_bar_mode)"
+				;;
+			*)
+				_warn "Unknown CLAUDE_MENU_BAR value: '$menu_bar_mode' (will fall back to 'auto')"
+				_info "Valid values: auto, visible, hidden"
+				;;
+		esac
+	else
+		_info 'Menu bar mode: auto (default, Alt toggles visibility)'
+	fi
+
 	# -- Electron binary --
 	if [[ -n $electron_path && -x $electron_path ]]; then
 		# Use --no-sandbox and strip ANSI/app output to get just the version

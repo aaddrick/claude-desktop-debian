@@ -8,7 +8,12 @@ console.log('[Frame Fix] Wrapper loaded');
 //   'auto'    - hidden by default, Alt toggles visibility (current default)
 //   'visible' - always visible, Alt does not toggle (stable layout)
 //   'hidden'  - always hidden, Alt does not toggle
-const MENU_BAR_MODE = (process.env.CLAUDE_MENU_BAR || 'auto').toLowerCase();
+const VALID_MENU_BAR_MODES = ['auto', 'visible', 'hidden'];
+const rawMenuBarMode = (process.env.CLAUDE_MENU_BAR || 'auto').toLowerCase();
+const MENU_BAR_MODE = VALID_MENU_BAR_MODES.includes(rawMenuBarMode) ? rawMenuBarMode : 'auto';
+if (rawMenuBarMode !== MENU_BAR_MODE) {
+  console.warn(`[Frame Fix] Unknown CLAUDE_MENU_BAR value '${process.env.CLAUDE_MENU_BAR}', falling back to 'auto'. Valid: ${VALID_MENU_BAR_MODES.join(', ')}`);
+}
 console.log(`[Frame Fix] Menu bar mode: ${MENU_BAR_MODE}`);
 
 // Detect if a window intends to be frameless (popup/Quick Entry/About)
