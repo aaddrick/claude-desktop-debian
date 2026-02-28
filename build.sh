@@ -1296,26 +1296,15 @@ copy_ssh_helpers() {
 	local ssh_dest="$electron_resources_dest/claude-ssh"
 	local binary_name="claude-ssh-linux-$architecture"
 
-	if [[ ! -d $ssh_src ]]; then
+	if [[ ! -d "$ssh_src" ]]; then
 		echo "Warning: SSH helpers not found at $ssh_src"
 		section_footer 'SSH Helpers'
 		return
 	fi
 
 	mkdir -p "$ssh_dest" || exit 1
-
 	cp "$ssh_src/version.txt" "$ssh_dest/" || exit 1
 	cp "$ssh_src/$binary_name" "$ssh_dest/" || exit 1
-
-	if [[ ! -f "$ssh_dest/version.txt" ]]; then
-		echo "Failed to copy version.txt" >&2
-		exit 1
-	fi
-	if [[ ! -f "$ssh_dest/$binary_name" ]]; then
-		echo "Failed to copy $binary_name" >&2
-		exit 1
-	fi
-
 	chmod +x "$ssh_dest/$binary_name"
 
 	echo "Copied SSH helper files:"
