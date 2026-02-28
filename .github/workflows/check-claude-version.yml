@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: main-branch-auto-update
+  cancel-in-progress: false
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
