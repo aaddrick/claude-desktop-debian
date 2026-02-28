@@ -99,7 +99,9 @@ For additional configuration options including environment variables and Wayland
 
 ## Troubleshooting
 
-For troubleshooting common issues, uninstallation instructions, and log locations, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more).
+
+For additional troubleshooting, uninstallation instructions, and log locations, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Acknowledgments
 

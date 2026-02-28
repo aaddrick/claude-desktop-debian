@@ -2,6 +2,54 @@
 
 # Troubleshooting
 
+## Built-in Diagnostics
+
+Run the `--doctor` flag to check your system for common issues:
+
+```bash
+# Deb install
+claude-desktop --doctor
+
+# AppImage
+./claude-desktop-*.AppImage --doctor
+```
+
+This runs 10 checks and prints pass/fail results with suggested fixes:
+
+| Check | What it verifies |
+|-------|-----------------|
+| Installed version | Package version via dpkg |
+| Display server | Wayland/X11 detection and mode |
+| Electron binary | Existence and version |
+| Chrome sandbox | Correct permissions (4755/root) |
+| SingletonLock | Stale lock file detection |
+| MCP config | JSON validity and server count |
+| Node.js | Version (v20+ recommended for MCP) |
+| Desktop entry | `.desktop` file presence |
+| Disk space | Free space on config partition |
+| Log file | Log file size |
+
+Example output:
+```
+Claude Desktop Diagnostics
+================================
+
+[PASS] Installed version: 1.1.4498-1.3.15
+[PASS] Display server: Wayland (WAYLAND_DISPLAY=wayland-0)
+[PASS] Electron: found at /usr/lib/claude-desktop/node_modules/electron/dist/electron
+[PASS] Chrome sandbox: permissions OK
+[PASS] SingletonLock: no lock file (OK)
+[PASS] MCP config: valid JSON
+[PASS] Node.js: v22.14.0
+[PASS] Desktop entry: /usr/share/applications/claude-desktop.desktop
+[PASS] Disk space: 632284MB free
+[PASS] Log file: 1352KB
+
+All checks passed.
+```
+
+When opening an issue, include the output of `--doctor` to help with diagnosis.
+
 ## Application Logs
 
 Runtime logs are available at:
