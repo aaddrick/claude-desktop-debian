@@ -17,22 +17,31 @@
 }:
 let
   pname = "claude-desktop";
-  version = "1.1.4328";
+  version = "1.1.4498";
 
   srcs = {
     x86_64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/x64/${version}/Claude-d8e39139e1c50f5530ac3da3af80e689710c8ea1.exe";
-      hash = "sha256-ngFY1mYwBIZLOYD5I7Lz/v5OexUKNe4MUHcq8VOejI4=";
+      url = "https://downloads.claude.ai/releases/win32/x64/${version}/Claude-24f7682cc400dec8d91fc28e444aa02743ab79dd.exe";
+      hash = "sha256-4Mp9vYwz9Pp+s1hoor7voJoahBq0AUncRneEZYewpd8=";
     };
     aarch64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/arm64/${version}/Claude-d8e39139e1c50f5530ac3da3af80e689710c8ea1.exe";
-      hash = "sha256-PvKw6JpfLIhzbcrfogLltHNKyZfJtHOpOrGb+vcOkSM=";
+      url = "https://downloads.claude.ai/releases/win32/arm64/${version}/Claude-24f7682cc400dec8d91fc28e444aa02743ab79dd.exe";
+      hash = "sha256-YOES86CgNfeJZFoDswZWvgAqG9xzqR2Qb+yu/imi1Ak=";
     };
   };
 
   src = srcs.${stdenvNoCC.hostPlatform.system} or (throw "Unsupported system: ${stdenvNoCC.hostPlatform.system}");
 
-  sourceRoot = ./..;
+  sourceRoot = lib.cleanSourceWith {
+    src = ./..;
+    filter = path: type:
+      let rel = lib.removePrefix (toString ./.. + "/") path;
+      in !(lib.hasPrefix "build-reference" rel)
+      && !(lib.hasPrefix "logs" rel)
+      && !(lib.hasPrefix "test-build" rel)
+      && !(lib.hasPrefix "squashfs-root" rel)
+      && !(lib.hasPrefix "result" rel);
+  };
 
   desktopItem = makeDesktopItem {
     name = "claude-desktop";
@@ -105,11 +114,16 @@ stdenvNoCC.mkDerivation {
     done
 
     # Install tray icons into resources
-    for tray_icon in build/electron-app/tray-icons/Tray*; do
+    for tray_icon in build/electron-app/nix-resources/Tray*; do
       if [ -f "$tray_icon" ]; then
         cp "$tray_icon" $out/lib/claude-desktop/resources/
       fi
     done
+
+    # Install SSH helpers into resources
+    if [ -d build/electron-app/nix-resources/claude-ssh ]; then
+      cp -r build/electron-app/nix-resources/claude-ssh $out/lib/claude-desktop/resources/
+    fi
 
     # Install locale JSON files into resources (belt-and-suspenders;
     # they're also packed inside app.asar at resources/i18n/)

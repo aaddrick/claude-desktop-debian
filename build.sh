@@ -240,6 +240,15 @@ parse_arguments() {
 	build_format="${build_format,,}"
 	cleanup_action="${cleanup_action,,}"
 
+	if [[ ! -d $source_dir ]]; then
+		echo "Error: --source-dir path does not exist: $source_dir" >&2
+		exit 1
+	fi
+	if [[ -n $node_pty_dir && ! -d $node_pty_dir ]]; then
+		echo "Error: --node-pty-dir path does not exist: $node_pty_dir" >&2
+		exit 1
+	fi
+
 	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' && $build_format != 'nix' ]]; then
 		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', 'appimage', or 'nix'." >&2
 		exit 1
@@ -1195,7 +1204,7 @@ finalize_app_asar() {
 	local pty_release_dir=''
 	if [[ -n $node_pty_dir && -d $node_pty_dir/build/Release ]]; then
 		pty_release_dir="$node_pty_dir/build/Release"
-	elif [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
+	elif [[ -n $node_pty_build_dir && -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
 		pty_release_dir="$node_pty_build_dir/node_modules/node-pty/build/Release"
 	fi
 
@@ -1330,12 +1339,7 @@ copy_ssh_helpers() {
 	section_header 'SSH Helpers'
 
 	local ssh_src="$claude_extract_dir/lib/net45/resources/claude-ssh"
-	local ssh_dest
-	if [[ $build_format == 'nix' ]]; then
-		ssh_dest="$app_staging_dir/ssh-helpers/claude-ssh"
-	else
-		ssh_dest="$electron_resources_dest/claude-ssh"
-	fi
+	local ssh_dest="$electron_resources_dest/claude-ssh"
 	local binary_name="claude-ssh-linux-$architecture"
 
 	if [[ ! -d "$ssh_src" ]]; then
@@ -1572,9 +1576,9 @@ main() {
 		copy_locale_files
 	else
 		# Nix installPhase handles Electron staging and locale files.
-		# Set a tray icon destination so process_icons has somewhere to
-		# write them; the Nix installPhase picks them up from here.
-		electron_resources_dest="$app_staging_dir/tray-icons"
+		# Set a resources destination so process_icons and copy_ssh_helpers
+		# have somewhere to write; the Nix installPhase picks them up.
+		electron_resources_dest="$app_staging_dir/nix-resources"
 		mkdir -p "$electron_resources_dest" || exit 1
 	fi
 	process_icons
