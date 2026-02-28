@@ -98,7 +98,7 @@ source "/usr/lib/$package_name/launcher-common.sh"
 if [[ "\${1:-}" == '--doctor' ]]; then
 	local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
 	run_doctor "\$local_electron_path"
-	exit \$?
+	exit
 fi
 
 # Setup logging and environment

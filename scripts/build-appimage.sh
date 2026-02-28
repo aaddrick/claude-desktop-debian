@@ -78,7 +78,7 @@ source "$appdir/usr/lib/claude-desktop/launcher-common.sh"
 if [[ "${1:-}" == '--doctor' ]]; then
 	electron_path="$appdir/usr/lib/node_modules/electron/dist/electron"
 	run_doctor "$electron_path"
-	exit $?
+	exit
 fi
 
 # Setup logging and environment

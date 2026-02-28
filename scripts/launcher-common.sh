@@ -142,7 +142,10 @@ _doctor_colors() {
 }
 
 _pass() { echo -e "${_green}[PASS]${_reset} $1"; }
-_fail() { echo -e "${_red}[FAIL]${_reset} $1"; _doctor_failures=$((_doctor_failures + 1)); }
+_fail() {
+	echo -e "${_red}[FAIL]${_reset} $1"
+	_doctor_failures=$((_doctor_failures + 1))
+}
 _warn() { echo -e "${_yellow}[WARN]${_reset} $1"; }
 _info() { echo -e "       $1"; }
 
@@ -150,7 +153,7 @@ _info() { echo -e "       $1"; }
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
 	local electron_path="${1:-}"
-	_doctor_failures=0
+	local _doctor_failures=0
 	_doctor_colors
 
 	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
@@ -190,7 +193,11 @@ run_doctor() {
 	if [[ -n $electron_path && -x $electron_path ]]; then
 		# Use --no-sandbox and strip ANSI/app output to get just the version
 		local electron_version
-		electron_version=$("$electron_path" --no-sandbox --version 2>/dev/null | head -1 | sed 's/\x1b\[[0-9;]*m//g') || true
+		electron_version=$(
+			"$electron_path" --no-sandbox --version 2>/dev/null \
+				| head -1 \
+				| sed 's/\x1b\[[0-9;]*m//g'
+		) || true
 		# Only accept version strings that look like "vNN.NN.NN"
 		if [[ $electron_version =~ ^v[0-9]+\.[0-9]+ ]]; then
 			_pass "Electron: $electron_version ($electron_path)"
@@ -258,25 +265,25 @@ run_doctor() {
 	local mcp_config="$config_dir/claude_desktop_config.json"
 	if [[ -f $mcp_config ]]; then
 		if command -v python3 &>/dev/null; then
-			if python3 -c "import json; json.load(open('$mcp_config'))" 2>/dev/null; then
+			if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$mcp_config" 2>/dev/null; then
 				_pass "MCP config: valid JSON ($mcp_config)"
 				# Check if any MCP servers are configured
 				local server_count
 				server_count=$(python3 -c "
-import json
-with open('$mcp_config') as f:
+import json,sys
+with open(sys.argv[1]) as f:
     cfg = json.load(f)
 servers = cfg.get('mcpServers', {})
 print(len(servers))
-" 2>/dev/null) || server_count='0'
+" "$mcp_config" 2>/dev/null) || server_count='0'
 				_info "MCP servers configured: $server_count"
 			else
 				_fail "MCP config: invalid JSON"
 				_info "Fix: Check $mcp_config for syntax errors"
-				_info "Tip: python3 -c \"import json; json.load(open('$mcp_config'))\" to see the error"
+				_info "Tip: python3 -m json.tool '$mcp_config' to see the error"
 			fi
 		elif command -v node &>/dev/null; then
-			if node -e "JSON.parse(require('fs').readFileSync('$mcp_config','utf8'))" 2>/dev/null; then
+			if node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$mcp_config" 2>/dev/null; then
 				_pass "MCP config: valid JSON ($mcp_config)"
 			else
 				_fail "MCP config: invalid JSON"
@@ -295,9 +302,9 @@ print(len(servers))
 		node_version=$(node --version 2>/dev/null) || true
 		local node_major="${node_version#v}"
 		node_major="${node_major%%.*}"
-		if [[ $node_major -ge 20 ]]; then
+		if ((node_major >= 20)); then
 			_pass "Node.js: $node_version"
-		elif [[ $node_major -ge 1 ]]; then
+		elif ((node_major >= 1)); then
 			_warn "Node.js: $node_version (v20+ recommended for MCP servers)"
 			_info 'Fix: Update Node.js to v20 or later'
 		fi
@@ -319,10 +326,10 @@ print(len(servers))
 	local config_disk_avail
 	config_disk_avail=$(df -BM --output=avail "$config_dir" 2>/dev/null | tail -1 | tr -d ' M') || true
 	if [[ -n $config_disk_avail ]]; then
-		if [[ $config_disk_avail -lt 100 ]]; then
+		if ((config_disk_avail < 100)); then
 			_fail "Disk space: ${config_disk_avail}MB free on config partition"
 			_info 'Fix: Free up disk space'
-		elif [[ $config_disk_avail -lt 500 ]]; then
+		elif ((config_disk_avail < 500)); then
 			_warn "Disk space: ${config_disk_avail}MB free on config partition (low)"
 		else
 			_pass "Disk space: ${config_disk_avail}MB free"
@@ -335,7 +342,7 @@ print(len(servers))
 		local log_size
 		log_size=$(stat -c '%s' "$log_path" 2>/dev/null) || log_size=0
 		local log_size_kb=$((log_size / 1024))
-		if [[ $log_size_kb -gt 10240 ]]; then
+		if ((log_size_kb > 10240)); then
 			_warn "Log file: ${log_size_kb}KB (consider clearing: rm '$log_path')"
 		else
 			_pass "Log file: ${log_size_kb}KB ($log_path)"
@@ -346,7 +353,7 @@ print(len(servers))
 
 	# -- Summary --
 	echo
-	if [[ $_doctor_failures -eq 0 ]]; then
+	if ((_doctor_failures == 0)); then
 		echo -e "${_green}${_bold}All checks passed.${_reset}"
 	else
 		echo -e "${_red}${_bold}${_doctor_failures} check(s) failed.${_reset} See above for fixes."
