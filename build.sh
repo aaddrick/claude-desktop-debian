@@ -1149,6 +1149,52 @@ if (serviceErrorIdx !== -1) {
 // No change needed - win32-gated code is skipped on Linux.
 // ============================================================
 
+// ============================================================
+// Patch 8: VM download tmpdir fix for Linux
+// On Linux, os.tmpdir() returns /tmp which is often a small
+// tmpfs (3-4GB). The VM rootfs download decompresses to ~9GB,
+// causing ENOSPC. Patch to use the bundle directory (on real
+// disk) instead of tmpfs for the download temp files.
+// Anchor: unique string "wvm-" in mkdtemp call
+// Strategy: find the bundle dir variable from nearby mkdir(),
+// then replace tmpdir() with that variable in the mkdtemp call.
+// ============================================================
+{
+    // Find: MKDTEMP(PATH.join(OS.tmpdir(), "wvm-"))
+    // The bundle dir var is used in mkdir(VAR, ...) just before
+    const mkdtempRe = /(\w+)\.mkdtemp\(\s*(\w+)\.join\(\s*(\w+)\.tmpdir\(\)\s*,\s*"wvm-"\s*\)\s*\)/;
+    const mkdtempMatch = code.match(mkdtempRe);
+    if (mkdtempMatch) {
+        const [fullMatch, fsVar, pathVar, osVar] = mkdtempMatch;
+        // Find the bundle dir variable: mkdir(VAR, { recursive before wvm-
+        const mkdtempIdx = code.indexOf(fullMatch);
+        const searchStart = Math.max(0, mkdtempIdx - 2000);
+        const before = code.substring(searchStart, mkdtempIdx);
+        // Look for: mkdir(VARNAME, { recursive
+        const mkdirRe = /(\w+)\.mkdir\(\s*(\w+)\s*,\s*\{\s*recursive/g;
+        let bundleVar = null;
+        let lastMkdir;
+        while ((lastMkdir = mkdirRe.exec(before)) !== null) {
+            bundleVar = lastMkdir[2];
+        }
+        if (bundleVar) {
+            // Replace os.tmpdir() with the bundle dir variable
+            // On Linux, use the bundle dir; on other platforms keep tmpdir
+            const replacement =
+                `${fsVar}.mkdtemp(${pathVar}.join(` +
+                `process.platform==="linux"?${bundleVar}:${osVar}.tmpdir(),` +
+                `"wvm-"))`;
+            code = code.replace(fullMatch, replacement);
+            console.log('  Patched VM download temp dir to use bundle path on Linux');
+            patchCount++;
+        } else {
+            console.log('  WARNING: Could not find bundle dir variable for tmpdir patch');
+        }
+    } else {
+        console.log('  WARNING: Could not find mkdtemp("wvm-") for tmpdir patch');
+    }
+}
+
 fs.writeFileSync(indexJs, code);
 console.log(`  Applied ${patchCount} cowork patches`);
 if (patchCount < 4) {
