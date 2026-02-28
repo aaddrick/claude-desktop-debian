@@ -83,6 +83,7 @@ source "/usr/lib/$package_name/launcher-common.sh"
 setup_logging || exit 1
 setup_electron_env
 cleanup_stale_lock
+cleanup_stale_cowork_socket
 
 # Log startup info
 log_message '--- Claude Desktop Launcher Start ---'

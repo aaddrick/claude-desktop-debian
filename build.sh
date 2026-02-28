@@ -1095,23 +1095,57 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
 // ============================================================
 // Patch 6: Auto-launch service daemon on first connection attempt
 // Anchor: unique string "VM service not running. The service failed to start."
-// Inject auto-spawn logic before the retry delay in Ma()
+//
+// The retry loop only retries on ENOENT (socket missing). On Linux,
+// stale sockets from a previous session give ECONNREFUSED instead,
+// which causes an immediate throw with no retry or auto-launch.
+//
+// Fix: patch the ENOENT check to also match ECONNREFUSED on Linux,
+// then inject auto-launch before the retry delay.
 // ============================================================
 const serviceErrorStr = 'VM service not running. The service failed to start.';
 const serviceErrorIdx = code.indexOf(serviceErrorStr);
 if (serviceErrorIdx !== -1) {
-    // The retry delay is AFTER the error string in the catch block:
-    //   throw i ? new Error("VM service not running...") : n;
-    //   await new Promise(a=>setTimeout(a,delay))
-    const searchEnd = Math.min(code.length, serviceErrorIdx + 300);
-    const searchRegion = code.substring(serviceErrorIdx, searchEnd);
+    // Step 1: Find the ENOENT check and expand it to include ECONNREFUSED
+    // Pattern: VAR.code==="ENOENT"
+    // Search backwards from the error string to find it
+    const searchStart = Math.max(0, serviceErrorIdx - 300);
+    const beforeRegion = code.substring(searchStart, serviceErrorIdx);
+    const enoentRe = /(\w+)\.code\s*===\s*"ENOENT"/g;
+    let enoentMatch;
+    let lastEnoent = null;
+    while ((enoentMatch = enoentRe.exec(beforeRegion)) !== null) {
+        lastEnoent = enoentMatch;
+    }
+    if (lastEnoent) {
+        const enoentStr = lastEnoent[0];
+        const errVar = lastEnoent[1];
+        const enoentAbsIdx = searchStart + lastEnoent.index;
+        // Replace: VAR.code==="ENOENT"
+        // With:    (VAR.code==="ENOENT"||process.platform==="linux"&&VAR.code==="ECONNREFUSED")
+        const expanded =
+            '(' + enoentStr +
+            '||process.platform==="linux"&&' + errVar + '.code==="ECONNREFUSED")';
+        code = code.substring(0, enoentAbsIdx) +
+            expanded +
+            code.substring(enoentAbsIdx + enoentStr.length);
+        console.log('  Expanded ENOENT check to include ECONNREFUSED on Linux');
+    } else {
+        console.log('  WARNING: Could not find ENOENT check for ECONNREFUSED expansion');
+    }
+
+    // Step 2: Inject auto-launch before the retry delay
+    // Re-find serviceErrorStr since indices shifted after step 1
+    const newServiceErrorIdx = code.indexOf(serviceErrorStr);
+    const searchEnd = Math.min(code.length, newServiceErrorIdx + 300);
+    const searchRegion = code.substring(newServiceErrorIdx, searchEnd);
     const retryMatch = searchRegion.match(
         /await new Promise\((\w+)=>\s*setTimeout\(\1,\s*(\w+)\)\)/
     );
     if (retryMatch) {
         const retryStr = retryMatch[0];
         const retryOffset = searchRegion.indexOf(retryStr);
-        const retryAbsIdx = serviceErrorIdx + retryOffset;
+        const retryAbsIdx = newServiceErrorIdx + retryOffset;
         // Inject auto-launch before the retry delay
         // Service script is in app.asar.unpacked/ (not inside asar, since
         // child_process cannot execute scripts from inside an asar).
@@ -1119,11 +1153,25 @@ if (serviceErrorIdx !== -1) {
         // is the Electron binary - spawn would trigger "file open" handling
         // instead of executing the script as Node.js.
         const svcPath = process.env.SVC_PATH || 'cowork-vm-service.js';
-        // Always try to launch - the service daemon handles dedup
-        // (tests existing socket, exits if active, cleans stale and starts)
-        // Don't check socket existence here since stale sockets cause ECONNREFUSED
+        // Find the retry function name dynamically from the retry delay
+        const retryFuncRe = /await new Promise\((\w+)=>/;
+        const retryFuncMatch = searchRegion.match(retryFuncRe);
+        // Extract the function name (Ma or whatever it's minified to) from context
+        // Look for "function FUNC" or "async function FUNC" before the retry loop
+        const funcSearchStart = Math.max(0, newServiceErrorIdx - 2000);
+        const funcRegion = code.substring(funcSearchStart, newServiceErrorIdx);
+        // The function is defined as: async function NAME(t,e){...for(let r=0;r<=LIMIT;r++)
+        const funcNameRe = /async function (\w+)\s*\(\s*\w+\s*,\s*\w+\s*\)\s*\{[^}]*for\s*\(\s*let/g;
+        let funcMatch;
+        let retryFuncName = null;
+        while ((funcMatch = funcNameRe.exec(funcRegion)) !== null) {
+            retryFuncName = funcMatch[1];
+        }
+        const svcLaunchedGuard = retryFuncName
+            ? retryFuncName + '._svcLaunched'
+            : '_globalSvcLaunched';
         const autoLaunch =
-            'process.platform==="linux"&&!Ma._svcLaunched&&(Ma._svcLaunched=true,' +
+            'process.platform==="linux"&&!' + svcLaunchedGuard + '&&(' + svcLaunchedGuard + '=true,' +
             '(()=>{try{' +
             'const _d=require("path").join(process.resourcesPath,' +
             '"app.asar.unpacked","' + svcPath + '");' +

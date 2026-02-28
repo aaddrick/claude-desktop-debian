@@ -118,6 +118,25 @@ cleanup_stale_lock() {
 	log_message "Removed stale SingletonLock (PID $lock_pid no longer running)"
 }
 
+# Clean up stale cowork-vm-service socket if no daemon is listening.
+# The service daemon creates a Unix socket at $XDG_RUNTIME_DIR/cowork-vm-service.sock.
+# After a crash or unclean shutdown, the socket file persists but nothing is listening,
+# causing ECONNREFUSED instead of ENOENT when the app tries to connect.
+cleanup_stale_cowork_socket() {
+	local sock="${XDG_RUNTIME_DIR:-/tmp}/cowork-vm-service.sock"
+
+	[[ -S $sock ]] || return 0
+
+	# Try connecting — if refused, the socket is stale
+	if socat -u OPEN:/dev/null UNIX-CONNECT:"$sock" 2>/dev/null; then
+		# Connection succeeded — daemon is alive
+		return 0
+	fi
+
+	rm -f "$sock"
+	log_message "Removed stale cowork-vm-service socket"
+}
+
 # Set common environment variables
 setup_electron_env() {
 	export ELECTRON_FORCE_IS_PACKAGED=true
