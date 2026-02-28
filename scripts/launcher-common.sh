@@ -141,6 +141,59 @@ _doctor_colors() {
 	fi
 }
 
+# Return the distro ID from /etc/os-release
+_cowork_distro_id() {
+	local id='unknown'
+	if [[ -f /etc/os-release ]]; then
+		local line
+		while IFS= read -r line; do
+			if [[ $line == ID=* ]]; then
+				id="${line#ID=}"
+				id="${id//\"/}"
+				break
+			fi
+		done < /etc/os-release
+	fi
+	printf '%s' "$id"
+}
+
+# Return a distro-specific install command for a cowork tool
+# Usage: _cowork_pkg_hint <distro_id> <tool_name>
+_cowork_pkg_hint() {
+	local distro="$1"
+	local tool="$2"
+
+	case "$distro" in
+		debian|ubuntu)
+			case "$tool" in
+				qemu)       printf '%s' 'sudo apt install qemu-system-x86 qemu-utils' ;;
+				socat)      printf '%s' 'sudo apt install socat' ;;
+				virtiofsd)  printf '%s' 'sudo apt install virtiofsd' ;;
+				bubblewrap) printf '%s' 'sudo apt install bubblewrap' ;;
+			esac
+			;;
+		fedora)
+			case "$tool" in
+				qemu)       printf '%s' 'sudo dnf install qemu-kvm qemu-img' ;;
+				socat)      printf '%s' 'sudo dnf install socat' ;;
+				virtiofsd)  printf '%s' 'sudo dnf install virtiofsd' ;;
+				bubblewrap) printf '%s' 'sudo dnf install bubblewrap' ;;
+			esac
+			;;
+		arch)
+			case "$tool" in
+				qemu)       printf '%s' 'sudo pacman -S qemu-full' ;;
+				socat)      printf '%s' 'sudo pacman -S socat' ;;
+				virtiofsd)  printf '%s' 'sudo pacman -S virtiofsd' ;;
+				bubblewrap) printf '%s' 'sudo pacman -S bubblewrap' ;;
+			esac
+			;;
+		*)
+			printf '%s' "Install $tool using your package manager"
+			;;
+	esac
+}
+
 _pass() { echo -e "${_green}[PASS]${_reset} $1"; }
 _fail() {
 	echo -e "${_red}[FAIL]${_reset} $1"
@@ -163,11 +216,12 @@ run_doctor() {
 	# -- Installed package version --
 	if command -v dpkg-query &>/dev/null; then
 		local pkg_version
-		pkg_version=$(dpkg-query -W -f='${Version}' claude-desktop 2>/dev/null) || true
+		pkg_version=$(dpkg-query -W -f='${Version}' \
+			claude-desktop 2>/dev/null) || true
 		if [[ -n $pkg_version ]]; then
 			_pass "Installed version: $pkg_version"
 		else
-			_warn 'claude-desktop package not found via dpkg (AppImage or manual install?)'
+			_warn 'claude-desktop not found via dpkg (AppImage?)'
 		fi
 	fi
 
@@ -180,7 +234,8 @@ run_doctor() {
 			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
 		else
 			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
-			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland (disables global hotkeys)'
+			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
+			_info '     (disables global hotkeys)'
 		fi
 	elif [[ -n "${DISPLAY:-}" ]]; then
 		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
@@ -197,7 +252,8 @@ run_doctor() {
 				_pass "Menu bar mode: ${menu_bar_mode,,} (CLAUDE_MENU_BAR=$menu_bar_mode)"
 				;;
 			*)
-				_warn "Unknown CLAUDE_MENU_BAR value: '$menu_bar_mode' (will fall back to 'auto')"
+				_warn "Unknown CLAUDE_MENU_BAR: '$menu_bar_mode'"
+				_info 'Will fall back to auto'
 				_info "Valid values: auto, visible, hidden"
 				;;
 		esac
@@ -250,14 +306,16 @@ run_doctor() {
 			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
 				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
 			else
-				_fail "Chrome sandbox: incorrect permissions (${sandbox_perms:-?}, owner: ${sandbox_owner:-?})"
-				_info "Fix: sudo chown root:root $sandbox_path && sudo chmod 4755 $sandbox_path"
+				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
+ owner=${sandbox_owner:-?}"
+				_info "Fix: sudo chown root:root $sandbox_path"
+				_info "     sudo chmod 4755 $sandbox_path"
 			fi
 			break
 		fi
 	done
 	if [[ $sandbox_checked == false ]]; then
-		_warn 'Chrome sandbox binary not found (expected for AppImage, may cause issues for deb)'
+		_warn 'Chrome sandbox not found (expected for AppImage)'
 	fi
 
 	# -- SingletonLock --
@@ -281,7 +339,9 @@ run_doctor() {
 	local mcp_config="$config_dir/claude_desktop_config.json"
 	if [[ -f $mcp_config ]]; then
 		if command -v python3 &>/dev/null; then
-			if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$mcp_config" 2>/dev/null; then
+			if python3 -c \
+			"import json,sys; json.load(open(sys.argv[1]))" \
+			"$mcp_config" 2>/dev/null; then
 				_pass "MCP config: valid JSON ($mcp_config)"
 				# Check if any MCP servers are configured
 				local server_count
@@ -299,7 +359,9 @@ print(len(servers))
 				_info "Tip: python3 -m json.tool '$mcp_config' to see the error"
 			fi
 		elif command -v node &>/dev/null; then
-			if node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$mcp_config" 2>/dev/null; then
+			if node -e \
+			"JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" \
+			"$mcp_config" 2>/dev/null; then
 				_pass "MCP config: valid JSON ($mcp_config)"
 			else
 				_fail "MCP config: invalid JSON"
@@ -340,7 +402,8 @@ print(len(servers))
 
 	# -- Disk space --
 	local config_disk_avail
-	config_disk_avail=$(df -BM --output=avail "$config_dir" 2>/dev/null | tail -1 | tr -d ' M') || true
+	config_disk_avail=$(df -BM --output=avail "$config_dir" 2>/dev/null \
+		| tail -1 | tr -d ' M') || true
 	if [[ -n $config_disk_avail ]]; then
 		if ((config_disk_avail < 100)); then
 			_fail "Disk space: ${config_disk_avail}MB free on config partition"
@@ -352,8 +415,104 @@ print(len(servers))
 		fi
 	fi
 
+	# -- Cowork Mode --
+	echo
+	echo -e "${_bold}Cowork Mode${_reset}"
+	echo '----------------'
+
+	# Detect distro for package hints
+	local _distro_id
+	_distro_id=$(_cowork_distro_id)
+
+	# KVM access
+	if [[ -e /dev/kvm ]]; then
+		if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+			_pass 'KVM: accessible'
+		else
+			_warn 'KVM: /dev/kvm exists but not accessible'
+			_info "Fix: sudo usermod -aG kvm $USER"
+			_info '(Log out and back in after running this)'
+		fi
+	else
+		_warn 'KVM: not available'
+		_info 'Fix: Install qemu-kvm and ensure KVM is enabled in BIOS'
+	fi
+
+	# vsock module
+	if [[ -e /dev/vhost-vsock ]]; then
+		_pass 'vsock: module loaded'
+	else
+		_warn 'vsock: /dev/vhost-vsock not found'
+		_info 'Fix: sudo modprobe vhost_vsock'
+	fi
+
+	# QEMU
+	if command -v qemu-system-x86_64 &>/dev/null; then
+		local qemu_ver
+		qemu_ver=$(qemu-system-x86_64 --version 2>/dev/null \
+			| head -1) || true
+		_pass "QEMU: ${qemu_ver:-found}"
+	else
+		_warn 'QEMU: not found'
+		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'qemu')"
+	fi
+
+	# socat
+	if command -v socat &>/dev/null; then
+		_pass 'socat: found'
+	else
+		_warn 'socat: not found'
+		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'socat')"
+	fi
+
+	# virtiofsd
+	if command -v virtiofsd &>/dev/null; then
+		_pass 'virtiofsd: found'
+	else
+		_warn 'virtiofsd: not found'
+		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'virtiofsd')"
+	fi
+
+	# bubblewrap
+	if command -v bwrap &>/dev/null; then
+		local bwrap_ver
+		bwrap_ver=$(bwrap --version 2>/dev/null) || true
+		_pass "bubblewrap: ${bwrap_ver:-found}"
+	else
+		_warn 'bubblewrap: not found'
+		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'bubblewrap')"
+	fi
+
+	# VM image
+	local vm_image
+	vm_image="${HOME}/.local/share/claude-desktop/vm/rootfs.qcow2"
+	if [[ -f $vm_image ]]; then
+		local vm_size
+		vm_size=$(du -h "$vm_image" 2>/dev/null \
+			| cut -f1) || vm_size='unknown size'
+		_pass "VM image: $vm_size"
+	else
+		_info 'VM image: not downloaded yet'
+	fi
+
+	# Determine active backend (matches daemon's detectBackend())
+	local cowork_backend='none (host-direct, no isolation)'
+	if [[ -e /dev/kvm ]] \
+		&& [[ -r /dev/kvm && -w /dev/kvm ]] \
+		&& command -v qemu-system-x86_64 &>/dev/null \
+		&& [[ -e /dev/vhost-vsock ]] \
+		&& [[ -f $vm_image ]]; then
+		cowork_backend='KVM (full VM isolation)'
+	elif command -v bwrap &>/dev/null \
+		&& bwrap --ro-bind / / true &>/dev/null; then
+		cowork_backend='bubblewrap (namespace sandbox)'
+	fi
+	_info "Cowork isolation: $cowork_backend"
+
 	# -- Log file --
-	local log_path="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian/launcher.log"
+	local log_path
+	log_path="${XDG_CACHE_HOME:-$HOME/.cache}"
+	log_path="$log_path/claude-desktop-debian/launcher.log"
 	if [[ -f $log_path ]]; then
 		local log_size
 		log_size=$(stat -c '%s' "$log_path" 2>/dev/null) || log_size=0
@@ -372,7 +531,8 @@ print(len(servers))
 	if ((_doctor_failures == 0)); then
 		echo -e "${_green}${_bold}All checks passed.${_reset}"
 	else
-		echo -e "${_red}${_bold}${_doctor_failures} check(s) failed.${_reset} See above for fixes."
+		echo -e "${_red}${_bold}${_doctor_failures} check(s) failed.${_reset}"
+		echo 'See above for fixes.'
 	fi
 
 	return "$_doctor_failures"

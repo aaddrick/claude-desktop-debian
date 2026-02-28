@@ -999,8 +999,10 @@ if (pipeMatch) {
 // ============================================================
 // Patch 4: Bundle manifest - add Linux entries to Ln.files
 // Anchor: find files:{darwin: near rootfs.img checksum pattern
-// Uses empty arrays so C$() returns true (vacuous truth),
-// meaning no downloads are needed for Linux.
+// Extracts the win32 file entries (rootfs.vhdx, vmlinuz, initrd
+// with checksums) and reuses them as linux entries so the app's
+// built-in download infrastructure fetches VM images for Linux.
+// Falls back to empty arrays if win32 extraction fails.
 // ============================================================
 if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
     !code.includes('linux:{')) {
@@ -1015,7 +1017,7 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
             // Find the opening brace of files object
             const filesOpen = code.indexOf('{', afterSha);
             if (filesOpen !== -1) {
-                // Count braces to find the closing of the files object
+                // Extract the full files:{...} content
                 let depth = 1;
                 let pos = filesOpen + 1;
                 while (depth > 0 && pos < code.length) {
@@ -1023,11 +1025,55 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
                     else if (code[pos] === '}') depth--;
                     pos++;
                 }
-                // pos is just after the closing } of files
-                // Insert linux entry before that closing }
+                const filesContent = code.substring(filesOpen, pos);
+                // Extract win32 x64 and arm64 arrays from files object
+                // Pattern: win32:{arm64:[...],x64:[...]} or similar
+                // Use bracket-counting to extract each array
+                let win32x64 = null;
+                let win32arm64 = null;
+                const win32Idx = filesContent.indexOf('win32');
+                if (win32Idx !== -1) {
+                    // Helper: extract [...] starting at given position
+                    const extractArray = (str, startSearch) => {
+                        const arrStart = str.indexOf('[', startSearch);
+                        if (arrStart === -1) return null;
+                        let d = 1;
+                        let p = arrStart + 1;
+                        while (d > 0 && p < str.length) {
+                            if (str[p] === '[') d++;
+                            else if (str[p] === ']') d--;
+                            p++;
+                        }
+                        return str.substring(arrStart, p);
+                    };
+                    // Find x64:[...] within win32 section
+                    const win32Section = filesContent.substring(win32Idx);
+                    const x64Idx = win32Section.indexOf('x64');
+                    const arm64Idx = win32Section.indexOf('arm64');
+                    if (x64Idx !== -1) {
+                        win32x64 = extractArray(win32Section, x64Idx);
+                    }
+                    if (arm64Idx !== -1) {
+                        win32arm64 = extractArray(win32Section, arm64Idx);
+                    }
+                }
+                // Build linux entry: use extracted win32 arrays, or
+                // fall back to empty arrays (vacuous truth)
+                let linuxX64 = '[]';
+                let linuxArm64 = '[]';
+                if (win32x64 && win32x64.includes('name')) {
+                    linuxX64 = win32x64;
+                    console.log('  Extracted win32 x64 file entries for linux');
+                }
+                if (win32arm64 && win32arm64.includes('name')) {
+                    linuxArm64 = win32arm64;
+                    console.log('  Extracted win32 arm64 file entries for linux');
+                }
+                // Insert linux entry before the closing } of files
                 const insertPos = pos - 1;
                 const linuxEntry =
-                    ',linux:{x64:[],arm64:[]}';
+                    ',linux:{x64:' + linuxX64 +
+                    ',arm64:' + linuxArm64 + '}';
                 code = code.substring(0, insertPos) +
                     linuxEntry + code.substring(insertPos);
                 console.log('  Added Linux entries to bundle manifest');
@@ -1035,7 +1081,7 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
             }
         }
     }
-    if (!code.includes('linux:{x64:[]')) {
+    if (!code.includes('linux:{x64:')) {
         console.log('  WARNING: Could not add Linux bundle manifest entries');
     }
 }
