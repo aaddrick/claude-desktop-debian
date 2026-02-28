@@ -94,6 +94,13 @@ cat > "$install_dir/bin/claude-desktop" << EOF
 # Source shared launcher library
 source "/usr/lib/$package_name/launcher-common.sh"
 
+# Handle --doctor flag before anything else
+if [[ "\${1:-}" == '--doctor' ]]; then
+	local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
+	run_doctor "\$local_electron_path"
+	exit \$?
+fi
+
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
