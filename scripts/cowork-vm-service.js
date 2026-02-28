@@ -652,7 +652,7 @@ class BwrapBackend extends LocalBackend {
 
 const VM_BASE_DIR = path.join(os.homedir(), '.local/share/claude-desktop/vm');
 const VM_SESSION_DIR = path.join(VM_BASE_DIR, 'sessions');
-const VSOCK_GUEST_PORT = 2222;
+const VSOCK_GUEST_PORT = 51234;  // 0xC822 — matches guest sdk-daemon
 const QMP_CAPABILITIES = JSON.stringify({ execute: 'qmp_capabilities' });
 
 class KvmBackend extends BackendBase {
@@ -791,7 +791,7 @@ class KvmBackend extends BackendBase {
                 qemuArgs.push('-initrd', initrdPath);
             }
             qemuArgs.push(
-                '-append', 'root=/dev/vda1 console=ttyS0 quiet'
+                '-append', 'root=LABEL=cloudimg-rootfs console=ttyS0 quiet'
             );
         }
 
@@ -854,10 +854,8 @@ class KvmBackend extends BackendBase {
         // Connect to QMP monitor and send capabilities
         await this._connectQmp();
 
-        // Start socat vsock bridge
-        this._startVsockBridge();
-
-        // Poll for guest sdk-daemon readiness
+        // Wait for guest sdk-daemon to connect via vsock bridge
+        // (_waitForGuest starts both the bridge server and socat listener)
         await this._waitForGuest();
 
         return {};
@@ -913,10 +911,19 @@ class KvmBackend extends BackendBase {
     }
 
     _startVsockBridge() {
+        // The guest sdk-daemon connects TO the host (CID=2) on the vsock port.
+        // We listen on vsock and forward to a local Unix bridge socket so that
+        // _forwardToGuest can connect to the bridge to reach the guest daemon.
+        //
+        // Direction: guest → vsock:51234 → socat → bridge.sock
+        //            _forwardToGuest → bridge.sock → socat → vsock → guest
+        //
+        // socat listens on the vsock port for the guest's outbound connection
+        // and bridges it to a Unix socket that we can use for bidirectional RPC.
         try {
             this.socatProcess = spawnProcess('socat', [
-                `UNIX-LISTEN:${this.bridgeSock},fork`,
-                `VSOCK-CONNECT:${this.guestCid}:${VSOCK_GUEST_PORT}`,
+                `VSOCK-LISTEN:${VSOCK_GUEST_PORT},reuseaddr,fork`,
+                `UNIX-CONNECT:${this.bridgeSock}`,
             ], {
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
@@ -925,76 +932,115 @@ class KvmBackend extends BackendBase {
                 log('KvmBackend: socat error:', err.message);
             });
 
-            log(`KvmBackend: socat bridge started on ${this.bridgeSock}`);
+            log(`KvmBackend: socat vsock listener started on port ${VSOCK_GUEST_PORT}`);
         } catch (e) {
             logError('KvmBackend: failed to start socat:', e.message);
         }
     }
 
+    _startBridgeServer() {
+        // Create a Unix socket server that accepts connections from socat
+        // (guest→vsock→socat→bridge.sock) and from _forwardToGuest.
+        // The first inbound connection from socat is the guest sdk-daemon.
+        return new Promise((resolve) => {
+            this._bridgeServer = net.createServer((conn) => {
+                if (!this.guestConnected) {
+                    log('KvmBackend: guest connected via vsock bridge');
+                    this.guestConnected = true;
+                    this._guestConn = conn;
+                    this._guestBuffer = Buffer.alloc(0);
+
+                    conn.on('data', (data) => {
+                        this._handleGuestData(data);
+                    });
+
+                    conn.on('error', (err) => {
+                        logError('KvmBackend: guest connection error:', err.message);
+                        this.guestConnected = false;
+                        this._guestConn = null;
+                    });
+
+                    conn.on('close', () => {
+                        log('KvmBackend: guest connection closed');
+                        this.guestConnected = false;
+                        this._guestConn = null;
+                    });
+
+                    this.emitEvent({
+                        type: 'networkStatus',
+                        status: 'connected',
+                    });
+                    resolve();
+                }
+            });
+
+            this._bridgeServer.listen(this.bridgeSock, () => {
+                log(`KvmBackend: bridge server listening on ${this.bridgeSock}`);
+            });
+
+            this._bridgeServer.on('error', (err) => {
+                logError('KvmBackend: bridge server error:', err.message);
+            });
+        });
+    }
+
+    _handleGuestData(data) {
+        // Process incoming data from guest sdk-daemon (events like
+        // stdout, stderr, exit, networkStatus, apiReachability)
+        this._guestBuffer = Buffer.concat([this._guestBuffer, data]);
+        while (true) {
+            const parsed = parseMessage(this._guestBuffer);
+            if (!parsed) break;
+            this._guestBuffer = parsed.remaining;
+            const msg = parsed.message;
+
+            if (msg.type === 'stdout' || msg.type === 'stderr' ||
+                msg.type === 'exit' || msg.type === 'networkStatus' ||
+                msg.type === 'apiReachability') {
+                this.emitEvent(msg);
+            } else if (msg.success !== undefined) {
+                // Response to a request we sent — route to pending callback
+                if (this._pendingCallbacks && msg.id !== undefined) {
+                    const cb = this._pendingCallbacks.get(msg.id);
+                    if (cb) {
+                        this._pendingCallbacks.delete(msg.id);
+                        cb(msg);
+                    }
+                }
+            } else {
+                log('KvmBackend: unhandled guest message:', JSON.stringify(msg));
+            }
+        }
+    }
+
     async _waitForGuest() {
-        const timeout = 60000;
+        const timeout = 90000;
         const start = Date.now();
 
-        return new Promise((resolve) => {
-            const tryPing = () => {
-                if (Date.now() - start > timeout) {
-                    logError('KvmBackend: guest readiness timeout');
-                    resolve();
-                    return;
-                }
+        // Start the bridge Unix socket server, then start socat to listen on
+        // vsock. The guest sdk-daemon will connect after boot.
+        const bridgeReady = this._startBridgeServer();
+        this._startVsockBridge();
 
-                if (!fs.existsSync(this.bridgeSock)) {
-                    setTimeout(tryPing, 1000);
-                    return;
-                }
-
-                const client = net.createConnection(
-                    this.bridgeSock, () => {
-                        // Send a ping via the length-prefixed protocol
-                        try {
-                            writeMessage(client, {
-                                method: 'ping', params: {}
-                            });
-                        } catch (e) {
-                            client.destroy();
-                            setTimeout(tryPing, 2000);
-                        }
+        // Wait for guest to connect (or timeout)
+        return Promise.race([
+            bridgeReady,
+            new Promise((resolve) => {
+                const checkTimeout = () => {
+                    if (Date.now() - start > timeout) {
+                        logError('KvmBackend: guest readiness timeout');
+                        resolve();
+                        return;
                     }
-                );
-
-                let pingBuffer = Buffer.alloc(0);
-                client.on('data', (data) => {
-                    pingBuffer = Buffer.concat([pingBuffer, data]);
-                    try {
-                        const parsed = parseMessage(pingBuffer);
-                        if (parsed) {
-                            log('KvmBackend: guest responded to ping');
-                            this.guestConnected = true;
-                            this.emitEvent({
-                                type: 'networkStatus',
-                                status: 'connected',
-                            });
-                            client.destroy();
-                            resolve();
-                        }
-                    } catch (_) {
-                        // Incomplete message, keep waiting
+                    if (this.guestConnected) {
+                        resolve();
+                        return;
                     }
-                });
-
-                client.on('error', () => {
-                    setTimeout(tryPing, 2000);
-                });
-
-                // Timeout individual connection attempts
-                client.setTimeout(5000, () => {
-                    client.destroy();
-                    setTimeout(tryPing, 1000);
-                });
-            };
-
-            setTimeout(tryPing, 2000);
-        });
+                    setTimeout(checkTimeout, 1000);
+                };
+                setTimeout(checkTimeout, 2000);
+            }),
+        ]);
     }
 
     _sendQmpCommand(command) {
@@ -1031,37 +1077,38 @@ class KvmBackend extends BackendBase {
 
     _forwardToGuest(request) {
         return new Promise((resolve, reject) => {
-            if (!this.bridgeSock || !fs.existsSync(this.bridgeSock)) {
-                reject(new Error('Bridge socket not available'));
+            if (!this._guestConn || !this.guestConnected) {
+                reject(new Error('Guest not connected'));
                 return;
             }
 
-            const client = net.createConnection(this.bridgeSock, () => {
-                writeMessage(client, request);
-            });
+            // Assign a unique ID if not present, so we can match responses
+            if (request.id === undefined) {
+                if (!this._nextRequestId) this._nextRequestId = 1;
+                request.id = String(this._nextRequestId++);
+            }
 
-            let respBuffer = Buffer.alloc(0);
-            client.on('data', (data) => {
-                respBuffer = Buffer.concat([respBuffer, data]);
-                try {
-                    const parsed = parseMessage(respBuffer);
-                    if (parsed) {
-                        client.destroy();
-                        resolve(parsed.message);
-                    }
-                } catch (_) {
-                    // Incomplete, keep buffering
-                }
-            });
+            if (!this._pendingCallbacks) {
+                this._pendingCallbacks = new Map();
+            }
 
-            client.on('error', (err) => {
-                reject(err);
-            });
-
-            client.setTimeout(30000, () => {
-                client.destroy();
+            const timer = setTimeout(() => {
+                this._pendingCallbacks.delete(request.id);
                 reject(new Error('Guest communication timeout'));
+            }, 30000);
+
+            this._pendingCallbacks.set(request.id, (response) => {
+                clearTimeout(timer);
+                resolve(response);
             });
+
+            try {
+                writeMessage(this._guestConn, request);
+            } catch (err) {
+                clearTimeout(timer);
+                this._pendingCallbacks.delete(request.id);
+                reject(err);
+            }
         });
     }
 
@@ -1114,6 +1161,14 @@ class KvmBackend extends BackendBase {
         if (this._qmpClient) {
             try { this._qmpClient.destroy(); } catch (_) {}
             this._qmpClient = null;
+        }
+        if (this._guestConn) {
+            try { this._guestConn.destroy(); } catch (_) {}
+            this._guestConn = null;
+        }
+        if (this._bridgeServer) {
+            try { this._bridgeServer.close(); } catch (_) {}
+            this._bridgeServer = null;
         }
 
         // 5. Clean up session directory
