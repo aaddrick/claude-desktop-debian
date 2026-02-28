@@ -1289,6 +1289,31 @@ copy_locale_files() {
 	echo "app.asar processed and staged in $app_staging_dir"
 }
 
+copy_ssh_helpers() {
+	section_header 'SSH Helpers'
+
+	local ssh_src="$claude_extract_dir/lib/net45/resources/claude-ssh"
+	local ssh_dest="$electron_resources_dest/claude-ssh"
+	local binary_name="claude-ssh-linux-$architecture"
+
+	if [[ ! -d "$ssh_src" ]]; then
+		echo "Warning: SSH helpers not found at $ssh_src"
+		section_footer 'SSH Helpers'
+		return
+	fi
+
+	mkdir -p "$ssh_dest" || exit 1
+	cp "$ssh_src/version.txt" "$ssh_dest/" || exit 1
+	cp "$ssh_src/$binary_name" "$ssh_dest/" || exit 1
+	chmod +x "$ssh_dest/$binary_name"
+
+	echo "Copied SSH helper files:"
+	echo "  version.txt"
+	echo "  $binary_name"
+
+	section_footer 'SSH Helpers'
+}
+
 #===============================================================================
 # Packaging Functions
 #===============================================================================
@@ -1481,6 +1506,7 @@ main() {
 	stage_electron
 	process_icons
 	copy_locale_files
+	copy_ssh_helpers
 
 	cd "$project_root" || exit 1
 
