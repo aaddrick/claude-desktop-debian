@@ -189,36 +189,33 @@ _cowork_distro_id() {
 _cowork_pkg_hint() {
 	local distro="$1"
 	local tool="$2"
+	local pkg_cmd
 
+	# Determine package manager command
 	case "$distro" in
-		debian|ubuntu)
-			case "$tool" in
-				qemu)       printf '%s' 'sudo apt install qemu-system-x86 qemu-utils' ;;
-				socat)      printf '%s' 'sudo apt install socat' ;;
-				virtiofsd)  printf '%s' 'sudo apt install virtiofsd' ;;
-				bubblewrap) printf '%s' 'sudo apt install bubblewrap' ;;
-			esac
-			;;
-		fedora)
-			case "$tool" in
-				qemu)       printf '%s' 'sudo dnf install qemu-kvm qemu-img' ;;
-				socat)      printf '%s' 'sudo dnf install socat' ;;
-				virtiofsd)  printf '%s' 'sudo dnf install virtiofsd' ;;
-				bubblewrap) printf '%s' 'sudo dnf install bubblewrap' ;;
-			esac
-			;;
-		arch)
-			case "$tool" in
-				qemu)       printf '%s' 'sudo pacman -S qemu-full' ;;
-				socat)      printf '%s' 'sudo pacman -S socat' ;;
-				virtiofsd)  printf '%s' 'sudo pacman -S virtiofsd' ;;
-				bubblewrap) printf '%s' 'sudo pacman -S bubblewrap' ;;
-			esac
-			;;
+		debian|ubuntu) pkg_cmd='sudo apt install' ;;
+		fedora)        pkg_cmd='sudo dnf install' ;;
+		arch)          pkg_cmd='sudo pacman -S' ;;
 		*)
 			printf '%s' "Install $tool using your package manager"
+			return
 			;;
 	esac
+
+	# Map tool name to distro-specific package(s)
+	local pkg
+	case "$tool" in
+		qemu)
+			case "$distro" in
+				debian|ubuntu) pkg='qemu-system-x86 qemu-utils' ;;
+				fedora)        pkg='qemu-kvm qemu-img' ;;
+				arch)          pkg='qemu-full' ;;
+			esac
+			;;
+		*) pkg="$tool" ;;
+	esac
+
+	printf '%s' "$pkg_cmd $pkg"
 }
 
 _pass() { echo -e "${_green}[PASS]${_reset} $1"; }
@@ -473,42 +470,27 @@ print(len(servers))
 		_info 'Fix: sudo modprobe vhost_vsock'
 	fi
 
-	# QEMU
-	if command -v qemu-system-x86_64 &>/dev/null; then
-		local qemu_ver
-		qemu_ver=$(qemu-system-x86_64 --version 2>/dev/null \
-			| head -1) || true
-		_pass "QEMU: ${qemu_ver:-found}"
-	else
-		_warn 'QEMU: not found'
-		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'qemu')"
-	fi
+	# Check required tools: label, binary, pkg-hint name
+	local _tool_label _tool_bin _tool_pkg
+	for _tool_label in \
+		'QEMU:qemu-system-x86_64:qemu' \
+		'socat:socat:socat' \
+		'virtiofsd:virtiofsd:virtiofsd' \
+		'bubblewrap:bwrap:bubblewrap'
+	do
+		_tool_bin="${_tool_label#*:}"
+		_tool_pkg="${_tool_bin#*:}"
+		_tool_bin="${_tool_bin%%:*}"
+		_tool_label="${_tool_label%%:*}"
 
-	# socat
-	if command -v socat &>/dev/null; then
-		_pass 'socat: found'
-	else
-		_warn 'socat: not found'
-		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'socat')"
-	fi
-
-	# virtiofsd
-	if command -v virtiofsd &>/dev/null; then
-		_pass 'virtiofsd: found'
-	else
-		_warn 'virtiofsd: not found'
-		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'virtiofsd')"
-	fi
-
-	# bubblewrap
-	if command -v bwrap &>/dev/null; then
-		local bwrap_ver
-		bwrap_ver=$(bwrap --version 2>/dev/null) || true
-		_pass "bubblewrap: ${bwrap_ver:-found}"
-	else
-		_warn 'bubblewrap: not found'
-		_info "Fix: $(_cowork_pkg_hint "$_distro_id" 'bubblewrap')"
-	fi
+		if command -v "$_tool_bin" &>/dev/null; then
+			_pass "$_tool_label: found"
+		else
+			_warn "$_tool_label: not found"
+			_info \
+				"Fix: $(_cowork_pkg_hint "$_distro_id" "$_tool_pkg")"
+		fi
+	done
 
 	# VM image
 	local vm_image

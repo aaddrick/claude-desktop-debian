@@ -482,8 +482,13 @@ class LocalBackend extends BackendBase {
     async readFile(params) {
         const { filePath } = params;
         log(`${this.backendName} readFile: ${filePath}`);
+        const resolved = path.resolve(filePath);
+        const home = os.homedir();
+        if (!resolved.startsWith(home + path.sep) && resolved !== home) {
+            return { error: 'Access denied: path outside home directory' };
+        }
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
+            const content = fs.readFileSync(resolved, 'utf8');
             return { content };
         } catch (e) {
             return { error: e.message };
@@ -677,6 +682,11 @@ const VM_SESSION_DIR = path.join(VM_BASE_DIR, 'sessions');
 const VSOCK_GUEST_PORT = 51234;  // 0xC822 — matches guest sdk-daemon
 const QMP_CAPABILITIES = JSON.stringify({ execute: 'qmp_capabilities' });
 
+/** Event types forwarded from the guest sdk-daemon to subscribers. */
+const FORWARDED_EVENTS = new Set([
+    'stdout', 'stderr', 'exit', 'networkStatus', 'apiReachability',
+]);
+
 class KvmBackend extends BackendBase {
     constructor(emitEvent) {
         super(emitEvent);
@@ -712,10 +722,10 @@ class KvmBackend extends BackendBase {
         if (fs.existsSync(vhdxPath) && !fs.existsSync(qcow2Path)) {
             log('KvmBackend: converting VHDX to qcow2...');
             try {
-                execSync(
-                    `qemu-img convert -f vhdx -O qcow2 "${vhdxPath}" "${qcow2Path}"`,
-                    { stdio: 'pipe', timeout: 300000 }
-                );
+                execFileSync('qemu-img', [
+                    'convert', '-f', 'vhdx', '-O', 'qcow2',
+                    vhdxPath, qcow2Path
+                ], { stdio: 'pipe', timeout: 300000 });
                 log('KvmBackend: VHDX conversion complete');
             } catch (e) {
                 logError('KvmBackend: VHDX conversion failed:', e.message);
@@ -762,10 +772,10 @@ class KvmBackend extends BackendBase {
         const overlayPath = path.join(this.sessionDir, 'overlay.qcow2');
         const basePath = path.join(VM_BASE_DIR, 'rootfs.qcow2');
         try {
-            execSync(
-                `qemu-img create -f qcow2 -b "${basePath}" -F qcow2 "${overlayPath}"`,
-                { stdio: 'pipe' }
-            );
+            execFileSync('qemu-img', [
+                'create', '-f', 'qcow2', '-b', basePath,
+                '-F', 'qcow2', overlayPath
+            ], { stdio: 'pipe' });
         } catch (e) {
             logError('KvmBackend: overlay creation failed:', e.message);
             throw new Error(`Overlay creation failed: ${e.message}`);
@@ -1010,8 +1020,7 @@ class KvmBackend extends BackendBase {
     }
 
     _handleGuestData(data) {
-        // Process incoming data from guest sdk-daemon (events like
-        // stdout, stderr, exit, networkStatus, apiReachability)
+        // Parse and route incoming messages from guest sdk-daemon
         this._guestBuffer = Buffer.concat([this._guestBuffer, data]);
         while (true) {
             const parsed = parseMessage(this._guestBuffer);
@@ -1019,16 +1028,14 @@ class KvmBackend extends BackendBase {
             this._guestBuffer = parsed.remaining;
             const msg = parsed.message;
 
-            if (msg.type === 'stdout' || msg.type === 'stderr' ||
-                msg.type === 'exit' || msg.type === 'networkStatus' ||
-                msg.type === 'apiReachability') {
+            if (FORWARDED_EVENTS.has(msg.type)) {
                 this.emitEvent(msg);
             } else if (msg.success !== undefined) {
                 // Response to a request we sent — route to pending callback
                 if (this._pendingCallbacks && msg.id !== undefined) {
                     const cb = this._pendingCallbacks.get(String(msg.id));
                     if (cb) {
-                        this._pendingCallbacks.delete(msg.id);
+                        this._pendingCallbacks.delete(String(msg.id));
                         cb(msg);
                     }
                 }
@@ -1076,10 +1083,12 @@ class KvmBackend extends BackendBase {
             }
 
             let responseBuffer = '';
+            let timer;
             const onData = (data) => {
                 responseBuffer += data.toString();
                 try {
                     const parsed = JSON.parse(responseBuffer);
+                    clearTimeout(timer);
                     this._qmpClient.removeListener('data', onData);
                     resolve(parsed);
                 } catch (_) {
@@ -1092,8 +1101,7 @@ class KvmBackend extends BackendBase {
                 JSON.stringify({ execute: command }) + '\n'
             );
 
-            // Timeout
-            setTimeout(() => {
+            timer = setTimeout(() => {
                 this._qmpClient.removeListener('data', onData);
                 reject(new Error('QMP command timeout'));
             }, 10000);
@@ -1174,27 +1182,21 @@ class KvmBackend extends BackendBase {
             }
         }
 
-        // 4. Kill helper processes
-        if (this.virtiofsdProcess) {
-            try { this.virtiofsdProcess.kill(); } catch (_) {}
-            this.virtiofsdProcess = null;
-        }
-        if (this.socatProcess) {
-            try { this.socatProcess.kill(); } catch (_) {}
-            this.socatProcess = null;
-        }
-        if (this._qmpClient) {
-            try { this._qmpClient.destroy(); } catch (_) {}
-            this._qmpClient = null;
-        }
-        if (this._guestConn) {
-            try { this._guestConn.destroy(); } catch (_) {}
-            this._guestConn = null;
-        }
-        if (this._bridgeServer) {
-            try { this._bridgeServer.close(); } catch (_) {}
-            this._bridgeServer = null;
-        }
+        // 4. Kill helper processes and close connections
+        const cleanup = (obj, method) => {
+            if (!obj) return;
+            try { obj[method](); } catch (_) {}
+        };
+        cleanup(this.virtiofsdProcess, 'kill');
+        cleanup(this.socatProcess, 'kill');
+        cleanup(this._qmpClient, 'destroy');
+        cleanup(this._guestConn, 'destroy');
+        cleanup(this._bridgeServer, 'close');
+        this.virtiofsdProcess = null;
+        this.socatProcess = null;
+        this._qmpClient = null;
+        this._guestConn = null;
+        this._bridgeServer = null;
 
         // 5. Clean up session directory
         if (this.sessionDir) {
@@ -1307,8 +1309,13 @@ class KvmBackend extends BackendBase {
         }
 
         // Fallback: read from host
+        const resolved = path.resolve(filePath);
+        const home = os.homedir();
+        if (!resolved.startsWith(home + path.sep) && resolved !== home) {
+            return { error: 'Access denied: path outside home directory' };
+        }
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
+            const content = fs.readFileSync(resolved, 'utf8');
             return { content };
         } catch (e) {
             return { error: e.message };

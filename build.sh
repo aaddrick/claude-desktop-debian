@@ -891,6 +891,23 @@ const indexJs = process.env.INDEX_JS;
 let code = fs.readFileSync(indexJs, 'utf8');
 let patchCount = 0;
 
+// Helper: extract a balanced block starting at a delimiter.
+// Returns the substring from open to close (inclusive), or null.
+// Works for {} [] () by specifying the open char.
+function extractBlock(str, startIdx, open = '{') {
+    const close = { '{': '}', '[': ']', '(': ')' }[open];
+    const blockStart = str.indexOf(open, startIdx);
+    if (blockStart === -1) return null;
+    let depth = 1;
+    let pos = blockStart + 1;
+    while (depth > 0 && pos < str.length) {
+        if (str[pos] === open) depth++;
+        else if (str[pos] === close) depth--;
+        pos++;
+    }
+    return depth === 0 ? str.substring(blockStart, pos) : null;
+}
+
 // ============================================================
 // Patch 1: Platform check - allow Linux through fz()
 // Pattern: VAR!=="darwin"&&VAR!=="win32" (unique in platform gate)
@@ -1015,60 +1032,35 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
         const afterSha = code.indexOf('files', shaIdx);
         if (afterSha !== -1 && afterSha - shaIdx < 200) {
             // Find the opening brace of files object
-            const filesOpen = code.indexOf('{', afterSha);
-            if (filesOpen !== -1) {
-                // Extract the full files:{...} content
-                let depth = 1;
-                let pos = filesOpen + 1;
-                while (depth > 0 && pos < code.length) {
-                    if (code[pos] === '{') depth++;
-                    else if (code[pos] === '}') depth--;
-                    pos++;
-                }
-                const filesContent = code.substring(filesOpen, pos);
-                // Extract win32 x64 and arm64 arrays from files object
-                // Pattern: win32:{arm64:[...],x64:[...]} or similar
-                // Use bracket-counting to extract each array
+            // Extract the full files:{...} block
+            const filesBlock = extractBlock(code, afterSha, '{');
+            if (filesBlock) {
+                const filesEnd = code.indexOf(filesBlock, afterSha)
+                    + filesBlock.length;
+
+                // Extract win32 x64 and arm64 arrays
                 let win32x64 = null;
                 let win32arm64 = null;
-                const win32Idx = filesContent.indexOf('win32');
+                const win32Idx = filesBlock.indexOf('win32');
                 if (win32Idx !== -1) {
-                    // Helper: extract [...] starting at given position
-                    const extractArray = (str, startSearch) => {
-                        const arrStart = str.indexOf('[', startSearch);
-                        if (arrStart === -1) return null;
-                        let d = 1;
-                        let p = arrStart + 1;
-                        while (d > 0 && p < str.length) {
-                            if (str[p] === '[') d++;
-                            else if (str[p] === ']') d--;
-                            p++;
+                    // Scope to win32:{...} to avoid matching
+                    // x64/arm64 from darwin or other platforms
+                    const win32Block =
+                        extractBlock(filesBlock, win32Idx, '{');
+                    if (win32Block) {
+                        const x64Idx = win32Block.indexOf('x64');
+                        const arm64Idx = win32Block.indexOf('arm64');
+                        if (x64Idx !== -1) {
+                            win32x64 =
+                                extractBlock(win32Block, x64Idx, '[');
                         }
-                        return str.substring(arrStart, p);
-                    };
-                    // Scope to the win32:{...} block so we don't
-                    // accidentally match x64/arm64 from darwin/linux
-                    let win32Section = filesContent.substring(win32Idx);
-                    const braceStart = win32Section.indexOf('{');
-                    if (braceStart !== -1) {
-                        let depth = 1;
-                        let bp = braceStart + 1;
-                        while (depth > 0 && bp < win32Section.length) {
-                            if (win32Section[bp] === '{') depth++;
-                            else if (win32Section[bp] === '}') depth--;
-                            bp++;
+                        if (arm64Idx !== -1) {
+                            win32arm64 =
+                                extractBlock(win32Block, arm64Idx, '[');
                         }
-                        win32Section = win32Section.substring(0, bp);
-                    }
-                    const x64Idx = win32Section.indexOf('x64');
-                    const arm64Idx = win32Section.indexOf('arm64');
-                    if (x64Idx !== -1) {
-                        win32x64 = extractArray(win32Section, x64Idx);
-                    }
-                    if (arm64Idx !== -1) {
-                        win32arm64 = extractArray(win32Section, arm64Idx);
                     }
                 }
+
                 // Build linux entry: use extracted win32 arrays, or
                 // fall back to empty arrays (vacuous truth)
                 let linuxX64 = '[]';
@@ -1081,8 +1073,9 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
                     linuxArm64 = win32arm64;
                     console.log('  Extracted win32 arm64 file entries for linux');
                 }
+
                 // Insert linux entry before the closing } of files
-                const insertPos = pos - 1;
+                const insertPos = filesEnd - 1;
                 const linuxEntry =
                     ',linux:{x64:' + linuxX64 +
                     ',arm64:' + linuxArm64 + '}';
@@ -1241,14 +1234,8 @@ if (serviceErrorIdx !== -1) {
                 `${fsVar}.mkdtemp(${pathVar}.join(` +
                 `process.platform==="linux"?${bundleVar}:${osVar}.tmpdir(),` +
                 `"wvm-"))`;
-            // Use indexOf for exact positional replacement (string.replace
-            // only hits the first occurrence and can be confused by regex
-            // special chars in the match string)
-            const matchIdx = code.indexOf(fullMatch);
-            if (matchIdx !== -1) {
-                code = code.substring(0, matchIdx) + replacement +
-                    code.substring(matchIdx + fullMatch.length);
-            }
+            code = code.substring(0, mkdtempIdx) + replacement +
+                code.substring(mkdtempIdx + fullMatch.length);
             console.log('  Patched VM download temp dir to use bundle path on Linux');
             patchCount++;
         } else {
