@@ -428,14 +428,19 @@ jobs:
           # Retry loop to handle concurrent pushes to gh-pages
           for i in 1 2 3 4 5; do
             git pull --rebase && git push && break
-            echo "Push failed, retrying in 5 seconds... (attempt $i/5)"
-            sleep 5
+            if [[ $i -eq 5 ]]; then
+              echo "::error::Failed to push APT repo after 5 attempts"
+              exit 1
+            fi
+            wait_time=$((2 ** i))
+            echo "Push failed, retrying in ${wait_time}s... (attempt $i/5)"
+            sleep "$wait_time"
           done
 
   update-dnf-repo:
     name: Update DNF Repository
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [release]
+    needs: [release, update-apt-repo]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -537,8 +542,13 @@ jobs:
           # Retry loop to handle concurrent pushes to gh-pages
           for i in 1 2 3 4 5; do
             git pull --rebase && git push && break
-            echo "Push failed, retrying in 5 seconds... (attempt $i/5)"
-            sleep 5
+            if [[ $i -eq 5 ]]; then
+              echo "::error::Failed to push DNF repo after 5 attempts"
+              exit 1
+            fi
+            wait_time=$((2 ** i))
+            echo "Push failed, retrying in ${wait_time}s... (attempt $i/5)"
+            sleep "$wait_time"
           done
 
   update-aur-repo:
