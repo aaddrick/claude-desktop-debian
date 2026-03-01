@@ -218,13 +218,13 @@ _cowork_pkg_hint() {
 	printf '%s' "$pkg_cmd $pkg"
 }
 
-_pass() { echo -e "${_green}[PASS]${_reset} $1"; }
+_pass() { echo -e "${_green}[PASS]${_reset} $*"; }
 _fail() {
-	echo -e "${_red}[FAIL]${_reset} $1"
+	echo -e "${_red}[FAIL]${_reset} $*"
 	_doctor_failures=$((_doctor_failures + 1))
 }
-_warn() { echo -e "${_yellow}[WARN]${_reset} $1"; }
-_info() { echo -e "       $1"; }
+_warn() { echo -e "${_yellow}[WARN]${_reset} $*"; }
+_info() { echo -e "       $*"; }
 
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
@@ -264,7 +264,8 @@ run_doctor() {
 	elif [[ -n "${DISPLAY:-}" ]]; then
 		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
 	else
-		_fail 'No display server detected (DISPLAY and WAYLAND_DISPLAY are unset)'
+		_fail "No display server detected" \
+			"(DISPLAY and WAYLAND_DISPLAY are unset)"
 		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
 	fi
 
@@ -273,7 +274,8 @@ run_doctor() {
 	if [[ -n $menu_bar_mode ]]; then
 		case "${menu_bar_mode,,}" in
 			auto|visible|hidden)
-				_pass "Menu bar mode: ${menu_bar_mode,,} (CLAUDE_MENU_BAR=$menu_bar_mode)"
+				_pass "Menu bar mode: ${menu_bar_mode,,}" \
+					"(CLAUDE_MENU_BAR=$menu_bar_mode)"
 				;;
 			*)
 				_warn "Unknown CLAUDE_MENU_BAR: '$menu_bar_mode'"
@@ -304,7 +306,9 @@ run_doctor() {
 		_fail "Electron binary not found at $electron_path"
 		_info 'Fix: Reinstall claude-desktop package'
 	elif command -v electron &>/dev/null; then
-		_pass "Electron: $(electron --version 2>/dev/null || echo 'found') (system)"
+		local sys_electron_ver
+		sys_electron_ver=$(electron --version 2>/dev/null) || true
+		_pass "Electron: ${sys_electron_ver:-found} (system)"
 	else
 		_fail 'Electron binary not found'
 		_info 'Fix: Reinstall claude-desktop package'
@@ -352,7 +356,8 @@ run_doctor() {
 		if [[ $lock_pid =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
 			_pass "SingletonLock: held by running process (PID $lock_pid)"
 		else
-			_warn "SingletonLock: stale lock found (PID $lock_pid is not running)"
+			_warn "SingletonLock: stale lock found" \
+				"(PID $lock_pid is not running)"
 			_info "Fix: rm '$lock_file'"
 		fi
 	else
@@ -392,7 +397,8 @@ print(len(servers))
 				_info "Fix: Check $mcp_config for syntax errors"
 			fi
 		else
-			_warn "MCP config: exists but cannot validate (no python3 or node available)"
+			_warn "MCP config: exists but cannot validate" \
+				"(no python3 or node available)"
 		fi
 	else
 		_info "MCP config: not found at $mcp_config (OK if not using MCP)"
@@ -433,7 +439,8 @@ print(len(servers))
 			_fail "Disk space: ${config_disk_avail}MB free on config partition"
 			_info 'Fix: Free up disk space'
 		elif ((config_disk_avail < 500)); then
-			_warn "Disk space: ${config_disk_avail}MB free on config partition (low)"
+			_warn "Disk space: ${config_disk_avail}MB free" \
+				"on config partition (low)"
 		else
 			_pass "Disk space: ${config_disk_avail}MB free"
 		fi
@@ -527,7 +534,8 @@ print(len(servers))
 		log_size=$(stat -c '%s' "$log_path" 2>/dev/null) || log_size=0
 		local log_size_kb=$((log_size / 1024))
 		if ((log_size_kb > 10240)); then
-			_warn "Log file: ${log_size_kb}KB (consider clearing: rm '$log_path')"
+			_warn "Log file: ${log_size_kb}KB" \
+				"(consider clearing: rm '$log_path')"
 		else
 			_pass "Log file: ${log_size_kb}KB ($log_path)"
 		fi
