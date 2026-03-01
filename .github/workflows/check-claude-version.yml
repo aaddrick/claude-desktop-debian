@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: main-branch-auto-update
+  cancel-in-progress: false
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
@@ -158,6 +162,60 @@ jobs:
           echo "Updated build.sh:"
           grep "claude_download_url=" build.sh
 
+      - name: Compute SRI hashes for Nix
+        if: steps.check_update.outputs.update_needed == 'true'
+        id: nix_hashes
+        run: |
+          AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
+          ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
+
+          # Download to temp files first so a partial download doesn't
+          # produce a valid-looking but wrong SRI hash.
+          amd64_tmp=$(mktemp)
+          curl -fsSL -o "$amd64_tmp" "$AMD64_URL" || { echo "AMD64 download failed"; exit 1; }
+          AMD64_HASH=$(sha256sum "$amd64_tmp" | awk '{print $1}' | xxd -r -p | base64 -w0)
+          rm "$amd64_tmp"
+          echo "amd64_sri=sha256-$AMD64_HASH" >> $GITHUB_OUTPUT
+
+          if [ -n "$ARM64_URL" ]; then
+            arm64_tmp=$(mktemp)
+            curl -fsSL -o "$arm64_tmp" "$ARM64_URL" || { echo "ARM64 download failed"; exit 1; }
+            ARM64_HASH=$(sha256sum "$arm64_tmp" | awk '{print $1}' | xxd -r -p | base64 -w0)
+            rm "$arm64_tmp"
+            echo "arm64_sri=sha256-$ARM64_HASH" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Nix package
+        if: steps.check_update.outputs.update_needed == 'true'
+        run: |
+          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
+          NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
+          NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
+          AMD64_SRI="${{ steps.nix_hashes.outputs.amd64_sri }}"
+          ARM64_SRI="${{ steps.nix_hashes.outputs.arm64_sri }}"
+
+          NIX_FILE="nix/claude-desktop.nix"
+
+          # Update version
+          sed -i "s/version = \"[^\"]*\"/version = \"$CLAUDE_VERSION\"/" "$NIX_FILE"
+
+          # Update amd64 URL and hash
+          AMD64_PATH=$(echo "$NEW_AMD64_URL" | sed 's|.*releases/|releases/|')
+          sed -i "s|releases/win32/x64/[^\"]*|$AMD64_PATH|" "$NIX_FILE"
+          # Range assumes each arch block (x86_64-linux/aarch64-linux) contains
+          # exactly one `hash = "..."` line before its closing `};`.
+          sed -i "/x86_64-linux/,/};/{s|hash = \"[^\"]*\"|hash = \"$AMD64_SRI\"|}" "$NIX_FILE"
+
+          # Update arm64 URL and hash
+          if [ -n "$NEW_ARM64_URL" ]; then
+            ARM64_PATH=$(echo "$NEW_ARM64_URL" | sed 's|.*releases/|releases/|')
+            sed -i "s|releases/win32/arm64/[^\"]*|$ARM64_PATH|" "$NIX_FILE"
+            sed -i "/aarch64-linux/,/};/{s|hash = \"[^\"]*\"|hash = \"$ARM64_SRI\"|}" "$NIX_FILE"
+          fi
+
+          echo "Updated $NIX_FILE:"
+          head -30 "$NIX_FILE"
+
       - name: Commit and push changes
         if: steps.check_update.outputs.update_needed == 'true'
         env:
@@ -177,10 +235,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Check if there are changes to commit
-          if git diff --quiet build.sh; then
-            echo "No changes to build.sh"
+          if git diff --quiet build.sh nix/claude-desktop.nix; then
+            echo "No changes to build.sh or nix/claude-desktop.nix"
           else
-            git add build.sh
+            git add build.sh nix/claude-desktop.nix
             git commit -m "$(cat <<COMMIT_MSG
           Update Claude Desktop download URLs to version $CLAUDE_VERSION
 

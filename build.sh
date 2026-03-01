@@ -7,7 +7,7 @@
 
 # Global variables (set by functions, used throughout)
 architecture=''
-distro_family=''  # debian, rpm, or unknown
+distro_family=''  # debian, rpm, nix, or unknown
 claude_download_url=''
 claude_exe_filename=''
 version=''
@@ -17,6 +17,8 @@ cleanup_action='yes'
 perform_cleanup=false
 test_flags_mode=false
 local_exe_path=''
+node_pty_dir=''
+source_dir=''
 original_user=''
 original_home=''
 project_root=''
@@ -112,6 +114,9 @@ detect_distro() {
 		distro_family='rpm'
 		echo "Detected Red Hat-based distribution"
 		echo "  $(cat /etc/redhat-release)"
+	elif [[ -f /etc/NIXOS ]]; then
+		distro_family='nix'
+		echo "Detected NixOS"
 	else
 		distro_family='unknown'
 		echo "Warning: Could not detect distribution family"
@@ -183,12 +188,13 @@ parse_arguments() {
 	case "$distro_family" in
 		debian) build_format='deb' ;;
 		rpm) build_format='rpm' ;;
+		nix) build_format='nix' ;;
 		*) build_format='appimage' ;;
 	esac
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build|-c|--clean|-e|--exe|-r|--release-tag)
+			-b|--build|-c|--clean|-e|--exe|-r|--release-tag|-s|--source-dir|--node-pty-dir)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
@@ -198,6 +204,8 @@ parse_arguments() {
 					-c|--clean) cleanup_action="$2" ;;
 					-e|--exe) local_exe_path="$2" ;;
 					-r|--release-tag) release_tag="$2" ;;
+					-s|--source-dir) source_dir="$2" ;;
+					--node-pty-dir) node_pty_dir="$2" ;;
 				esac
 				shift 2
 				;;
@@ -206,11 +214,13 @@ parse_arguments() {
 				shift
 				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|rpm|appimage] [--clean yes|no] [--exe /path/to/installer.exe] [--release-tag TAG] [--test-flags]"
-				echo '  --build: Specify the build format (deb, rpm, or appimage).'
+				echo "Usage: $0 [--build deb|rpm|appimage|nix] [--clean yes|no] [--exe /path/to/installer.exe] [--source-dir /path] [--release-tag TAG] [--test-flags]"
+				echo '  --build: Specify the build format (deb, rpm, appimage, or nix).'
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --exe:   Use a local Claude installer exe instead of downloading'
+				echo '  --source-dir: Path to repo root for scripts/ and assets (default: project root)'
+				echo '  --node-pty-dir: Path to pre-built node-pty package (skips npm install)'
 				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
@@ -223,12 +233,24 @@ parse_arguments() {
 		esac
 	done
 
+	# source_dir is where scripts/assets live (default: project_root)
+	source_dir="${source_dir:-$project_root}"
+
 	# Validate arguments
 	build_format="${build_format,,}"
 	cleanup_action="${cleanup_action,,}"
 
-	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' ]]; then
-		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', or 'appimage'." >&2
+	if [[ ! -d $source_dir ]]; then
+		echo "Error: --source-dir path does not exist: $source_dir" >&2
+		exit 1
+	fi
+	if [[ -n $node_pty_dir && ! -d $node_pty_dir ]]; then
+		echo "Error: --node-pty-dir path does not exist: $node_pty_dir" >&2
+		exit 1
+	fi
+
+	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' && $build_format != 'nix' ]]; then
+		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', 'appimage', or 'nix'." >&2
 		exit 1
 	fi
 
@@ -577,7 +599,7 @@ patch_app_asar() {
 	original_main=$(node -e "const pkg = require('./app.asar.contents/package.json'); console.log(pkg.main);")
 	echo "Original main entry: $original_main"
 
-	cp "$project_root/scripts/frame-fix-wrapper.js" app.asar.contents/frame-fix-wrapper.js || exit 1
+	cp "$source_dir/scripts/frame-fix-wrapper.js" app.asar.contents/frame-fix-wrapper.js || exit 1
 
 	cat > app.asar.contents/frame-fix-entry.js << EOFENTRY
 // Load frame fix first
@@ -607,11 +629,16 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	# Create stub native module
 	echo 'Creating stub native module...'
 	mkdir -p app.asar.contents/node_modules/@ant/claude-native || exit 1
-	cp "$project_root/scripts/claude-native-stub.js" \
+	cp "$source_dir/scripts/claude-native-stub.js" \
 		app.asar.contents/node_modules/@ant/claude-native/index.js || exit 1
 
 	mkdir -p app.asar.contents/resources/i18n || exit 1
 	cp "$claude_extract_dir/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ || exit 1
+
+	# Copy tray icons into asar so both packaged (process.resourcesPath)
+	# and unpackaged (app.getAppPath()) code paths can find them
+	cp "$claude_extract_dir/lib/net45/resources/Tray"* app.asar.contents/resources/ 2>/dev/null || \
+		echo 'Warning: No tray icon files found for asar inclusion'
 
 	# Patch title bar detection
 	patch_titlebar_detection
@@ -642,7 +669,7 @@ console.log('Updated package.json: main entry and node-pty dependency');
 
 	# Copy cowork VM service daemon for Linux Cowork mode
 	echo 'Installing cowork VM service daemon...'
-	cp "$project_root/scripts/cowork-vm-service.js" \
+	cp "$source_dir/scripts/cowork-vm-service.js" \
 		app.asar.contents/cowork-vm-service.js || exit 1
 	echo 'Cowork VM service daemon installed'
 }
@@ -1263,28 +1290,40 @@ COWORK_PATCH
 install_node_pty() {
 	section_header 'Installing node-pty for terminal support'
 
-	node_pty_build_dir="$work_dir/node-pty-build"
-	mkdir -p "$node_pty_build_dir" || exit 1
-	cd "$node_pty_build_dir" || exit 1
-	echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
+	local pty_src_dir=''
 
-	echo 'Installing node-pty (this will compile native module for Linux)...'
-	if npm install node-pty 2>&1; then
-		echo 'node-pty installed successfully'
-
-		if [[ -d $node_pty_build_dir/node_modules/node-pty ]]; then
-			echo 'Copying node-pty JavaScript files into app.asar.contents...'
-			mkdir -p "$app_staging_dir/app.asar.contents/node_modules/node-pty" || exit 1
-			cp -r "$node_pty_build_dir/node_modules/node-pty/lib" \
-				"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
-			cp "$node_pty_build_dir/node_modules/node-pty/package.json" \
-				"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
-			echo 'node-pty JavaScript files copied'
-		else
-			echo 'node-pty installation directory not found'
-		fi
+	if [[ -n $node_pty_dir ]]; then
+		# Use pre-built node-pty (e.g. from Nix)
+		echo "Using pre-built node-pty from $node_pty_dir"
+		pty_src_dir="$node_pty_dir"
 	else
-		echo 'Failed to install node-pty - terminal features may not work'
+		# Build node-pty from npm
+		node_pty_build_dir="$work_dir/node-pty-build"
+		mkdir -p "$node_pty_build_dir" || exit 1
+		cd "$node_pty_build_dir" || exit 1
+		echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
+
+		echo 'Installing node-pty (this compiles native module)...'
+		if npm install node-pty 2>&1; then
+			echo 'node-pty installed successfully'
+			pty_src_dir="$node_pty_build_dir/node_modules/node-pty"
+		else
+			echo 'Failed to install node-pty - terminal features may not work'
+		fi
+	fi
+
+	if [[ -n $pty_src_dir && -d $pty_src_dir ]]; then
+		echo 'Copying node-pty JavaScript files into app.asar.contents...'
+		mkdir -p "$app_staging_dir/app.asar.contents/node_modules/node-pty" || exit 1
+		cp -r "$pty_src_dir/lib" \
+			"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
+		cp "$pty_src_dir/package.json" \
+			"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
+		echo 'node-pty JavaScript files copied'
+	elif [[ -z $pty_src_dir ]]; then
+		echo 'node-pty source directory not set'
+	else
+		echo "node-pty directory not found: $pty_src_dir"
 	fi
 
 	cd "$app_staging_dir" || exit 1
@@ -1295,20 +1334,27 @@ finalize_app_asar() {
 	"$asar_exec" pack app.asar.contents app.asar || exit 1
 
 	mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native" || exit 1
-	cp "$project_root/scripts/claude-native-stub.js" \
+	cp "$source_dir/scripts/claude-native-stub.js" \
 		"$app_staging_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js" || exit 1
 
 	# Copy cowork VM service daemon (must be unpacked for child_process.fork)
 	echo 'Copying cowork VM service daemon to unpacked directory...'
-	cp "$project_root/scripts/cowork-vm-service.js" \
+	cp "$source_dir/scripts/cowork-vm-service.js" \
 		"$app_staging_dir/app.asar.unpacked/cowork-vm-service.js" || exit 1
 	echo 'Cowork VM service daemon copied to unpacked'
 
 	# Copy node-pty native binaries
-	if [[ -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
+	local pty_release_dir=''
+	if [[ -n $node_pty_dir && -d $node_pty_dir/build/Release ]]; then
+		pty_release_dir="$node_pty_dir/build/Release"
+	elif [[ -n $node_pty_build_dir && -d $node_pty_build_dir/node_modules/node-pty/build/Release ]]; then
+		pty_release_dir="$node_pty_build_dir/node_modules/node-pty/build/Release"
+	fi
+
+	if [[ -n $pty_release_dir ]]; then
 		echo 'Copying node-pty native binaries to unpacked directory...'
 		mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release" || exit 1
-		cp -r "$node_pty_build_dir/node_modules/node-pty/build/Release/"* \
+		cp -r "$pty_release_dir/"* \
 			"$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/" || exit 1
 		chmod +x "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/"* 2>/dev/null || true
 		echo 'node-pty native binaries copied'
@@ -1463,6 +1509,12 @@ copy_ssh_helpers() {
 
 run_packaging() {
 	section_header 'Call Packaging Script'
+
+	if [[ $build_format == 'nix' ]]; then
+		echo 'Nix build mode - skipping packaging (Nix derivation handles installation)'
+		section_footer 'Call Packaging Script'
+		return 0
+	fi
 
 	local output_path=''
 	local script_name file_pattern pkg_file
@@ -1634,21 +1686,45 @@ main() {
 		exit 0
 	fi
 
-	check_dependencies
+	if [[ $build_format != 'nix' ]]; then
+		check_dependencies
+	fi
 	setup_work_directory
-	setup_nodejs
-	setup_electron_asar
+
+	if [[ $build_format != 'nix' ]]; then
+		setup_nodejs
+		setup_electron_asar
+	else
+		# Nix provides node and asar in PATH
+		asar_exec=$(command -v asar)
+		if [[ -z $asar_exec ]]; then
+			echo 'Error: asar not found in PATH (expected Nix to provide it)' >&2
+			exit 1
+		fi
+	fi
 
 	# Phase 2: Download and extract
+	if [[ $build_format == 'nix' && -z $local_exe_path ]]; then
+		echo 'Error: --exe is required when --build nix is specified' >&2
+		exit 1
+	fi
 	download_claude_installer
 
 	# Phase 3: Patch and prepare
 	patch_app_asar
 	install_node_pty
 	finalize_app_asar
-	stage_electron
+	if [[ $build_format != 'nix' ]]; then
+		stage_electron
+		copy_locale_files
+	else
+		# Nix installPhase handles Electron staging and locale files.
+		# Set a resources destination so process_icons and copy_ssh_helpers
+		# have somewhere to write; the Nix installPhase picks them up.
+		electron_resources_dest="$app_staging_dir/nix-resources"
+		mkdir -p "$electron_resources_dest" || exit 1
+	fi
 	process_icons
-	copy_locale_files
 	copy_ssh_helpers
 
 	cd "$project_root" || exit 1
@@ -1660,7 +1736,9 @@ main() {
 	cleanup_build
 
 	echo 'Build process finished.'
-	print_next_steps
+	if [[ $build_format != 'nix' ]]; then
+		print_next_steps
+	fi
 }
 
 # Run main with all script arguments

@@ -1,8 +1,22 @@
 // Inject frame fix before main app loads
 const Module = require('module');
+const path = require('path');
 const originalRequire = Module.prototype.require;
 
 console.log('[Frame Fix] Wrapper loaded');
+
+// Fix process.resourcesPath to match the actual location of app.asar.
+// In Nix builds, electron is a separate store path so process.resourcesPath
+// points to the Electron package's resources dir, not where our tray icons
+// and app.asar.unpacked live. Deriving from __dirname (the asar root) gives
+// the correct path; for deb/AppImage builds the values already match.
+const derivedResourcesPath = path.dirname(__dirname);
+if (derivedResourcesPath !== process.resourcesPath) {
+  console.log('[Frame Fix] Correcting process.resourcesPath');
+  console.log('[Frame Fix]   Was:', process.resourcesPath);
+  console.log('[Frame Fix]   Now:', derivedResourcesPath);
+  process.resourcesPath = derivedResourcesPath;
+}
 
 // Menu bar visibility mode, controlled by CLAUDE_MENU_BAR env var:
 //   'auto'    - hidden by default, Alt toggles visibility (current default)

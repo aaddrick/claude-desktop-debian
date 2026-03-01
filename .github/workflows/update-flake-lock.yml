@@ -1,0 +1,49 @@
+name: Update Flake Lock
+on:
+  schedule:
+    - cron: "0 2 * * 1"  # Monday 2 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: main-branch-auto-update
+  cancel-in-progress: false
+
+jobs:
+  update-flake-lock:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Update flake.lock
+        run: nix flake update
+
+      - name: Check for changes
+        id: check
+        run: |
+          if git diff --quiet flake.lock; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "flake.lock is already up to date"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "flake.lock has changes:"
+            nix flake metadata --json | jq -r '.locks.nodes | to_entries[] | select(.key != "root") | "\(.key): \(.value.locked.rev[0:8])"'
+          fi
+
+      - name: Commit and push
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add flake.lock
+          git commit -m "chore: update flake.lock"
+          git push

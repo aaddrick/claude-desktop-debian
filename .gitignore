@@ -26,3 +26,7 @@ test-build/
 
 # Reference files for source inspection
 build-reference/
+
+# Nix build output
+result
+result-*
