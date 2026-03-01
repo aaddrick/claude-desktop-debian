@@ -178,6 +178,7 @@ Special thanks to:
 - **[MichaelMKenny](https://github.com/MichaelMKenny)** for diagnosing the `$`-prefixed electron variable bug with root cause analysis and workaround
 - **[daa25209](https://github.com/daa25209)** for detailed root cause analysis of the cowork platform gate crash and patch script
 - **[noctuum](https://github.com/noctuum)** for the `CLAUDE_MENU_BAR` env var for configurable menu bar visibility
+- **[typedrat](https://github.com/typedrat)** for the NixOS flake integration with build.sh, node-pty derivation, and CI auto-update
 
 This project includes a NixOS flake inspired by [k3d3's original implementation](https://github.com/k3d3/claude-desktop-linux-flake). See the [NixOS installation section](#using-nix-flake-nixos) above.
 
