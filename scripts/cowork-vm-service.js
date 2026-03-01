@@ -199,6 +199,25 @@ function resolveWorkDir(cwd, sharedCwdPath) {
 }
 
 /**
+ * Resolve the SDK binary path from subpath and version.
+ * Returns the path if found and executable, null otherwise.
+ */
+function resolveSdkBinary(sdkSubpath, version, label) {
+    if (!sdkSubpath || !version) return null;
+    const candidatePath = path.join(
+        os.homedir(), sdkSubpath, version, 'claude'
+    );
+    try {
+        fs.accessSync(candidatePath, fs.constants.X_OK);
+        log(`${label}: SDK binary found: ${candidatePath}`);
+        return candidatePath;
+    } catch (e) {
+        log(`${label}: SDK binary not found: ${candidatePath}`);
+        return null;
+    }
+}
+
+/**
  * Resolve the actual command binary to execute.
  * Priority: 1) SDK binary from installSdk, 2) command path, 3) which
  * Returns { command, error } — error is set if command not found.
@@ -474,20 +493,10 @@ class LocalBackend extends BackendBase {
     async installSdk(params) {
         const { sdkSubpath, version } = params;
         log(`${this.backendName} installSdk: ${sdkSubpath}@${version}`);
-
-        if (sdkSubpath && version) {
-            const candidatePath = path.join(
-                os.homedir(), sdkSubpath, version, 'claude'
-            );
-            try {
-                fs.accessSync(candidatePath, fs.constants.X_OK);
-                this.sdkBinaryPath = candidatePath;
-                log(`${this.backendName}: SDK binary found: ${this.sdkBinaryPath}`);
-            } catch (e) {
-                log(`${this.backendName}: SDK binary not found or not executable: ${candidatePath}`);
-            }
-        }
-
+        const resolved = resolveSdkBinary(
+            sdkSubpath, version, this.backendName
+        );
+        if (resolved) this.sdkBinaryPath = resolved;
         return {};
     }
 
@@ -619,15 +628,13 @@ class BwrapBackend extends LocalBackend {
             log('BwrapBackend: could not resolve /etc/resolv.conf:', e.message);
         }
 
+        // Home is read-only; only workDir and explicit mounts are writable.
+        // This prevents the sandbox from writing to ~/.ssh, ~/.gnupg, etc.
+        const homeDir = os.homedir();
+        bwrapArgs.push('--ro-bind', homeDir, homeDir);
         bwrapArgs.push('--bind', workDir, workDir);
 
-        // Add user home directory as writable bind
-        const homeDir = os.homedir();
-        if (workDir !== homeDir) {
-            bwrapArgs.push('--bind', homeDir, homeDir);
-        }
-
-        // Apply stored mount binds
+        // Apply stored mount binds as writable
         for (const [, hostPath] of this.mountBinds) {
             if (fs.existsSync(hostPath)) {
                 bwrapArgs.push('--bind', hostPath, hostPath);
@@ -684,6 +691,7 @@ class KvmBackend extends BackendBase {
         this.bridgeSock = null;
         this.guestCid = null;
         this.sdkBinaryPath = null;
+        this._qmpAvailable = true;
         this.processes = new Map(); // id -> bridge connection state
     }
 
@@ -729,7 +737,8 @@ class KvmBackend extends BackendBase {
         } catch (_) {
             // First run, start at 3
         }
-        fs.writeFileSync(cidFile, String(cid + 1));
+        const next = cid >= 65535 ? 3 : cid + 1;
+        fs.writeFileSync(cidFile, String(next));
         return cid;
     }
 
@@ -883,7 +892,8 @@ class KvmBackend extends BackendBase {
         return new Promise((resolve) => {
             const tryConnect = () => {
                 if (Date.now() - start > timeout) {
-                    logError('KvmBackend: QMP connection timeout');
+                    logError('KvmBackend: QMP connection timeout — VM control limited');
+                    this._qmpAvailable = false;
                     resolve();
                     return;
                 }
@@ -1016,7 +1026,7 @@ class KvmBackend extends BackendBase {
             } else if (msg.success !== undefined) {
                 // Response to a request we sent — route to pending callback
                 if (this._pendingCallbacks && msg.id !== undefined) {
-                    const cb = this._pendingCallbacks.get(msg.id);
+                    const cb = this._pendingCallbacks.get(String(msg.id));
                     if (cb) {
                         this._pendingCallbacks.delete(msg.id);
                         cb(msg);
@@ -1220,13 +1230,10 @@ class KvmBackend extends BackendBase {
             const result = await this._forwardToGuest({
                 method: 'spawn', params
             });
-            // Track that this process exists in the guest
+            // Track that this process exists in the guest.
+            // Events (stdout/stderr/exit) flow back through the
+            // single guest connection → _handleGuestData → emitEvent.
             this.processes.set(id, { remote: true });
-
-            // Set up event forwarding for this process
-            // The guest sdk-daemon will send stdout/stderr/exit events
-            // back over the bridge connection
-            this._setupEventForwarding(id);
 
             return result.result || {};
         } catch (e) {
@@ -1241,58 +1248,6 @@ class KvmBackend extends BackendBase {
             });
             return {};
         }
-    }
-
-    _setupEventForwarding(processId) {
-        if (!this.bridgeSock || !fs.existsSync(this.bridgeSock)) {
-            return;
-        }
-
-        const client = net.createConnection(this.bridgeSock, () => {
-            // Subscribe to events for this process
-            writeMessage(client, {
-                method: 'subscribeEvents',
-                params: { processId },
-            });
-        });
-
-        let eventBuffer = Buffer.alloc(0);
-        client.on('data', (data) => {
-            eventBuffer = Buffer.concat([eventBuffer, data]);
-
-            let parsed;
-            try {
-                parsed = parseMessage(eventBuffer);
-            } catch (_) {
-                return;
-            }
-
-            while (parsed) {
-                eventBuffer = parsed.remaining;
-                const event = parsed.message;
-
-                // Forward event to our subscribers
-                this.emitEvent(event);
-
-                // Clean up on exit
-                if (event.type === 'exit' && event.id === processId) {
-                    this.processes.delete(processId);
-                    client.destroy();
-                    return;
-                }
-
-                try {
-                    parsed = parseMessage(eventBuffer);
-                } catch (_) {
-                    break;
-                }
-            }
-        });
-
-        client.on('error', (err) => {
-            log(`KvmBackend: event forwarding error for ${processId}:`,
-                err.message);
-        });
     }
 
     async kill(params) {
@@ -1363,21 +1318,10 @@ class KvmBackend extends BackendBase {
     async installSdk(params) {
         const { sdkSubpath, version } = params;
         log(`KvmBackend installSdk: ${sdkSubpath}@${version}`);
-
-        // SDK binary lives on the host filesystem
-        if (sdkSubpath && version) {
-            const candidatePath = path.join(
-                os.homedir(), sdkSubpath, version, 'claude'
-            );
-            try {
-                fs.accessSync(candidatePath, fs.constants.X_OK);
-                this.sdkBinaryPath = candidatePath;
-                log(`KvmBackend: SDK binary found: ${this.sdkBinaryPath}`);
-            } catch (e) {
-                log(`KvmBackend: SDK binary not found or not executable: ${candidatePath}`);
-            }
-        }
-
+        const resolved = resolveSdkBinary(
+            sdkSubpath, version, 'KvmBackend'
+        );
+        if (resolved) this.sdkBinaryPath = resolved;
         return {};
     }
 
@@ -1420,7 +1364,7 @@ function detectBackend(emitEvent) {
     // Auto-detect: try KVM first, then bwrap, then host
     try {
         fs.accessSync('/dev/kvm', fs.constants.R_OK | fs.constants.W_OK);
-        execSync('which qemu-system-x86_64', { stdio: 'pipe' });
+        execFileSync('which', ['qemu-system-x86_64'], { stdio: 'pipe' });
         fs.accessSync('/dev/vhost-vsock', fs.constants.R_OK);
         fs.accessSync(
             path.join(VM_BASE_DIR, 'rootfs.qcow2'), fs.constants.R_OK
@@ -1432,8 +1376,8 @@ function detectBackend(emitEvent) {
     }
 
     try {
-        execSync('which bwrap', { stdio: 'pipe' });
-        execSync('bwrap --ro-bind / / true', {
+        execFileSync('which', ['bwrap'], { stdio: 'pipe' });
+        execFileSync('bwrap', ['--ro-bind', '/', '/', 'true'], {
             stdio: 'pipe', timeout: 5000
         });
         log('Backend: bwrap');
@@ -1701,8 +1645,8 @@ function startServer() {
 // Entry Point
 // ============================================================
 
-// Always clean up stale socket and start. The app's Ma() retry wrapper has
-// a dedup flag (_svcLaunched) preventing duplicate daemon launches, so a
+// Always clean up stale socket and start. The app's retry wrapper has a
+// dedup flag (_svcLaunched) preventing duplicate daemon launches, so a
 // simple synchronous cleanup avoids the race condition where an async
 // connection test delays startup while the app is already retrying.
 cleanupSocket();

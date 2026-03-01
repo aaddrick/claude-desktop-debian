@@ -1046,8 +1046,20 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
                         }
                         return str.substring(arrStart, p);
                     };
-                    // Find x64:[...] within win32 section
-                    const win32Section = filesContent.substring(win32Idx);
+                    // Scope to the win32:{...} block so we don't
+                    // accidentally match x64/arm64 from darwin/linux
+                    let win32Section = filesContent.substring(win32Idx);
+                    const braceStart = win32Section.indexOf('{');
+                    if (braceStart !== -1) {
+                        let depth = 1;
+                        let bp = braceStart + 1;
+                        while (depth > 0 && bp < win32Section.length) {
+                            if (win32Section[bp] === '{') depth++;
+                            else if (win32Section[bp] === '}') depth--;
+                            bp++;
+                        }
+                        win32Section = win32Section.substring(0, bp);
+                    }
                     const x64Idx = win32Section.indexOf('x64');
                     const arm64Idx = win32Section.indexOf('arm64');
                     if (x64Idx !== -1) {
@@ -1153,15 +1165,12 @@ if (serviceErrorIdx !== -1) {
         // is the Electron binary - spawn would trigger "file open" handling
         // instead of executing the script as Node.js.
         const svcPath = process.env.SVC_PATH || 'cowork-vm-service.js';
-        // Find the retry function name dynamically from the retry delay
-        const retryFuncRe = /await new Promise\((\w+)=>/;
-        const retryFuncMatch = searchRegion.match(retryFuncRe);
-        // Extract the function name (Ma or whatever it's minified to) from context
-        // Look for "function FUNC" or "async function FUNC" before the retry loop
+        // Extract the enclosing function name (Ma or whatever it's
+        // minified to) so the dedup guard attaches to it
         const funcSearchStart = Math.max(0, newServiceErrorIdx - 2000);
         const funcRegion = code.substring(funcSearchStart, newServiceErrorIdx);
         // The function is defined as: async function NAME(t,e){...for(let r=0;r<=LIMIT;r++)
-        const funcNameRe = /async function (\w+)\s*\(\s*\w+\s*,\s*\w+\s*\)\s*\{[^}]*for\s*\(\s*let/g;
+        const funcNameRe = /async function (\w+)\s*\(\s*\w+\s*,\s*\w+\s*\)\s*\{[\s\S]*?for\s*\(\s*let/g;
         let funcMatch;
         let retryFuncName = null;
         while ((funcMatch = funcNameRe.exec(funcRegion)) !== null) {
@@ -1232,7 +1241,14 @@ if (serviceErrorIdx !== -1) {
                 `${fsVar}.mkdtemp(${pathVar}.join(` +
                 `process.platform==="linux"?${bundleVar}:${osVar}.tmpdir(),` +
                 `"wvm-"))`;
-            code = code.replace(fullMatch, replacement);
+            // Use indexOf for exact positional replacement (string.replace
+            // only hits the first occurrence and can be confused by regex
+            // special chars in the match string)
+            const matchIdx = code.indexOf(fullMatch);
+            if (matchIdx !== -1) {
+                code = code.substring(0, matchIdx) + replacement +
+                    code.substring(matchIdx + fullMatch.length);
+            }
             console.log('  Patched VM download temp dir to use bundle path on Linux');
             patchCount++;
         } else {
@@ -1245,7 +1261,7 @@ if (serviceErrorIdx !== -1) {
 
 fs.writeFileSync(indexJs, code);
 console.log(`  Applied ${patchCount} cowork patches`);
-if (patchCount < 4) {
+if (patchCount < 5) {
     console.log('  WARNING: Some patches failed - Cowork mode may not work');
 }
 COWORK_PATCH

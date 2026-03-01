@@ -119,18 +119,26 @@ cleanup_stale_lock() {
 }
 
 # Clean up stale cowork-vm-service socket if no daemon is listening.
-# The service daemon creates a Unix socket at $XDG_RUNTIME_DIR/cowork-vm-service.sock.
-# After a crash or unclean shutdown, the socket file persists but nothing is listening,
-# causing ECONNREFUSED instead of ENOENT when the app tries to connect.
+# The service daemon creates a Unix socket at
+# $XDG_RUNTIME_DIR/cowork-vm-service.sock. After a crash or unclean
+# shutdown, the socket file persists but nothing is listening, causing
+# ECONNREFUSED instead of ENOENT when the app tries to connect.
 cleanup_stale_cowork_socket() {
 	local sock="${XDG_RUNTIME_DIR:-/tmp}/cowork-vm-service.sock"
 
 	[[ -S $sock ]] || return 0
 
-	# Try connecting — if refused, the socket is stale
-	if socat -u OPEN:/dev/null UNIX-CONNECT:"$sock" 2>/dev/null; then
-		# Connection succeeded — daemon is alive
-		return 0
+	if command -v socat &>/dev/null; then
+		# Try connecting — if refused, the socket is stale
+		if socat -u OPEN:/dev/null UNIX-CONNECT:"$sock" 2>/dev/null; then
+			return 0
+		fi
+	else
+		# No socat: fall back to age-based check (>24h = stale)
+		if [[ -z $(find "$sock" -mmin +1440 2>/dev/null) ]]; then
+			return 0
+		fi
+		log_message "No socat available; removing old socket (>24h)"
 	fi
 
 	rm -f "$sock"
