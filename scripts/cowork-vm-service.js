@@ -603,8 +603,23 @@ class BwrapBackend extends LocalBackend {
             '--proc', '/proc',
             '--tmpfs', '/tmp',
             '--tmpfs', '/run',
-            '--bind', workDir, workDir,
         ];
+
+        // Preserve DNS resolution: /etc/resolv.conf is often a symlink
+        // to /run/systemd/resolve/stub-resolv.conf which --tmpfs /run
+        // wipes out. Bind-mount the resolved target back in.
+        try {
+            const resolvedConf = fs.realpathSync('/etc/resolv.conf');
+            if (resolvedConf.startsWith('/run/')) {
+                const resolvedDir = path.dirname(resolvedConf);
+                bwrapArgs.push('--ro-bind', resolvedDir, resolvedDir);
+            }
+        } catch (e) {
+            // resolv.conf missing or unresolvable — DNS may not work
+            log('BwrapBackend: could not resolve /etc/resolv.conf:', e.message);
+        }
+
+        bwrapArgs.push('--bind', workDir, workDir);
 
         // Add user home directory as writable bind
         const homeDir = os.homedir();
