@@ -5,7 +5,17 @@
  *
  * Replaces the Windows cowork-vm-service for Linux. Listens on a Unix domain
  * socket using the same length-prefixed JSON protocol as the Windows named pipe.
- * Manages a QEMU/KVM virtual machine running Anthropic's rootfs image.
+ *
+ * Architecture: VMManager (dispatcher) + pluggable backends
+ *   - HostBackend:  Run processes directly on host (no isolation)
+ *   - BwrapBackend: Bubblewrap namespace sandbox
+ *   - KvmBackend:   QEMU/KVM virtual machine with vsock communication
+ *
+ * Backend selection (auto-detected or overridden via COWORK_VM_BACKEND env):
+ *   1. kvm   — if /dev/kvm, qemu-system-x86_64, /dev/vhost-vsock, and
+ *              rootfs.qcow2 are all available
+ *   2. bwrap — if bwrap is installed and functional
+ *   3. host  — fallback, no isolation
  *
  * Protocol:
  *   Transport: Unix domain socket at $XDG_RUNTIME_DIR/cowork-vm-service.sock
@@ -13,21 +23,14 @@
  *   Request:   { method: "methodName", params: {...} }
  *   Response:  { success: true, result: {...} } or { success: false, error: "..." }
  *   Events:    { type: "stdout"|"stderr"|"exit"|"error"|"networkStatus"|"apiReachability", ... }
- *
- * STATUS: Phase 1 - Stub service for protocol validation
- *   - Socket listener: WORKS
- *   - Length-prefixed JSON framing: WORKS
- *   - Method dispatch: WORKS (stub responses)
- *   - QEMU management: PLACEHOLDER (Phase 3)
- *   - Guest communication: PLACEHOLDER (Phase 3)
  */
 
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn: spawnProcess, execSync } = require('child_process');
-const { EventEmitter } = require('events');
+const crypto = require('crypto');
+const { spawn: spawnProcess, execSync, execFileSync } = require('child_process');
 
 // ============================================================
 // Configuration
@@ -38,6 +41,10 @@ const SOCKET_PATH = (process.env.XDG_RUNTIME_DIR || '/tmp') +
 const DEBUG = process.env.COWORK_VM_DEBUG === '1' ||
     process.env.CLAUDE_LINUX_DEBUG === '1';
 const LOG_PREFIX = '[cowork-vm-service]';
+
+// Backend override: set COWORK_VM_BACKEND to "host", "bwrap", or "kvm"
+// to force a specific backend instead of auto-detection.
+const BACKEND_OVERRIDE = process.env.COWORK_VM_BACKEND || null;
 
 // The daemon is forked with stdio:'ignore', so console output goes nowhere.
 // Write logs to a file so they're accessible for debugging.
@@ -101,98 +108,1111 @@ function parseMessage(buffer) {
 }
 
 // ============================================================
-// VM State Manager
+// Shared Helpers (used by multiple backends)
 // ============================================================
 
-class VMManager extends EventEmitter {
-    constructor() {
-        super();
+/**
+ * Keys to strip from spawned process environments.
+ * CLAUDECODE triggers "cannot be launched inside another session".
+ * ELECTRON_* are Electron internals that break child processes.
+ */
+const BLOCKED_ENV_KEYS = new Set([
+    'CLAUDECODE', 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ASAR',
+]);
+
+/**
+ * Filter environment variables, removing blocked keys and optional prefixes.
+ */
+function filterEnv(source, stripPrefixes = []) {
+    const result = {};
+    for (const [k, v] of Object.entries(source)) {
+        if (BLOCKED_ENV_KEYS.has(k)) continue;
+        if (stripPrefixes.some(p => k.startsWith(p))) continue;
+        result[k] = v;
+    }
+    return result;
+}
+
+/**
+ * Build a merged environment for a spawned process.
+ * Combines filtered daemon env with filtered app-provided env.
+ */
+function buildSpawnEnv(appEnv) {
+    const mergedEnv = {
+        ...filterEnv(process.env, ['CLAUDE_CODE_']),
+        ...filterEnv(appEnv || {}),
+        TERM: 'xterm-256color',
+    };
+
+    // CLAUDE_CONFIG_DIR from the app points to a VM guest path
+    // (/sessions/<name>/mnt/.claude) that doesn't exist on the host.
+    // Remove it so Claude Code uses its default (~/.claude/).
+    if (mergedEnv.CLAUDE_CONFIG_DIR &&
+        mergedEnv.CLAUDE_CONFIG_DIR.startsWith('/sessions/')) {
+        log(`buildSpawnEnv: removing VM guest CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR}`);
+        delete mergedEnv.CLAUDE_CONFIG_DIR;
+    }
+
+    return mergedEnv;
+}
+
+/**
+ * Filter out args that reference VM guest paths (/sessions/...).
+ * Flags like --add-dir and --plugin-dir point to paths inside the VM
+ * that don't exist on the host.
+ */
+function cleanSpawnArgs(rawArgs) {
+    const cleanArgs = [];
+    const guestPathFlags = new Set(['--add-dir', '--plugin-dir']);
+    for (let i = 0; i < rawArgs.length; i++) {
+        if (guestPathFlags.has(rawArgs[i]) &&
+            i + 1 < rawArgs.length &&
+            rawArgs[i + 1].startsWith('/sessions/')) {
+            log(`cleanSpawnArgs: removing ${rawArgs[i]} ${rawArgs[i + 1]} (VM guest path)`);
+            i++; // skip the value too
+            continue;
+        }
+        cleanArgs.push(rawArgs[i]);
+    }
+    return cleanArgs;
+}
+
+/**
+ * Resolve the working directory from spawn params.
+ * Handles sharedCwdPath, guest paths, and non-existent directories.
+ */
+function resolveWorkDir(cwd, sharedCwdPath) {
+    let workDir = cwd || os.homedir();
+    if (sharedCwdPath) {
+        workDir = path.join(os.homedir(), sharedCwdPath);
+    } else if (cwd && cwd.startsWith('/sessions/')) {
+        log(`resolveWorkDir: cwd is VM guest path "${cwd}", using home dir`);
+        workDir = os.homedir();
+    }
+
+    if (!fs.existsSync(workDir)) {
+        log(`resolveWorkDir: cwd "${workDir}" does not exist, using home dir`);
+        workDir = os.homedir();
+    }
+
+    return workDir;
+}
+
+/**
+ * Resolve the SDK binary path from subpath and version.
+ * Returns the path if found and executable, null otherwise.
+ */
+function resolveSdkBinary(sdkSubpath, version, label) {
+    if (!sdkSubpath || !version) return null;
+    const candidatePath = path.join(
+        os.homedir(), sdkSubpath, version, 'claude'
+    );
+    try {
+        fs.accessSync(candidatePath, fs.constants.X_OK);
+        log(`${label}: SDK binary found: ${candidatePath}`);
+        return candidatePath;
+    } catch (e) {
+        log(`${label}: SDK binary not found: ${candidatePath}`);
+        return null;
+    }
+}
+
+/**
+ * Resolve the actual command binary to execute.
+ * Priority: 1) SDK binary from installSdk, 2) command path, 3) which
+ * Returns { command, error } — error is set if command not found.
+ */
+function resolveCommand(command, sdkBinaryPath) {
+    if (sdkBinaryPath && fs.existsSync(sdkBinaryPath)) {
+        log(`resolveCommand: using SDK binary: ${sdkBinaryPath}`);
+        return { command: sdkBinaryPath, error: null };
+    }
+
+    if (fs.existsSync(command)) {
+        return { command, error: null };
+    }
+
+    const basename = path.basename(command);
+    try {
+        const resolved = execFileSync('which', [basename],
+            { encoding: 'utf-8' }).trim();
+        log(`resolveCommand: resolved via which: ${resolved}`);
+        return { command: resolved, error: null };
+    } catch (e) {
+        return { command: null, error: `${command} not found` };
+    }
+}
+
+// ============================================================
+// Backend Base Class
+// ============================================================
+
+/**
+ * Base class documenting the interface all backends must implement.
+ * Each backend receives an emitEvent callback for broadcasting events
+ * (stdout, stderr, exit, error, networkStatus, etc.) to subscribers.
+ */
+class BackendBase {
+    constructor(emitEvent) {
+        /** @type {function} Callback to broadcast events to subscribers */
+        this.emitEvent = emitEvent;
+    }
+
+    /** One-time initialization with VM config */
+    async init(config) {
+        throw new Error('Not implemented: init');
+    }
+
+    /** Start the VM/sandbox/nothing */
+    async startVM(params) {
+        throw new Error('Not implemented: startVM');
+    }
+
+    /** Stop everything */
+    async stopVM() {
+        throw new Error('Not implemented: stopVM');
+    }
+
+    /** Return { running: bool } */
+    isRunning() {
+        throw new Error('Not implemented: isRunning');
+    }
+
+    /** Return { connected: bool } */
+    isGuestConnected() {
+        throw new Error('Not implemented: isGuestConnected');
+    }
+
+    /** Spawn a process */
+    async spawn(params) {
+        throw new Error('Not implemented: spawn');
+    }
+
+    /** Kill a process */
+    async kill(params) {
+        throw new Error('Not implemented: kill');
+    }
+
+    /** Write to process stdin */
+    async writeStdin(params) {
+        throw new Error('Not implemented: writeStdin');
+    }
+
+    /** Check if process is running, return { running: bool } */
+    isProcessRunning(params) {
+        throw new Error('Not implemented: isProcessRunning');
+    }
+
+    /** Handle mount requests */
+    async mountPath(params) {
+        throw new Error('Not implemented: mountPath');
+    }
+
+    /** Read a file */
+    async readFile(params) {
+        throw new Error('Not implemented: readFile');
+    }
+
+    /** Handle SDK installation */
+    async installSdk(params) {
+        throw new Error('Not implemented: installSdk');
+    }
+
+    /** Handle OAuth */
+    async addApprovedOauthToken(params) {
+        throw new Error('Not implemented: addApprovedOauthToken');
+    }
+}
+
+// ============================================================
+// LocalBackend — Shared logic for host-local backends
+// ============================================================
+
+/**
+ * Common base for backends that run processes locally (Host and Bwrap).
+ * Provides shared implementations of process management, file I/O,
+ * SDK installation, and lifecycle methods. Subclasses override
+ * startVM(), stopVM(), spawn(), and mountPath() as needed.
+ */
+class LocalBackend extends BackendBase {
+    constructor(emitEvent, backendName) {
+        super(emitEvent);
+        this.backendName = backendName;
         this.config = { memoryMB: 8192, cpuCount: 4 };
-        this.vmProcess = null;
         this.running = false;
         this.guestConnected = false;
-        this.bundlePath = null;
         this.sdkBinaryPath = null;
         this.processes = new Map();
-        this.eventSubscribers = new Set();
     }
 
-    // --- VM Lifecycle ---
+    async init(config) {
+        if (config.memoryMB !== undefined) {
+            this.config.memoryMB = config.memoryMB;
+        }
+        if (config.cpuCount !== undefined) {
+            this.config.cpuCount = config.cpuCount;
+        }
+        log(`${this.backendName} configured:`, this.config);
+    }
 
-    configure(params) {
-        if (params.memoryMB !== undefined) {
-            this.config.memoryMB = params.memoryMB;
+    isRunning() {
+        return { running: this.running };
+    }
+
+    isGuestConnected() {
+        return { connected: this.guestConnected };
+    }
+
+    /**
+     * Spawn a local process. Subclasses call this with the resolved
+     * command and args to get consistent event wiring.
+     * @param {string} id - Process identifier
+     * @param {string} spawnCmd - Command to execute
+     * @param {string[]} spawnArgs - Arguments array
+     * @param {string} workDir - Working directory
+     * @param {object} env - Environment variables
+     */
+    _spawnLocal(id, spawnCmd, spawnArgs, workDir, env) {
+        const proc = spawnProcess(spawnCmd, spawnArgs, {
+            cwd: workDir,
+            env,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        log(`${this.backendName} spawn: pid=${proc.pid}`);
+        this.processes.set(id, proc);
+
+        proc.stdout.on('data', (data) => {
+            this.emitEvent({ type: 'stdout', id, data: data.toString() });
+        });
+
+        proc.stderr.on('data', (data) => {
+            this.emitEvent({ type: 'stderr', id, data: data.toString() });
+        });
+
+        proc.on('exit', (exitCode, signal) => {
+            log(`${this.backendName}: process ${id} exited: code=${exitCode}, signal=${signal}`);
+            this.processes.delete(id);
+            this.emitEvent({ type: 'exit', id, exitCode, signal });
+        });
+
+        proc.on('error', (err) => {
+            this.emitEvent({ type: 'error', id, message: err.message });
+        });
+
+        return proc;
+    }
+
+    /**
+     * Resolve command and prepare environment/args for spawning.
+     * Returns null and emits error events if command not found.
+     */
+    _prepareSpawn(params) {
+        const { id, name, command, args, cwd, env,
+            sharedCwdPath } = params;
+
+        log(`${this.backendName} spawn: id=${id}, name=${name}, command=${command}`);
+
+        const workDir = resolveWorkDir(cwd, sharedCwdPath);
+        const resolved = resolveCommand(command, this.sdkBinaryPath);
+
+        if (resolved.error) {
+            this.emitEvent({
+                type: 'stderr', id,
+                data: `Error: ${resolved.error}\n`,
+            });
+            this.emitEvent({
+                type: 'exit', id, exitCode: 127, signal: null,
+            });
+            return null;
         }
-        if (params.cpuCount !== undefined) {
-            this.config.cpuCount = params.cpuCount;
+
+        return {
+            id,
+            actualCommand: resolved.command,
+            cleanArgs: cleanSpawnArgs(args || []),
+            mergedEnv: buildSpawnEnv(env),
+            workDir,
+        };
+    }
+
+    _killAllProcesses(killSignal) {
+        for (const [id, proc] of this.processes) {
+            try {
+                if (proc.kill) proc.kill(killSignal);
+            } catch (e) {
+                log(`${this.backendName}: error killing process ${id}:`, e.message);
+            }
         }
-        log('Configured:', this.config);
+        this.processes.clear();
+    }
+
+    _setDisconnected() {
+        this.running = false;
+        this.guestConnected = false;
+        this.emitEvent({ type: 'networkStatus', status: 'disconnected' });
+    }
+
+    async kill(params) {
+        const { id, signal } = params;
+        const proc = this.processes.get(id);
+        if (proc) {
+            try {
+                proc.kill(signal || 'SIGTERM');
+            } catch (e) {
+                log(`${this.backendName}: kill failed for ${id}:`, e.message);
+            }
+        }
         return {};
     }
 
-    async createVM(params) {
-        this.bundlePath = params.bundlePath;
-        const diskSizeGB = params.diskSizeGB || 10;
-        log(`createVM: bundle=${this.bundlePath}, disk=${diskSizeGB}GB`);
-
-        // Phase 3: Create/prepare VM disk image
-        // For now, acknowledge the request
+    async writeStdin(params) {
+        const { id, data } = params;
+        const proc = this.processes.get(id);
+        if (proc && proc.stdin && !proc.stdin.destroyed) {
+            proc.stdin.write(data);
+        }
         return {};
+    }
+
+    isProcessRunning(params) {
+        return { running: !!this.processes.get(params.id) };
+    }
+
+    async readFile(params) {
+        const { filePath } = params;
+        log(`${this.backendName} readFile: ${filePath}`);
+        const resolved = path.resolve(filePath);
+        const home = os.homedir();
+        if (!resolved.startsWith(home + path.sep) && resolved !== home) {
+            return { error: 'Access denied: path outside home directory' };
+        }
+        try {
+            const content = fs.readFileSync(resolved, 'utf8');
+            return { content };
+        } catch (e) {
+            return { error: e.message };
+        }
+    }
+
+    async installSdk(params) {
+        const { sdkSubpath, version } = params;
+        log(`${this.backendName} installSdk: ${sdkSubpath}@${version}`);
+        const resolved = resolveSdkBinary(
+            sdkSubpath, version, this.backendName
+        );
+        if (resolved) this.sdkBinaryPath = resolved;
+        return {};
+    }
+
+    async addApprovedOauthToken(params) {
+        log(`${this.backendName}: addApprovedOauthToken`);
+        return {};
+    }
+}
+
+// ============================================================
+// HostBackend — Run processes directly on host (no isolation)
+// ============================================================
+
+class HostBackend extends LocalBackend {
+    constructor(emitEvent) {
+        super(emitEvent, 'HostBackend');
     }
 
     async startVM(params) {
-        this.bundlePath = params.bundlePath;
-        const memoryGB = params.memoryGB || this.config.memoryMB / 1024;
-        log(`startVM: bundle=${this.bundlePath}, memory=${memoryGB}GB`);
-
         if (this.running) {
-            log('VM already running');
+            log('HostBackend: already running');
             return {};
         }
 
-        // Phase 3: Launch QEMU with KVM
-        // qemu-system-x86_64 \
-        //   -enable-kvm -m ${memoryGB}G -cpu host -smp ${cpuCount} \
-        //   -nographic \
-        //   -drive file=rootfs.img,format=raw,if=virtio \
-        //   -device vhost-vsock-pci,guest-cid=3 \
-        //   -monitor unix:/tmp/cowork-qemu-monitor.sock,server,nowait \
-        //   -netdev user,id=net0 -device virtio-net-pci,netdev=net0
-
-        // For Phase 1 stub: simulate VM startup
         this.running = true;
 
-        // Simulate async guest connection (guest agent connects via vsock)
+        // Simulate async guest connection
         setTimeout(() => {
             this.guestConnected = true;
-            this.broadcastEvent({
+            this.emitEvent({
                 type: 'networkStatus',
                 status: 'connected',
             });
-            log('Guest connected (stub)');
+            log('HostBackend: guest connected');
         }, 500);
 
         return {};
     }
 
     async stopVM() {
-        log('stopVM');
+        log('HostBackend: stopVM');
+        this._killAllProcesses('SIGTERM');
+        this._setDisconnected();
+        return {};
+    }
 
-        // Kill all spawned processes
-        for (const [id, proc] of this.processes) {
-            try {
-                if (proc.kill) proc.kill();
-            } catch (e) {
-                log(`Error killing process ${id}:`, e.message);
+    async spawn(params) {
+        const prepared = this._prepareSpawn(params);
+        if (!prepared) return {};
+
+        const { id, actualCommand, cleanArgs, mergedEnv, workDir } = prepared;
+
+        log(`HostBackend spawn: command=${actualCommand}, args=${JSON.stringify(cleanArgs)}`);
+        log(`HostBackend spawn: cwd=${workDir}`);
+
+        this._spawnLocal(id, actualCommand, cleanArgs, workDir, mergedEnv);
+        return {};
+    }
+
+    async mountPath(params) {
+        const { subpath } = params;
+        log(`HostBackend mountPath: ${subpath}`);
+        const guestPath = path.join(os.homedir(), subpath || '');
+        return { guestPath };
+    }
+}
+
+// ============================================================
+// BwrapBackend — Bubblewrap namespace sandbox
+// ============================================================
+
+class BwrapBackend extends LocalBackend {
+    constructor(emitEvent) {
+        super(emitEvent, 'BwrapBackend');
+        this.mountBinds = new Map(); // mountName -> hostPath
+    }
+
+    async startVM(params) {
+        if (this.running) {
+            log('BwrapBackend: already running');
+            return {};
+        }
+
+        // bwrap is process-level sandboxing; no VM to start
+        this.running = true;
+        this.guestConnected = true;
+        this.emitEvent({
+            type: 'networkStatus',
+            status: 'connected',
+        });
+        log('BwrapBackend: started (sandbox ready)');
+        return {};
+    }
+
+    async stopVM() {
+        log('BwrapBackend: stopVM');
+        this._killAllProcesses('SIGKILL');
+        this.mountBinds.clear();
+        this._setDisconnected();
+        return {};
+    }
+
+    async spawn(params) {
+        const prepared = this._prepareSpawn(params);
+        if (!prepared) return {};
+
+        const { id, actualCommand, cleanArgs, mergedEnv, workDir } = prepared;
+
+        // Build bwrap arguments
+        const bwrapArgs = [
+            '--ro-bind', '/', '/',
+            '--dev', '/dev',
+            '--proc', '/proc',
+            '--tmpfs', '/tmp',
+            '--tmpfs', '/run',
+        ];
+
+        // Preserve DNS resolution: /etc/resolv.conf is often a symlink
+        // to /run/systemd/resolve/stub-resolv.conf which --tmpfs /run
+        // wipes out. Bind-mount the resolved target back in.
+        try {
+            const resolvedConf = fs.realpathSync('/etc/resolv.conf');
+            if (resolvedConf.startsWith('/run/')) {
+                const resolvedDir = path.dirname(resolvedConf);
+                bwrapArgs.push('--ro-bind', resolvedDir, resolvedDir);
+            }
+        } catch (e) {
+            // resolv.conf missing or unresolvable — DNS may not work
+            log('BwrapBackend: could not resolve /etc/resolv.conf:', e.message);
+        }
+
+        // Home is read-only; only workDir and explicit mounts are writable.
+        // This prevents the sandbox from writing to ~/.ssh, ~/.gnupg, etc.
+        const homeDir = os.homedir();
+        bwrapArgs.push('--ro-bind', homeDir, homeDir);
+        bwrapArgs.push('--bind', workDir, workDir);
+
+        // Apply stored mount binds as writable
+        for (const [, hostPath] of this.mountBinds) {
+            if (fs.existsSync(hostPath)) {
+                bwrapArgs.push('--bind', hostPath, hostPath);
             }
         }
-        this.processes.clear();
 
-        // Phase 3: Send ACPI shutdown to QEMU, then force kill after timeout
+        // Namespace isolation + actual command
+        bwrapArgs.push(
+            '--unshare-pid',
+            '--die-with-parent',
+            '--new-session',
+            '--',
+            actualCommand,
+            ...cleanArgs,
+        );
+
+        log(`BwrapBackend spawn: bwrap args=${JSON.stringify(bwrapArgs)}`);
+        log(`BwrapBackend spawn: cwd=${workDir}`);
+
+        this._spawnLocal(id, 'bwrap', bwrapArgs, workDir, mergedEnv);
+        return {};
+    }
+
+    async mountPath(params) {
+        const { subpath, mountName } = params;
+        log(`BwrapBackend mountPath: ${mountName} -> ${subpath}`);
+        const hostPath = path.join(os.homedir(), subpath || '');
+        // Store for --bind on next spawn
+        this.mountBinds.set(mountName || subpath, hostPath);
+        return { guestPath: hostPath };
+    }
+}
+
+// ============================================================
+// KvmBackend — QEMU/KVM virtual machine
+// ============================================================
+
+const VM_BASE_DIR = path.join(os.homedir(), '.local/share/claude-desktop/vm');
+const VM_SESSION_DIR = path.join(VM_BASE_DIR, 'sessions');
+const VSOCK_GUEST_PORT = 51234;  // 0xC822 — matches guest sdk-daemon
+const QMP_CAPABILITIES = JSON.stringify({ execute: 'qmp_capabilities' });
+
+/** Event types forwarded from the guest sdk-daemon to subscribers. */
+const FORWARDED_EVENTS = new Set([
+    'stdout', 'stderr', 'exit', 'networkStatus', 'apiReachability',
+]);
+
+class KvmBackend extends BackendBase {
+    constructor(emitEvent) {
+        super(emitEvent);
+        this.config = { memoryMB: 8192, cpuCount: 4 };
+        this.running = false;
+        this.guestConnected = false;
+        this.qemuProcess = null;
+        this.virtiofsdProcess = null;
+        this.socatProcess = null;
+        this.sessionDir = null;
+        this.monitorSock = null;
+        this.bridgeSock = null;
+        this.guestCid = null;
+        this.sdkBinaryPath = null;
+        this._qmpAvailable = true;
+        this.processes = new Map(); // id -> bridge connection state
+    }
+
+    async init(config) {
+        if (config.memoryMB !== undefined) {
+            this.config.memoryMB = config.memoryMB;
+        }
+        if (config.cpuCount !== undefined) {
+            this.config.cpuCount = config.cpuCount;
+        }
+
+        // Ensure VM directory exists
+        fs.mkdirSync(VM_BASE_DIR, { recursive: true });
+
+        // Convert VHDX to qcow2 if needed
+        const vhdxPath = path.join(VM_BASE_DIR, 'rootfs.vhdx');
+        const qcow2Path = path.join(VM_BASE_DIR, 'rootfs.qcow2');
+        if (fs.existsSync(vhdxPath) && !fs.existsSync(qcow2Path)) {
+            log('KvmBackend: converting VHDX to qcow2...');
+            try {
+                execFileSync('qemu-img', [
+                    'convert', '-f', 'vhdx', '-O', 'qcow2',
+                    vhdxPath, qcow2Path
+                ], { stdio: 'pipe', timeout: 300000 });
+                log('KvmBackend: VHDX conversion complete');
+            } catch (e) {
+                logError('KvmBackend: VHDX conversion failed:', e.message);
+                throw new Error(`VHDX conversion failed: ${e.message}`);
+            }
+        }
+
+        log('KvmBackend configured:', this.config);
+    }
+
+    _allocateCid() {
+        // Allocate a unique guest CID starting at 3 (0-2 are reserved)
+        // Check /dev/vhost-vsock is available and pick next free CID
+        let cid = 3;
+        const cidFile = path.join(VM_BASE_DIR, '.next_cid');
+        try {
+            cid = parseInt(fs.readFileSync(cidFile, 'utf8').trim(), 10);
+            if (isNaN(cid) || cid < 3) cid = 3;
+        } catch (_) {
+            // First run, start at 3
+        }
+        const next = cid >= 65535 ? 3 : cid + 1;
+        fs.writeFileSync(cidFile, String(next));
+        return cid;
+    }
+
+    async startVM(params) {
+        if (this.running) {
+            log('KvmBackend: already running');
+            return {};
+        }
+
+        this.bundlePath = params.bundlePath;
+        const memoryGB = params.memoryGB ||
+            Math.ceil(this.config.memoryMB / 1024);
+        const cpuCount = this.config.cpuCount;
+
+        // Create session directory
+        const sessionId = crypto.randomUUID();
+        this.sessionDir = path.join(VM_SESSION_DIR, sessionId);
+        fs.mkdirSync(this.sessionDir, { recursive: true });
+
+        // Create overlay disk
+        const overlayPath = path.join(this.sessionDir, 'overlay.qcow2');
+        const basePath = path.join(VM_BASE_DIR, 'rootfs.qcow2');
+        try {
+            execFileSync('qemu-img', [
+                'create', '-f', 'qcow2', '-b', basePath,
+                '-F', 'qcow2', overlayPath
+            ], { stdio: 'pipe' });
+        } catch (e) {
+            logError('KvmBackend: overlay creation failed:', e.message);
+            throw new Error(`Overlay creation failed: ${e.message}`);
+        }
+
+        // Allocate guest CID
+        this.guestCid = this._allocateCid();
+        this.monitorSock = path.join(this.sessionDir, 'qmp.sock');
+        this.bridgeSock = path.join(this.sessionDir, 'bridge.sock');
+
+        const vmlinuzPath = path.join(VM_BASE_DIR, 'vmlinuz');
+        const initrdPath = path.join(VM_BASE_DIR, 'initrd');
+
+        // Start virtiofsd for home directory share (if available)
+        try {
+            const virtiofsSock = path.join(this.sessionDir, 'virtiofs.sock');
+            this.virtiofsdProcess = spawnProcess('virtiofsd', [
+                `--socket-path=${virtiofsSock}`,
+                '-o', `source=${os.homedir()}`,
+                '-o', 'cache=auto',
+            ], {
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            this.virtiofsdProcess.on('error', (err) => {
+                log('KvmBackend: virtiofsd error:', err.message);
+                this.virtiofsdProcess = null;
+            });
+            log(`KvmBackend: virtiofsd started, socket=${virtiofsSock}`);
+        } catch (e) {
+            log(`KvmBackend: virtiofsd not available: ${e.message}`);
+            this.virtiofsdProcess = null;
+        }
+
+        // Build QEMU arguments
+        const qemuArgs = [
+            '-enable-kvm',
+            '-m', `${memoryGB}G`,
+            '-cpu', 'host',
+            '-smp', String(cpuCount),
+            '-nographic',
+        ];
+
+        // Kernel and initrd (if available)
+        if (fs.existsSync(vmlinuzPath)) {
+            qemuArgs.push('-kernel', vmlinuzPath);
+            if (fs.existsSync(initrdPath)) {
+                qemuArgs.push('-initrd', initrdPath);
+            }
+            qemuArgs.push(
+                '-append', 'root=LABEL=cloudimg-rootfs console=ttyS0 quiet'
+            );
+        }
+
+        // Disk
+        qemuArgs.push(
+            '-drive', `file=${overlayPath},format=qcow2,if=virtio`
+        );
+
+        // vsock
+        qemuArgs.push(
+            '-device', `vhost-vsock-pci,guest-cid=${this.guestCid}`
+        );
+
+        // QMP monitor
+        qemuArgs.push(
+            '-qmp', `unix:${this.monitorSock},server,nowait`
+        );
+
+        // Network
+        qemuArgs.push(
+            '-netdev', 'user,id=net0',
+            '-device', 'virtio-net-pci,netdev=net0'
+        );
+
+        // virtiofs char device (if virtiofsd is running)
+        if (this.virtiofsdProcess) {
+            const virtiofsSock = path.join(this.sessionDir, 'virtiofs.sock');
+            qemuArgs.push(
+                '-chardev', `socket,id=virtiofs,path=${virtiofsSock}`,
+                '-device', 'vhost-user-fs-pci,chardev=virtiofs,tag=hostshare',
+            );
+        }
+
+        // Start QEMU
+        log(`KvmBackend: starting QEMU with CID ${this.guestCid}`);
+        this.qemuProcess = spawnProcess('qemu-system-x86_64', qemuArgs, {
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        this.qemuProcess.on('error', (err) => {
+            logError('KvmBackend: QEMU error:', err.message);
+            this.running = false;
+            this.guestConnected = false;
+            this.emitEvent({ type: 'networkStatus', status: 'disconnected' });
+        });
+
+        this.qemuProcess.on('exit', (code, signal) => {
+            log(`KvmBackend: QEMU exited: code=${code}, signal=${signal}`);
+            this.running = false;
+            this.guestConnected = false;
+            this.emitEvent({ type: 'networkStatus', status: 'disconnected' });
+        });
+
+        this.qemuProcess.stderr.on('data', (data) => {
+            log(`KvmBackend QEMU stderr: ${data.toString().trim()}`);
+        });
+
+        this.running = true;
+
+        // Connect to QMP monitor and send capabilities
+        await this._connectQmp();
+
+        // Wait for guest sdk-daemon to connect via vsock bridge
+        // (_waitForGuest starts both the bridge server and socat listener)
+        await this._waitForGuest();
+
+        return {};
+    }
+
+    async _connectQmp() {
+        const timeout = 30000;
+        const start = Date.now();
+
+        return new Promise((resolve) => {
+            const tryConnect = () => {
+                if (Date.now() - start > timeout) {
+                    logError('KvmBackend: QMP connection timeout — VM control limited');
+                    this._qmpAvailable = false;
+                    resolve();
+                    return;
+                }
+
+                if (!fs.existsSync(this.monitorSock)) {
+                    setTimeout(tryConnect, 200);
+                    return;
+                }
+
+                const qmpClient = net.createConnection(
+                    this.monitorSock, () => {
+                        log('KvmBackend: QMP connected');
+                    }
+                );
+
+                let qmpBuffer = '';
+                qmpClient.on('data', (data) => {
+                    qmpBuffer += data.toString();
+                    // Wait for QMP greeting, then send capabilities
+                    if (qmpBuffer.includes('"QMP"')) {
+                        qmpClient.write(QMP_CAPABILITIES + '\n');
+                        qmpBuffer = '';
+                    }
+                    if (qmpBuffer.includes('"return"')) {
+                        log('KvmBackend: QMP capabilities negotiated');
+                        this._qmpClient = qmpClient;
+                        resolve();
+                    }
+                });
+
+                qmpClient.on('error', (err) => {
+                    log('KvmBackend: QMP connect error:', err.message);
+                    setTimeout(tryConnect, 500);
+                });
+            };
+
+            // Give QEMU a moment to create the socket
+            setTimeout(tryConnect, 500);
+        });
+    }
+
+    _startVsockBridge() {
+        // The guest sdk-daemon connects TO the host (CID=2) on the vsock port.
+        // We listen on vsock and forward to a local Unix bridge socket so that
+        // _forwardToGuest can connect to the bridge to reach the guest daemon.
+        //
+        // Direction: guest → vsock:51234 → socat → bridge.sock
+        //            _forwardToGuest → bridge.sock → socat → vsock → guest
+        //
+        // socat listens on the vsock port for the guest's outbound connection
+        // and bridges it to a Unix socket that we can use for bidirectional RPC.
+        try {
+            this.socatProcess = spawnProcess('socat', [
+                `VSOCK-LISTEN:${VSOCK_GUEST_PORT},reuseaddr,fork`,
+                `UNIX-CONNECT:${this.bridgeSock}`,
+            ], {
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+
+            this.socatProcess.on('error', (err) => {
+                log('KvmBackend: socat error:', err.message);
+            });
+
+            log(`KvmBackend: socat vsock listener started on port ${VSOCK_GUEST_PORT}`);
+        } catch (e) {
+            logError('KvmBackend: failed to start socat:', e.message);
+        }
+    }
+
+    _startBridgeServer() {
+        // Create a Unix socket server that accepts connections from socat
+        // (guest→vsock→socat→bridge.sock) and from _forwardToGuest.
+        // The first inbound connection from socat is the guest sdk-daemon.
+        return new Promise((resolve) => {
+            this._bridgeServer = net.createServer((conn) => {
+                if (!this.guestConnected) {
+                    log('KvmBackend: guest connected via vsock bridge');
+                    this.guestConnected = true;
+                    this._guestConn = conn;
+                    this._guestBuffer = Buffer.alloc(0);
+
+                    conn.on('data', (data) => {
+                        this._handleGuestData(data);
+                    });
+
+                    conn.on('error', (err) => {
+                        logError('KvmBackend: guest connection error:', err.message);
+                        this.guestConnected = false;
+                        this._guestConn = null;
+                    });
+
+                    conn.on('close', () => {
+                        log('KvmBackend: guest connection closed');
+                        this.guestConnected = false;
+                        this._guestConn = null;
+                    });
+
+                    this.emitEvent({
+                        type: 'networkStatus',
+                        status: 'connected',
+                    });
+                    resolve();
+                }
+            });
+
+            this._bridgeServer.listen(this.bridgeSock, () => {
+                log(`KvmBackend: bridge server listening on ${this.bridgeSock}`);
+            });
+
+            this._bridgeServer.on('error', (err) => {
+                logError('KvmBackend: bridge server error:', err.message);
+            });
+        });
+    }
+
+    _handleGuestData(data) {
+        // Parse and route incoming messages from guest sdk-daemon
+        this._guestBuffer = Buffer.concat([this._guestBuffer, data]);
+        while (true) {
+            const parsed = parseMessage(this._guestBuffer);
+            if (!parsed) break;
+            this._guestBuffer = parsed.remaining;
+            const msg = parsed.message;
+
+            if (FORWARDED_EVENTS.has(msg.type)) {
+                this.emitEvent(msg);
+            } else if (msg.success !== undefined) {
+                // Response to a request we sent — route to pending callback
+                if (this._pendingCallbacks && msg.id !== undefined) {
+                    const cb = this._pendingCallbacks.get(String(msg.id));
+                    if (cb) {
+                        this._pendingCallbacks.delete(String(msg.id));
+                        cb(msg);
+                    }
+                }
+            } else {
+                log('KvmBackend: unhandled guest message:', JSON.stringify(msg));
+            }
+        }
+    }
+
+    async _waitForGuest() {
+        const timeout = 90000;
+        const start = Date.now();
+
+        // Start the bridge Unix socket server, then start socat to listen on
+        // vsock. The guest sdk-daemon will connect after boot.
+        const bridgeReady = this._startBridgeServer();
+        this._startVsockBridge();
+
+        // Wait for guest to connect (or timeout)
+        return Promise.race([
+            bridgeReady,
+            new Promise((resolve) => {
+                const checkTimeout = () => {
+                    if (Date.now() - start > timeout) {
+                        logError('KvmBackend: guest readiness timeout');
+                        resolve();
+                        return;
+                    }
+                    if (this.guestConnected) {
+                        resolve();
+                        return;
+                    }
+                    setTimeout(checkTimeout, 1000);
+                };
+                setTimeout(checkTimeout, 2000);
+            }),
+        ]);
+    }
+
+    _sendQmpCommand(command) {
+        return new Promise((resolve, reject) => {
+            if (!this._qmpClient || this._qmpClient.destroyed) {
+                reject(new Error('QMP not connected'));
+                return;
+            }
+
+            let responseBuffer = '';
+            let timer;
+            const onData = (data) => {
+                responseBuffer += data.toString();
+                try {
+                    const parsed = JSON.parse(responseBuffer);
+                    clearTimeout(timer);
+                    this._qmpClient.removeListener('data', onData);
+                    resolve(parsed);
+                } catch (_) {
+                    // Incomplete JSON, keep buffering
+                }
+            };
+
+            this._qmpClient.on('data', onData);
+            this._qmpClient.write(
+                JSON.stringify({ execute: command }) + '\n'
+            );
+
+            timer = setTimeout(() => {
+                this._qmpClient.removeListener('data', onData);
+                reject(new Error('QMP command timeout'));
+            }, 10000);
+        });
+    }
+
+    _forwardToGuest(request) {
+        return new Promise((resolve, reject) => {
+            if (!this._guestConn || !this.guestConnected) {
+                reject(new Error('Guest not connected'));
+                return;
+            }
+
+            // Assign a unique ID if not present, so we can match responses
+            if (request.id === undefined) {
+                if (!this._nextRequestId) this._nextRequestId = 1;
+                request.id = String(this._nextRequestId++);
+            }
+
+            if (!this._pendingCallbacks) {
+                this._pendingCallbacks = new Map();
+            }
+
+            const timer = setTimeout(() => {
+                this._pendingCallbacks.delete(request.id);
+                reject(new Error('Guest communication timeout'));
+            }, 30000);
+
+            this._pendingCallbacks.set(request.id, (response) => {
+                clearTimeout(timer);
+                resolve(response);
+            });
+
+            try {
+                writeMessage(this._guestConn, request);
+            } catch (err) {
+                clearTimeout(timer);
+                this._pendingCallbacks.delete(request.id);
+                reject(err);
+            }
+        });
+    }
+
+    async stopVM() {
+        log('KvmBackend: stopVM');
+
+        // 1. ACPI shutdown via QMP
+        try {
+            await this._sendQmpCommand('system_powerdown');
+            log('KvmBackend: ACPI shutdown sent');
+        } catch (e) {
+            log('KvmBackend: ACPI shutdown failed:', e.message);
+        }
+
+        // 2. Wait 10s, then force quit via QMP
+        await new Promise((resolve) => {
+            const checkExit = () => {
+                if (!this.qemuProcess || this.qemuProcess.exitCode !== null) {
+                    resolve();
+                    return;
+                }
+                // Force quit after waiting
+                this._sendQmpCommand('quit').catch(() => {});
+                setTimeout(() => {
+                    resolve();
+                }, 3000);
+            };
+            setTimeout(checkExit, 10000);
+        });
+
+        // 3. SIGKILL if still running
+        if (this.qemuProcess && this.qemuProcess.exitCode === null) {
+            try {
+                this.qemuProcess.kill('SIGKILL');
+                log('KvmBackend: QEMU force killed');
+            } catch (e) {
+                log('KvmBackend: QEMU kill error:', e.message);
+            }
+        }
+
+        // 4. Kill helper processes and close connections
+        const cleanup = (obj, method) => {
+            if (!obj) return;
+            try { obj[method](); } catch (_) {}
+        };
+        cleanup(this.virtiofsdProcess, 'kill');
+        cleanup(this.socatProcess, 'kill');
+        cleanup(this._qmpClient, 'destroy');
+        cleanup(this._guestConn, 'destroy');
+        cleanup(this._bridgeServer, 'close');
+        this.virtiofsdProcess = null;
+        this.socatProcess = null;
+        this._qmpClient = null;
+        this._guestConn = null;
+        this._bridgeServer = null;
+
+        // 5. Clean up session directory
+        if (this.sessionDir) {
+            try {
+                fs.rmSync(this.sessionDir, { recursive: true, force: true });
+                log(`KvmBackend: cleaned up session dir: ${this.sessionDir}`);
+            } catch (e) {
+                log('KvmBackend: session cleanup error:', e.message);
+            }
+            this.sessionDir = null;
+        }
 
         this.running = false;
         this.guestConnected = false;
-        this.broadcastEvent({ type: 'networkStatus', status: 'disconnected' });
+        this.qemuProcess = null;
+        this.emitEvent({ type: 'networkStatus', status: 'disconnected' });
         return {};
     }
 
@@ -204,248 +1224,268 @@ class VMManager extends EventEmitter {
         return { connected: this.guestConnected };
     }
 
-    // --- Process Management ---
-
     async spawn(params) {
-        const { id, name, command, args, cwd, env,
-            additionalMounts, isResume, allowedDomains,
-            sharedCwdPath, oneShot } = params;
+        const { id } = params;
+        log(`KvmBackend spawn: id=${id}, forwarding to guest`);
 
-        log(`spawn: id=${id}, name=${name}, command=${command}`);
-
-        // Phase 3: Forward to guest SDK daemon via vsock
-        // The SDK daemon runs the command inside bubblewrap sandbox
-
-        // Phase 1 stub: Run directly on host (like old swift stub)
-        let workDir = cwd || os.homedir();
-        if (sharedCwdPath) {
-            workDir = path.join(os.homedir(), sharedCwdPath);
-        } else if (cwd && cwd.startsWith('/sessions/')) {
-            log(`spawn: cwd is VM guest path "${cwd}", using home dir`);
-            workDir = os.homedir();
-        }
-
-        if (!fs.existsSync(workDir)) {
-            log(`spawn: cwd "${workDir}" does not exist, using home dir`);
-            workDir = os.homedir();
-        }
-
-        // Find the actual command binary
-        // Priority: 1) SDK binary from installSdk, 2) command path, 3) which
-        let actualCommand = command;
-        if (this.sdkBinaryPath && fs.existsSync(this.sdkBinaryPath)) {
-            actualCommand = this.sdkBinaryPath;
-            log(`spawn: using SDK binary: ${actualCommand}`);
-        } else if (!fs.existsSync(command)) {
-            const basename = path.basename(command);
-            try {
-                actualCommand = execSync(`which ${basename}`,
-                    { encoding: 'utf-8' }).trim();
-                log(`spawn: resolved via which: ${actualCommand}`);
-            } catch (e) {
-                this.broadcastEvent({
-                    type: 'stderr',
-                    id: id,
-                    data: `Error: ${command} not found\n`,
-                });
-                this.broadcastEvent({
-                    type: 'exit',
-                    id: id,
-                    exitCode: 127,
-                    signal: null,
-                });
-                return {};
-            }
-        }
-
-        // Build a clean environment for the spawned process.
-        // From daemon env: strip CLAUDECODE (triggers "cannot be launched
-        // inside another session"), ELECTRON_*, and CLAUDE_CODE_* (the app
-        // provides its own set via the env param).
-        // From app env: keep everything except CLAUDECODE and ELECTRON_*.
-        const BLOCKED_KEYS = new Set([
-            'CLAUDECODE', 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ASAR',
-        ]);
-
-        const filterEnv = (source, stripPrefixes = []) => {
-            const result = {};
-            for (const [k, v] of Object.entries(source)) {
-                if (BLOCKED_KEYS.has(k)) continue;
-                if (stripPrefixes.some(p => k.startsWith(p))) continue;
-                result[k] = v;
-            }
-            return result;
-        };
-
-        const mergedEnv = {
-            ...filterEnv(process.env, ['CLAUDE_CODE_']),
-            ...filterEnv(env || {}),
-            TERM: 'xterm-256color',
-        };
-
-        // CLAUDE_CONFIG_DIR from the app points to a VM guest path
-        // (/sessions/<name>/mnt/.claude) that doesn't exist on the host.
-        // Remove it so Claude Code uses its default (~/.claude/).
-        if (mergedEnv.CLAUDE_CONFIG_DIR &&
-            mergedEnv.CLAUDE_CONFIG_DIR.startsWith('/sessions/')) {
-            log(`spawn: removing VM guest CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR}`);
-            delete mergedEnv.CLAUDE_CONFIG_DIR;
-        }
-
-        // Filter out args that reference VM guest paths (/sessions/...).
-        // Flags like --add-dir and --plugin-dir point to paths inside the VM
-        // that don't exist on the host.
-        const rawArgs = args || [];
-        const cleanArgs = [];
-        const guestPathFlags = new Set(['--add-dir', '--plugin-dir']);
-        for (let i = 0; i < rawArgs.length; i++) {
-            if (guestPathFlags.has(rawArgs[i]) &&
-                i + 1 < rawArgs.length &&
-                rawArgs[i + 1].startsWith('/sessions/')) {
-                log(`spawn: removing ${rawArgs[i]} ${rawArgs[i + 1]} (VM guest path)`);
-                i++; // skip the value too
-                continue;
-            }
-            cleanArgs.push(rawArgs[i]);
-        }
-
-        log(`spawn: command=${actualCommand}, args=${JSON.stringify(cleanArgs)}`);
-        log(`spawn: cwd=${workDir}`);
-
-        const proc = spawnProcess(actualCommand, cleanArgs, {
-            cwd: workDir,
-            env: mergedEnv,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
-
-        log(`spawn: pid=${proc.pid}`);
-        this.processes.set(id, proc);
-
-        proc.stdout.on('data', (data) => {
-            this.broadcastEvent({
-                type: 'stdout',
-                id: id,
-                data: data.toString(),
+        try {
+            const result = await this._forwardToGuest({
+                method: 'spawn', params
             });
-        });
+            // Track that this process exists in the guest.
+            // Events (stdout/stderr/exit) flow back through the
+            // single guest connection → _handleGuestData → emitEvent.
+            this.processes.set(id, { remote: true });
 
-        proc.stderr.on('data', (data) => {
-            this.broadcastEvent({
-                type: 'stderr',
-                id: id,
-                data: data.toString(),
+            return result.result || {};
+        } catch (e) {
+            logError(`KvmBackend: spawn forward failed: ${e.message}`);
+            this.emitEvent({
+                type: 'stderr', id,
+                data: `Error: Failed to spawn in VM: ${e.message}\n`,
             });
-        });
-
-        proc.on('exit', (exitCode, signal) => {
-            log(`Process ${id} exited: code=${exitCode}, signal=${signal}`);
-            this.processes.delete(id);
-            this.broadcastEvent({
-                type: 'exit',
-                id: id,
-                exitCode,
-                signal,
+            this.emitEvent({
+                type: 'exit', id, exitCode: 1,
+                signal: null,
             });
-        });
-
-        proc.on('error', (err) => {
-            this.broadcastEvent({
-                type: 'error',
-                id: id,
-                message: err.message,
-            });
-        });
-
-        return {};
+            return {};
+        }
     }
 
     async kill(params) {
-        const { id, signal } = params;
-        const proc = this.processes.get(id);
-        if (proc) {
-            try {
-                proc.kill(signal || 'SIGTERM');
-            } catch (e) {
-                log(`Kill failed for ${id}:`, e.message);
-            }
-            return {};
+        log(`KvmBackend kill: id=${params.id}`);
+        try {
+            await this._forwardToGuest({ method: 'kill', params });
+        } catch (e) {
+            log(`KvmBackend: kill forward failed: ${e.message}`);
         }
         return {};
     }
 
     async writeStdin(params) {
-        const { id, data } = params;
-        const proc = this.processes.get(id);
-        if (proc && proc.stdin && !proc.stdin.destroyed) {
-            proc.stdin.write(data);
-            return {};
+        try {
+            await this._forwardToGuest({ method: 'writeStdin', params });
+        } catch (e) {
+            log(`KvmBackend: writeStdin forward failed: ${e.message}`);
         }
         return {};
     }
 
     isProcessRunning(params) {
         const { id } = params;
-        const proc = this.processes.get(id);
-        return { running: !!proc };
+        return { running: this.processes.has(id) };
     }
 
-    // --- File System ---
-
     async mountPath(params) {
-        const { processId, subpath, mountName, mode } = params;
-        log(`mountPath: ${mountName} -> ${subpath} (${mode})`);
+        const { subpath, mountName } = params;
+        log(`KvmBackend mountPath: ${mountName} -> ${subpath}`);
 
-        // Phase 3: Set up 9p or virtiofs share with QEMU
-        // For now, return the host path directly
-        const guestPath = path.join(os.homedir(), subpath || '');
-        return { guestPath };
+        if (this.virtiofsdProcess) {
+            // virtiofs is active — guest can access host files via mount
+            const guestPath = path.join('/mnt/host', subpath || '');
+            return { guestPath };
+        }
+
+        // Fallback: return host path with a warning
+        const hostPath = path.join(os.homedir(), subpath || '');
+        log('KvmBackend: virtiofs not available, returning host path');
+        return { guestPath: hostPath };
     }
 
     async readFile(params) {
-        const { processName, filePath } = params;
-        log(`readFile: ${filePath}`);
+        const { filePath } = params;
+        log(`KvmBackend readFile: ${filePath}`);
 
+        // Try forwarding to guest first
+        if (this.guestConnected) {
+            try {
+                const result = await this._forwardToGuest({
+                    method: 'readFile', params
+                });
+                if (result.result) return result.result;
+            } catch (e) {
+                log(`KvmBackend: guest readFile failed, trying host: ${e.message}`);
+            }
+        }
+
+        // Fallback: read from host
+        const resolved = path.resolve(filePath);
+        const home = os.homedir();
+        if (!resolved.startsWith(home + path.sep) && resolved !== home) {
+            return { error: 'Access denied: path outside home directory' };
+        }
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
+            const content = fs.readFileSync(resolved, 'utf8');
             return { content };
         } catch (e) {
             return { error: e.message };
         }
     }
 
-    // --- SDK Management ---
-
     async installSdk(params) {
         const { sdkSubpath, version } = params;
-        log(`installSdk: ${sdkSubpath}@${version}`);
-
-        // The app downloads Claude Code to ~/sdkSubpath/version/claude
-        // Track this path so spawn() can use the correct binary
-        if (sdkSubpath && version) {
-            const candidatePath = path.join(
-                os.homedir(), sdkSubpath, version, 'claude'
-            );
-            try {
-                fs.accessSync(candidatePath, fs.constants.X_OK);
-                this.sdkBinaryPath = candidatePath;
-                log(`SDK binary found: ${this.sdkBinaryPath}`);
-            } catch (e) {
-                log(`SDK binary not found or not executable: ${candidatePath}`);
-            }
-        }
-
+        log(`KvmBackend installSdk: ${sdkSubpath}@${version}`);
+        const resolved = resolveSdkBinary(
+            sdkSubpath, version, 'KvmBackend'
+        );
+        if (resolved) this.sdkBinaryPath = resolved;
         return {};
     }
-
-    // --- OAuth ---
 
     async addApprovedOauthToken(params) {
-        log('addApprovedOauthToken');
-        // Phase 3: Configure OAuth proxy in guest
+        log('KvmBackend: addApprovedOauthToken');
+        // Forward to guest if connected
+        if (this.guestConnected) {
+            try {
+                await this._forwardToGuest({
+                    method: 'addApprovedOauthToken', params
+                });
+            } catch (e) {
+                log('KvmBackend: OAuth forward failed:', e.message);
+            }
+        }
+        return {};
+    }
+}
+
+// ============================================================
+// Backend Detection
+// ============================================================
+
+function detectBackend(emitEvent) {
+    const override = BACKEND_OVERRIDE;
+    if (override) {
+        log(`Backend override: ${override}`);
+        switch (override.toLowerCase()) {
+        case 'kvm':
+            return new KvmBackend(emitEvent);
+        case 'bwrap':
+            return new BwrapBackend(emitEvent);
+        case 'host':
+            return new HostBackend(emitEvent);
+        default:
+            logError(`Unknown backend override "${override}", falling back to auto-detect`);
+        }
+    }
+
+    // Auto-detect: try KVM first, then bwrap, then host
+    try {
+        fs.accessSync('/dev/kvm', fs.constants.R_OK | fs.constants.W_OK);
+        execFileSync('which', ['qemu-system-x86_64'], { stdio: 'pipe' });
+        fs.accessSync('/dev/vhost-vsock', fs.constants.R_OK);
+        fs.accessSync(
+            path.join(VM_BASE_DIR, 'rootfs.qcow2'), fs.constants.R_OK
+        );
+        log('Backend: kvm (all requirements met)');
+        return new KvmBackend(emitEvent);
+    } catch (e) {
+        log(`KVM not available: ${e.message}`);
+    }
+
+    try {
+        execFileSync('which', ['bwrap'], { stdio: 'pipe' });
+        execFileSync('bwrap', ['--ro-bind', '/', '/', 'true'], {
+            stdio: 'pipe', timeout: 5000
+        });
+        log('Backend: bwrap');
+        return new BwrapBackend(emitEvent);
+    } catch (e) {
+        log(`bwrap not available: ${e.message}`);
+    }
+
+    log('Backend: host (no isolation)');
+    return new HostBackend(emitEvent);
+}
+
+// ============================================================
+// VMManager — Thin Dispatcher
+// ============================================================
+
+class VMManager {
+    constructor() {
+        this.eventSubscribers = new Set();
+        this.backend = detectBackend((event) => this.broadcastEvent(event));
+    }
+
+    // --- Configuration ---
+
+    configure(params) {
+        const config = {};
+        if (params.memoryMB !== undefined) config.memoryMB = params.memoryMB;
+        if (params.cpuCount !== undefined) config.cpuCount = params.cpuCount;
+        // init is async but configure is sync in the protocol —
+        // fire-and-forget is fine for config
+        this.backend.init(config).catch((e) => {
+            logError('Backend init error:', e.message);
+        });
+        log('Configured:', params);
         return {};
     }
 
-    // --- Events ---
+    // --- VM Lifecycle (delegate to backend) ---
+
+    async createVM(params) {
+        log(`createVM: bundle=${params.bundlePath}`);
+        return {};
+    }
+
+    async startVM(params) {
+        return this.backend.startVM(params);
+    }
+
+    async stopVM() {
+        return this.backend.stopVM();
+    }
+
+    isRunning() {
+        return this.backend.isRunning();
+    }
+
+    isGuestConnected() {
+        return this.backend.isGuestConnected();
+    }
+
+    // --- Process Management (delegate to backend) ---
+
+    async spawn(params) {
+        return this.backend.spawn(params);
+    }
+
+    async kill(params) {
+        return this.backend.kill(params);
+    }
+
+    async writeStdin(params) {
+        return this.backend.writeStdin(params);
+    }
+
+    isProcessRunning(params) {
+        return this.backend.isProcessRunning(params);
+    }
+
+    // --- File System (delegate to backend) ---
+
+    async mountPath(params) {
+        return this.backend.mountPath(params);
+    }
+
+    async readFile(params) {
+        return this.backend.readFile(params);
+    }
+
+    // --- SDK Management (delegate to backend) ---
+
+    async installSdk(params) {
+        return this.backend.installSdk(params);
+    }
+
+    // --- OAuth (delegate to backend) ---
+
+    async addApprovedOauthToken(params) {
+        return this.backend.addApprovedOauthToken(params);
+    }
+
+    // --- Events (managed by VMManager, not backend) ---
 
     subscribeEvents(socket) {
         this.eventSubscribers.add(socket);
@@ -612,8 +1652,8 @@ function startServer() {
 // Entry Point
 // ============================================================
 
-// Always clean up stale socket and start. The app's Ma() retry wrapper has
-// a dedup flag (_svcLaunched) preventing duplicate daemon launches, so a
+// Always clean up stale socket and start. The app's retry wrapper has a
+// dedup flag (_svcLaunched) preventing duplicate daemon launches, so a
 // simple synchronous cleanup avoids the race condition where an async
 // connection test delays startup while the app is already retrying.
 cleanupSocket();

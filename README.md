@@ -7,8 +7,17 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 ---
 
 > **⚠️ EXPERIMENTAL: Cowork Mode Support**
-> Cowork mode is **enabled by default** in this build. It uses the same TypeScript VM client as Windows, communicating over a Unix domain socket to a local service daemon. To use it, start a Cowork session from the Claude Desktop UI.
-> **Important:** Cowork mode on Linux currently runs Claude Code **directly on the host** with no VM isolation. Unlike macOS/Windows, there is no sandbox—Claude has access to your entire home directory. VM-based isolation (QEMU/KVM) is actively being developed. Use Cowork mode only if you understand the security implications.
+> Cowork mode is **enabled by default** in this build. It uses Anthropic's native VM images with a pluggable isolation backend:
+>
+> | Backend | Isolation | Requirements |
+> |---------|-----------|-------------|
+> | **KVM** (preferred) | Full VM via QEMU/KVM | `/dev/kvm`, `qemu-system-x86_64`, `/dev/vhost-vsock`, `socat`, `virtiofsd` |
+> | **bubblewrap** (fallback) | Namespace sandbox | `bwrap` installed and functional |
+> | **host** (last resort) | None — runs directly on host | No additional requirements |
+>
+> The best available backend is auto-detected at startup. Run `claude-desktop --doctor` to check which backend will be used and which dependencies are missing.
+>
+> **Note:** The bubblewrap backend mounts your home directory as read-only (only the project working directory is writable). The host backend provides no isolation — use it only if you understand the security implications.
 
 ---
 
@@ -99,7 +108,7 @@ For additional configuration options including environment variables and Wayland
 
 ## Troubleshooting
 
-Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more).
+Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
 
 For additional troubleshooting, uninstallation instructions, and log locations, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 

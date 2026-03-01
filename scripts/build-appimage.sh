@@ -85,6 +85,7 @@ fi
 setup_logging || exit 1
 setup_electron_env
 cleanup_stale_lock
+cleanup_stale_cowork_socket
 
 # Detect display backend
 detect_display_backend
