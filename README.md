@@ -180,8 +180,6 @@ Special thanks to:
 - **[noctuum](https://github.com/noctuum)** for the `CLAUDE_MENU_BAR` env var for configurable menu bar visibility
 - **[typedrat](https://github.com/typedrat)** for the NixOS flake integration with build.sh, node-pty derivation, and CI auto-update
 
-This project includes a NixOS flake inspired by [k3d3's original implementation](https://github.com/k3d3/claude-desktop-linux-flake). See the [NixOS installation section](#using-nix-flake-nixos) above.
-
 ## Sponsorship
 
 Anthropic doesn't publish release notes for Claude Desktop. Each release here includes AI-generated notes that analyze code changes between versions. I wrote up how that process works if you're curious: [Generating Real Release Notes from Minified Electron Apps](https://nonconvexlabs.com/blog/generating-real-release-notes-from-minified-electron-apps).
