@@ -297,8 +297,12 @@ jobs:
               exit 0
             }
 
-          printf '%s' "$investigation" | jq -r '.result // .' \
-            > /tmp/investigation.txt
+          # Handle both JSON and plain text output
+          if printf '%s' "$investigation" | jq -e '.result' >/dev/null 2>&1; then
+            printf '%s' "$investigation" | jq -r '.result' > /tmp/investigation.txt
+          else
+            printf '%s' "$investigation" > /tmp/investigation.txt
+          fi
 
       - name: "Phase 3: Generate triage comment"
         if: >-
