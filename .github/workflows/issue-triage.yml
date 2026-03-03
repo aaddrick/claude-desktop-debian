@@ -147,13 +147,10 @@ jobs:
 
           if [[ -z "$structured" ]]; then
             echo "::error::No structured output from classification"
-            echo "Keys: $(printf '%s' "$result" | jq 'keys' 2>/dev/null)"
-            echo "Raw: $(printf '%s' "$result" | head -c 500)"
             exit 1
           fi
 
           printf '%s' "$structured" > /tmp/classification.json
-          echo "Classification: $(cat /tmp/classification.json)"
 
           classification=$(jq -r '.classification' /tmp/classification.json)
           skip_comment=$(jq -r '.skip_comment // false' /tmp/classification.json)
