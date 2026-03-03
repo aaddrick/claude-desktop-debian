@@ -363,6 +363,29 @@ jobs:
           files: artifacts/**/*
           body_path: compare-work/summary.md
 
+      - name: Generate and upload reference source
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          appimage=$(find artifacts/ -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
+          if [[ -z "$appimage" ]]; then
+            echo "::warning::No AppImage found, skipping reference-source"
+            exit 0
+          fi
+          chmod +x "$appimage"
+          "$appimage" --appimage-extract >/dev/null 2>&1
+          asar_path=$(find squashfs-root -name 'app.asar' -path '*/resources/*' | head -1)
+          if [[ -z "$asar_path" ]]; then
+            echo "::warning::app.asar not found in AppImage"
+            exit 0
+          fi
+          mkdir -p reference-source
+          asar extract "$asar_path" reference-source/app-extracted
+          npx prettier --write "reference-source/app-extracted/.vite/build/*.js" 2>/dev/null || true
+          tar -czf reference-source.tar.gz -C reference-source app-extracted
+          gh release upload "${{ github.ref_name }}" reference-source.tar.gz --clobber
+
   update-apt-repo:
     name: Update APT Repository
     if: startsWith(github.ref, 'refs/tags/v')
