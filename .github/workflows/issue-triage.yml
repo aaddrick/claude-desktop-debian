@@ -127,21 +127,33 @@ jobs:
             --slurpfile issue /tmp/issue.json \
             --slurpfile related_issues /tmp/related-issues.json \
             --slurpfile related_prs /tmp/related-prs.json \
-            -r '"You are classifying a GitHub issue for the claude-desktop-debian project.\nThis project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux.\n\n## Issue\n" + ($issue[0] | tostring) + "\n\n## Related Issues\n" + ($related_issues[0] | tostring) + "\n\n## Related PRs\n" + ($related_prs[0] | tostring) + "\n\n## Instructions\n1. Read the issue carefully. Consider the title, body, and any comments.\n2. Check the related issues and PRs for duplicates or prior discussion.\n3. Classify the issue into one of: bug, feature, question, duplicate, needs-info, not-actionable, needs-human.\n4. Set skip_comment to true if: classification is needs-human, you have low confidence on a complex or sensitive issue, or the issue involves security concerns.\n5. Set needs_source_investigation to true only if understanding the upstream Claude Desktop JavaScript source would help investigate.\n6. Suggest additional labels from: bug, enhancement, question, duplicate, upstream, regression, security, cowork, mcp, blocked, needs reproduction, platform: amd64, platform: arm64, format: deb, format: appimage, format: rpm, format: nix, priority: critical, priority: high, priority: medium, priority: low\n7. If classifying as duplicate, set duplicate_of to the issue number.\n8. If classifying as needs-info, list specific questions to ask."' \
+            --rawfile claude_md CLAUDE.md \
+            -r '"You are classifying a GitHub issue for the claude-desktop-debian project.\nThis project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux.\n\n## Project Context\n" + $claude_md + "\n\n## Issue\n" + ($issue[0] | tostring) + "\n\n## Related Issues\n" + ($related_issues[0] | tostring) + "\n\n## Related PRs\n" + ($related_prs[0] | tostring) + "\n\n## Instructions\n1. Read the issue carefully. Consider the title, body, and any comments.\n2. Check the related issues and PRs for duplicates or prior discussion.\n3. Classify the issue into one of: bug, feature, question, duplicate, needs-info, not-actionable, needs-human.\n4. Set skip_comment to true if: classification is needs-human, you have low confidence on a complex or sensitive issue, or the issue involves security concerns.\n5. Set needs_source_investigation to true only if understanding the upstream Claude Desktop JavaScript source would help investigate.\n6. Suggest additional labels from: bug, enhancement, question, duplicate, upstream, regression, security, cowork, mcp, blocked, needs reproduction, platform: amd64, platform: arm64, format: deb, format: appimage, format: rpm, format: nix, priority: critical, priority: high, priority: medium, priority: low\n7. If classifying as duplicate, set duplicate_of to the issue number.\n8. If classifying as needs-info, list specific questions to ask."' \
             > /tmp/classify-prompt.txt
 
           result=$(claude -p "$(cat /tmp/classify-prompt.txt)" \
             --output-format json \
             --json-schema "$schema" \
             --model sonnet \
-            --max-budget-usd 0.50 \
+            --max-budget-usd 2.00 \
             2>/dev/null) || {
               echo "::error::Claude classification failed"
               exit 1
             }
 
-          # Extract structured output
-          printf '%s' "$result" | jq -c '.result' > /tmp/classification.json
+          # Extract structured output (key is .structured_output per claude CLI)
+          structured=$(printf '%s' "$result" \
+            | jq -c '.structured_output // empty' 2>/dev/null)
+
+          if [[ -z "$structured" ]]; then
+            echo "::error::No structured output from classification"
+            echo "Keys: $(printf '%s' "$result" | jq 'keys' 2>/dev/null)"
+            echo "Raw: $(printf '%s' "$result" | head -c 500)"
+            exit 1
+          fi
+
+          printf '%s' "$structured" > /tmp/classification.json
+          echo "Classification: $(cat /tmp/classification.json)"
 
           classification=$(jq -r '.classification' /tmp/classification.json)
           skip_comment=$(jq -r '.skip_comment // false' /tmp/classification.json)
@@ -303,6 +315,9 @@ jobs:
           {
             echo "Generate a triage comment for this GitHub issue."
             echo ""
+            echo "## Project Context"
+            cat CLAUDE.md
+            echo ""
             echo "## Classification"
             cat /tmp/classification.json
             echo ""
@@ -340,13 +355,13 @@ jobs:
 
           comment_result=$(claude -p "$(cat /tmp/comment-prompt.txt)" \
             --model sonnet \
-            --max-budget-usd 0.30 \
+            --max-budget-usd 2.00 \
             2>/dev/null) || {
               echo "::error::Comment generation failed"
               exit 1
             }
 
-          # Handle both JSON and plain text output
+          # Handle both JSON (.result key) and plain text output
           if printf '%s' "$comment_result" | jq -e '.result' >/dev/null 2>&1; then
             printf '%s' "$comment_result" | jq -r '.result' > /tmp/comment.md
           else
