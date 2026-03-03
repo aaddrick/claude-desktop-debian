@@ -1,33 +1,42 @@
 name: Issue Triage
 run-name: |
-  Triage: #${{ github.event.issue.number }} - ${{ github.event.issue.title }}
+  Triage: #${{ github.event.issue.number || inputs.issue_number }}
 
 on:
   issues:
     types: [opened, reopened]
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to triage"
+        required: true
+        type: number
 
 permissions:
   issues: write
   contents: read
 
 concurrency:
-  group: issue-triage-${{ github.event.issue.number }}
+  group: issue-triage-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: true
 
 jobs:
   triage:
     name: Triage Issue
     runs-on: ubuntu-latest
-    if: github.event.sender.login != 'github-actions[bot]'
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.sender.login != 'github-actions[bot]'
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
 
     steps:
       - name: Check trigger conditions
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
         run: |
@@ -77,7 +86,6 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           # Fetch full issue details
           gh issue view "$ISSUE_NUMBER" \
@@ -152,7 +160,6 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           classification=$(jq -r '.classification' /tmp/classification.json)
 
@@ -344,7 +351,6 @@ jobs:
           && steps.check_skip.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           if [[ -s /tmp/comment.md ]]; then
             gh issue comment "$ISSUE_NUMBER" \
