@@ -133,43 +133,143 @@ function filterEnv(source, stripPrefixes = []) {
     return result;
 }
 
+// ============================================================
+// Guest-Path Translation
+// ============================================================
+
 /**
- * Build a merged environment for a spawned process.
- * Combines filtered daemon env with filtered app-provided env.
+ * Translate a VM guest path (/sessions/{id}/mnt/{name}[/rest]) to a host
+ * path using mountMap. Returns the translated path, or null on failure.
  */
-function buildSpawnEnv(appEnv) {
+function translateGuestPath(guestPath, mountMap) {
+    if (!guestPath || !guestPath.startsWith('/sessions/')) return null;
+    if (!mountMap || Object.keys(mountMap).length === 0) return null;
+
+    const match = guestPath.match(
+        /^\/sessions\/[^/]+\/mnt\/([^/]+)(\/.*)?$/
+    );
+    if (!match) return null;
+
+    const mountName = match[1];
+    const rest = match[2] || '';
+
+    // Electron's ta() normalizer strips leading dots, so try both
+    // "skills" and ".skills" style lookups.
+    const hostBase = mountMap[mountName]
+        || mountMap['.' + mountName]
+        || mountMap[mountName.replace(/^\./, '')];
+    if (!hostBase) {
+        log(`translateGuestPath: no mapping for "${mountName}"`);
+        return null;
+    }
+
+    const translated = rest ? path.join(hostBase, rest) : hostBase;
+    const normalized = path.resolve(translated);
+
+    // Prevent path traversal outside the mount base
+    if (normalized !== hostBase &&
+        !normalized.startsWith(hostBase + path.sep)) {
+        log(`translateGuestPath: traversal blocked: ${guestPath} -> ${normalized}`);
+        return null;
+    }
+
+    log(`translateGuestPath: ${guestPath} -> ${normalized}`);
+    return normalized;
+}
+
+/**
+ * Build a mount-name -> host-path mapping from mountBinds (prior
+ * mountPath() calls) and additionalMounts (spawn params).
+ * additionalMounts entries take precedence over mountBinds.
+ */
+function buildMountMap(additionalMounts, mountBinds) {
+    const map = {};
+
+    if (mountBinds) {
+        for (const [name, hostPath] of mountBinds) {
+            map[name] = hostPath;
+        }
+    }
+
+    if (additionalMounts) {
+        const homeDir = os.homedir();
+        for (const [name, info] of Object.entries(additionalMounts)) {
+            if (!info || !info.path) continue;
+            const resolved = path.resolve(
+                path.join(homeDir, info.path)
+            );
+            if (resolved !== homeDir &&
+                !resolved.startsWith(homeDir + path.sep)) {
+                log(`buildMountMap: rejecting "${name}" — resolves outside home: ${resolved}`);
+                continue;
+            }
+            map[name] = resolved;
+        }
+    }
+
+    return map;
+}
+
+/**
+ * Build a merged environment for a spawned process. Combines filtered
+ * daemon env with app-provided env, and translates CLAUDE_CONFIG_DIR
+ * guest paths using mountMap.
+ */
+function buildSpawnEnv(appEnv, mountMap) {
     const mergedEnv = {
         ...filterEnv(process.env, ['CLAUDE_CODE_']),
         ...filterEnv(appEnv || {}),
         TERM: 'xterm-256color',
     };
 
-    // CLAUDE_CONFIG_DIR from the app points to a VM guest path
-    // (/sessions/<name>/mnt/.claude) that doesn't exist on the host.
-    // Remove it so Claude Code uses its default (~/.claude/).
+    // Translate CLAUDE_CONFIG_DIR from guest path to host path, or
+    // remove it so Claude Code falls back to ~/.claude/.
     if (mergedEnv.CLAUDE_CONFIG_DIR &&
         mergedEnv.CLAUDE_CONFIG_DIR.startsWith('/sessions/')) {
-        log(`buildSpawnEnv: removing VM guest CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR}`);
-        delete mergedEnv.CLAUDE_CONFIG_DIR;
+        const translated = translateGuestPath(
+            mergedEnv.CLAUDE_CONFIG_DIR, mountMap
+        );
+        if (translated) {
+            log(`buildSpawnEnv: translated CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR} -> ${translated}`);
+            mergedEnv.CLAUDE_CONFIG_DIR = translated;
+        } else {
+            log(`buildSpawnEnv: removing VM guest CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR}`);
+            delete mergedEnv.CLAUDE_CONFIG_DIR;
+        }
     }
 
     return mergedEnv;
 }
 
 /**
- * Filter out args that reference VM guest paths (/sessions/...).
- * Flags like --add-dir and --plugin-dir point to paths inside the VM
- * that don't exist on the host.
+ * Translate args that reference VM guest paths (/sessions/...) to host
+ * paths using mountMap. If translation fails, the flag pair is removed.
  */
-function cleanSpawnArgs(rawArgs) {
+function cleanSpawnArgs(rawArgs, mountMap) {
     const cleanArgs = [];
     const guestPathFlags = new Set(['--add-dir', '--plugin-dir']);
     for (let i = 0; i < rawArgs.length; i++) {
         if (guestPathFlags.has(rawArgs[i]) &&
             i + 1 < rawArgs.length &&
             rawArgs[i + 1].startsWith('/sessions/')) {
-            log(`cleanSpawnArgs: removing ${rawArgs[i]} ${rawArgs[i + 1]} (VM guest path)`);
-            i++; // skip the value too
+            const flag = rawArgs[i];
+            let hostPath = translateGuestPath(
+                rawArgs[i + 1], mountMap
+            );
+            if (hostPath) {
+                // --plugin-dir needs the plugin root, not a skills/
+                // subdirectory — walk up to find it.
+                if (flag === '--plugin-dir') {
+                    hostPath = resolvePluginRoot(
+                        hostPath, os.homedir()
+                    );
+                }
+                log(`cleanSpawnArgs: translated ${flag} ${rawArgs[i + 1]} -> ${hostPath}`);
+                cleanArgs.push(flag, hostPath);
+            } else {
+                log(`cleanSpawnArgs: removing ${flag} ${rawArgs[i + 1]} (no host mapping)`);
+            }
+            i++;
             continue;
         }
         cleanArgs.push(rawArgs[i]);
@@ -178,16 +278,57 @@ function cleanSpawnArgs(rawArgs) {
 }
 
 /**
- * Resolve the working directory from spawn params.
- * Handles sharedCwdPath, guest paths, and non-existent directories.
+ * Walk up from pluginPath (at most 3 levels) looking for the plugin
+ * root (contains .claude-plugin/plugin.json or manifest.json).
+ * Will not walk above mountBase. Returns pluginPath if no root found.
  */
-function resolveWorkDir(cwd, sharedCwdPath) {
+function resolvePluginRoot(pluginPath, mountBase) {
+    let candidate = pluginPath;
+    for (let i = 0; i < 3; i++) {
+        try {
+            const hasPluginJson = fs.existsSync(
+                path.join(candidate, '.claude-plugin', 'plugin.json')
+            );
+            const hasManifest = fs.existsSync(
+                path.join(candidate, 'manifest.json')
+            );
+            if (hasPluginJson || hasManifest) {
+                if (candidate !== pluginPath) {
+                    log(`resolvePluginRoot: adjusted ${pluginPath} -> ${candidate}`);
+                }
+                return candidate;
+            }
+        } catch (_) {
+            break;
+        }
+        const parent = path.dirname(candidate);
+        if (parent === candidate) break;
+        if (mountBase &&
+            parent !== mountBase &&
+            !parent.startsWith(mountBase + path.sep)) break;
+        candidate = parent;
+    }
+    return pluginPath;
+}
+
+/**
+ * Resolve the working directory from spawn params. Translates guest
+ * paths using mountMap, falls back to homedir if translation fails
+ * or the directory does not exist.
+ */
+function resolveWorkDir(cwd, sharedCwdPath, mountMap) {
     let workDir = cwd || os.homedir();
     if (sharedCwdPath) {
         workDir = path.join(os.homedir(), sharedCwdPath);
     } else if (cwd && cwd.startsWith('/sessions/')) {
-        log(`resolveWorkDir: cwd is VM guest path "${cwd}", using home dir`);
-        workDir = os.homedir();
+        const translated = translateGuestPath(cwd, mountMap || {});
+        if (translated) {
+            log(`resolveWorkDir: translated "${cwd}" -> "${translated}"`);
+            workDir = translated;
+        } else {
+            log(`resolveWorkDir: cwd is VM guest path "${cwd}", using home dir`);
+            workDir = os.homedir();
+        }
     }
 
     if (!fs.existsSync(workDir)) {
@@ -406,14 +547,25 @@ class LocalBackend extends BackendBase {
     /**
      * Resolve command and prepare environment/args for spawning.
      * Returns null and emits error events if command not found.
+     * Builds a mount map to translate VM guest paths in args, env, and cwd.
      */
     _prepareSpawn(params) {
         const { id, name, command, args, cwd, env,
-            sharedCwdPath } = params;
+            sharedCwdPath, additionalMounts } = params;
 
         log(`${this.backendName} spawn: id=${id}, name=${name}, command=${command}`);
 
-        const workDir = resolveWorkDir(cwd, sharedCwdPath);
+        const mountMap = buildMountMap(
+            additionalMounts, this.mountBinds
+        );
+        // Store for readFile() — last spawn wins (single-session in practice)
+        this.lastMountMap = mountMap;
+
+        if (Object.keys(mountMap).length > 0) {
+            log(`${this.backendName} spawn: mountMap=${JSON.stringify(mountMap)}`);
+        }
+
+        const workDir = resolveWorkDir(cwd, sharedCwdPath, mountMap);
         const resolved = resolveCommand(command, this.sdkBinaryPath);
 
         if (resolved.error) {
@@ -430,9 +582,10 @@ class LocalBackend extends BackendBase {
         return {
             id,
             actualCommand: resolved.command,
-            cleanArgs: cleanSpawnArgs(args || []),
-            mergedEnv: buildSpawnEnv(env),
+            cleanArgs: cleanSpawnArgs(args || [], mountMap),
+            mergedEnv: buildSpawnEnv(env, mountMap),
             workDir,
+            mountMap,
         };
     }
 
@@ -482,7 +635,20 @@ class LocalBackend extends BackendBase {
     async readFile(params) {
         const { filePath } = params;
         log(`${this.backendName} readFile: ${filePath}`);
-        const resolved = path.resolve(filePath);
+
+        let resolved;
+        if (filePath && filePath.startsWith('/sessions/')) {
+            resolved = translateGuestPath(
+                filePath, this.lastMountMap || {}
+            );
+            if (!resolved) {
+                return { error: `Cannot translate guest path: ${filePath}` };
+            }
+            log(`${this.backendName} readFile: translated ${filePath} -> ${resolved}`);
+        } else {
+            resolved = path.resolve(filePath);
+        }
+
         const home = os.homedir();
         if (!resolved.startsWith(home + path.sep) && resolved !== home) {
             return { error: 'Access denied: path outside home directory' };
@@ -608,7 +774,8 @@ class BwrapBackend extends LocalBackend {
         const prepared = this._prepareSpawn(params);
         if (!prepared) return {};
 
-        const { id, actualCommand, cleanArgs, mergedEnv, workDir } = prepared;
+        const { id, actualCommand, cleanArgs, mergedEnv,
+            workDir } = prepared;
 
         // Build bwrap arguments
         const bwrapArgs = [
@@ -639,11 +806,34 @@ class BwrapBackend extends LocalBackend {
         bwrapArgs.push('--ro-bind', homeDir, homeDir);
         bwrapArgs.push('--bind', workDir, workDir);
 
-        // Apply stored mount binds as writable
+        // Apply stored mount binds (from mountPath() calls) as writable
+        const boundPaths = new Set([workDir]);
         for (const [, hostPath] of this.mountBinds) {
-            if (fs.existsSync(hostPath)) {
+            if (fs.existsSync(hostPath) && !boundPaths.has(hostPath)) {
                 bwrapArgs.push('--bind', hostPath, hostPath);
+                boundPaths.add(hostPath);
             }
+        }
+
+        // Bind-mount additional directories from mountMap (already
+        // validated to stay within home by buildMountMap).
+        const { additionalMounts } = params;
+        const mountMap = this.lastMountMap || {};
+        for (const [mountName, hostPath] of Object.entries(mountMap)) {
+            if (boundPaths.has(hostPath)) continue;
+            try {
+                if (!fs.existsSync(hostPath)) {
+                    fs.mkdirSync(hostPath, { recursive: true });
+                }
+            } catch (e) {
+                log(`BwrapBackend spawn: could not create ${hostPath}: ${e.message}`);
+                continue;
+            }
+            const mode = additionalMounts?.[mountName]?.mode;
+            const bindType = mode === 'ro' ? '--ro-bind' : '--bind';
+            bwrapArgs.push(bindType, hostPath, hostPath);
+            boundPaths.add(hostPath);
+            log(`BwrapBackend spawn: mount ${mountName} -> ${hostPath} (${mode || 'rw'})`);
         }
 
         // Namespace isolation + actual command
@@ -1533,7 +1723,15 @@ const METHODS = {
 
 async function handleRequest(request, socket) {
     const { method, params } = request;
-    log(`Request: ${method}`, params ? JSON.stringify(params).substring(0, 200) : '');
+    // Redact env block (may contain API keys/tokens)
+    if (params) {
+        const { env, ...rest } = params;
+        const summary = JSON.stringify(rest).substring(0, 2000)
+            + (env ? ' [env: redacted]' : '');
+        log(`Request: ${method}`, summary);
+    } else {
+        log(`Request: ${method}`);
+    }
 
     const handler = METHODS[method];
     if (!handler) {
