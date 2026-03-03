@@ -295,45 +295,50 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          classification=$(cat /tmp/classification.json)
-
-          investigation=""
-          if [[ -f /tmp/investigation.txt ]]; then
-            investigation=$(cat /tmp/investigation.txt)
-          fi
-
           # Download voice profile
-          voice_profile=""
           voice_url="https://raw.githubusercontent.com/aaddrick/written-voice-replication/master/.claude/agents/aaddrick-voice.md"
-          voice_profile=$(curl -fsSL "$voice_url" 2>/dev/null) || true
+          curl -fsSL "$voice_url" -o /tmp/voice-profile.md 2>/dev/null || true
 
-          comment_result=$(claude -p "Generate a triage comment for this GitHub issue.
-
-          ## Classification
-          $classification
-
-          ## Investigation Findings
-          $investigation
-
-          ## Voice Profile
-          $voice_profile
-
+          # Build comment prompt from files (avoids shell expansion issues)
+          {
+            echo "Generate a triage comment for this GitHub issue."
+            echo ""
+            echo "## Classification"
+            cat /tmp/classification.json
+            echo ""
+            echo "## Investigation Findings"
+            if [[ -f /tmp/investigation.txt ]]; then
+              cat /tmp/investigation.txt
+            else
+              echo "No investigation performed."
+            fi
+            echo ""
+            echo "## Voice Profile"
+            if [[ -f /tmp/voice-profile.md ]]; then
+              cat /tmp/voice-profile.md
+            fi
+            echo ""
+            cat << 'INSTRUCTIONS'
           ## Instructions
           Write a triage comment following these rules:
           - Lead with the finding, then reasoning
           - Keep to 2-4 short paragraphs
           - Use code blocks or links where helpful
-          - Don't open with 'Thank you for your report' or similar
+          - Don't open with "Thank you for your report" or similar
           - Don't overpromise fixes or timelines
           - Don't use corporate-speak or AI vocabulary
           - Be direct and helpful
-          - If the classification is 'duplicate', link to issue #DUPLICATE_NUMBER
-          - If 'needs-info', ask the specific questions from the classification
-          - End with this exact attribution line:
+          - If the classification is "duplicate", link to the duplicate issue
+          - If "needs-info", ask the specific questions from the classification
+          - Output ONLY the comment text, no wrapping or explanation
+          - End with this exact attribution block:
 
           ---
-          Written by Claude Sonnet via [Claude Code](https://claude.ai/code)" \
-            --agent issue-triage \
+          Written by Claude Sonnet via [Claude Code](https://claude.ai/code)
+          INSTRUCTIONS
+          } > /tmp/comment-prompt.txt
+
+          comment_result=$(claude -p "$(cat /tmp/comment-prompt.txt)" \
             --model sonnet \
             --max-budget-usd 0.30 \
             2>/dev/null) || {
@@ -341,9 +346,12 @@ jobs:
               exit 1
             }
 
-          # Extract the text result
-          printf '%s' "$comment_result" | jq -r '.result // .' \
-            > /tmp/comment.md
+          # Handle both JSON and plain text output
+          if printf '%s' "$comment_result" | jq -e '.result' >/dev/null 2>&1; then
+            printf '%s' "$comment_result" | jq -r '.result' > /tmp/comment.md
+          else
+            printf '%s' "$comment_result" > /tmp/comment.md
+          fi
 
       - name: Post comment
         if: >-
