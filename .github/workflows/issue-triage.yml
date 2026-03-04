@@ -244,24 +244,47 @@ jobs:
       needs.classify.outputs.needs_investigation == 'true'
       && needs.classify.outputs.skip_comment != 'true'
     steps:
-      - name: Download reference source from latest release
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extraction tools
+        run: npm install -g @electron/asar prettier
+
+      - name: Download amd64 AppImage from latest release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p /tmp/ref-source
           gh release download \
             --repo "$GITHUB_REPOSITORY" \
-            --pattern 'reference-source*' \
+            --pattern '*amd64*.AppImage' \
+            --skip-existing \
             --dir /tmp/ref-source || {
-              echo "::error::Could not download reference-source artifact"
+              echo "::error::Could not download AppImage from latest release"
               exit 1
             }
-          tar -xzf /tmp/ref-source/reference-source.tar.gz \
-            -C /tmp/ref-source/ || {
-              echo "::error::Could not extract reference-source"
-              exit 1
-            }
-          echo "Reference source extracted to /tmp/ref-source/app-extracted/"
+          appimage=$(find /tmp/ref-source -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
+          if [[ -z "$appimage" ]]; then
+            echo "::error::No amd64 AppImage found in release assets"
+            exit 1
+          fi
+          echo "Downloaded: $appimage"
+
+      - name: Extract and beautify reference source
+        run: |
+          appimage=$(find /tmp/ref-source -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
+          chmod +x "$appimage"
+          cd /tmp/ref-source
+          "$appimage" --appimage-extract >/dev/null 2>&1
+          asar_path=$(find squashfs-root -name 'app.asar' -path '*/resources/*' | head -1)
+          if [[ -z "$asar_path" ]]; then
+            echo "::error::app.asar not found in AppImage"
+            exit 1
+          fi
+          asar extract "$asar_path" app-extracted
+          npx prettier --write "app-extracted/.vite/build/*.js" 2>/dev/null || true
+          echo "Reference source extracted and beautified"
 
       - name: Upload reference source
         uses: actions/upload-artifact@v4
