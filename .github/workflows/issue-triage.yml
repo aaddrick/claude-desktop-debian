@@ -17,31 +17,38 @@ on:
 permissions:
   issues: write
   contents: read
+  actions: read
 
 concurrency:
   group: issue-triage-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: true
 
 jobs:
-  triage:
-    name: Triage Issue
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 1: Gate Check — decide whether triage should proceed
+  # ──────────────────────────────────────────────────────────────────────
+  gate:
+    name: Gate Check
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.event.sender.login != 'github-actions[bot]'
-    env:
-      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
-
+    outputs:
+      should_triage: ${{ steps.check.outputs.should_triage }}
+      issue_number: ${{ steps.check.outputs.issue_number }}
     steps:
-      - name: Check trigger conditions
-        id: gate
+      - name: Evaluate gate conditions
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
           SENDER: ${{ github.event.sender.login }}
           COMMENT_ID: ${{ github.event.comment.id }}
         run: |
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+
           labels=$(gh issue view "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
             --json labels --jq '[.labels[].name]')
@@ -62,7 +69,7 @@ jobs:
           # Skip owner comments unless they contain /Triage
           if [[ "$EVENT_NAME" == "issue_comment" && "$SENDER" == "aaddrick" \
               && "$is_triage_command" != "true" ]]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "should_triage=false" >> "$GITHUB_OUTPUT"
             echo "Skipping: owner comment without /Triage command"
             exit 0
           fi
@@ -70,7 +77,7 @@ jobs:
           # Treat /Triage command like a manual dispatch (bypasses all gates)
           if [[ "$is_triage_command" == "true" \
               || "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "should_triage=true" >> "$GITHUB_OUTPUT"
             echo "Manual triage requested, bypassing gate checks"
             exit 0
           fi
@@ -79,7 +86,7 @@ jobs:
           if [[ "$EVENT_NAME" == "issue_comment" ]]; then
             if ! printf '%s' "$labels" \
                 | jq -e 'any(. == "triage: needs-info")' >/dev/null 2>&1; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "should_triage=false" >> "$GITHUB_OUTPUT"
               echo "Skipping: comment on issue without needs-info label"
               exit 0
             fi
@@ -88,7 +95,7 @@ jobs:
           # Always skip needs-human unless manually triggered
           if printf '%s' "$labels" \
               | jq -e 'any(. == "triage: needs-human")' >/dev/null 2>&1; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "should_triage=false" >> "$GITHUB_OUTPUT"
             echo "Skipping: issue requires human triage"
             exit 0
           fi
@@ -99,41 +106,55 @@ jobs:
             if printf '%s' "$labels" \
                 | jq -e --argjson terms "$terminal_labels" \
                   'any(. as $l | $terms | any(. == $l))' >/dev/null 2>&1; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "should_triage=false" >> "$GITHUB_OUTPUT"
               echo "Skipping: issue already triaged"
               exit 0
             fi
           fi
 
-          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "should_triage=true" >> "$GITHUB_OUTPUT"
 
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 2: Classify Issue — gather context + run Claude classification
+  # ──────────────────────────────────────────────────────────────────────
+  classify:
+    name: Classify Issue
+    runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.should_triage == 'true'
+    env:
+      ISSUE_NUMBER: ${{ needs.gate.outputs.issue_number }}
+    outputs:
+      classification: ${{ steps.classify.outputs.classification }}
+      skip_comment: ${{ steps.classify.outputs.skip_comment }}
+      needs_investigation: ${{ steps.classify.outputs.needs_investigation }}
+      confidence: ${{ steps.classify.outputs.confidence }}
+    steps:
       - name: Checkout repository
-        if: steps.gate.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Set up Node.js
-        if: steps.gate.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Install Claude CLI
-        if: steps.gate.outputs.skip != 'true'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Gather issue context
-        if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          mkdir -p /tmp/triage-context
+
           # Fetch full issue details
           gh issue view "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
             --json number,title,body,labels,comments,author,state,createdAt \
-            > /tmp/issue.json
+            > /tmp/triage-context/issue.json
 
           # Extract title for searching related context
-          title=$(jq -r '.title' /tmp/issue.json)
+          title=$(jq -r '.title' /tmp/triage-context/issue.json)
 
           # Search for related issues (open and closed)
           gh issue list \
@@ -142,7 +163,7 @@ jobs:
             --state all \
             --limit 10 \
             --json number,title,state,labels \
-            > /tmp/related-issues.json
+            > /tmp/triage-context/related-issues.json
 
           # Search for related PRs (open and closed)
           gh pr list \
@@ -151,10 +172,9 @@ jobs:
             --state all \
             --limit 10 \
             --json number,title,state \
-            > /tmp/related-prs.json
+            > /tmp/triage-context/related-prs.json
 
-      - name: "Phase 1: Classify issue"
-        if: steps.gate.outputs.skip != 'true'
+      - name: Classify issue with Claude
         id: classify
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -163,17 +183,17 @@ jobs:
 
           # Build prompt from template + data files (avoids shell injection)
           jq -n \
-            --slurpfile issue /tmp/issue.json \
-            --slurpfile related_issues /tmp/related-issues.json \
-            --slurpfile related_prs /tmp/related-prs.json \
+            --slurpfile issue /tmp/triage-context/issue.json \
+            --slurpfile related_issues /tmp/triage-context/related-issues.json \
+            --slurpfile related_prs /tmp/triage-context/related-prs.json \
             --rawfile claude_md CLAUDE.md \
-            -r '"You are classifying a GitHub issue for the claude-desktop-debian project.\nThis project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux.\n\n## Project Context\n" + $claude_md + "\n\n## Issue\n" + ($issue[0] | tostring) + "\n\n## Related Issues\n" + ($related_issues[0] | tostring) + "\n\n## Related PRs\n" + ($related_prs[0] | tostring) + "\n\n## Instructions\n1. Read the issue carefully. Consider the title, body, and any comments.\n2. Check the related issues and PRs for duplicates or prior discussion.\n3. Classify the issue into one of: bug, feature, question, duplicate, needs-info, not-actionable, needs-human.\n4. Set skip_comment to true if: classification is needs-human, you have low confidence on a complex or sensitive issue, or the issue involves security concerns.\n5. Set needs_source_investigation to true only if understanding the upstream Claude Desktop JavaScript source would help investigate.\n6. Suggest additional labels from: bug, enhancement, question, duplicate, upstream, regression, security, cowork, mcp, blocked, needs reproduction, platform: amd64, platform: arm64, format: deb, format: appimage, format: rpm, format: nix, priority: critical, priority: high, priority: medium, priority: low\n7. If classifying as duplicate, set duplicate_of to the issue number.\n8. If classifying as needs-info, list specific questions to ask."' \
+            -r '"You are classifying a GitHub issue for the claude-desktop-debian project.\nThis project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux.\n\n## Project Context\n" + $claude_md + "\n\n## Issue\n" + ($issue[0] | tostring) + "\n\n## Related Issues\n" + ($related_issues[0] | tostring) + "\n\n## Related PRs\n" + ($related_prs[0] | tostring) + "\n\n## Label Glossary\nOnly suggest labels that accurately apply. Here is what each label means:\n- bug: Confirmed or likely software defect in THIS project (packaging, patching, build scripts)\n- enhancement: New feature request or improvement to this project\n- question: Usage question, not a bug or feature request\n- duplicate: This issue duplicates another existing issue\n- upstream: Bug exists in Claude Desktop itself, not in our packaging/patching. NOTE: This project prefers to patch upstream issues when feasible rather than just labeling them upstream. Only use this label when a patch is clearly impractical.\n- regression: Previously working functionality that broke in a newer release\n- security: Security-related issue (always set skip_comment=true for these)\n- cowork: Related to Cowork mode ONLY — the VM-based Claude Code session feature launched from the desktop app Code tab. Do NOT use for general Code tab issues or session history issues.\n- mcp: Related to MCP (Model Context Protocol) server/plugin integration\n- blocked: Waiting on an external dependency to be resolved\n- needs reproduction: Cannot reproduce, need more info from reporter\n- platform: amd64 / platform: arm64: Issue is specific to one CPU architecture\n- format: deb / format: appimage / format: rpm / format: nix: Issue is specific to one package format\n- priority: critical: Blocks usage for most users\n- priority: high: Important, should be addressed soon\n- priority: medium: Should be addressed when possible\n- priority: low: Nice to have, not urgent\n\n## Instructions\n1. Read the issue carefully. Consider the title, body, and any comments.\n2. Check the related issues and PRs for duplicates or prior discussion.\n3. Classify the issue into one of: bug, feature, question, duplicate, needs-info, not-actionable, needs-human.\n4. Set skip_comment to true if: classification is needs-human, you have low confidence on a complex or sensitive issue, or the issue involves security concerns.\n5. Set needs_source_investigation to true only if understanding the upstream Claude Desktop JavaScript source would help investigate.\n6. Suggest additional labels from the Label Glossary above. Only apply labels you are confident are correct.\n7. If classifying as duplicate, set duplicate_of to the issue number.\n8. If classifying as needs-info, list specific questions to ask."' \
             > /tmp/classify-prompt.txt
 
           result=$(claude -p "$(cat /tmp/classify-prompt.txt)" \
             --output-format json \
             --json-schema "$schema" \
-            --model sonnet \
+            --model claude-sonnet-4-6 \
             --max-budget-usd 2.00 \
             2>/dev/null) || {
               echo "::error::Claude classification failed"
@@ -189,147 +209,212 @@ jobs:
             exit 1
           fi
 
-          printf '%s' "$structured" > /tmp/classification.json
+          printf '%s' "$structured" > /tmp/triage-context/classification.json
 
-          classification=$(jq -r '.classification' /tmp/classification.json)
-          skip_comment=$(jq -r '.skip_comment // false' /tmp/classification.json)
+          classification=$(jq -r '.classification' /tmp/triage-context/classification.json)
+          skip_comment=$(jq -r '.skip_comment // false' /tmp/triage-context/classification.json)
           needs_investigation=$(jq -r '.needs_source_investigation' \
-            /tmp/classification.json)
+            /tmp/triage-context/classification.json)
+          confidence=$(jq -r '.confidence // "medium"' /tmp/triage-context/classification.json)
 
           {
             echo "classification=$classification"
             echo "skip_comment=$skip_comment"
             echo "needs_investigation=$needs_investigation"
+            echo "confidence=$confidence"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Classification: $classification (skip_comment=$skip_comment)"
+          echo "Classification: $classification (skip=$skip_comment, investigate=$needs_investigation, confidence=$confidence)"
 
-      - name: Apply labels
-        if: steps.gate.outputs.skip != 'true'
+      - name: Upload triage context
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-context
+          path: /tmp/triage-context/
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 3: Fetch Reference Source — download beautified upstream source
+  # ──────────────────────────────────────────────────────────────────────
+  fetch-reference:
+    name: Fetch Reference Source
+    runs-on: ubuntu-latest
+    needs: classify
+    if: >-
+      needs.classify.outputs.needs_investigation == 'true'
+      && needs.classify.outputs.skip_comment != 'true'
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extraction tools
+        run: npm install -g @electron/asar prettier
+
+      - name: Download amd64 AppImage from latest release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          classification=$(jq -r '.classification' /tmp/classification.json)
-
-          # Remove old triage labels and needs triage
-          for label in \
-            "triage: investigated" \
-            "triage: needs-info" \
-            "triage: duplicate" \
-            "triage: not-actionable" \
-            "triage: needs-human" \
-            "needs triage"; do
-            gh issue edit "$ISSUE_NUMBER" \
-              --repo "$GITHUB_REPOSITORY" \
-              --remove-label "$label" 2>/dev/null || true
-          done
-
-          # Map classification to triage label
-          case "$classification" in
-            bug|feature|question)
-              triage_label="triage: investigated"
-              ;;
-            duplicate)
-              triage_label="triage: duplicate"
-              ;;
-            needs-info)
-              triage_label="triage: needs-info"
-              ;;
-            not-actionable)
-              triage_label="triage: not-actionable"
-              ;;
-            needs-human)
-              triage_label="triage: needs-human"
-              ;;
-            *)
-              triage_label="triage: needs-human"
-              ;;
-          esac
-
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --add-label "$triage_label"
-
-          # Apply additional suggested labels
-          suggested=$(jq -r '.suggested_labels[]? // empty' \
-            /tmp/classification.json 2>/dev/null)
-          while IFS= read -r label; do
-            if [[ -n "$label" ]]; then
-              gh issue edit "$ISSUE_NUMBER" \
-                --repo "$GITHUB_REPOSITORY" \
-                --add-label "$label" 2>/dev/null || true
-            fi
-          done <<< "$suggested"
-
-          echo "Applied triage label: $triage_label"
-
-      - name: Check if comment should be skipped
-        if: steps.gate.outputs.skip != 'true'
-        id: check_skip
-        run: |
-          if [[ "${{ steps.classify.outputs.skip_comment }}" == "true" ]]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Skipping comment (skip_comment=true)"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: "Phase 2: Download reference source (conditional)"
-        if: >-
-          steps.gate.outputs.skip != 'true'
-          && steps.check_skip.outputs.skip != 'true'
-          && steps.classify.outputs.needs_investigation == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p /tmp/ref-source
           gh release download \
             --repo "$GITHUB_REPOSITORY" \
-            --pattern 'reference-source*' \
-            --dir /tmp/ref-source 2>/dev/null || {
-              echo "::warning::Could not download reference-source artifact"
-              exit 0
+            --pattern '*amd64*.AppImage' \
+            --skip-existing \
+            --dir /tmp/ref-source || {
+              echo "::error::Could not download AppImage from latest release"
+              exit 1
             }
-          tar -xzf /tmp/ref-source/reference-source.tar.gz \
-            -C /tmp/ref-source/ 2>/dev/null || {
-              echo "::warning::Could not extract reference-source"
-              exit 0
-            }
-          echo "Reference source extracted to /tmp/ref-source/app-extracted/"
+          appimage=$(find /tmp/ref-source -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
+          if [[ -z "$appimage" ]]; then
+            echo "::error::No amd64 AppImage found in release assets"
+            exit 1
+          fi
+          echo "Downloaded: $appimage"
 
-      - name: "Phase 2b: Investigate with source (conditional)"
-        if: >-
-          steps.gate.outputs.skip != 'true'
-          && steps.check_skip.outputs.skip != 'true'
-          && steps.classify.outputs.needs_investigation == 'true'
+      - name: Extract and beautify reference source
+        run: |
+          appimage=$(find /tmp/ref-source -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
+          chmod +x "$appimage"
+          cd /tmp/ref-source
+          "$appimage" --appimage-extract >/dev/null 2>&1
+          asar_path=$(find squashfs-root -name 'app.asar' -path '*/resources/*' | head -1)
+          if [[ -z "$asar_path" ]]; then
+            echo "::error::app.asar not found in AppImage"
+            exit 1
+          fi
+          asar extract "$asar_path" app-extracted
+
+          echo "Extracted contents (top-level):"
+          ls -la app-extracted/
+          echo ""
+          if [[ -d app-extracted/.vite/build ]]; then
+            echo "Beautifying JS files in .vite/build/:"
+            ls app-extracted/.vite/build/*.js
+            npx prettier --write "app-extracted/.vite/build/*.js"
+          else
+            echo "::warning::.vite/build/ directory not found in extracted source"
+            find app-extracted -name '*.js' -not -path '*/node_modules/*' | head -20
+          fi
+          echo ""
+          echo "Total files: $(find app-extracted -type f | wc -l)"
+
+      - name: Upload reference source
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-source
+          path: /tmp/ref-source/app-extracted/
+          include-hidden-files: true
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 4: Investigate Source — deep-dive with Claude into repo + ref
+  # ──────────────────────────────────────────────────────────────────────
+  investigate:
+    name: Investigate Source
+    runs-on: ubuntu-latest
+    needs: [classify, fetch-reference]
+    if: needs.fetch-reference.result == 'success'
+    outputs:
+      has_findings: ${{ steps.investigate.outputs.has_findings }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Download triage context
+        uses: actions/download-artifact@v4
+        with:
+          name: triage-context
+          path: /tmp/triage-context/
+
+      - name: Download reference source
+        uses: actions/download-artifact@v4
+        with:
+          name: reference-source
+          path: /tmp/ref-source/app-extracted/
+
+      - name: Verify reference source
+        run: |
+          echo "Reference source contents:"
+          ls -la /tmp/ref-source/app-extracted/
+          if [[ -d /tmp/ref-source/app-extracted/.vite/build ]]; then
+            echo "Key JS files:"
+            ls -la /tmp/ref-source/app-extracted/.vite/build/*.js
+          else
+            echo "::warning::.vite/build/ not found in downloaded artifact"
+          fi
+
+      - name: Investigate with Claude
+        id: investigate
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          classification=$(cat /tmp/classification.json)
-          hints=$(printf '%s' "$classification" \
-            | jq -r '.investigation_hints // empty')
+          # Build investigation prompt from files (avoids shell injection)
+          {
+            cat << 'PREAMBLE'
+          Investigate the following GitHub issue for the claude-desktop-debian project.
 
-          ref_source_note=""
-          if [[ -d /tmp/ref-source/app-extracted ]]; then
-            ref_source_note="The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/. Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js."
-          fi
-
-          investigation=$(claude -p "Investigate the following GitHub issue for the claude-desktop-debian project.
-
-          Issue classification and summary:
-          $classification
-
-          Investigation hints: $hints
+          ## Classification
+          PREAMBLE
+            cat /tmp/triage-context/classification.json
+            echo ""
+            echo "## Investigation Hints"
+            jq -r '.investigation_hints // "None"' /tmp/triage-context/classification.json
+            cat << CONTEXT
 
           The project repository is at $(pwd). Search the source code for relevant patterns.
-          $ref_source_note
+          The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/.
+          Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js.
 
-          Focus on finding the root cause or relevant code. Be specific about file paths and line numbers. Keep your findings concise." \
+          CONTEXT
+            cat << 'BODY'
+          ## How This Project Patches Upstream Code
+          IMPORTANT: All fixes to the upstream JavaScript are applied via sed/regex in build.sh.
+          Variable and function names are MINIFIED and change between releases.
+          Patches must use regex patterns that match both minified and beautified spacing.
+          Variable names are extracted dynamically with grep -oP, never hardcoded.
+          See build.sh for examples of existing patches (search for patch_ functions).
+          The wrapper files (frame-fix-wrapper.js, frame-fix-entry.js) intercept require('electron')
+          and can patch BrowserWindow defaults without touching minified code.
+
+          ## Output Format
+          Structure your response in these sections:
+
+          ### Findings
+          Concise root cause analysis. Be specific about file paths and line numbers.
+
+          ### Relevant Code
+          Include the actual code snippets relevant to diagnosing or fixing this issue.
+          For each snippet, include:
+          - The file path and line numbers
+          - The code block itself
+          - A one-line note on why it matters
+
+          ### Patch Approach
+          If a fix is feasible, provide everything an agent needs to implement it:
+          - The exact anchor strings or regex patterns to locate the target code in minified source
+          - What the sed replacement should do (insert, wrap, modify)
+          - Any variable names that need dynamic extraction (with the grep -oP pattern to extract them)
+          - Whether the fix belongs in build.sh (sed patch) or frame-fix-wrapper.js (Electron intercept)
+          - Surrounding context (what comes before/after the target) to make the regex unique
+          The goal is to give enough context that an agent can write the patch without re-reading the source.
+          BODY
+          } > /tmp/investigate-prompt.txt
+
+          investigation=$(claude -p "$(cat /tmp/investigate-prompt.txt)" \
             --dangerously-skip-permissions \
-            --model sonnet \
+            --model claude-sonnet-4-6 \
             --max-budget-usd 1.00 \
             2>/dev/null) || {
-              echo "::warning::Investigation failed, continuing without findings"
+              echo "::warning::Investigation failed"
+              echo "has_findings=false" >> "$GITHUB_OUTPUT"
               exit 0
             }
 
@@ -340,49 +425,139 @@ jobs:
             printf '%s' "$investigation" > /tmp/investigation.txt
           fi
 
-      - name: "Phase 3: Generate triage comment"
-        if: >-
-          steps.gate.outputs.skip != 'true'
-          && steps.check_skip.outputs.skip != 'true'
+          if [[ -s /tmp/investigation.txt ]]; then
+            echo "has_findings=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_findings=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload investigation findings
+        if: steps.investigate.outputs.has_findings == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: investigation-findings
+          path: /tmp/investigation.txt
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 5: Fetch Voice Profile — download aaddrick's writing style guide
+  # ──────────────────────────────────────────────────────────────────────
+  fetch-voice:
+    name: Fetch Voice Profile
+    runs-on: ubuntu-latest
+    needs: classify
+    if: needs.classify.outputs.skip_comment != 'true'
+    steps:
+      - name: Download voice profile
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/aaddrick/written-voice-replication/master/.claude/agents/aaddrick-voice.md" \
+            -o /tmp/voice-profile.md
+
+      - name: Upload voice profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-profile
+          path: /tmp/voice-profile.md
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 6: Write Comment — generate and post triage comment
+  # ──────────────────────────────────────────────────────────────────────
+  comment:
+    name: Write Comment
+    runs-on: ubuntu-latest
+    needs: [classify, investigate, fetch-voice]
+    if: >-
+      always()
+      && needs.classify.result == 'success'
+      && needs.classify.outputs.skip_comment != 'true'
+      && needs.investigate.result != 'cancelled'
+      && needs.fetch-voice.result != 'cancelled'
+    outputs:
+      comment_posted: ${{ steps.post.outputs.comment_posted }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Download triage context
+        uses: actions/download-artifact@v4
+        with:
+          name: triage-context
+          path: /tmp/triage-context/
+
+      - name: Download investigation findings
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: investigation-findings
+          path: /tmp/investigation/
+
+      - name: Download voice profile
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: voice-profile
+          path: /tmp/voice/
+
+      - name: Generate triage comment
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Download voice profile
-          voice_url="https://raw.githubusercontent.com/aaddrick/written-voice-replication/master/.claude/agents/aaddrick-voice.md"
-          curl -fsSL "$voice_url" -o /tmp/voice-profile.md 2>/dev/null || true
-
           # Build comment prompt from files (avoids shell expansion issues)
           {
-            echo "Generate a triage comment for this GitHub issue."
+            cat << 'HEADER'
+          Generate a triage comment for this GitHub issue.
+
+          ## Writing Voice (CRITICAL — follow this exactly)
+          The following voice profile defines HOW you write. Match this voice
+          precisely. Every aspect of tone, sentence structure, and word choice
+          must follow this profile. This is the most important instruction.
+          HEADER
+            echo ""
+            if [[ -f /tmp/voice/voice-profile.md ]]; then
+              cat /tmp/voice/voice-profile.md
+            fi
             echo ""
             echo "## Project Context"
             cat CLAUDE.md
             echo ""
             echo "## Classification"
-            cat /tmp/classification.json
+            cat /tmp/triage-context/classification.json
+            echo ""
+            echo "## Related Issues"
+            cat /tmp/triage-context/related-issues.json
+            echo ""
+            echo "## Related PRs"
+            cat /tmp/triage-context/related-prs.json
             echo ""
             echo "## Investigation Findings"
-            if [[ -f /tmp/investigation.txt ]]; then
-              cat /tmp/investigation.txt
+            if [[ -f /tmp/investigation/investigation.txt ]]; then
+              cat /tmp/investigation/investigation.txt
+              echo ""
+              echo "NOTE: The investigation includes relevant code samples. When useful, include key snippets in the comment to help whoever picks up the fix. Don't dump everything — just the code that clarifies the root cause or shows where a patch would go."
             else
               echo "No investigation performed."
             fi
             echo ""
-            echo "## Voice Profile"
-            if [[ -f /tmp/voice-profile.md ]]; then
-              cat /tmp/voice-profile.md
-            fi
-            echo ""
             cat << 'INSTRUCTIONS'
-          ## Instructions
-          Write a triage comment following these rules:
+          ## Formatting Constraints
+          - This is an automated one-shot triage comment. You will NOT be part of any follow-up conversation. Do not ask the reporter to share output with you, do not offer to write fixes, do not imply you will respond again. Write as if leaving a final note.
+          - This project prefers to patch upstream issues when feasible. Frame findings in terms of what could be patched, not "this is upstream, nothing we can do"
           - Lead with the finding, then reasoning
           - Keep to 2-4 short paragraphs
           - Use code blocks or links where helpful
+          - Reference related issues/PRs if they provide useful context (use #NNN format)
           - Don't open with "Thank you for your report" or similar
           - Don't overpromise fixes or timelines
-          - Don't use corporate-speak or AI vocabulary
-          - Be direct and helpful
           - If the classification is "duplicate", link to the duplicate issue
           - If "needs-info", ask the specific questions from the classification
           - Output ONLY the comment text, no wrapping or explanation
@@ -394,7 +569,7 @@ jobs:
           } > /tmp/comment-prompt.txt
 
           comment_result=$(claude -p "$(cat /tmp/comment-prompt.txt)" \
-            --model sonnet \
+            --model claude-sonnet-4-6 \
             --max-budget-usd 2.00 \
             2>/dev/null) || {
               echo "::error::Comment generation failed"
@@ -409,17 +584,86 @@ jobs:
           fi
 
       - name: Post comment
-        if: >-
-          steps.gate.outputs.skip != 'true'
-          && steps.check_skip.outputs.skip != 'true'
+        id: post
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          issue_num=$(jq -r '.number' /tmp/triage-context/issue.json)
+
           if [[ -s /tmp/comment.md ]]; then
-            gh issue comment "$ISSUE_NUMBER" \
+            gh issue comment "$issue_num" \
               --repo "$GITHUB_REPOSITORY" \
               --body-file /tmp/comment.md
-            echo "Posted triage comment on issue #$ISSUE_NUMBER"
+            echo "comment_posted=true" >> "$GITHUB_OUTPUT"
+            echo "Posted triage comment on issue #$issue_num"
           else
+            echo "comment_posted=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Comment file is empty, skipping post"
           fi
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Job 7: Apply Labels — triage label + suggested labels (LAST)
+  # ──────────────────────────────────────────────────────────────────────
+  label:
+    name: Apply Labels
+    runs-on: ubuntu-latest
+    needs: [classify, comment]
+    if: >-
+      always()
+      && needs.classify.result == 'success'
+    steps:
+      - name: Download triage context
+        uses: actions/download-artifact@v4
+        with:
+          name: triage-context
+          path: /tmp/triage-context/
+
+      - name: Apply triage and suggested labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue_num=$(jq -r '.number' /tmp/triage-context/issue.json)
+          classification=$(jq -r '.classification' /tmp/triage-context/classification.json)
+
+          # Remove old triage labels and needs triage
+          for label in \
+            "triage: investigated" \
+            "triage: needs-info" \
+            "triage: duplicate" \
+            "triage: not-actionable" \
+            "triage: needs-human" \
+            "needs triage"; do
+            gh issue edit "$issue_num" \
+              --repo "$GITHUB_REPOSITORY" \
+              --remove-label "$label" 2>/dev/null || true
+          done
+
+          # Map classification to triage label
+          case "$classification" in
+            bug|feature|question)
+              triage_label="triage: investigated"
+              ;;
+            duplicate|needs-info|not-actionable|needs-human)
+              triage_label="triage: $classification"
+              ;;
+            *)
+              triage_label="triage: needs-human"
+              ;;
+          esac
+
+          gh issue edit "$issue_num" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-label "$triage_label"
+
+          # Apply additional suggested labels
+          suggested=$(jq -r '.suggested_labels[]? // empty' \
+            /tmp/triage-context/classification.json 2>/dev/null)
+          while IFS= read -r label; do
+            if [[ -n "$label" ]]; then
+              gh issue edit "$issue_num" \
+                --repo "$GITHUB_REPOSITORY" \
+                --add-label "$label" 2>/dev/null || true
+            fi
+          done <<< "$suggested"
+
+          echo "Applied triage label: $triage_label"

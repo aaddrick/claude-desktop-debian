@@ -364,7 +364,6 @@ jobs:
           body_path: compare-work/summary.md
 
       - name: Generate and upload reference source
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -384,7 +383,8 @@ jobs:
           asar extract "$asar_path" reference-source/app-extracted
           npx prettier --write "reference-source/app-extracted/.vite/build/*.js" 2>/dev/null || true
           tar -czf reference-source.tar.gz -C reference-source app-extracted
-          gh release upload "${{ github.ref_name }}" reference-source.tar.gz --clobber
+          gh release upload "${{ github.ref_name }}" reference-source.tar.gz \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
   update-apt-repo:
     name: Update APT Repository
