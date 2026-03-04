@@ -283,14 +283,27 @@ jobs:
             exit 1
           fi
           asar extract "$asar_path" app-extracted
-          npx prettier --write "app-extracted/.vite/build/*.js" 2>/dev/null || true
-          echo "Reference source extracted and beautified"
+
+          echo "Extracted contents (top-level):"
+          ls -la app-extracted/
+          echo ""
+          if [[ -d app-extracted/.vite/build ]]; then
+            echo "Beautifying JS files in .vite/build/:"
+            ls app-extracted/.vite/build/*.js
+            npx prettier --write "app-extracted/.vite/build/*.js"
+          else
+            echo "::warning::.vite/build/ directory not found in extracted source"
+            find app-extracted -name '*.js' -not -path '*/node_modules/*' | head -20
+          fi
+          echo ""
+          echo "Total files: $(find app-extracted -type f | wc -l)"
 
       - name: Upload reference source
         uses: actions/upload-artifact@v4
         with:
           name: reference-source
           path: /tmp/ref-source/app-extracted/
+          include-hidden-files: true
           retention-days: 1
 
   # ──────────────────────────────────────────────────────────────────────
@@ -326,6 +339,17 @@ jobs:
         with:
           name: reference-source
           path: /tmp/ref-source/app-extracted/
+
+      - name: Verify reference source
+        run: |
+          echo "Reference source contents:"
+          ls -la /tmp/ref-source/app-extracted/
+          if [[ -d /tmp/ref-source/app-extracted/.vite/build ]]; then
+            echo "Key JS files:"
+            ls -la /tmp/ref-source/app-extracted/.vite/build/*.js
+          else
+            echo "::warning::.vite/build/ not found in downloaded artifact"
+          fi
 
       - name: Investigate with Claude
         id: investigate
