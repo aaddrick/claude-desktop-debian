@@ -358,48 +358,54 @@ jobs:
         run: |
           # Build investigation prompt from files (avoids shell injection)
           {
-            echo "Investigate the following GitHub issue for the claude-desktop-debian project."
-            echo ""
-            echo "## Classification"
+            cat << 'PREAMBLE'
+          Investigate the following GitHub issue for the claude-desktop-debian project.
+
+          ## Classification
+          PREAMBLE
             cat /tmp/triage-context/classification.json
             echo ""
             echo "## Investigation Hints"
             jq -r '.investigation_hints // "None"' /tmp/triage-context/classification.json
-            echo ""
-            echo "The project repository is at $(pwd). Search the source code for relevant patterns."
-            echo "The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/."
-            echo "Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js."
-            echo ""
-            echo "## How This Project Patches Upstream Code"
-            echo "IMPORTANT: All fixes to the upstream JavaScript are applied via sed/regex in build.sh."
-            echo "Variable and function names are MINIFIED and change between releases."
-            echo "Patches must use regex patterns that match both minified and beautified spacing."
-            echo "Variable names are extracted dynamically with grep -oP, never hardcoded."
-            echo "See build.sh for examples of existing patches (search for patch_ functions)."
-            echo "The wrapper files (frame-fix-wrapper.js, frame-fix-entry.js) intercept require('electron')"
-            echo "and can patch BrowserWindow defaults without touching minified code."
-            echo ""
-            echo "## Output Format"
-            echo "Structure your response in these sections:"
-            echo ""
-            echo "### Findings"
-            echo "Concise root cause analysis. Be specific about file paths and line numbers."
-            echo ""
-            echo "### Relevant Code"
-            echo "Include the actual code snippets relevant to diagnosing or fixing this issue."
-            echo "For each snippet, include:"
-            echo "- The file path and line numbers"
-            echo "- The code block itself"
-            echo "- A one-line note on why it matters"
-            echo ""
-            echo "### Patch Approach"
-            echo "If a fix is feasible, provide everything an agent needs to implement it:"
-            echo "- The exact anchor strings or regex patterns to locate the target code in minified source"
-            echo "- What the sed replacement should do (insert, wrap, modify)"
-            echo "- Any variable names that need dynamic extraction (with the grep -oP pattern to extract them)"
-            echo "- Whether the fix belongs in build.sh (sed patch) or frame-fix-wrapper.js (Electron intercept)"
-            echo "- Surrounding context (what comes before/after the target) to make the regex unique"
-            echo "The goal is to give enough context that an agent can write the patch without re-reading the source."
+            cat << CONTEXT
+
+          The project repository is at $(pwd). Search the source code for relevant patterns.
+          The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/.
+          Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js.
+
+          CONTEXT
+            cat << 'BODY'
+          ## How This Project Patches Upstream Code
+          IMPORTANT: All fixes to the upstream JavaScript are applied via sed/regex in build.sh.
+          Variable and function names are MINIFIED and change between releases.
+          Patches must use regex patterns that match both minified and beautified spacing.
+          Variable names are extracted dynamically with grep -oP, never hardcoded.
+          See build.sh for examples of existing patches (search for patch_ functions).
+          The wrapper files (frame-fix-wrapper.js, frame-fix-entry.js) intercept require('electron')
+          and can patch BrowserWindow defaults without touching minified code.
+
+          ## Output Format
+          Structure your response in these sections:
+
+          ### Findings
+          Concise root cause analysis. Be specific about file paths and line numbers.
+
+          ### Relevant Code
+          Include the actual code snippets relevant to diagnosing or fixing this issue.
+          For each snippet, include:
+          - The file path and line numbers
+          - The code block itself
+          - A one-line note on why it matters
+
+          ### Patch Approach
+          If a fix is feasible, provide everything an agent needs to implement it:
+          - The exact anchor strings or regex patterns to locate the target code in minified source
+          - What the sed replacement should do (insert, wrap, modify)
+          - Any variable names that need dynamic extraction (with the grep -oP pattern to extract them)
+          - Whether the fix belongs in build.sh (sed patch) or frame-fix-wrapper.js (Electron intercept)
+          - Surrounding context (what comes before/after the target) to make the regex unique
+          The goal is to give enough context that an agent can write the patch without re-reading the source.
+          BODY
           } > /tmp/investigate-prompt.txt
 
           investigation=$(claude -p "$(cat /tmp/investigate-prompt.txt)" \
@@ -466,8 +472,8 @@ jobs:
       always()
       && needs.classify.result == 'success'
       && needs.classify.outputs.skip_comment != 'true'
-      && (needs.investigate.result == 'success' || needs.investigate.result == 'skipped' || needs.investigate.result == 'failure')
-      && (needs.fetch-voice.result == 'success' || needs.fetch-voice.result == 'skipped' || needs.fetch-voice.result == 'failure')
+      && needs.investigate.result != 'cancelled'
+      && needs.fetch-voice.result != 'cancelled'
     outputs:
       comment_posted: ${{ steps.post.outputs.comment_posted }}
     steps:
@@ -637,17 +643,8 @@ jobs:
             bug|feature|question)
               triage_label="triage: investigated"
               ;;
-            duplicate)
-              triage_label="triage: duplicate"
-              ;;
-            needs-info)
-              triage_label="triage: needs-info"
-              ;;
-            not-actionable)
-              triage_label="triage: not-actionable"
-              ;;
-            needs-human)
-              triage_label="triage: needs-human"
+            duplicate|needs-info|not-actionable|needs-human)
+              triage_label="triage: $classification"
               ;;
             *)
               triage_label="triage: needs-human"
