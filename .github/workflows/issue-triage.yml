@@ -346,7 +346,19 @@ jobs:
             echo "The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/."
             echo "Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js."
             echo ""
-            echo "Focus on finding the root cause or relevant code. Be specific about file paths and line numbers. Keep your findings concise."
+            echo "## Output Format"
+            echo "Structure your response in two sections:"
+            echo ""
+            echo "### Findings"
+            echo "Concise root cause analysis. Be specific about file paths and line numbers."
+            echo ""
+            echo "### Relevant Code"
+            echo "Include the actual code snippets that are relevant to diagnosing or fixing this issue."
+            echo "For each snippet, include:"
+            echo "- The file path and line numbers"
+            echo "- The code block itself"
+            echo "- A one-line note on why it matters (e.g. 'this is where BrowserWindow options are set')"
+            echo "Focus on code that someone writing a fix would need to see. Skip boilerplate."
           } > /tmp/investigate-prompt.txt
 
           investigation=$(claude -p "$(cat /tmp/investigate-prompt.txt)" \
@@ -483,12 +495,15 @@ jobs:
             echo "## Investigation Findings"
             if [[ -f /tmp/investigation/investigation.txt ]]; then
               cat /tmp/investigation/investigation.txt
+              echo ""
+              echo "NOTE: The investigation includes relevant code samples. When useful, include key snippets in the comment to help whoever picks up the fix. Don't dump everything — just the code that clarifies the root cause or shows where a patch would go."
             else
               echo "No investigation performed."
             fi
             echo ""
             cat << 'INSTRUCTIONS'
           ## Formatting Constraints
+          - This is an automated one-shot triage comment. You will NOT be part of any follow-up conversation. Do not ask the reporter to share output with you, do not offer to write fixes, do not imply you will respond again. Write as if leaving a final note.
           - This project prefers to patch upstream issues when feasible. Frame findings in terms of what could be patched, not "this is upstream, nothing we can do"
           - Lead with the finding, then reasoning
           - Keep to 2-4 short paragraphs
