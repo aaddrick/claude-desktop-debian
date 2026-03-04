@@ -5,8 +5,6 @@ run-name: |
 on:
   issues:
     types: [opened, reopened]
-  issue_comment:
-    types: [created]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -45,7 +43,6 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
           SENDER: ${{ github.event.sender.login }}
-          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
 
@@ -53,43 +50,11 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --json labels --jq '[.labels[].name]')
 
-          # Check if this is a /Triage command in a comment
-          is_triage_command=false
-          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
-            comment_body=$(gh api \
-              "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
-              --jq '.body' 2>/dev/null)
-            if printf '%s' "$comment_body" \
-                | grep -qi '/triage'; then
-              is_triage_command=true
-              echo "Detected /Triage command in comment"
-            fi
-          fi
-
-          # Skip owner comments unless they contain /Triage
-          if [[ "$EVENT_NAME" == "issue_comment" && "$SENDER" == "aaddrick" \
-              && "$is_triage_command" != "true" ]]; then
-            echo "should_triage=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: owner comment without /Triage command"
-            exit 0
-          fi
-
-          # Treat /Triage command like a manual dispatch (bypasses all gates)
-          if [[ "$is_triage_command" == "true" \
-              || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          # Manual dispatch bypasses all gates
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "should_triage=true" >> "$GITHUB_OUTPUT"
             echo "Manual triage requested, bypassing gate checks"
             exit 0
-          fi
-
-          # For issue_comment: only re-triage if needs-info label is present
-          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
-            if ! printf '%s' "$labels" \
-                | jq -e 'any(. == "triage: needs-info")' >/dev/null 2>&1; then
-              echo "should_triage=false" >> "$GITHUB_OUTPUT"
-              echo "Skipping: comment on issue without needs-info label"
-              exit 0
-            fi
           fi
 
           # Always skip needs-human unless manually triggered
