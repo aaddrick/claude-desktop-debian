@@ -39,10 +39,41 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
+          SENDER: ${{ github.event.sender.login }}
+          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           labels=$(gh issue view "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
             --json labels --jq '[.labels[].name]')
+
+          # Check if this is a /Triage command in a comment
+          is_triage_command=false
+          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+            comment_body=$(gh api \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+              --jq '.body' 2>/dev/null)
+            if printf '%s' "$comment_body" \
+                | grep -qi '/triage'; then
+              is_triage_command=true
+              echo "Detected /Triage command in comment"
+            fi
+          fi
+
+          # Skip owner comments unless they contain /Triage
+          if [[ "$EVENT_NAME" == "issue_comment" && "$SENDER" == "aaddrick" \
+              && "$is_triage_command" != "true" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: owner comment without /Triage command"
+            exit 0
+          fi
+
+          # Treat /Triage command like a manual dispatch (bypasses all gates)
+          if [[ "$is_triage_command" == "true" \
+              || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Manual triage requested, bypassing gate checks"
+            exit 0
+          fi
 
           # For issue_comment: only re-triage if needs-info label is present
           if [[ "$EVENT_NAME" == "issue_comment" ]]; then
@@ -54,18 +85,16 @@ jobs:
             fi
           fi
 
-          # Always skip needs-human unless manually triggered via workflow_dispatch
-          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
-            if printf '%s' "$labels" \
-                | jq -e 'any(. == "triage: needs-human")' >/dev/null 2>&1; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Skipping: issue requires human triage"
-              exit 0
-            fi
+          # Always skip needs-human unless manually triggered
+          if printf '%s' "$labels" \
+              | jq -e 'any(. == "triage: needs-human")' >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: issue requires human triage"
+            exit 0
           fi
 
-          # Skip if already triaged (except reopened or manual dispatch)
-          if [[ "$EVENT_ACTION" != "reopened" && "$EVENT_NAME" != "workflow_dispatch" ]]; then
+          # Skip if already triaged (except reopened)
+          if [[ "$EVENT_ACTION" != "reopened" ]]; then
             terminal_labels='["triage: investigated", "triage: duplicate", "triage: not-actionable"]'
             if printf '%s' "$labels" \
                 | jq -e --argjson terms "$terminal_labels" \
