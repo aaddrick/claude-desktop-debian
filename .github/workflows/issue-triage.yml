@@ -529,6 +529,8 @@ jobs:
           - End with this exact attribution block:
 
           ---
+          *This is an automated triage comment. A maintainer will review this issue and may provide further guidance.*
+
           Written by Claude Sonnet via [Claude Code](https://claude.ai/code)
           INSTRUCTIONS
           } > /tmp/comment-prompt.txt
