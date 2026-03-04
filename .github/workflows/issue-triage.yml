@@ -167,13 +167,13 @@ jobs:
             --slurpfile related_issues /tmp/related-issues.json \
             --slurpfile related_prs /tmp/related-prs.json \
             --rawfile claude_md CLAUDE.md \
-            -r '"You are classifying a GitHub issue for the claude-desktop-debian project.\nThis project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux.\n\n## Project Context\n" + $claude_md + "\n\n## Issue\n" + ($issue[0] | tostring) + "\n\n## Related Issues\n" + ($related_issues[0] | tostring) + "\n\n## Related PRs\n" + ($related_prs[0] | tostring) + "\n\n## Instructions\n1. Read the issue carefully. Consider the title, body, and any comments.\n2. Check the related issues and PRs for duplicates or prior discussion.\n3. Classify the issue into one of: bug, feature, question, duplicate, needs-info, not-actionable, needs-human.\n4. Set skip_comment to true if: classification is needs-human, you have low confidence on a complex or sensitive issue, or the issue involves security concerns.\n5. Set needs_source_investigation to true only if understanding the upstream Claude Desktop JavaScript source would help investigate.\n6. Suggest additional labels from: bug, enhancement, question, duplicate, upstream, regression, security, cowork, mcp, blocked, needs reproduction, platform: amd64, platform: arm64, format: deb, format: appimage, format: rpm, format: nix, priority: critical, priority: high, priority: medium, priority: low\n7. If classifying as duplicate, set duplicate_of to the issue number.\n8. If classifying as needs-info, list specific questions to ask."' \
+            -r '"You are classifying a GitHub issue for the claude-desktop-debian project.\nThis project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux.\n\n## Project Context\n" + $claude_md + "\n\n## Issue\n" + ($issue[0] | tostring) + "\n\n## Related Issues\n" + ($related_issues[0] | tostring) + "\n\n## Related PRs\n" + ($related_prs[0] | tostring) + "\n\n## Label Glossary\nOnly suggest labels that accurately apply. Here is what each label means:\n- bug: Confirmed or likely software defect in THIS project (packaging, patching, build scripts)\n- enhancement: New feature request or improvement to this project\n- question: Usage question, not a bug or feature request\n- duplicate: This issue duplicates another existing issue\n- upstream: Bug exists in Claude Desktop itself, not in our packaging/patching. NOTE: This project prefers to patch upstream issues when feasible rather than just labeling them upstream. Only use this label when a patch is clearly impractical.\n- regression: Previously working functionality that broke in a newer release\n- security: Security-related issue (always set skip_comment=true for these)\n- cowork: Related to Cowork mode ONLY — the VM-based Claude Code session feature launched from the desktop app Code tab. Do NOT use for general Code tab issues or session history issues.\n- mcp: Related to MCP (Model Context Protocol) server/plugin integration\n- blocked: Waiting on an external dependency to be resolved\n- needs reproduction: Cannot reproduce, need more info from reporter\n- platform: amd64 / platform: arm64: Issue is specific to one CPU architecture\n- format: deb / format: appimage / format: rpm / format: nix: Issue is specific to one package format\n- priority: critical: Blocks usage for most users\n- priority: high: Important, should be addressed soon\n- priority: medium: Should be addressed when possible\n- priority: low: Nice to have, not urgent\n\n## Instructions\n1. Read the issue carefully. Consider the title, body, and any comments.\n2. Check the related issues and PRs for duplicates or prior discussion.\n3. Classify the issue into one of: bug, feature, question, duplicate, needs-info, not-actionable, needs-human.\n4. Set skip_comment to true if: classification is needs-human, you have low confidence on a complex or sensitive issue, or the issue involves security concerns.\n5. Set needs_source_investigation to true only if understanding the upstream Claude Desktop JavaScript source would help investigate.\n6. Suggest additional labels from the Label Glossary above. Only apply labels you are confident are correct.\n7. If classifying as duplicate, set duplicate_of to the issue number.\n8. If classifying as needs-info, list specific questions to ask."' \
             > /tmp/classify-prompt.txt
 
           result=$(claude -p "$(cat /tmp/classify-prompt.txt)" \
             --output-format json \
             --json-schema "$schema" \
-            --model sonnet \
+            --model claude-sonnet-4-6 \
             --max-budget-usd 2.00 \
             2>/dev/null) || {
               echo "::error::Claude classification failed"
@@ -305,28 +305,28 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          classification=$(cat /tmp/classification.json)
-          hints=$(printf '%s' "$classification" \
-            | jq -r '.investigation_hints // empty')
+          # Build investigation prompt from files (avoids shell injection)
+          {
+            echo "Investigate the following GitHub issue for the claude-desktop-debian project."
+            echo ""
+            echo "## Classification"
+            cat /tmp/classification.json
+            echo ""
+            echo "## Investigation Hints"
+            jq -r '.investigation_hints // "None"' /tmp/classification.json
+            echo ""
+            echo "The project repository is at $(pwd). Search the source code for relevant patterns."
+            if [[ -d /tmp/ref-source/app-extracted ]]; then
+              echo "The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/."
+              echo "Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js."
+            fi
+            echo ""
+            echo "Focus on finding the root cause or relevant code. Be specific about file paths and line numbers. Keep your findings concise."
+          } > /tmp/investigate-prompt.txt
 
-          ref_source_note=""
-          if [[ -d /tmp/ref-source/app-extracted ]]; then
-            ref_source_note="The beautified reference source (upstream app.asar) is at /tmp/ref-source/app-extracted/. Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js."
-          fi
-
-          investigation=$(claude -p "Investigate the following GitHub issue for the claude-desktop-debian project.
-
-          Issue classification and summary:
-          $classification
-
-          Investigation hints: $hints
-
-          The project repository is at $(pwd). Search the source code for relevant patterns.
-          $ref_source_note
-
-          Focus on finding the root cause or relevant code. Be specific about file paths and line numbers. Keep your findings concise." \
+          investigation=$(claude -p "$(cat /tmp/investigate-prompt.txt)" \
             --dangerously-skip-permissions \
-            --model sonnet \
+            --model claude-sonnet-4-6 \
             --max-budget-usd 1.00 \
             2>/dev/null) || {
               echo "::warning::Investigation failed, continuing without findings"
@@ -353,13 +353,30 @@ jobs:
 
           # Build comment prompt from files (avoids shell expansion issues)
           {
-            echo "Generate a triage comment for this GitHub issue."
+            cat << 'HEADER'
+          Generate a triage comment for this GitHub issue.
+
+          ## Writing Voice (CRITICAL — follow this exactly)
+          The following voice profile defines HOW you write. Match this voice
+          precisely. Every aspect of tone, sentence structure, and word choice
+          must follow this profile. This is the most important instruction.
+          HEADER
+            echo ""
+            if [[ -f /tmp/voice-profile.md ]]; then
+              cat /tmp/voice-profile.md
+            fi
             echo ""
             echo "## Project Context"
             cat CLAUDE.md
             echo ""
             echo "## Classification"
             cat /tmp/classification.json
+            echo ""
+            echo "## Related Issues"
+            cat /tmp/related-issues.json
+            echo ""
+            echo "## Related PRs"
+            cat /tmp/related-prs.json
             echo ""
             echo "## Investigation Findings"
             if [[ -f /tmp/investigation.txt ]]; then
@@ -368,21 +385,15 @@ jobs:
               echo "No investigation performed."
             fi
             echo ""
-            echo "## Voice Profile"
-            if [[ -f /tmp/voice-profile.md ]]; then
-              cat /tmp/voice-profile.md
-            fi
-            echo ""
             cat << 'INSTRUCTIONS'
-          ## Instructions
-          Write a triage comment following these rules:
+          ## Formatting Constraints
+          - This project prefers to patch upstream issues when feasible. Frame findings in terms of what could be patched, not "this is upstream, nothing we can do"
           - Lead with the finding, then reasoning
           - Keep to 2-4 short paragraphs
           - Use code blocks or links where helpful
+          - Reference related issues/PRs if they provide useful context (use #NNN format)
           - Don't open with "Thank you for your report" or similar
           - Don't overpromise fixes or timelines
-          - Don't use corporate-speak or AI vocabulary
-          - Be direct and helpful
           - If the classification is "duplicate", link to the duplicate issue
           - If "needs-info", ask the specific questions from the classification
           - Output ONLY the comment text, no wrapping or explanation
@@ -394,7 +405,7 @@ jobs:
           } > /tmp/comment-prompt.txt
 
           comment_result=$(claude -p "$(cat /tmp/comment-prompt.txt)" \
-            --model sonnet \
+            --model claude-sonnet-4-6 \
             --max-budget-usd 2.00 \
             2>/dev/null) || {
               echo "::error::Comment generation failed"
