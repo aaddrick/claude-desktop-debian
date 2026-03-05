@@ -1,0 +1,7 @@
+[claude-desktop]
+name=Claude Desktop for Fedora/RHEL
+baseurl=https://aaddrick.github.io/claude-desktop-debian/rpm/$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://aaddrick.github.io/claude-desktop-debian/KEY.gpg
