@@ -512,6 +512,9 @@ jobs:
           # Create directory structure
           mkdir -p rpm/x86_64 rpm/aarch64
 
+          # Remove old RPMs to prevent accumulation across releases
+          rm -f rpm/x86_64/*.rpm rpm/aarch64/*.rpm
+
           # Copy RPMs to appropriate architecture directories
           for rpm_file in ../incoming/*.rpm; do
             filename=$(basename "$rpm_file")
