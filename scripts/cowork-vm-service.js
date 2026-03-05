@@ -52,6 +52,12 @@ const LOG_FILE = path.join(
     process.env.HOME || '/tmp',
     '.config', 'Claude', 'logs', 'cowork_vm_daemon.log'
 );
+
+/**
+ * Locate virtiofsd binary. Debian installs it to /usr/libexec/virtiofsd which
+ * is outside PATH, so we check well-known locations after checking PATH.
+ * @returns {string|null} Absolute path to virtiofsd, or null if not found.
+ */
 function findVirtiofsd() {
     const candidates = [
         '/usr/libexec/virtiofsd',
