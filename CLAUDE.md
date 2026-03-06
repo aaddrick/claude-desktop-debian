@@ -1,8 +1,48 @@
-# Claude Desktop Debian - Development Notes
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux, applying necessary patches for Linux compatibility.
+This project repackages the official Windows Claude Desktop Electron app for Linux, producing `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), and `.AppImage` (portable) packages. The build pipeline downloads the Windows installer, extracts app resources, patches Electron behavior for Linux compatibility, and repackages into the target format.
+
+## Common Commands
+
+### Building
+
+```bash
+./build.sh                              # Auto-detect distro, build default format
+./build.sh --build deb                  # Debian package
+./build.sh --build rpm                  # RPM package
+./build.sh --build appimage             # AppImage
+./build.sh --build appimage --clean no  # Keep intermediate files for debugging
+./build.sh --exe /path/to/Claude.exe    # Use a local Windows installer
+```
+
+### Linting
+
+```bash
+# Run shellcheck on all shell scripts
+shellcheck build.sh scripts/*.sh
+
+# Run actionlint on GitHub Actions workflows
+actionlint
+
+# Or use the /lint skill which checks only changed files
+```
+
+### Testing
+
+```bash
+# Test the built AppImage
+./test-build/claude-desktop-*.AppImage 2>&1 | tee ~/.cache/claude-desktop-debian/launcher.log
+
+# CI flag parsing tests are in .github/workflows/test-flags.yml
+# Trigger CI on a branch
+gh workflow run CI --ref branch-name
+gh run watch RUN_ID
+gh run download RUN_ID -n artifact-name
+```
 
 ## Code Style
 
@@ -136,6 +176,16 @@ The app uses a wrapper system to intercept and fix Electron behavior for Linux:
 - **`frame-fix-entry.js`** - Entry point that loads the wrapper before the main app
 
 These are injected by `build.sh` and referenced in `package.json`'s `main` field. The wrapper pattern allows fixing Electron behavior without modifying the minified app code directly.
+
+## Key Scripts
+
+- **`build.sh`** - Main build orchestrator (~52KB). Handles architecture/distro detection, Windows installer download/extraction, icon processing, and delegates to format-specific packagers.
+- **`scripts/build-deb-package.sh`** / **`scripts/build-rpm-package.sh`** / **`scripts/build-appimage.sh`** - Format-specific packaging logic.
+- **`scripts/launcher-common.sh`** - Shared launcher library sourced at runtime. Handles Wayland/X11 detection, Electron arg construction.
+- **`scripts/frame-fix-wrapper.js`** - Patches `BrowserWindow` defaults (`frame: true`, `autoHideMenuBar: true`) for Linux.
+- **`scripts/claude-native-stub.js`** - Stub implementations of Windows-only native APIs (`setWindowEffect`, `AuthRequest`, etc.).
+- **`scripts/cowork-vm-service.js`** - Cowork mode VM service. On Linux, runs Claude Code directly on the host (no VM isolation yet).
+- **`scripts/resolve-download-url.py`** - Playwright-based URL resolver for Cloudflare-protected download redirects.
 
 ## Setting Up build-reference
 
@@ -284,47 +334,21 @@ When adding support for new distribution formats (e.g., RPM, Flatpak, Snap) or p
 
 ## CI/CD
 
-### Triggering Builds
-
-```bash
-# Trigger CI on a branch
-gh workflow run CI --ref branch-name
-
-# Watch the run
-gh run watch RUN_ID
-
-# Download artifacts
-gh run download RUN_ID -n artifact-name
-```
-
 ### Build Artifacts
 
-- `claude-desktop-VERSION-amd64.deb` - Debian package for x86_64
-- `claude-desktop-VERSION-amd64.AppImage` - AppImage for x86_64
-- `claude-desktop-VERSION-arm64.deb` - Debian package for ARM64
-- `claude-desktop-VERSION-arm64.AppImage` - AppImage for ARM64
+CI produces 6 artifacts (3 formats × 2 architectures):
+- `claude-desktop-VERSION-{amd64,arm64}.deb`
+- `claude-desktop-VERSION-1.{x86_64,aarch64}.rpm`
+- `claude-desktop-VERSION-{amd64,arm64}.AppImage`
 - `result/` - Nix build output (symlink, gitignored)
 
-## Testing
-
-### Local Build
-
-```bash
-./build.sh --build appimage --clean no
-```
+A daily GitHub Action (`check-claude-version.yml`) auto-detects new Claude Desktop releases, updates `build.sh` URLs, and triggers builds.
 
 ### Nix Build
 
 ```bash
 nix build .#claude-desktop
 nix build .#claude-desktop-fhs
-```
-
-### Testing AppImage
-
-```bash
-# Run with logging
-./test-build/claude-desktop-*.AppImage 2>&1 | tee ~/.cache/claude-desktop-debian/launcher.log
 ```
 
 ## Debugging Workflow
