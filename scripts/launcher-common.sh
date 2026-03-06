@@ -470,12 +470,35 @@ print(len(servers))
 		_info 'Fix: sudo modprobe vhost_vsock'
 	fi
 
+	# virtiofsd — Debian installs it outside PATH (/usr/libexec or /usr/lib/qemu)
+	local _virtiofsd_bin=''
+	if command -v virtiofsd &>/dev/null; then
+		_virtiofsd_bin=$(command -v virtiofsd)
+	else
+		local _vfsd_candidate
+		for _vfsd_candidate in \
+			/usr/libexec/virtiofsd \
+			/usr/lib/qemu/virtiofsd
+		do
+			if [[ -x $_vfsd_candidate ]]; then
+				_virtiofsd_bin="$_vfsd_candidate"
+				break
+			fi
+		done
+	fi
+
+	if [[ -n $_virtiofsd_bin ]]; then
+		_pass "virtiofsd: found ($_virtiofsd_bin)"
+	else
+		_warn 'virtiofsd: not found'
+		_info "Fix: $(_cowork_pkg_hint "$_distro_id" virtiofsd)"
+	fi
+
 	# Check required tools: label, binary, pkg-hint name
 	local _tool_label _tool_bin _tool_pkg
 	for _tool_label in \
 		'QEMU:qemu-system-x86_64:qemu' \
 		'socat:socat:socat' \
-		'virtiofsd:virtiofsd:virtiofsd' \
 		'bubblewrap:bwrap:bubblewrap'
 	do
 		_tool_bin="${_tool_label#*:}"
