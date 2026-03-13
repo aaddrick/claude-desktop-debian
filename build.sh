@@ -661,6 +661,9 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	# Patch quick window
 	patch_quick_window
 
+	# Patch Quick Entry to use last-selected model
+	patch_quick_entry_model
+
 	# Add Linux Claude Code support
 	patch_linux_claude_code
 
@@ -875,6 +878,97 @@ patch_quick_window() {
 	if ! grep -q 'e.blur(),e.hide()' app.asar.contents/.vite/build/index.js; then
 		sed -i 's/e.hide()/e.blur(),e.hide()/' app.asar.contents/.vite/build/index.js
 		echo 'Added blur() call to fix quick window submit issue'
+	fi
+}
+
+patch_quick_entry_model() {
+	echo 'Patching Quick Entry to use last-selected model...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	# Quick Entry creates conversations without a model field, causing
+	# the server to default to Sonnet regardless of user preference.
+	# This patch injects a fetch interceptor that reads the user's
+	# last-selected model from localStorage ("sticky-model-selector")
+	# and adds it to the POST /chat_conversations request body.
+	#
+	# Anchor: the dom-ready handler on the mainView webContents,
+	# identified by the unique pattern of calling a function then
+	# setting up a find-in-page preload in the same block.
+
+	if ! INDEX_JS="$index_js" node << 'QUICK_ENTRY_MODEL_PATCH'
+const fs = require('fs');
+const indexJs = process.env.INDEX_JS;
+let code = fs.readFileSync(indexJs, 'utf8');
+
+// Find the dom-ready handler on the mainView webContents.
+// Pattern: VAR.webContents.on("dom-ready",()=>{FUNC()})
+// followed by findInPage preload setup, making it unique.
+const domReadyRe =
+	/(\w+\.webContents\.on\(\s*"dom-ready"\s*,\s*\(\)\s*=>\s*\{)(\w+\(\))\}/;
+const match = code.match(domReadyRe);
+
+if (!match) {
+	console.error('Could not find mainView dom-ready handler');
+	process.exit(1);
+}
+
+// Verify this is the right dom-ready by checking context:
+// it should be near findInPage preload setup
+const matchIdx = code.indexOf(match[0]);
+const nearby = code.substring(matchIdx, matchIdx + 500);
+if (!nearby.includes('findInPage')) {
+	console.error('dom-ready handler found but not near findInPage setup');
+	process.exit(1);
+}
+
+const funcCall = match[2];
+const patchJs = [
+	'(function(){',
+	'const _f=window.fetch;',
+	'window.fetch=async function(u,o){',
+	'if(typeof u==="string"',
+	'&&u.includes("/chat_conversations")',
+	'&&!u.includes("/completion")',
+	'&&!u.includes("/title")',
+	'&&!u.includes("/tree")',
+	'&&o&&o.method==="POST"){',
+	'try{const b=JSON.parse(o.body);',
+	'if(!b.model){',
+	'const s=localStorage.getItem("sticky-model-selector");',
+	'if(s){try{const p=JSON.parse(s);',
+	'const m=typeof p==="string"?p:p.model||p.value||null;',
+	'if(m){b.model=m;',
+	'b.include_conversation_preferences=true;',
+	'o.body=JSON.stringify(b);',
+	'console.log("[QuickEntryModelFix] Using model:",m)',
+	'}}catch(pe){b.model=s;',
+	'b.include_conversation_preferences=true;',
+	'o.body=JSON.stringify(b)}}}}catch(e){}}',
+	'return _f.call(this,u,o)}})()',
+].join('');
+
+// Extract the variable name for the webContents reference
+const fullRef = match[1].replace(
+	/\.webContents\.on\(\s*"dom-ready"\s*,\s*\(\)\s*=>\s*\{$/,
+	''
+);
+
+const finalReplacement =
+	match[1] +
+	funcCall +
+	';' +
+	fullRef +
+	'.webContents.executeJavaScript(`' +
+	patchJs +
+	'`).catch(function(){})}';
+
+code = code.replace(match[0], finalReplacement);
+
+fs.writeFileSync(indexJs, code);
+console.log('  Quick Entry model fix applied');
+QUICK_ENTRY_MODEL_PATCH
+	then
+		echo 'WARNING: Quick Entry model patch failed' >&2
 	fi
 }
 
