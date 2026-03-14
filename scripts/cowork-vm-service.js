@@ -52,6 +52,32 @@ const LOG_FILE = path.join(
     process.env.HOME || '/tmp',
     '.config', 'Claude', 'logs', 'cowork_vm_daemon.log'
 );
+
+/**
+ * Locate virtiofsd binary. Debian installs it to /usr/libexec/virtiofsd which
+ * is outside PATH, so we check well-known locations after checking PATH.
+ * @returns {string|null} Absolute path to virtiofsd, or null if not found.
+ */
+function findVirtiofsd() {
+    const candidates = [
+        '/usr/libexec/virtiofsd',
+        '/usr/lib/qemu/virtiofsd',
+    ];
+    try {
+        const result = execFileSync('which', ['virtiofsd'], {
+            encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+        if (result) return result;
+    } catch (_) { /* not in PATH */ }
+    for (const p of candidates) {
+        try {
+            fs.accessSync(p, fs.constants.X_OK);
+            return p;
+        } catch (_) { /* not found */ }
+    }
+    return null;
+}
+
 function formatArgs(args) {
     return args.map(a => typeof a === 'string' ? a : JSON.stringify(a))
         .join(' ');
@@ -980,22 +1006,28 @@ class KvmBackend extends BackendBase {
         const initrdPath = path.join(VM_BASE_DIR, 'initrd');
 
         // Start virtiofsd for home directory share (if available)
-        try {
-            const virtiofsSock = path.join(this.sessionDir, 'virtiofs.sock');
-            this.virtiofsdProcess = spawnProcess('virtiofsd', [
-                `--socket-path=${virtiofsSock}`,
-                '-o', `source=${os.homedir()}`,
-                '-o', 'cache=auto',
-            ], {
-                stdio: ['ignore', 'pipe', 'pipe'],
-            });
-            this.virtiofsdProcess.on('error', (err) => {
-                log('KvmBackend: virtiofsd error:', err.message);
+        const virtiofsdBin = findVirtiofsd();
+        if (virtiofsdBin) {
+            try {
+                const virtiofsSock = path.join(this.sessionDir, 'virtiofs.sock');
+                this.virtiofsdProcess = spawnProcess(virtiofsdBin, [
+                    `--socket-path=${virtiofsSock}`,
+                    '-o', `source=${os.homedir()}`,
+                    '-o', 'cache=auto',
+                ], {
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                });
+                this.virtiofsdProcess.on('error', (err) => {
+                    log('KvmBackend: virtiofsd error:', err.message);
+                    this.virtiofsdProcess = null;
+                });
+                log(`KvmBackend: virtiofsd started, socket=${virtiofsSock}`);
+            } catch (e) {
+                log(`KvmBackend: virtiofsd not available: ${e.message}`);
                 this.virtiofsdProcess = null;
-            });
-            log(`KvmBackend: virtiofsd started, socket=${virtiofsSock}`);
-        } catch (e) {
-            log(`KvmBackend: virtiofsd not available: ${e.message}`);
+            }
+        } else {
+            log('KvmBackend: virtiofsd not found, skipping home directory share');
             this.virtiofsdProcess = null;
         }
 
