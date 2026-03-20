@@ -67,6 +67,12 @@ build_electron_args() {
 	# Disable CustomTitlebar for better Linux integration
 	electron_args+=('--disable-features=CustomTitlebar')
 
+	# Detect remote desktop sessions that lack GPU acceleration (XRDP, VNC)
+	if [[ -n "${XRDP_SESSION:-}" ]] || pgrep -x xrdp-sesman &>/dev/null; then
+		electron_args+=('--disable-gpu' '--disable-software-rasterizer')
+		log_message 'Remote desktop detected (XRDP) - GPU compositing disabled'
+	fi
+
 	# X11 session - no special flags needed
 	if [[ $is_wayland != true ]]; then
 		log_message 'X11 session detected'
