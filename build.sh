@@ -885,11 +885,22 @@ patch_quick_entry_model() {
 	echo 'Patching Quick Entry to use last-selected model...'
 	local index_js='app.asar.contents/.vite/build/index.js'
 
+	if grep -q '__quickEntryModelFixApplied' "$index_js"; then
+		echo '  Quick Entry model fix already applied'
+		return
+	fi
+
 	# Quick Entry creates conversations without a model field, causing
 	# the server to default to Sonnet regardless of user preference.
 	# This patch injects a fetch interceptor that reads the user's
 	# last-selected model from localStorage ("sticky-model-selector")
 	# and adds it to the POST /chat_conversations request body.
+	#
+	# Note: "sticky-model-selector" is a localStorage key set by the
+	# claude.ai web frontend, not by the asar code. Anthropic could
+	# rename it or change its format at any time. The code degrades
+	# gracefully (falls back to server default) if the key is missing
+	# or its format changes.
 	#
 	# Anchor: the dom-ready handler on the mainView webContents,
 	# identified by the unique pattern of calling a function then
@@ -924,6 +935,8 @@ if (!nearby.includes('findInPage')) {
 const funcCall = match[2];
 const patchJs = [
 	'(function(){',
+	'if(window.__quickEntryModelFixApplied)return;',
+	'window.__quickEntryModelFixApplied=true;',
 	'const _f=window.fetch;',
 	'window.fetch=async function(u,o){',
 	'if(typeof u==="string"',
@@ -939,11 +952,13 @@ const patchJs = [
 	'const m=typeof p==="string"?p:p.model||p.value||null;',
 	'if(m){b.model=m;',
 	'b.include_conversation_preferences=true;',
-	'o.body=JSON.stringify(b);',
+	'o=Object.assign({},o,{body:JSON.stringify(b)});',
 	'console.log("[QuickEntryModelFix] Using model:",m)',
 	'}}catch(pe){b.model=s;',
 	'b.include_conversation_preferences=true;',
-	'o.body=JSON.stringify(b)}}}}catch(e){}}',
+	'o=Object.assign({},o,{body:JSON.stringify(b)});',
+	'console.warn("[QuickEntryModelFix] parse error, using raw:",pe)',
+	'}}}}catch(e){console.warn("[QuickEntryModelFix]",e)}}',
 	'return _f.call(this,u,o)}})()',
 ].join('');
 
@@ -960,7 +975,7 @@ const finalReplacement =
 	fullRef +
 	'.webContents.executeJavaScript(`' +
 	patchJs +
-	'`).catch(function(){})}';
+	'`).catch(function(e){console.warn("[QuickEntryModelFix] inject failed:",e)})}';
 
 code = code.replace(match[0], finalReplacement);
 
