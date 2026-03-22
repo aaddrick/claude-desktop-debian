@@ -203,44 +203,35 @@ Module.prototype.require = function(id) {
               // fires — only 'show'. Fixes: #323
               this.on('show', fixAfterStateChange);
 
-              // Jiggle on show-after-hide: 1px setSize forces
-              // Electron's LayoutManagerBase to fully recalculate,
-              // resetting stale cache. Only fires once per cycle.
-              // Fixes: #323
-              let wasHidden = false;
-              this.on('hide', () => { wasHidden = true; });
-              this.on('show', () => {
-                if (wasHidden) {
-                  wasHidden = false;
-                  const [w, h] = this.getSize();
-                  this.setSize(w + 1, h);
-                  setTimeout(() => {
-                    if (!this.isDestroyed()) {
-                      this.setSize(w, h);
-                      fixAfterStateChange();
-                    }
-                  }, 50);
-                }
-              });
+              // 1px setSize jiggle forces Electron's LayoutManagerBase
+              // to fully recalculate, resetting stale cache. Fixes: #323
+              const jiggleSize = () => {
+                if (this.isDestroyed()) return;
+                const [w, h] = this.getSize();
+                this.setSize(w + 1, h);
+                setTimeout(() => {
+                  if (!this.isDestroyed()) {
+                    this.setSize(w, h);
+                    fixAfterStateChange();
+                  }
+                }, 50);
+              };
 
-              // Jiggle on focus-after-blur: Hyprland and similar
-              // WMs emit blur/focus (not hide/show) on workspace
-              // switches. Same 1px jiggle technique. Fixes: #323
-              let wasBlurred = false;
-              this.on('blur', () => { wasBlurred = true; });
-              this.on('focus', () => {
-                if (wasBlurred) {
-                  wasBlurred = false;
-                  const [w, h] = this.getSize();
-                  this.setSize(w + 1, h);
-                  setTimeout(() => {
-                    if (!this.isDestroyed()) {
-                      this.setSize(w, h);
-                      fixAfterStateChange();
-                    }
-                  }, 50);
-                }
-              });
+              // Tiling WMs signal workspace switches via hide/show
+              // or blur/focus pairs. Track each transition and jiggle
+              // once per cycle to reset the layout cache.
+              const addJigglePair = (offEvent, onEvent) => {
+                let armed = false;
+                this.on(offEvent, () => { armed = true; });
+                this.on(onEvent, () => {
+                  if (armed) {
+                    armed = false;
+                    jiggleSize();
+                  }
+                });
+              };
+              addJigglePair('hide', 'show');
+              addJigglePair('blur', 'focus');
 
               // ready-to-show fires once per window lifecycle
               this.once('ready-to-show', () => {
