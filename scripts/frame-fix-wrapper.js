@@ -140,13 +140,11 @@ Module.prototype.require = function(id) {
             });
 
             if (!popup) {
-              // Directly set child view bounds to match content size.
-              // This bypasses Chromium's stale LayoutManagerBase cache
-              // (only invalidated via _NET_WM_STATE atom changes, which
-              // KWin corner-snap/quick-tile never sets). Instead of
-              // monkey-patching getContentBounds() (which causes drag
-              // resize jitter at ~60Hz), we only act on discrete state
-              // changes. Fixes: #239
+              // Set child view bounds to match content size, bypassing
+              // Chromium's stale LayoutManagerBase cache. After fixing
+              // bounds, toggle zoom factor to force a repaint — setBounds
+              // alone updates geometry but doesn't re-composite.
+              // Fixes: #239
               const fixChildBounds = () => {
                 if (this.isDestroyed()) return;
                 const children = this.contentView?.children;
@@ -156,15 +154,24 @@ Module.prototype.require = function(id) {
                 const cur = children[0].getBounds();
                 if (cur.width !== cw || cur.height !== ch) {
                   children[0].setBounds({ x: 0, y: 0, width: cw, height: ch });
+                  try {
+                    const wc = children[0].webContents || this.webContents;
+                    if (wc && !wc.isDestroyed()) {
+                      wc.setZoomFactor(1.0001);
+                      setTimeout(() => {
+                        if (!wc.isDestroyed()) wc.setZoomFactor(1.0);
+                      }, 16);
+                    }
+                  } catch (e) { /* ignore */ }
                 }
               };
 
               // Geometry settles in stages after state changes.
-              // Three passes at 0/16/150ms cover immediate, next-frame,
-              // and compositor-animation-complete timing.
+              // 8ms catches early mismatches, 32ms for next-frame,
+              // 150ms as safety net after compositor animation.
               const fixAfterStateChange = () => {
-                fixChildBounds();
-                setTimeout(fixChildBounds, 16);
+                setTimeout(fixChildBounds, 8);
+                setTimeout(fixChildBounds, 32);
                 setTimeout(fixChildBounds, 150);
               };
 
@@ -174,8 +181,8 @@ Module.prototype.require = function(id) {
               }
 
               // KWin corner-snap/quick-tile emits 'moved' but not
-              // 'maximize'/'unmaximize'. Guard with a size-change check
-              // so normal window drags (position-only) are ignored.
+              // 'maximize'/'unmaximize'. Guard with a size-change
+              // check so normal drags (position-only) are ignored.
               let lastSize = [0, 0];
               this.on('moved', () => {
                 if (this.isDestroyed()) return;
@@ -188,10 +195,52 @@ Module.prototype.require = function(id) {
 
               // Tiling WMs (Hyprland, i3, sway) emit 'resize' on
               // workspace switches with stale getContentBounds()
-              // cache. The size-change guard in fixChildBounds()
-              // prevents unnecessary work during drag resize.
-              // Fixes: #323
+              // cache. Fixes: #323
               this.on('resize', fixAfterStateChange);
+
+              // Some tiling WMs hide/show windows on workspace
+              // switches. If the tile size is unchanged, no 'resize'
+              // fires — only 'show'. Fixes: #323
+              this.on('show', fixAfterStateChange);
+
+              // Jiggle on show-after-hide: 1px setSize forces
+              // Electron's LayoutManagerBase to fully recalculate,
+              // resetting stale cache. Only fires once per cycle.
+              // Fixes: #323
+              let wasHidden = false;
+              this.on('hide', () => { wasHidden = true; });
+              this.on('show', () => {
+                if (wasHidden) {
+                  wasHidden = false;
+                  const [w, h] = this.getSize();
+                  this.setSize(w + 1, h);
+                  setTimeout(() => {
+                    if (!this.isDestroyed()) {
+                      this.setSize(w, h);
+                      fixAfterStateChange();
+                    }
+                  }, 50);
+                }
+              });
+
+              // Jiggle on focus-after-blur: Hyprland and similar
+              // WMs emit blur/focus (not hide/show) on workspace
+              // switches. Same 1px jiggle technique. Fixes: #323
+              let wasBlurred = false;
+              this.on('blur', () => { wasBlurred = true; });
+              this.on('focus', () => {
+                if (wasBlurred) {
+                  wasBlurred = false;
+                  const [w, h] = this.getSize();
+                  this.setSize(w + 1, h);
+                  setTimeout(() => {
+                    if (!this.isDestroyed()) {
+                      this.setSize(w, h);
+                      fixAfterStateChange();
+                    }
+                  }, 50);
+                }
+              });
 
               // ready-to-show fires once per window lifecycle
               this.once('ready-to-show', () => {
