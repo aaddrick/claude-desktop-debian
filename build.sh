@@ -125,17 +125,6 @@ detect_architecture() {
 	echo "Target Architecture: $architecture"
 	section_footer 'Architecture Detection'
 
-	# VM bundle checksums — SHA-256 of decompressed linux CDN files.
-	# Updated automatically by check-claude-version.yml when the
-	# bundle SHA changes. Used in patch_cowork_linux() Patch 4 to
-	# inject correct linux manifest entries. If empty, Patch 4 falls
-	# back to copying win32 checksums (which may not match).
-	vm_checksum_x64_rootfs_vhdx='a829fe446f24d5e49dcca7f4c61042cf79bc53197d06c582f3fac69282131410'
-	vm_checksum_x64_vmlinuz='9ab0e4031fbdf90c5133a18c0ab399e9abc0a5935777ac5b29c1e26dba8b6596'
-	vm_checksum_x64_initrd='032214290388d688790d7b169575a5f75693543b21b33869423713411c12bd6d'
-	vm_checksum_arm64_rootfs_vhdx='d6eb347a6914839514c42b262baeba48df81517cd7fdfbeb0e435dd98cbb7105'
-	vm_checksum_arm64_vmlinuz='ce876786f908390c65a8a58a442399a864875e13eae8da5e4ebc8c0255772515'
-	vm_checksum_arm64_initrd='c75a1aff9719bf09527a8f9f055b3fb6e2c0633973efc8295cf07e46bb6333e1'
 }
 
 detect_distro() {
@@ -973,12 +962,6 @@ patch_cowork_linux() {
 	# with minified JavaScript. Uses unique string anchors and dynamic
 	# variable extraction to be version-agnostic per CLAUDE.md guidelines.
 	if ! INDEX_JS="$index_js" SVC_PATH="cowork-vm-service.js" \
-		VM_CS_X64_ROOTFS="$vm_checksum_x64_rootfs_vhdx" \
-		VM_CS_X64_VMLINUZ="$vm_checksum_x64_vmlinuz" \
-		VM_CS_X64_INITRD="$vm_checksum_x64_initrd" \
-		VM_CS_ARM64_ROOTFS="$vm_checksum_arm64_rootfs_vhdx" \
-		VM_CS_ARM64_VMLINUZ="$vm_checksum_arm64_vmlinuz" \
-		VM_CS_ARM64_INITRD="$vm_checksum_arm64_initrd" \
 		node << 'COWORK_PATCH'
 const fs = require('fs');
 const indexJs = process.env.INDEX_JS;
@@ -1108,54 +1091,15 @@ if (pipeMatch) {
 }
 
 // ============================================================
-// Patch 4: Bundle manifest - add Linux entries to Ln.files
-// Anchor: find files:{darwin: near rootfs.img checksum pattern
-// Extracts the win32 file entries (rootfs.vhdx, vmlinuz, initrd)
-// for structure (names, progressStart/End), then replaces the
-// checksums with correct linux values from build-time env vars.
-// Falls back to win32 checksums if linux checksums unavailable.
+// Patch 4: Bundle manifest - add empty Linux entries to files
+// The linux key MUST exist to prevent TypeError when the app
+// accesses files["linux"]["x64"] during cowork status checks.
+// Empty arrays mean no VM files are downloaded — this is correct
+// because the VM backend is non-functional on Linux (bwrap is
+// the only working backend and doesn't use VM files).
+// Note: [].every() returns true (vacuous truth), so bO() reports
+// "Ready" status. This is intentional — it skips the download.
 // ============================================================
-const linuxChecksums = {
-    x64: {
-        'rootfs.vhdx': process.env.VM_CS_X64_ROOTFS || '',
-        'vmlinuz': process.env.VM_CS_X64_VMLINUZ || '',
-        'initrd': process.env.VM_CS_X64_INITRD || '',
-    },
-    arm64: {
-        'rootfs.vhdx': process.env.VM_CS_ARM64_ROOTFS || '',
-        'vmlinuz': process.env.VM_CS_ARM64_VMLINUZ || '',
-        'initrd': process.env.VM_CS_ARM64_INITRD || '',
-    },
-};
-
-function replaceChecksums(archArray, arch) {
-    const checksums = linuxChecksums[arch];
-    const hasChecksums = Object.values(checksums).every(
-        v => /^[a-f0-9]{64}$/.test(v));
-    if (!hasChecksums) {
-        console.log(`  WARNING: Missing linux ${arch} checksums,` +
-            ' using win32 values as fallback');
-        return archArray;
-    }
-    let result = archArray;
-    for (const [name, hash] of Object.entries(checksums)) {
-        // Match: checksum:"<64-hex>" near name:"<name>"
-        // The checksum field follows the name field in each entry
-        const nameIdx = result.indexOf('"' + name + '"');
-        if (nameIdx === -1) continue;
-        const afterName = result.substring(nameIdx);
-        const csRe = /checksum\s*:\s*"([a-f0-9]{64})"/;
-        const csMatch = afterName.match(csRe);
-        if (csMatch) {
-            result = result.substring(0, nameIdx) +
-                afterName.replace(csMatch[0],
-                    'checksum:"' + hash + '"');
-        }
-    }
-    console.log(`  Replaced ${arch} checksums with linux values`);
-    return result;
-}
-
 if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
     !code.includes('linux:{')) {
     const shaRe = /sha\s*:\s*"([a-f0-9]{40})"/;
@@ -1168,47 +1112,12 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
             if (filesBlock) {
                 const filesEnd = code.indexOf(filesBlock, afterSha)
                     + filesBlock.length;
-
-                // Extract win32 x64 and arm64 arrays for structure
-                let win32x64 = null;
-                let win32arm64 = null;
-                const win32Idx = filesBlock.indexOf('win32');
-                if (win32Idx !== -1) {
-                    const win32Block =
-                        extractBlock(filesBlock, win32Idx, '{');
-                    if (win32Block) {
-                        const x64Idx = win32Block.indexOf('x64');
-                        const arm64Idx = win32Block.indexOf('arm64');
-                        if (x64Idx !== -1) {
-                            win32x64 =
-                                extractBlock(win32Block, x64Idx, '[');
-                        }
-                        if (arm64Idx !== -1) {
-                            win32arm64 =
-                                extractBlock(win32Block, arm64Idx, '[');
-                        }
-                    }
-                }
-
-                // Build linux entries with correct checksums
-                let linuxX64 = '[]';
-                let linuxArm64 = '[]';
-                if (win32x64 && win32x64.includes('name')) {
-                    linuxX64 = replaceChecksums(win32x64, 'x64');
-                }
-                if (win32arm64 && win32arm64.includes('name')) {
-                    linuxArm64 = replaceChecksums(
-                        win32arm64, 'arm64');
-                }
-
                 const insertPos = filesEnd - 1;
-                const linuxEntry =
-                    ',linux:{x64:' + linuxX64 +
-                    ',arm64:' + linuxArm64 + '}';
+                const linuxEntry = ',linux:{x64:[],arm64:[]}';
                 code = code.substring(0, insertPos) +
                     linuxEntry + code.substring(insertPos);
-                console.log('  Added Linux entries to bundle' +
-                    ' manifest');
+                console.log('  Added empty Linux entries to' +
+                    ' bundle manifest (VM download disabled)');
                 patchCount++;
             }
         }

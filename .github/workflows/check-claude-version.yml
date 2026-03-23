@@ -171,12 +171,11 @@ jobs:
 
           # Download to temp files first so a partial download doesn't
           # produce a valid-looking but wrong SRI hash.
-          # Keep the AMD64 installer for VM checksum extraction later.
           amd64_tmp=$(mktemp)
           curl -fsSL -o "$amd64_tmp" "$AMD64_URL" || { echo "AMD64 download failed"; exit 1; }
           AMD64_HEX=$(sha256sum "$amd64_tmp" | awk '{print $1}')
           AMD64_HASH=$(echo "$AMD64_HEX" | xxd -r -p | base64 -w0)
-          echo "amd64_installer=$amd64_tmp" >> $GITHUB_OUTPUT
+          rm "$amd64_tmp"
           echo "amd64_sri=sha256-$AMD64_HASH" >> $GITHUB_OUTPUT
           echo "amd64_sha256=$AMD64_HEX" >> $GITHUB_OUTPUT
 
@@ -215,132 +214,9 @@ jobs:
           echo "Updated build.sh checksums:"
           grep "claude_exe_sha256=" build.sh
 
-      - name: Extract VM bundle SHA from installer
-        if: steps.check_update.outputs.update_needed == 'true'
-        id: vm_bundle
-        run: |
-          INSTALLER="${{ steps.nix_hashes.outputs.amd64_installer }}"
-          if [ -z "$INSTALLER" ] || [ ! -f "$INSTALLER" ]; then
-            echo "No installer available, skipping VM checksums"
-            echo "bundle_sha=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          WORK=$(mktemp -d)
-          # Clean up temp files on any exit path
-          skip_vm() { echo "bundle_sha=" >> $GITHUB_OUTPUT; }
-          trap 'rm -rf "$WORK"; rm -f "$INSTALLER"' EXIT
-
-          echo "Extracting installer to find bundle SHA..."
-
-          # Extract exe → nupkg → app.asar → index.js
-          7z x -y -o"$WORK/exe" "$INSTALLER" > /dev/null 2>&1
-          NUPKG=$(find "$WORK/exe" -name "AnthropicClaude-*.nupkg" | head -1)
-          if [ -z "$NUPKG" ]; then
-            echo "No nupkg found, skipping VM checksums"
-            skip_vm; exit 0
-          fi
-
-          7z x -y -o"$WORK/nupkg" "$NUPKG" > /dev/null 2>&1
-          ASAR="$WORK/nupkg/lib/net45/resources/app.asar"
-          if [ ! -f "$ASAR" ]; then
-            echo "No app.asar found, skipping VM checksums"
-            skip_vm; exit 0
-          fi
-
-          npx --yes @electron/asar extract "$ASAR" "$WORK/app" 2>/dev/null
-          INDEX_JS="$WORK/app/.vite/build/index.js"
-          if [ ! -f "$INDEX_JS" ]; then
-            echo "No index.js found, skipping VM checksums"
-            skip_vm; exit 0
-          fi
-
-          # Extract bundle SHA (40-char hex after sha: or sha:")
-          BUNDLE_SHA=$(grep -oP 'sha\s*:\s*"([a-f0-9]{40})"' "$INDEX_JS" \
-            | grep -oP '[a-f0-9]{40}' | head -1)
-
-          if [ -z "$BUNDLE_SHA" ]; then
-            echo "Could not extract bundle SHA, skipping VM checksums"
-            skip_vm; exit 0
-          fi
-
-          echo "Bundle SHA: $BUNDLE_SHA"
-
-          # Validate CDN has linux files for this SHA
-          HTTP_CODE=$(curl -sI -o /dev/null -w "%{http_code}" \
-            "https://downloads.claude.ai/vms/linux/x64/$BUNDLE_SHA/vmlinuz.zst")
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "Linux VM files not published yet (HTTP $HTTP_CODE), skipping"
-            skip_vm; exit 0
-          fi
-
-          echo "Linux VM files confirmed on CDN"
-          echo "bundle_sha=$BUNDLE_SHA" >> $GITHUB_OUTPUT
-
-      - name: Compute VM bundle checksums
-        if: steps.check_update.outputs.update_needed == 'true' && steps.vm_bundle.outputs.bundle_sha != ''
-        id: vm_checksums
-        run: |
-          SHA="${{ steps.vm_bundle.outputs.bundle_sha }}"
-          BASE="https://downloads.claude.ai/vms/linux"
-
-          compute_checksum() {
-            local url="$1" label="$2"
-            local hash
-            hash=$(set -o pipefail
-              curl -fsSL --max-time 600 "$url" \
-                | zstd -d \
-                | sha256sum \
-                | awk '{print $1}'
-            ) || { echo "  FAILED: $label" >&2; return; }
-
-            if [[ ! $hash =~ ^[a-f0-9]{64}$ ]]; then
-              echo "  INVALID hash for $label: $hash" >&2
-              return
-            fi
-            echo "  $label: $hash" >&2
-            echo "$hash"
-          }
-
-          echo "Computing x64 checksums..."
-          X64_ROOTFS=$(compute_checksum "$BASE/x64/$SHA/rootfs.vhdx.zst" "x64/rootfs.vhdx")
-          X64_VMLINUZ=$(compute_checksum "$BASE/x64/$SHA/vmlinuz.zst" "x64/vmlinuz")
-          X64_INITRD=$(compute_checksum "$BASE/x64/$SHA/initrd.zst" "x64/initrd")
-
-          echo "Computing arm64 checksums..."
-          ARM64_ROOTFS=$(compute_checksum "$BASE/arm64/$SHA/rootfs.vhdx.zst" "arm64/rootfs.vhdx")
-          ARM64_VMLINUZ=$(compute_checksum "$BASE/arm64/$SHA/vmlinuz.zst" "arm64/vmlinuz")
-          ARM64_INITRD=$(compute_checksum "$BASE/arm64/$SHA/initrd.zst" "arm64/initrd")
-
-          echo "x64_rootfs=$X64_ROOTFS" >> $GITHUB_OUTPUT
-          echo "x64_vmlinuz=$X64_VMLINUZ" >> $GITHUB_OUTPUT
-          echo "x64_initrd=$X64_INITRD" >> $GITHUB_OUTPUT
-          echo "arm64_rootfs=$ARM64_ROOTFS" >> $GITHUB_OUTPUT
-          echo "arm64_vmlinuz=$ARM64_VMLINUZ" >> $GITHUB_OUTPUT
-          echo "arm64_initrd=$ARM64_INITRD" >> $GITHUB_OUTPUT
-
-      - name: Update build.sh VM checksums
-        if: steps.check_update.outputs.update_needed == 'true' && steps.vm_bundle.outputs.bundle_sha != ''
-        run: |
-          update_vm_checksum() {
-            local var="$1" value="$2"
-            if [ -z "$value" ]; then
-              echo "  Skipping $var (empty)"
-              return
-            fi
-            sed -i "s/${var}='[^']*'/${var}='${value}'/" build.sh
-          }
-
-          echo "Updating build.sh VM checksums..."
-          update_vm_checksum vm_checksum_x64_rootfs_vhdx "${{ steps.vm_checksums.outputs.x64_rootfs }}"
-          update_vm_checksum vm_checksum_x64_vmlinuz "${{ steps.vm_checksums.outputs.x64_vmlinuz }}"
-          update_vm_checksum vm_checksum_x64_initrd "${{ steps.vm_checksums.outputs.x64_initrd }}"
-          update_vm_checksum vm_checksum_arm64_rootfs_vhdx "${{ steps.vm_checksums.outputs.arm64_rootfs }}"
-          update_vm_checksum vm_checksum_arm64_vmlinuz "${{ steps.vm_checksums.outputs.arm64_vmlinuz }}"
-          update_vm_checksum vm_checksum_arm64_initrd "${{ steps.vm_checksums.outputs.arm64_initrd }}"
-
-          echo "Verifying updates:"
-          grep "vm_checksum_" build.sh
+      # VM bundle checksums removed — Patch 4 now injects empty linux
+      # file arrays since the VM backend is non-functional on Linux.
+      # See: fix/334-empty-vm-manifest for context.
 
       - name: Update Nix package
         if: steps.check_update.outputs.update_needed == 'true'
