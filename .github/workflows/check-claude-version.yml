@@ -216,7 +216,7 @@ jobs:
 
       # VM bundle checksums removed — Patch 4 now injects empty linux
       # file arrays since the VM backend is non-functional on Linux.
-      # See: fix/334-empty-vm-manifest for context.
+      # See: #334 for context.
 
       - name: Update Nix package
         if: steps.check_update.outputs.update_needed == 'true'

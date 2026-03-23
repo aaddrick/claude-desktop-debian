@@ -124,7 +124,6 @@ detect_architecture() {
 
 	echo "Target Architecture: $architecture"
 	section_footer 'Architecture Detection'
-
 }
 
 detect_distro() {
