@@ -1322,9 +1322,35 @@ if (serviceErrorIdx !== -1) {
     }
 }
 
+// ============================================================
+// Patch 10: LocalAgentMode CLI path — use dynamic resolution
+// LocalAgentModeSessionManager hardcodes /usr/local/bin/claude
+// which doesn't exist on Linux. Replace with dynamic resolution
+// using the same CcdBinaryManager singleton regular sessions use.
+// ============================================================
+{
+    const binaryMgrMatch = code.match(/(\w+)\.getBinaryPathIfReady/);
+    if (binaryMgrMatch) {
+        const mgr = binaryMgrMatch[1];
+        const hardcoded = 'pathToClaudeCodeExecutable:"/usr/local/bin/claude"';
+        const replacement = 'pathToClaudeCodeExecutable:' +
+            '(await ' + mgr + '.getHostBinaryPathIfPresent())||' +
+            '"/usr/local/bin/claude"';
+        if (code.includes(hardcoded)) {
+            code = code.replace(hardcoded, replacement);
+            console.log('  Patched LocalAgentMode hardcoded CLI path');
+            patchCount++;
+        } else {
+            console.log('  WARNING: LocalAgentMode hardcoded CLI path not found');
+        }
+    } else {
+        console.log('  WARNING: Could not find CcdBinaryManager variable');
+    }
+}
+
 fs.writeFileSync(indexJs, code);
 console.log(`  Applied ${patchCount} cowork patches`);
-if (patchCount < 5) {
+if (patchCount < 6) {
     console.log('  WARNING: Some patches failed - Cowork mode may not work');
 }
 COWORK_PATCH
