@@ -333,16 +333,16 @@ run_doctor() {
 
 	# -- Electron binary --
 	if [[ -n $electron_path && -x $electron_path ]]; then
-		# Use --no-sandbox and strip ANSI/app output to get just the version
-		local electron_version
-		electron_version=$(
-			"$electron_path" --no-sandbox --version 2>/dev/null \
-				| head -1 \
-				| sed 's/\x1b\[[0-9;]*m//g'
-		) || true
-		# Only accept version strings that look like "vNN.NN.NN"
-		if [[ $electron_version =~ ^v[0-9]+\.[0-9]+ ]]; then
-			_pass "Electron: $electron_version ($electron_path)"
+		# Read version from the version file next to the binary
+		# (avoids launching Electron, which hangs — see #371)
+		local electron_version=""
+		local version_file
+		version_file="$(dirname "$electron_path")/version"
+		if [[ -r $version_file ]]; then
+			electron_version=$(< "$version_file")
+		fi
+		if [[ $electron_version =~ ^v?[0-9]+\.[0-9]+ ]]; then
+			_pass "Electron: v${electron_version#v} ($electron_path)"
 		else
 			_pass "Electron: found at $electron_path"
 		fi
@@ -350,9 +350,14 @@ run_doctor() {
 		_fail "Electron binary not found at $electron_path"
 		_info 'Fix: Reinstall claude-desktop package'
 	elif command -v electron &>/dev/null; then
-		local sys_electron_ver
-		sys_electron_ver=$(electron --version 2>/dev/null) || true
-		_pass "Electron: ${sys_electron_ver:-found} (system)"
+		# Read version file from system electron's directory
+		local sys_electron_ver=""
+		local sys_electron_dir
+		sys_electron_dir="$(dirname "$(command -v electron)")"
+		if [[ -r "$sys_electron_dir/version" ]]; then
+			sys_electron_ver=$(< "$sys_electron_dir/version")
+		fi
+		_pass "Electron: ${sys_electron_ver:+v${sys_electron_ver#v} }(system)"
 	else
 		_fail 'Electron binary not found'
 		_info 'Fix: Reinstall claude-desktop package'
