@@ -255,6 +255,14 @@ _cowork_pkg_hint() {
 	printf '%s' "$pkg_cmd $pkg"
 }
 
+# Read the version string from the version file beside an Electron binary.
+# Prints the raw version string, or nothing if unavailable.
+_electron_version() {
+	local version_file
+	version_file="$(dirname "$1")/version"
+	[[ -r $version_file ]] && printf '%s' "$(< "$version_file")"
+}
+
 _pass() { echo -e "${_green}[PASS]${_reset} $*"; }
 _fail() {
 	echo -e "${_red}[FAIL]${_reset} $*"
@@ -332,17 +340,13 @@ run_doctor() {
 	fi
 
 	# -- Electron binary --
+	# Version is read from the file next to the binary rather than
+	# launching Electron, which can hang (see #371).
 	if [[ -n $electron_path && -x $electron_path ]]; then
-		# Read version from the version file next to the binary
-		# (avoids launching Electron, which hangs — see #371)
-		local electron_version=""
-		local version_file
-		version_file="$(dirname "$electron_path")/version"
-		if [[ -r $version_file ]]; then
-			electron_version=$(< "$version_file")
-		fi
-		if [[ $electron_version =~ ^v?[0-9]+\.[0-9]+ ]]; then
-			_pass "Electron: v${electron_version#v} ($electron_path)"
+		local ver
+		ver=$(_electron_version "$electron_path")
+		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
+			_pass "Electron: v${ver#v} ($electron_path)"
 		else
 			_pass "Electron: found at $electron_path"
 		fi
@@ -350,14 +354,9 @@ run_doctor() {
 		_fail "Electron binary not found at $electron_path"
 		_info 'Fix: Reinstall claude-desktop package'
 	elif command -v electron &>/dev/null; then
-		# Read version file from system electron's directory
-		local sys_electron_ver=""
-		local sys_electron_dir
-		sys_electron_dir="$(dirname "$(command -v electron)")"
-		if [[ -r "$sys_electron_dir/version" ]]; then
-			sys_electron_ver=$(< "$sys_electron_dir/version")
-		fi
-		_pass "Electron: ${sys_electron_ver:+v${sys_electron_ver#v} }(system)"
+		local ver
+		ver=$(_electron_version "$(command -v electron)")
+		_pass "Electron: ${ver:+v${ver#v} }(system)"
 	else
 		_fail 'Electron binary not found'
 		_info 'Fix: Reinstall claude-desktop package'
