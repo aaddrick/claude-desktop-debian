@@ -857,14 +857,16 @@ class BwrapBackend extends LocalBackend {
             log('BwrapBackend: could not resolve /etc/resolv.conf:', e.message);
         }
 
+        // Create home directory (needed for ~ expansion) but don't
+        // expose real home contents. Must come before any --ro-bind of
+        // subdirectories inside $HOME (e.g. the SDK binary path), otherwise
+        // bwrap processes --dir after the bind and shadows it.
+        const homeDir = os.homedir();
+        bwrapArgs.push('--dir', homeDir);
+
         // Bind the SDK binary read-only
         const sdkDir = path.dirname(actualCommand);
         bwrapArgs.push('--ro-bind', sdkDir, sdkDir);
-
-        // Create home directory (needed for ~ expansion) but don't
-        // expose real home contents.
-        const homeDir = os.homedir();
-        bwrapArgs.push('--dir', homeDir);
 
         // Create /sessions/<name>/mnt/ guest path structure and mount
         // host directories at guest paths, matching the KVM backend
