@@ -6,6 +6,18 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 
+# Check whether a value exists in the electron_args array.
+# Supports glob patterns (e.g., '*WaylandWindowDecorations*').
+has_electron_arg() {
+	local pattern="$1"
+	local arg
+	for arg in "${electron_args[@]}"; do
+		# shellcheck disable=SC2254
+		[[ $arg == $pattern ]] && return 0
+	done
+	return 1
+}
+
 setup() {
 	TEST_TMP=$(mktemp -d)
 	export TEST_TMP
@@ -195,27 +207,16 @@ teardown() {
 	is_wayland=false
 	setup_logging
 	build_electron_args deb
-	# Should contain --disable-features=CustomTitlebar
-	local found=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--disable-features=CustomTitlebar' ]] && found=true
-	done
-	[[ $found == true ]]
-	# Should NOT contain --no-sandbox
-	for arg in "${electron_args[@]}"; do
-		[[ $arg != '--no-sandbox' ]]
-	done
+	has_electron_arg '--disable-features=CustomTitlebar'
+	# shellcheck disable=SC2314 # last command in test, ! works correctly
+	! has_electron_arg '--no-sandbox'
 }
 
 @test "build_electron_args: X11 appimage - includes --no-sandbox" {
 	is_wayland=false
 	setup_logging
 	build_electron_args appimage
-	local has_sandbox=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--no-sandbox' ]] && has_sandbox=true
-	done
-	[[ $has_sandbox == true ]]
+	has_electron_arg '--no-sandbox'
 }
 
 @test "build_electron_args: Wayland XWayland deb - includes x11 platform and no-sandbox" {
@@ -223,13 +224,8 @@ teardown() {
 	use_x11_on_wayland=true
 	setup_logging
 	build_electron_args deb
-	local has_x11=false has_sandbox=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--ozone-platform=x11' ]] && has_x11=true
-		[[ $arg == '--no-sandbox' ]] && has_sandbox=true
-	done
-	[[ $has_x11 == true ]]
-	[[ $has_sandbox == true ]]
+	has_electron_arg '--ozone-platform=x11'
+	has_electron_arg '--no-sandbox'
 }
 
 @test "build_electron_args: Wayland native deb - includes wayland platform flags" {
@@ -237,15 +233,9 @@ teardown() {
 	use_x11_on_wayland=false
 	setup_logging
 	build_electron_args deb
-	local has_wayland=false has_ime=false has_decorations=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--ozone-platform=wayland' ]] && has_wayland=true
-		[[ $arg == '--enable-wayland-ime' ]] && has_ime=true
-		[[ $arg == *'WaylandWindowDecorations'* ]] && has_decorations=true
-	done
-	[[ $has_wayland == true ]]
-	[[ $has_ime == true ]]
-	[[ $has_decorations == true ]]
+	has_electron_arg '--ozone-platform=wayland'
+	has_electron_arg '--enable-wayland-ime'
+	has_electron_arg '*WaylandWindowDecorations*'
 }
 
 @test "build_electron_args: Wayland appimage - always includes --no-sandbox" {
@@ -253,11 +243,7 @@ teardown() {
 	use_x11_on_wayland=true
 	setup_logging
 	build_electron_args appimage
-	local has_sandbox=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--no-sandbox' ]] && has_sandbox=true
-	done
-	[[ $has_sandbox == true ]]
+	has_electron_arg '--no-sandbox'
 }
 
 @test "build_electron_args: Wayland native nix - includes --no-sandbox" {
@@ -265,11 +251,7 @@ teardown() {
 	use_x11_on_wayland=false
 	setup_logging
 	build_electron_args nix
-	local has_sandbox=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--no-sandbox' ]] && has_sandbox=true
-	done
-	[[ $has_sandbox == true ]]
+	has_electron_arg '--no-sandbox'
 }
 
 @test "build_electron_args: Wayland native includes text-input-version=3" {
@@ -277,11 +259,7 @@ teardown() {
 	use_x11_on_wayland=false
 	setup_logging
 	build_electron_args deb
-	local has_text_input=false
-	for arg in "${electron_args[@]}"; do
-		[[ $arg == '--wayland-text-input-version=3' ]] && has_text_input=true
-	done
-	[[ $has_text_input == true ]]
+	has_electron_arg '--wayland-text-input-version=3'
 }
 
 # =============================================================================
