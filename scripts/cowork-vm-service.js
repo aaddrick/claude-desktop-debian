@@ -392,8 +392,21 @@ function resolveWorkDir(cwd, sharedCwdPath, mountMap) {
             log(`resolveWorkDir: translated "${cwd}" -> "${translated}"`);
             workDir = translated;
         } else {
-            log(`resolveWorkDir: cwd is VM guest path "${cwd}", using home dir`);
-            workDir = os.homedir();
+            // Session-root path (e.g. /sessions/bold-sharp-clarke) has no
+            // /mnt/ component, so translateGuestPath can't resolve it.
+            // Derive cwd from the primary user mount, mirroring what
+            // BwrapBackend does at spawn time (first non-dotfile,
+            // non-uploads mount).
+            const primaryMount = Object.keys(mountMap || {}).find(
+                n => !n.startsWith('.') && n !== 'uploads',
+            );
+            if (primaryMount && mountMap[primaryMount]) {
+                log(`resolveWorkDir: session root "${cwd}", using primary mount "${primaryMount}" -> "${mountMap[primaryMount]}"`);
+                workDir = mountMap[primaryMount];
+            } else {
+                log(`resolveWorkDir: cwd is VM guest path "${cwd}", no primary mount found, using home dir`);
+                workDir = os.homedir();
+            }
         }
     }
 
