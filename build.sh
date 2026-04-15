@@ -938,25 +938,28 @@ patch_quick_window() {
 	local quick_var_re="${quick_var//\$/\\$}"
 
 	# Part 1: Add blur() before hide() on the quick window so that
-	# isFocused() returns false after hiding (Electron Linux bug).
+	# isFocused() returns false after hiding (Electron Linux bug on KDE).
 	# The hide call sits after || (e.g. GUARD()||VAR.hide()), so both
 	# calls must be wrapped in parens to preserve short-circuit semantics.
-	if grep -qP "${quick_var_re}\.blur\(\),${quick_var_re}\.hide\(\)" \
-		"$index_js"; then
+	# Gated to KDE only: on GNOME/Ubuntu the blur() regresses quick entry
+	# (see #393), and the focus-stale bug doesn't manifest there.
+	local de_check='(process.env.XDG_CURRENT_DESKTOP||"").toLowerCase().includes("kde")'
+	if grep -qF "${quick_var}.blur(),${quick_var}.hide()" "$index_js"; then
 		echo '  Quick window blur already patched'
 	elif grep -qP "\|\|${quick_var_re}\.hide\(\)" "$index_js"; then
 		sed -i \
-			"s/||${quick_var_re}\.hide()/||(${quick_var_re}.blur(),${quick_var_re}.hide())/g" \
+			"s/||${quick_var_re}\.hide()/||(${de_check}?(${quick_var}.blur(),${quick_var}.hide()):${quick_var}.hide())/g" \
 			"$index_js"
-		echo '  Added blur() before hide() on quick window'
+		echo '  Added KDE-gated blur() before hide() on quick window'
 	else
 		echo '  WARNING: Could not find quick window hide() call'
 	fi
 
 	# Part 2: Fix main window not appearing after quick entry submit.
-	# On Linux, isFocused() can return stale true after hiding, causing
-	# FOCUS_CHECK()||Lt.show() to skip the show. Replace the focus check
-	# with the visibility check in quick entry code paths.
+	# On KDE, isFocused() can return stale true after hiding, causing
+	# FOCUS_CHECK()||Lt.show() to skip the show. Gate the visibility-check
+	# replacement to KDE only: on GNOME, the original focus check works
+	# and replacing it regresses quick entry (see #393).
 	if INDEX_JS="$index_js" node << 'QUICK_WINDOW_PATCH'
 const fs = require('fs');
 const indexJs = process.env.INDEX_JS;
@@ -1000,6 +1003,12 @@ for (const anchor of anchors) {
     }
     // Search region after anchor (1500 chars covers promise chains)
     const region = code.substring(anchorIdx, anchorIdx + 1500);
+    // Idempotency: if region already contains the DE gate, skip
+    if (region.indexOf('XDG_CURRENT_DESKTOP') !== -1) {
+        console.log('  Quick entry show() already patched near "' +
+            anchor.substring(0, 30) + '..."');
+        continue;
+    }
     const showRe = new RegExp(
         focusFn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
         '\\(\\)\\|\\|(\\w+)\\.show\\(\\)'
@@ -1008,12 +1017,17 @@ for (const anchor of anchors) {
     if (showMatch) {
         const oldStr = showMatch[0];
         const mainWin = showMatch[1];
-        const newStr = visFn + '()||' + mainWin + '.show()';
+        // Gate the visibility check to KDE only; fall back to original
+        // focus check on GNOME/other so #390 doesn't regress them (#393).
+        const deCheck = '(process.env.XDG_CURRENT_DESKTOP||"")' +
+            '.toLowerCase().includes("kde")';
+        const newStr = '(' + deCheck + '?' + visFn + '():' +
+            focusFn + '())||' + mainWin + '.show()';
         if (oldStr !== newStr) {
             const absIdx = anchorIdx + region.indexOf(oldStr);
             code = code.substring(0, absIdx) + newStr +
                 code.substring(absIdx + oldStr.length);
-            console.log('  Replaced ' + focusFn + '() with ' + visFn +
+            console.log('  KDE-gated ' + focusFn + '()/' + visFn +
                 '() for show() near "' + anchor.substring(0, 30) + '..."');
             patchCount++;
         }
