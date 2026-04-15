@@ -943,7 +943,8 @@ patch_quick_window() {
 	# calls must be wrapped in parens to preserve short-circuit semantics.
 	# Gated to KDE only: on GNOME/Ubuntu the blur() regresses quick entry
 	# (see #393), and the focus-stale bug doesn't manifest there.
-	local de_check='(process.env.XDG_CURRENT_DESKTOP||"").toLowerCase().includes("kde")'
+	local de_check='(process.env.XDG_CURRENT_DESKTOP||"")'
+	de_check+='.toLowerCase().includes("kde")'
 	if grep -qF "${quick_var}.blur(),${quick_var}.hide()" "$index_js"; then
 		echo '  Quick window blur already patched'
 	elif grep -qP "\|\|${quick_var_re}\.hide\(\)" "$index_js"; then
