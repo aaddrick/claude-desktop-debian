@@ -125,6 +125,13 @@ function cleanSpawnArgs(rawArgs, mountMap) {
     return cleanArgs;
 }
 
+function findPrimaryMount(mountMap) {
+    if (!mountMap) return null;
+    return Object.keys(mountMap).find(
+        n => !n.startsWith(".") && n !== "uploads",
+    ) || null;
+}
+
 function resolveWorkDir(cwd, sharedCwdPath, mountMap) {
     let workDir = cwd || os.homedir();
     if (sharedCwdPath) {
@@ -134,7 +141,12 @@ function resolveWorkDir(cwd, sharedCwdPath, mountMap) {
         if (translated) {
             workDir = translated;
         } else {
-            workDir = os.homedir();
+            const primaryMount = findPrimaryMount(mountMap);
+            if (primaryMount && mountMap[primaryMount]) {
+                workDir = mountMap[primaryMount];
+            } else {
+                workDir = os.homedir();
+            }
         }
     }
     if (!fs.existsSync(workDir)) {
@@ -707,6 +719,110 @@ assertEqual(
     resolveWorkDir('/tmp', null, {}),
     '/tmp',
     'local path passthrough');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "resolveWorkDir: session-root cwd uses primary user mount" {
+	mkdir -p "${TEST_TMP}/project"
+
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    resolveWorkDir(
+        '/sessions/bold-sharp-clarke',
+        null,
+        {'project': '${TEST_TMP}/project'}
+    ),
+    '${TEST_TMP}/project',
+    'session-root falls through to primary mount');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "resolveWorkDir: session-root cwd skips dotfile and uploads mounts" {
+	mkdir -p "${TEST_TMP}/project"
+
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    resolveWorkDir(
+        '/sessions/abc',
+        null,
+        {
+            '.claude': '${TEST_TMP}/dotclaude',
+            '.auto-memory': '${TEST_TMP}/automem',
+            'uploads': '${TEST_TMP}/uploads',
+            'project': '${TEST_TMP}/project'
+        }
+    ),
+    '${TEST_TMP}/project',
+    'dotfile and uploads mounts are skipped');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "resolveWorkDir: session-root cwd with no user mount falls back to home" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    resolveWorkDir(
+        '/sessions/abc',
+        null,
+        {
+            '.claude': '/host/dotclaude',
+            'uploads': '/host/uploads'
+        }
+    ),
+    os.homedir(),
+    'no user mount -> homedir fallback');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+# =============================================================================
+# findPrimaryMount
+# =============================================================================
+
+@test "findPrimaryMount: returns null for null mountMap" {
+	run node -e "${NODE_PREAMBLE}
+assert(findPrimaryMount(null) === null, 'null mountMap');
+assert(findPrimaryMount(undefined) === null, 'undefined mountMap');
+assert(findPrimaryMount({}) === null, 'empty mountMap');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "findPrimaryMount: returns first non-dotfile non-uploads key" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    findPrimaryMount({'project': '/h/p'}),
+    'project',
+    'single user mount');
+assertEqual(
+    findPrimaryMount({
+        '.claude': '/h/c',
+        'uploads': '/h/u',
+        'project': '/h/p'
+    }),
+    'project',
+    'skips dotfiles and uploads');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "findPrimaryMount: returns null when all mounts are dotfiles or uploads" {
+	run node -e "${NODE_PREAMBLE}
+assert(
+    findPrimaryMount({'.claude': '/h/c', 'uploads': '/h/u'}) === null,
+    'no user mount -> null');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "findPrimaryMount: insertion order determines primary when multiple exist" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    findPrimaryMount({'first': '/h/1', 'second': '/h/2'}),
+    'first',
+    'first inserted user mount wins');
 "
 	[[ "$status" -eq 0 ]]
 }
