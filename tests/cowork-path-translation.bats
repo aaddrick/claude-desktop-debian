@@ -96,17 +96,58 @@ function resolvePluginRoot(pluginPath, mountBase) {
     return pluginPath;
 }
 
+function splitToolList(csv) {
+    const result = [];
+    if (!csv) return result;
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < csv.length; i++) {
+        const ch = csv[i];
+        if (ch === "(") depth++;
+        else if (ch === ")") depth = Math.max(0, depth - 1);
+        else if (ch === "," && depth === 0) {
+            result.push(csv.slice(start, i));
+            start = i + 1;
+        }
+    }
+    result.push(csv.slice(start));
+    return result;
+}
+
+function translateEmbeddedGuestPaths(csv, mountMap) {
+    if (!csv) return csv;
+    const out = [];
+    for (const entry of splitToolList(csv)) {
+        const m = entry.match(/^(\w+)\(([^)]+)\)$/);
+        if (!m) {
+            out.push(entry);
+            continue;
+        }
+        const tool = m[1];
+        const normalized = m[2].replace(/^\/+/, "/");
+        if (!normalized.startsWith("/sessions/")) {
+            out.push(entry);
+            continue;
+        }
+        const translated = translateGuestPath(normalized, mountMap || {});
+        if (!translated) continue;
+        out.push(`${tool}(${translated})`);
+    }
+    return out.join(",");
+}
+
 function cleanSpawnArgs(rawArgs, mountMap) {
     const cleanArgs = [];
     const guestPathFlags = new Set(["--add-dir", "--plugin-dir"]);
+    const toolListFlags = new Set(["--allowedTools", "--disallowedTools"]);
     for (let i = 0; i < rawArgs.length; i++) {
-        if (guestPathFlags.has(rawArgs[i]) &&
+        const flag = rawArgs[i];
+        const value = rawArgs[i + 1];
+
+        if (guestPathFlags.has(flag) &&
             i + 1 < rawArgs.length &&
-            rawArgs[i + 1].startsWith("/sessions/")) {
-            const flag = rawArgs[i];
-            let hostPath = translateGuestPath(
-                rawArgs[i + 1], mountMap || {}
-            );
+            value.startsWith("/sessions/")) {
+            let hostPath = translateGuestPath(value, mountMap || {});
             if (hostPath) {
                 if (flag === "--plugin-dir") {
                     hostPath = resolvePluginRoot(
@@ -120,7 +161,17 @@ function cleanSpawnArgs(rawArgs, mountMap) {
             i++;
             continue;
         }
-        cleanArgs.push(rawArgs[i]);
+
+        if (toolListFlags.has(flag) && i + 1 < rawArgs.length) {
+            cleanArgs.push(
+                flag,
+                translateEmbeddedGuestPaths(value, mountMap),
+            );
+            i++;
+            continue;
+        }
+
+        cleanArgs.push(flag);
     }
     return cleanArgs;
 }
@@ -536,6 +587,177 @@ const result = cleanSpawnArgs(
 assertDeepEqual(result,
     ['--verbose', '--add-dir', '/host/data/x', '--output', 'json'],
     'surrounding args preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "cleanSpawnArgs: translates --allowedTools embedded guest paths" {
+	run node -e "${NODE_PREAMBLE}
+const result = cleanSpawnArgs(
+    [
+        '--allowedTools',
+        'Read,Edit,Edit(//sessions/abc/mnt/.auto-memory/**),Write(//sessions/abc/mnt/.auto-memory/**)'
+    ],
+    {'.auto-memory': '/host/memory'}
+);
+assertDeepEqual(result,
+    [
+        '--allowedTools',
+        'Read,Edit,Edit(/host/memory/**),Write(/host/memory/**)'
+    ],
+    '--allowedTools translated, plain entries preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "cleanSpawnArgs: translates --disallowedTools embedded guest paths" {
+	run node -e "${NODE_PREAMBLE}
+const result = cleanSpawnArgs(
+    [
+        '--disallowedTools',
+        'Bash(rm),Edit(//sessions/abc/mnt/data/secret/**)'
+    ],
+    {'data': '/host/data'}
+);
+assertDeepEqual(result,
+    [
+        '--disallowedTools',
+        'Bash(rm),Edit(/host/data/secret/**)'
+    ],
+    '--disallowedTools translated');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+# =============================================================================
+# splitToolList
+# =============================================================================
+
+@test "splitToolList: empty / null input" {
+	run node -e "${NODE_PREAMBLE}
+assertDeepEqual(splitToolList(''), [], 'empty string -> []');
+assertDeepEqual(splitToolList(null), [], 'null -> []');
+assertDeepEqual(splitToolList(undefined), [], 'undefined -> []');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "splitToolList: simple CSV with no parens" {
+	run node -e "${NODE_PREAMBLE}
+assertDeepEqual(
+    splitToolList('Read,Edit,Write'),
+    ['Read', 'Edit', 'Write'],
+    'plain CSV');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "splitToolList: respects parentheses around commas" {
+	run node -e "${NODE_PREAMBLE}
+assertDeepEqual(
+    splitToolList('Bash(npm test, npm build),Edit,Read'),
+    ['Bash(npm test, npm build)', 'Edit', 'Read'],
+    'commas inside parens are preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "splitToolList: handles trailing entry without comma" {
+	run node -e "${NODE_PREAMBLE}
+assertDeepEqual(
+    splitToolList('A,B(c,d)'),
+    ['A', 'B(c,d)'],
+    'final entry includes nested commas');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+# =============================================================================
+# translateEmbeddedGuestPaths
+# =============================================================================
+
+@test "translateEmbeddedGuestPaths: passes through entries without parens" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    translateEmbeddedGuestPaths(
+        'Read,Edit,Write',
+        {'.auto-memory': '/host/memory'}
+    ),
+    'Read,Edit,Write',
+    'plain tool names unchanged');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "translateEmbeddedGuestPaths: translates Edit() with double-slash guest path" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    translateEmbeddedGuestPaths(
+        'Edit(//sessions/abc/mnt/.auto-memory/**)',
+        {'.auto-memory': '/host/memory'}
+    ),
+    'Edit(/host/memory/**)',
+    'leading // normalized and translated');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "translateEmbeddedGuestPaths: translates entry with single-slash guest path" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    translateEmbeddedGuestPaths(
+        'Write(/sessions/abc/mnt/.auto-memory/**)',
+        {'.auto-memory': '/host/memory'}
+    ),
+    'Write(/host/memory/**)',
+    'single-slash variant also translated');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "translateEmbeddedGuestPaths: drops entries whose mount is unknown" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    translateEmbeddedGuestPaths(
+        'Read,Edit(//sessions/abc/mnt/unknown/**),Write',
+        {'.auto-memory': '/host/memory'}
+    ),
+    'Read,Write',
+    'unresolvable entry is dropped, others retained');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "translateEmbeddedGuestPaths: leaves non-/sessions paths alone" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    translateEmbeddedGuestPaths(
+        'Bash(rm),Edit(/home/user/explicit/file)',
+        {'.auto-memory': '/host/memory'}
+    ),
+    'Bash(rm),Edit(/home/user/explicit/file)',
+    'host paths and non-paths unchanged');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "translateEmbeddedGuestPaths: handles MCP-style tool names with underscores" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(
+    translateEmbeddedGuestPaths(
+        'mcp__server__tool(//sessions/abc/mnt/data/**)',
+        {'data': '/host/data'}
+    ),
+    'mcp__server__tool(/host/data/**)',
+    'mcp-style tool name preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "translateEmbeddedGuestPaths: empty / null input" {
+	run node -e "${NODE_PREAMBLE}
+assertEqual(translateEmbeddedGuestPaths('', {}), '', 'empty -> empty');
+assertEqual(translateEmbeddedGuestPaths(null, {}), null, 'null -> null');
 "
 	[[ "$status" -eq 0 ]]
 }
