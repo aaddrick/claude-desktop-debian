@@ -1434,23 +1434,23 @@ if (serviceErrorIdx !== -1) {
 
             // path var: VAR.join(process.resourcesPath,
             const pathMatch = region.match(
-                /(\w+)\.join\(\s*process\.resourcesPath\s*,/
+                /(\$?\w+)\.join\(\s*process\.resourcesPath\s*,/
             );
             // fs var: VAR.existsSync(
-            const fsMatch = region.match(/(\w+)\.existsSync\(/);
+            const fsMatch = region.match(/(\$?\w+)\.existsSync\(/);
             // logger var: VAR.info("[VM:start]
             const logMatch = region.match(
-                /(\w+)\.info\(\s*[`"]\[VM:start\]/
+                /(\$?\w+)\.info\(\s*[`"]\[VM:start\]/
             );
             // stream/pipeline var: VAR.pipeline(
-            const streamMatch = region.match(/(\w+)\.pipeline\(/);
+            const streamMatch = region.match(/(\$?\w+)\.pipeline\(/);
             // arch function: const VAR=FUNC(), used in smol-bin
             const archMatch = region.match(
-                /const\s+(\w+)\s*=\s*(\w+)\(\)\s*,\s*\w+\s*=\s*\w+\.join/
+                /const\s+(\$?\w+)\s*=\s*(\$?\w+)\(\)\s*,\s*\$?\w+\s*=\s*\$?\w+\.join/
             );
             // bundlePath var: PATH.join(VAR,"smol-bin.vhdx")
             const bundleMatch = region.match(
-                /\.join\(\s*(\w+)\s*,\s*"smol-bin\.vhdx"\s*\)/
+                /\.join\(\s*(\$?\w+)\s*,\s*"smol-bin\.vhdx"\s*\)/
             );
 
             if (pathMatch && fsMatch && logMatch &&
