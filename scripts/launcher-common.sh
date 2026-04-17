@@ -94,8 +94,10 @@ build_electron_args() {
 # Kill orphaned cowork-vm-service daemon processes.
 # After a crash or unclean shutdown the cowork daemon may outlive the
 # main Electron UI process.  The orphaned daemon holds LevelDB locks
-# in ~/.config/Claude/Local Storage/ which cause new launches to
-# detect a "main instance" and silently quit.
+# in ~/.config/Claude/Local Storage/ AND keeps the Unix socket at
+# $XDG_RUNTIME_DIR/cowork-vm-service.sock bound, which causes a new
+# launch to either silently quit (LevelDB) or connect to the stale
+# daemon (socket) and hang with a blank window.
 # Must run BEFORE cleanup_stale_lock / cleanup_stale_cowork_socket
 # so that stale files left behind by the daemon can be cleaned up.
 cleanup_orphaned_cowork_daemon() {
@@ -103,23 +105,58 @@ cleanup_orphaned_cowork_daemon() {
 	cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
 		|| return 0
 
-	# Check if a Claude Desktop UI process is also running.
-	# Any claude-desktop electron process that is NOT the cowork
-	# daemon indicates the app is alive and the daemon is expected.
-	local pid cmdline
-	for pid in $(pgrep -f 'claude-desktop' 2>/dev/null); do
+	# Check if a live Claude Desktop UI process is also running.
+	#
+	# We can NOT use `pgrep -f 'claude-desktop'` on its own for this:
+	# it matches the launcher's own bash process (this script's
+	# cmdline contains "/usr/bin/claude-desktop"), any stale launcher
+	# bash left stopped/zombie after a previous crash, and the cowork
+	# daemon itself.  Counting any of those as "the UI is alive"
+	# causes a false negative and the orphan survives.
+	#
+	# The reliable definition of "UI is alive" is: an Electron main
+	# process whose cmdline references app.asar and is NOT a Chromium
+	# helper (--type=...) and NOT the cowork daemon, and is actually
+	# runnable (not stopped/zombie).
+	local pid cmdline state
+	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
+		# Skip our own launcher bash and its parent.
+		[[ $pid == $$ || $pid == $PPID ]] && continue
 		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
 			|| continue
+		# Skip the cowork daemon (matches app.asar.unpacked path).
 		[[ $cmdline == *cowork-vm-service* ]] && continue
-		# Found a non-daemon claude-desktop process — not orphaned
+		# Skip Chromium helpers: zygote, renderer, gpu, utility, etc.
+		[[ $cmdline == *--type=* ]] && continue
+		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
+		state=$(awk '/^State:/ {print $2; exit}' \
+			"/proc/$pid/status" 2>/dev/null) || continue
+		[[ $state == T || $state == t || $state == Z ]] && continue
+		# Found a genuine live Electron UI — daemon is expected
 		return 0
 	done
 
-	# No UI process found — daemon is orphaned, terminate it
+	# No UI process found — daemon is orphaned, terminate it.
+	# Escalate to SIGKILL if a daemon is stuck and does not exit
+	# after SIGTERM within ~2s, so cleanup_stale_cowork_socket
+	# (which runs next) reliably sees no daemon.
 	for pid in $cowork_pids; do
 		kill "$pid" 2>/dev/null || true
 	done
-	log_message "Killed orphaned cowork-vm-service daemon (PIDs: $cowork_pids)"
+	local _wait=0
+	while ((_wait < 20)); do
+		pgrep -f 'cowork-vm-service\.js' &>/dev/null || break
+		sleep 0.1
+		((_wait++))
+	done
+	if pgrep -f 'cowork-vm-service\.js' &>/dev/null; then
+		for pid in $cowork_pids; do
+			kill -KILL "$pid" 2>/dev/null || true
+		done
+		log_message "Killed orphaned cowork-vm-service daemon (SIGKILL, PIDs: $cowork_pids)"
+	else
+		log_message "Killed orphaned cowork-vm-service daemon (PIDs: $cowork_pids)"
+	fi
 }
 
 # Clean up stale SingletonLock if the owning process is no longer running.
@@ -155,26 +192,31 @@ cleanup_stale_lock() {
 # $XDG_RUNTIME_DIR/cowork-vm-service.sock. After a crash or unclean
 # shutdown, the socket file persists but nothing is listening, causing
 # ECONNREFUSED instead of ENOENT when the app tries to connect.
+#
+# NOTE: this function MUST run after cleanup_orphaned_cowork_daemon,
+# which is responsible for killing any orphaned daemon.  Given that
+# ordering, the presence of a live daemon proves the socket is in
+# use; the absence of a daemon proves the socket is stale.
+# We use that invariant directly instead of depending on socat (not
+# shipped by default on Debian/Ubuntu) or an age heuristic (the old
+# 24h fallback effectively disabled the cleanup for any recent
+# crash).
 cleanup_stale_cowork_socket() {
 	local sock="${XDG_RUNTIME_DIR:-/tmp}/cowork-vm-service.sock"
 
 	[[ -S $sock ]] || return 0
 
-	if command -v socat &>/dev/null; then
-		# Try connecting — if refused, the socket is stale
-		if socat -u OPEN:/dev/null UNIX-CONNECT:"$sock" 2>/dev/null; then
-			return 0
-		fi
-	else
-		# No socat: fall back to age-based check (>24h = stale)
-		if [[ -z $(find "$sock" -mmin +1440 2>/dev/null) ]]; then
-			return 0
-		fi
-		log_message "No socat available; removing old socket (>24h)"
+	# If a cowork daemon is alive, it owns this socket; leave it.
+	# cleanup_orphaned_cowork_daemon has already run and removed any
+	# orphan (with SIGKILL escalation), so anything still alive here
+	# is a non-orphaned, live daemon.
+	if pgrep -f 'cowork-vm-service\.js' &>/dev/null; then
+		return 0
 	fi
 
+	# No daemon — the socket file is left over from a crash.
 	rm -f "$sock"
-	log_message "Removed stale cowork-vm-service socket"
+	log_message "Removed stale cowork-vm-service socket (no daemon running)"
 }
 
 # Set common environment variables
@@ -746,15 +788,29 @@ print(len(servers))
 	_doctor_check_bwrap_mounts
 
 	# -- Orphaned cowork daemon --
+	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon
+	# above: a live UI is an Electron main process on app.asar that is
+	# not a Chromium helper (--type=...), not the cowork daemon itself,
+	# and not stopped/zombie.  Counting any `claude-desktop`-matching
+	# process (as the old check did) would include the launcher's own
+	# bash and stuck launcher bashes from previous crashes, producing
+	# false negatives where a real orphan is misreported as "parent
+	# alive".
 	local _cowork_pids
 	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
 		|| true
 	if [[ -n $_cowork_pids ]]; then
-		local _daemon_orphaned=true _pid _cmdline
-		for _pid in $(pgrep -f 'claude-desktop' 2>/dev/null); do
+		local _daemon_orphaned=true _pid _cmdline _state
+		for _pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
+			[[ $_pid == $$ || $_pid == $PPID ]] && continue
 			_cmdline=$(tr '\0' ' ' \
 				< "/proc/$_pid/cmdline" 2>/dev/null) || continue
 			[[ $_cmdline == *cowork-vm-service* ]] && continue
+			[[ $_cmdline == *--type=* ]] && continue
+			_state=$(awk '/^State:/ {print $2; exit}' \
+				"/proc/$_pid/status" 2>/dev/null) || continue
+			[[ $_state == T || $_state == t || $_state == Z ]] \
+				&& continue
 			_daemon_orphaned=false
 			break
 		done
