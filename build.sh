@@ -1726,27 +1726,26 @@ if (serviceErrorIdx !== -1) {
             console.log('  #412 sharedCwdPath already in spawn config');
             site1Done = true;
         } else {
-            // Find session-var name from VAR.userSelectedFolders in the
-            // enclosing function scope before the anchor.
-            const before = code.substring(Math.max(0, cfgIdx - 8000), cfgIdx);
-            const usfMatches = [...before.matchAll(
-                /([$\w]+)\.userSelectedFolders/g)];
-            const sessionVar = usfMatches.length
-                ? usfMatches[usfMatches.length - 1][1]
-                : null;
-            if (!sessionVar) {
-                console.log('  WARNING: #412 no VAR.userSelectedFolders' +
-                    ' near config');
+            // The session-id var is the value of the first field
+            // 'sessionId:VAR' in the config itself — cheap, scoped, and
+            // immune to unrelated *.userSelectedFolders references (e.g.
+            // loop variables) that wander into the enclosing scope.
+            const sidMatch = cfgBlock.match(/\{sessionId:(\w+)\b/);
+            if (!sidMatch) {
+                console.log('  WARNING: #412 no sessionId field in config');
             } else {
-                // Insert just before the closing '}' of the object literal.
+                const sidVar = sidMatch[1];
+                // Route through this.sessions.get() — canonical accessor
+                // the same class already uses, so the injection survives
+                // re-orderings of local vars in the enclosing function.
                 const blockStart = code.indexOf(cfgBlock, cfgIdx);
                 const insertAt = blockStart + cfgBlock.length - 1;
-                const insertion = ',sharedCwdPath:' + sessionVar +
-                    '.userSelectedFolders?.[0]';
+                const insertion = ',sharedCwdPath:this.sessions.get(' +
+                    sidVar + ')?.userSelectedFolders?.[0]';
                 code = code.substring(0, insertAt) +
                     insertion + code.substring(insertAt);
                 console.log('  Injected sharedCwdPath into spawn' +
-                    ' config (var: ' + sessionVar + ')');
+                    ' config (sessionId var: ' + sidVar + ')');
                 patchCount++;
                 site1Done = true;
             }
@@ -1754,7 +1753,6 @@ if (serviceErrorIdx !== -1) {
     }
 
     // --- 12c: accept a 13th param in spawn() method body ---
-    // Done before 12b so the forwarded property name is fixed.
     let site3Done = false;
     const spawnIdempotent =
         /async spawn\([^)]+\)\{const \w+=\{id:[^}]+\};[^{}]*\.sharedCwdPath=/;
@@ -1797,19 +1795,25 @@ if (serviceErrorIdx !== -1) {
     }
 
     // --- 12b: forward SESSION.sharedCwdPath in Kyr -> spawn() call ---
-    // Anchor: ',VAR.mountConda)' — unique to the 12-arg caller (the
-    // shorter 10-arg one-shot call sites lack mountConda).
+    // Anchor: ',VAR.mountConda)' — expected unique to the 12-arg caller
+    // (the shorter 10-arg one-shot call sites lack mountConda). Assert
+    // the uniqueness so a second upstream caller wouldn't silently take
+    // only the first hit.
     let site2Done = false;
     if (/,\w+\.mountConda,\w+\.sharedCwdPath\)/.test(code)) {
         console.log('  #412 caller already forwards sharedCwdPath');
         site2Done = true;
     } else {
-        const callMatch = code.match(/,(\w+)\.mountConda\)/);
-        if (!callMatch) {
+        const callMatches = [...code.matchAll(/,(\w+)\.mountConda\)/g)];
+        if (callMatches.length === 0) {
             console.log('  WARNING: #412 no ",VAR.mountConda)" pattern found');
+        } else if (callMatches.length > 1) {
+            console.log('  WARNING: #412 expected 1 ",VAR.mountConda)" match,' +
+                ' found ' + callMatches.length + '; skipping to avoid' +
+                ' wrong-site forwarding');
         } else {
-            const sessionVar = callMatch[1];
-            code = code.replace(callMatch[0], ',' + sessionVar +
+            const [whole, sessionVar] = callMatches[0];
+            code = code.replace(whole, ',' + sessionVar +
                 '.mountConda,' + sessionVar + '.sharedCwdPath)');
             console.log('  Forwarded sharedCwdPath in Kyr->spawn call' +
                 ' (var: ' + sessionVar + ')');
