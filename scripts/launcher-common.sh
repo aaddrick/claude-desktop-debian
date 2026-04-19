@@ -689,11 +689,9 @@ print(len(servers))
 	# of bwrap-related diagnostics). Auto-detect prefers bwrap, so
 	# bwrap is active unless the user has overridden to KVM or host.
 	local _bwrap_active=true
-	if [[ -n ${COWORK_VM_BACKEND-} ]]; then
-		case "${COWORK_VM_BACKEND,,}" in
-			kvm|host) _bwrap_active=false ;;
-		esac
-	fi
+	case "${COWORK_VM_BACKEND,,}" in
+		kvm|host) _bwrap_active=false ;;
+	esac
 
 	# Bubblewrap (default backend)
 	if command -v bwrap &>/dev/null; then
