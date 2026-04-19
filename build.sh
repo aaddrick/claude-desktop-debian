@@ -1752,6 +1752,9 @@ finalize_app_asar() {
 	if [[ -n $pty_release_dir ]]; then
 		echo 'Copying node-pty native binaries to unpacked directory...'
 		mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release" || exit 1
+		# asar pack --unpack may have already placed read-only copies here
+		# (preserving Nix store permissions). Make them writable before overwriting.
+		chmod -R u+w "$app_staging_dir/app.asar.unpacked/node_modules/node-pty" 2>/dev/null || true
 		cp -r "$pty_release_dir/"* \
 			"$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/" || exit 1
 		chmod +x "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/"* 2>/dev/null || true
