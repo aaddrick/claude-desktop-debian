@@ -1698,6 +1698,67 @@ if (serviceErrorIdx !== -1) {
     }
 }
 
+// ============================================================
+// Patch 11: Relax installPlugin gate for Linux (#396)
+// Anchor: unique string
+//   "[CustomPlugins] installPlugin: attempting remote API install"
+//
+// The Directory "Anthropic & Partners" tab lists plugins from
+// the knowledge-work-plugins marketplace, which isn't configured
+// as a local marketplace. The app only tries the remote-API
+// install path when (pluginSource==="remote" OR mode==="cowork")
+// AND a sparkplug feature flag is enabled — none of which hold
+// on a normal Linux install, so it falls back to the CLI
+// installer that fails with "marketplace not found".
+//
+// The backend (/api/organizations/{orgId}/plugins/...) is not
+// gated by platform or cowork mode — any Pro/Teams account
+// should reach it. Short-circuit the extra client-side gates on
+// Linux for non-local plugins by wrapping the original gate in
+// (process.platform==="linux" || <original>). Users without an
+// org still fall through to the CLI fallback (expected — the
+// knowledge-work-plugins marketplace requires a Pro/Teams
+// account).
+// ============================================================
+{
+    const installAnchor =
+        '[CustomPlugins] installPlugin: attempting remote API install';
+    const installAnchorIdx = code.indexOf(installAnchor);
+    if (installAnchorIdx !== -1) {
+        const searchStart = Math.max(0, installAnchorIdx - 300);
+        const beforeAnchor = code.substring(searchStart, installAnchorIdx);
+        if (beforeAnchor.includes('process.platform==="linux"||')) {
+            console.log('  installPlugin gate relaxation already applied');
+        } else {
+            // Gate pattern:
+            //   if(!LOCALVAR&&(REMOTEVAR||(...).mode==="cowork")
+            //     &&await FLAGFN())
+            const gateRe = /if\((!\w+)&&(\(\w+\|\|\([$\w]+==null\?void 0:[$\w]+\.mode\)==="cowork"\)&&await [$\w]+\(\))\)/;
+            const gateMatch = beforeAnchor.match(gateRe);
+            if (gateMatch) {
+                const [whole, localCheck, innerGate] = gateMatch;
+                const gateAbsIdx = searchStart + gateMatch.index;
+                const replacement =
+                    'if(' + localCheck +
+                    '&&(process.platform==="linux"||' +
+                    innerGate + '))';
+                code = code.substring(0, gateAbsIdx) +
+                    replacement +
+                    code.substring(gateAbsIdx + whole.length);
+                console.log(
+                    '  Relaxed installPlugin gate for Linux (#396)');
+                patchCount++;
+            } else {
+                console.log(
+                    '  WARNING: Could not find installPlugin gate (#396)');
+            }
+        }
+    } else {
+        console.log(
+            '  WARNING: installPlugin anchor not found (#396)');
+    }
+}
+
 fs.writeFileSync(indexJs, code);
 console.log(`  Applied ${patchCount} cowork patches`);
 if (patchCount < 5) {
