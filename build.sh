@@ -61,6 +61,14 @@ section_footer() {
 	echo -e "\033[1;36m--- End $1 ---\033[0m"
 }
 
+# Escape special regex characters in a string for use in sed patterns.
+# This replaces the cryptic "${var//\$/\\\\$}" bash parameter expansion
+# with a clear, readable function call.
+escapeRegExp() {
+	local string="$1"
+	echo "${string//\$/\\\\$}"
+}
+
 verify_sha256() {
 	local file_path="$1"
 	local expected_hash="$2"
@@ -935,7 +943,7 @@ patch_quick_window() {
 	fi
 	echo "  Found quick window variable: $quick_var"
 
-	local quick_var_re="${quick_var//\$/\\$}"
+	local quick_var_re="$(escapeRegExp "$quick_var")"
 
 	# Part 1: Add blur() before hide() on the quick window so that
 	# isFocused() returns false after hiding (Electron Linux bug on KDE).
