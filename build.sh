@@ -1700,26 +1700,15 @@ if (serviceErrorIdx !== -1) {
 
 // ============================================================
 // Patch 12: Forward user-selected folder as sharedCwdPath (#412)
-// The cowork-vm-service daemon already honors a sharedCwdPath
-// field on the spawn IPC payload with priority over cwd (see
-// resolveWorkDir in scripts/cowork-vm-service.js), but the
-// upstream Electron app never populates it on Linux backends.
-// Every spawn arrives with only cwd=/sessions/{name}, forcing
-// the daemon to derive the host path from mountMap heuristics
-// (PRs #389/#392/#411 cover the symptoms).
-//
-// This patch threads the user's chosen folder through three
-// sites so the daemon receives it explicitly:
-//
-//   12a. At this.getVMSpawnFunction({...}) config assembly,
-//        inject sharedCwdPath: SESSION.userSelectedFolders?.[0].
-//   12b. At the Kyr() → VMClient.spawn() call site, forward
-//        SESSION.sharedCwdPath as a new 13th positional arg.
-//   12c. In the spawn() method body, accept a new trailing
-//        parameter and set it on the IPC payload.
-//
-// If any site fails the daemon-side fallback still works
-// (the primary mount heuristic from #392 covers cwd).
+// The cowork-vm-service daemon honors a sharedCwdPath field on
+// the spawn IPC payload with priority over cwd (resolveWorkDir
+// in scripts/cowork-vm-service.js), but upstream never populates
+// it on Linux, so the daemon falls back to mountMap heuristics
+// (#389/#392/#411). Thread the user's folder through three sites:
+//   12a. getVMSpawnFunction({...}) config — inject sharedCwdPath.
+//   12b. Kyr() -> VMClient.spawn() call — forward as 13th arg.
+//   12c. spawn() body — accept trailing param, set on IPC payload.
+// Daemon-side mount heuristic from #392 remains as fallback.
 // ============================================================
 {
     // --- 12a: inject sharedCwdPath into getVMSpawnFunction config ---
@@ -1729,48 +1718,37 @@ if (serviceErrorIdx !== -1) {
     if (cfgIdx === -1) {
         console.log('  WARNING: #412 getVMSpawnFunction anchor not found');
     } else {
-        const cfgBlock = extractBlock(
-            code, cfgIdx + cfgAnchor.length - 1, '(');
+        // The argument is a {...} object literal; extract it directly.
+        const cfgBlock = extractBlock(code, cfgIdx + cfgAnchor.length, '{');
         if (!cfgBlock) {
-            console.log('  WARNING: #412 getVMSpawnFunction arg not balanced');
+            console.log('  WARNING: #412 getVMSpawnFunction {...} not found');
         } else if (cfgBlock.includes('sharedCwdPath')) {
             console.log('  #412 sharedCwdPath already in spawn config');
             site1Done = true;
         } else {
-            // Find session-var name by grepping VAR.userSelectedFolders in
-            // the enclosing function scope before the anchor.
-            const searchStart = Math.max(0, cfgIdx - 8000);
-            const before = code.substring(searchStart, cfgIdx);
-            const usfRe = /([$\w]+)\.userSelectedFolders/g;
-            let usfMatch, sessionVar = null;
-            while ((usfMatch = usfRe.exec(before)) !== null) {
-                sessionVar = usfMatch[1];
-            }
+            // Find session-var name from VAR.userSelectedFolders in the
+            // enclosing function scope before the anchor.
+            const before = code.substring(Math.max(0, cfgIdx - 8000), cfgIdx);
+            const usfMatches = [...before.matchAll(
+                /([$\w]+)\.userSelectedFolders/g)];
+            const sessionVar = usfMatches.length
+                ? usfMatches[usfMatches.length - 1][1]
+                : null;
             if (!sessionVar) {
                 console.log('  WARNING: #412 no VAR.userSelectedFolders' +
                     ' near config');
             } else {
-                const argStart = cfgIdx + cfgAnchor.length - 1;
-                const argAbsEnd = argStart + cfgBlock.length;
-                // Insert just before the last '}' inside the call argument.
-                const closeParen = argAbsEnd - 1;
-                let insertAt = -1;
-                for (let i = closeParen - 1; i > argStart; i--) {
-                    if (code[i] === '}') { insertAt = i; break; }
-                    if (!/\s/.test(code[i])) break;
-                }
-                if (insertAt === -1) {
-                    console.log('  WARNING: #412 no "}" before ")" in config');
-                } else {
-                    const insertion = ',sharedCwdPath:' + sessionVar +
-                        '.userSelectedFolders?.[0]';
-                    code = code.substring(0, insertAt) +
-                        insertion + code.substring(insertAt);
-                    console.log('  Injected sharedCwdPath into spawn' +
-                        ' config (var: ' + sessionVar + ')');
-                    patchCount++;
-                    site1Done = true;
-                }
+                // Insert just before the closing '}' of the object literal.
+                const blockStart = code.indexOf(cfgBlock, cfgIdx);
+                const insertAt = blockStart + cfgBlock.length - 1;
+                const insertion = ',sharedCwdPath:' + sessionVar +
+                    '.userSelectedFolders?.[0]';
+                code = code.substring(0, insertAt) +
+                    insertion + code.substring(insertAt);
+                console.log('  Injected sharedCwdPath into spawn' +
+                    ' config (var: ' + sessionVar + ')');
+                patchCount++;
+                site1Done = true;
             }
         }
     }
@@ -1784,8 +1762,8 @@ if (serviceErrorIdx !== -1) {
         console.log('  #412 spawn method already accepts sharedCwdPath');
         site3Done = true;
     } else {
-        // Match the spawn body with the trailing mountConda setter and
-        // the IPC call. Captures: arg list, payload var, setter chain, IPC call.
+        // Match the spawn body with the trailing mountConda setter and the
+        // IPC call. Captures: arg list, payload var, setter chain, IPC tail.
         const spawnRe =
             /async spawn\(([^)]+)\)\{const (\w+)=\{id:[^}]+\};([^{}]*?\w+&&\(\2\.mountConda=\w+\)),(await \w+\("spawn",\2\)\})/;
         const spawnMatch = code.match(spawnRe);
@@ -1796,21 +1774,20 @@ if (serviceErrorIdx !== -1) {
             const argNames = new Set(argList.split(',').map(s =>
                 s.split('=')[0].trim()));
             let param = null;
-            for (const c of 'hHpPqQxXyYzZkKmMwW'.split('')) {
+            for (const c of 'hHpPqQxXyYzZkKmMwW') {
                 if (!argNames.has(c)) { param = c; break; }
             }
             if (!param) {
                 console.log('  WARNING: #412 no unused letter for spawn param');
             } else {
-                const newArgList = argList + ',' + param;
                 const newSetters = setters + ',' + param + '&&(' +
                     payloadVar + '.sharedCwdPath=' + param + ')';
                 const assembled = whole
                     .replace('async spawn(' + argList + ')',
-                        'async spawn(' + newArgList + ')')
-                    .replace(setters + ',' + tail,
-                        newSetters + ',' + tail);
-                code = code.replace(whole, assembled);
+                        'async spawn(' + argList + ',' + param + ')')
+                    .replace(setters + ',' + tail, newSetters + ',' + tail);
+                code = code.slice(0, spawnMatch.index) + assembled +
+                    code.slice(spawnMatch.index + whole.length);
                 console.log('  Extended spawn() with ' + param +
                     ' -> ' + payloadVar + '.sharedCwdPath setter');
                 patchCount++;
@@ -1820,22 +1797,20 @@ if (serviceErrorIdx !== -1) {
     }
 
     // --- 12b: forward SESSION.sharedCwdPath in Kyr -> spawn() call ---
+    // Anchor: ',VAR.mountConda)' — unique to the 12-arg caller (the
+    // shorter 10-arg one-shot call sites lack mountConda).
     let site2Done = false;
     if (/,\w+\.mountConda,\w+\.sharedCwdPath\)/.test(code)) {
         console.log('  #412 caller already forwards sharedCwdPath');
         site2Done = true;
     } else {
-        // Anchor: ',VAR.mountConda)' — unique to the 12-arg caller
-        // (the shorter 10-arg one-shot call sites lack mountConda).
-        const callRe = /,(\w+)\.mountConda\)/;
-        const callMatch = code.match(callRe);
+        const callMatch = code.match(/,(\w+)\.mountConda\)/);
         if (!callMatch) {
             console.log('  WARNING: #412 no ",VAR.mountConda)" pattern found');
         } else {
             const sessionVar = callMatch[1];
-            const replacement = ',' + sessionVar + '.mountConda,' +
-                sessionVar + '.sharedCwdPath)';
-            code = code.replace(callMatch[0], replacement);
+            code = code.replace(callMatch[0], ',' + sessionVar +
+                '.mountConda,' + sessionVar + '.sharedCwdPath)');
             console.log('  Forwarded sharedCwdPath in Kyr->spawn call' +
                 ' (var: ' + sessionVar + ')');
             patchCount++;
