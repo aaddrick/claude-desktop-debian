@@ -1282,9 +1282,7 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
     const statusRe = /getDownloadStatus\(\)\{return\s+(\w+\(\)\?(\w+)\.Downloading:\w+\(\)\?\2\.Ready:\2\.NotDownloaded)\}/;
     const statusMatch = code.match(statusRe);
     if (statusMatch) {
-        const whole = statusMatch[0];
-        const origExpr = statusMatch[1];
-        const enumVar = statusMatch[2];
+        const [whole, origExpr, enumVar] = statusMatch;
         const replacement =
             'getDownloadStatus(){return process.platform==="linux"?' +
             enumVar + '.NotDownloaded:' + origExpr + '}';
