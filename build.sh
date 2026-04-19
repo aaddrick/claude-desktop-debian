@@ -1224,8 +1224,12 @@ if (pipeMatch) {
 // Empty arrays mean no VM files are downloaded — this is correct
 // because the VM backend is non-functional on Linux (bwrap is
 // the only working backend and doesn't use VM files).
-// Note: [].every() returns true (vacuous truth), so bO() reports
-// "Ready" status. This is intentional — it skips the download.
+// Note: [].every() returns true (vacuous truth), so iBA() reports
+// that VM files are present. That makes the download() IPC
+// short-circuit without fetching anything, which is the intent
+// here. Patch 4b handles the downstream side-effect on
+// getDownloadStatus() so the Cowork tab doesn't auto-select on
+// every launch (#341).
 // ============================================================
 if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
     !code.includes('linux:{')) {
@@ -1252,6 +1256,49 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
     if (!code.includes('linux:{x64:')) {
         console.log('  WARNING: Could not add Linux bundle' +
             ' manifest entries');
+    }
+}
+
+// ============================================================
+// Patch 4b: Suppress Cowork tab auto-selection on launch (#341)
+// Anchor: getDownloadStatus() method with readable enum property
+//         names (.Downloading, .Ready, .NotDownloaded) — stable
+//         across minifier releases.
+//
+// Patch 4's vacuous-truth workaround makes iBA() report that VM
+// files are "ready", which is what short-circuits the download
+// path. The side-effect is that getDownloadStatus() also returns
+// Ready on every startup, and the remote web app treats a
+// startup observation of Ready as the "download just finished"
+// transition that auto-navigates to Cowork on macOS/Windows.
+// Linux users hit that transition on every launch.
+//
+// Fix: return NotDownloaded on Linux from getDownloadStatus().
+// iBA() is left alone so download() still short-circuits, and
+// clicking the Cowork tab still works (the web app's setup flow
+// calls download() which returns success immediately).
+// ============================================================
+{
+    const statusRe = /getDownloadStatus\(\)\{return\s+(\w+\(\)\?(\w+)\.Downloading:\w+\(\)\?\2\.Ready:\2\.NotDownloaded)\}/;
+    const statusMatch = code.match(statusRe);
+    if (statusMatch) {
+        const whole = statusMatch[0];
+        const origExpr = statusMatch[1];
+        const enumVar = statusMatch[2];
+        const replacement =
+            'getDownloadStatus(){return process.platform==="linux"?' +
+            enumVar + '.NotDownloaded:' + origExpr + '}';
+        code = code.replace(whole, replacement);
+        console.log('  Patched getDownloadStatus to return ' +
+            'NotDownloaded on Linux (suppresses auto-nav, #341)');
+        patchCount++;
+    } else if (code.includes(
+        'getDownloadStatus(){return process.platform==="linux"?'
+    )) {
+        console.log('  Cowork auto-nav suppression already applied');
+    } else {
+        console.log('  WARNING: Could not find getDownloadStatus' +
+            ' pattern for auto-nav suppression (#341)');
     }
 }
 
