@@ -4,13 +4,11 @@
 
 The Directory → "Anthropic & Partners" tab has a non-obvious
 install flow that caused a structural bug (#396) on older
-versions. The key insight — and the thing that isn't obvious from
-the code — is **the renderer that populates
+versions. Key insight: **the renderer that populates
 `pluginContext.mode` and `pluginContext.pluginSource` is served
 remotely from claude.ai in a BrowserView**, not bundled locally.
-Static source inspection only sees the main-process gate logic;
-the inputs to that gate originate outside the asar, in
-server-rendered JS we don't have.
+Static source inspection only sees the main-process gate; its
+inputs originate in server-rendered JS outside the asar.
 
 ## Architecture
 
