@@ -551,11 +551,15 @@ function resolveSdkBinary(sdkSubpath, version, label) {
 
 /**
  * Resolve the actual command binary to execute.
- * Priority: 1) SDK binary from installSdk, 2) command path, 3) which
+ * Priority: 1) SDK binary (only when basename is `claude`),
+ * 2) command path, 3) which
  * Returns { command, error } — error is set if command not found.
  */
 function resolveCommand(command, sdkBinaryPath) {
-    if (sdkBinaryPath && fs.existsSync(sdkBinaryPath)) {
+    const basename = path.basename(command);
+
+    if (basename === 'claude' &&
+            sdkBinaryPath && fs.existsSync(sdkBinaryPath)) {
         log(`resolveCommand: using SDK binary: ${sdkBinaryPath}`);
         return { command: sdkBinaryPath, error: null };
     }
@@ -564,7 +568,6 @@ function resolveCommand(command, sdkBinaryPath) {
         return { command, error: null };
     }
 
-    const basename = path.basename(command);
     try {
         const resolved = execFileSync('which', [basename],
             { encoding: 'utf-8' }).trim();
