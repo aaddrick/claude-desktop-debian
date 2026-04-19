@@ -121,7 +121,7 @@ cleanup_orphaned_cowork_daemon() {
 	local pid cmdline state
 	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
-		[[ $pid == $$ || $pid == $PPID ]] && continue
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
 			|| continue
 		# Skip the cowork daemon (matches app.asar.unpacked path).
@@ -802,7 +802,7 @@ print(len(servers))
 	if [[ -n $_cowork_pids ]]; then
 		local _daemon_orphaned=true _pid _cmdline _state
 		for _pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
-			[[ $_pid == $$ || $_pid == $PPID ]] && continue
+			[[ $_pid == "$$" || $_pid == "$PPID" ]] && continue
 			_cmdline=$(tr '\0' ' ' \
 				< "/proc/$_pid/cmdline" 2>/dev/null) || continue
 			[[ $_cmdline == *cowork-vm-service* ]] && continue
