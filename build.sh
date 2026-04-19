@@ -1740,9 +1740,11 @@ install_node_pty() {
 	if [[ -n $pty_src_dir && -d $pty_src_dir ]]; then
 		echo 'Copying node-pty JavaScript files into app.asar.contents...'
 		mkdir -p "$app_staging_dir/app.asar.contents/node_modules/node-pty" || exit 1
-		cp -r "$pty_src_dir/lib" \
+		# --no-preserve=mode so read-only bits from the Nix store
+		# (--node-pty-dir) don't propagate into the staging tree.
+		cp -r --no-preserve=mode "$pty_src_dir/lib" \
 			"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
-		cp "$pty_src_dir/package.json" \
+		cp --no-preserve=mode "$pty_src_dir/package.json" \
 			"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
 		# Also stage build/ so `asar pack --unpack '**/*.node'` can
 		# create a properly-tracked .unpacked entry. Without this,
@@ -1752,7 +1754,7 @@ install_node_pty() {
 		# fails with MODULE_NOT_FOUND even when the binary exists
 		# in app.asar.unpacked/.
 		if [[ -d $pty_src_dir/build ]]; then
-			cp -r "$pty_src_dir/build" \
+			cp -r --no-preserve=mode "$pty_src_dir/build" \
 				"$app_staging_dir/app.asar.contents/node_modules/node-pty/" || exit 1
 			echo 'node-pty build/ staged (will be unpacked during asar pack)'
 		fi
@@ -1797,10 +1799,7 @@ finalize_app_asar() {
 	if [[ -n $pty_release_dir ]]; then
 		echo 'Copying node-pty native binaries to unpacked directory...'
 		mkdir -p "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release" || exit 1
-		# asar pack --unpack may have already placed read-only copies here
-		# (preserving Nix store permissions). Make them writable before overwriting.
-		chmod -R u+w "$app_staging_dir/app.asar.unpacked/node_modules/node-pty" 2>/dev/null || true
-		cp -r "$pty_release_dir/"* \
+		cp -r --no-preserve=mode "$pty_release_dir/"* \
 			"$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/" || exit 1
 		chmod +x "$app_staging_dir/app.asar.unpacked/node_modules/node-pty/build/Release/"* 2>/dev/null || true
 		echo 'node-pty native binaries copied'
