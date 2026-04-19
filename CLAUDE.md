@@ -10,6 +10,7 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 
 - [`nix.md`](docs/learnings/nix.md) — NixOS packaging, Electron resource path resolution, testing without NixOS
 - [`cowork-vm-daemon.md`](docs/learnings/cowork-vm-daemon.md) — Cowork VM daemon lifecycle, respawn logic, crash diagnosis
+- [`plugin-install.md`](docs/learnings/plugin-install.md) — Anthropic & Partners plugin install flow, gate logic, backend endpoints, and DevTools recipes
 
 ## Code Style
 
