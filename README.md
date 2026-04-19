@@ -231,6 +231,7 @@ Special thanks to:
   - Reporting the GNOME quit accessibility issue
   - Confirming tray behavior with AppIndicator
 - **[martin152](https://github.com/martin152)** for detailed diagnosis and a complete patch for three launcher cleanup bugs: `cleanup_orphaned_cowork_daemon` self-match, `cleanup_stale_cowork_socket` socat dependency no-op, and the same self-match in `--doctor`
+- **[hfyeh](https://github.com/hfyeh)** for diagnosing the Ubuntu 24.04 AppArmor unprivileged-userns block on Cowork bwrap and contributing the AppArmor profile workaround
 
 ## Sponsorship
 

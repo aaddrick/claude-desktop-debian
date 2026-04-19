@@ -89,6 +89,51 @@ For enhanced security, consider:
 - Running the AppImage within a separate sandbox (e.g., bubblewrap)
 - Using Gear Lever's integrated AppImage management for better isolation
 
+### Cowork on Ubuntu 24.04+ (AppArmor Blocks User Namespaces)
+
+Ubuntu 24.04 ships with `apparmor_restrict_unprivileged_userns=1`
+by default, which blocks the unprivileged user namespaces that
+Cowork's bubblewrap sandbox relies on. Symptoms:
+
+- `claude-desktop --doctor` reports `bubblewrap: sandbox probe failed`
+  with `Operation not permitted` in stderr.
+- `~/.config/Claude/logs/cowork_vm_daemon.log` contains
+  `bwrap is installed but cannot create a user namespace`.
+- Cowork sessions hang at "Starting VM..." or loop on reconnect.
+
+Permit user namespaces for `bwrap` via an AppArmor profile (one-time
+setup, requires sudo):
+
+```bash
+sudo tee /etc/apparmor.d/bwrap <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+
+    include if exists <local/bwrap>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/bwrap
+```
+
+After applying the profile, run `claude-desktop --doctor` — the
+bubblewrap probe should pass, and Cowork should start without
+falling back to host-direct.
+
+**Security note:** this grants `/usr/bin/bwrap` the unconfined
+profile plus the `userns` capability. It matches the behavior
+bwrap had on Ubuntu 22.04 and earlier, and on most other distros,
+but is a system-wide change that affects every program invoking
+`/usr/bin/bwrap` (not just Claude Desktop). Review the profile
+against your threat model before applying.
+
+Credit: this workaround was contributed by
+[@hfyeh](https://github.com/hfyeh) in
+[#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
+
 ### Authentication Errors (401)
 
 If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).

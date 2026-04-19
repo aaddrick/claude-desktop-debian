@@ -685,9 +685,53 @@ print(len(servers))
 	local _distro_id
 	_distro_id=$(_cowork_distro_id)
 
+	# Determine whether bwrap is the active backend (for severity
+	# of bwrap-related diagnostics). Auto-detect prefers bwrap, so
+	# bwrap is active unless the user has overridden to KVM or host.
+	local _bwrap_active=true
+	if [[ -n ${COWORK_VM_BACKEND-} ]]; then
+		case "${COWORK_VM_BACKEND,,}" in
+			kvm|host) _bwrap_active=false ;;
+		esac
+	fi
+
 	# Bubblewrap (default backend)
 	if command -v bwrap &>/dev/null; then
 		_pass 'bubblewrap: found'
+
+		# Probe the sandbox. User namespaces must be available for
+		# bwrap to create its sandbox; Ubuntu 24.04+ blocks them via
+		# AppArmor by default (issue #351).
+		local _bwrap_probe_err='' _bwrap_probe_rc=0
+		_bwrap_probe_err=$(bwrap --ro-bind / / true 2>&1 >/dev/null) \
+			|| _bwrap_probe_rc=$?
+		if ((_bwrap_probe_rc == 0)); then
+			_pass 'bubblewrap: sandbox probe succeeded'
+		else
+			local _bwrap_issue=_warn
+			$_bwrap_active && _bwrap_issue=_fail
+			"$_bwrap_issue" \
+				"bubblewrap: sandbox probe failed" \
+				"(rc=$_bwrap_probe_rc)"
+			if [[ -n $_bwrap_probe_err ]]; then
+				_info "  stderr: $_bwrap_probe_err"
+			fi
+			# Detect the Ubuntu 24.04 AppArmor userns block
+			# specifically, and hint the remediation.
+			local _userns_re='(user[[:space:]_-]?namespace|apparmor|[Oo]peration not permitted|CLONE_NEW|CAP_SYS_ADMIN)'
+			if [[ $_bwrap_probe_err =~ $_userns_re ]]; then
+				_info \
+					'  Likely cause: unprivileged user namespaces' \
+					'are blocked.'
+				_info \
+					'  Common on Ubuntu 24.04+ where AppArmor sets' \
+					'apparmor_restrict_unprivileged_userns=1'
+				_info \
+					'  by default. See docs/TROUBLESHOOTING.md' \
+					'"Cowork on Ubuntu 24.04"'
+				_info '  for the AppArmor profile fix.'
+			fi
+		fi
 	else
 		_warn 'bubblewrap: not found'
 		_info \
@@ -773,9 +817,16 @@ print(len(servers))
 			bwrap) cowork_backend='bubblewrap (namespace sandbox, via override)' ;;
 			host) cowork_backend='host-direct (no isolation, via override)' ;;
 		esac
-	elif command -v bwrap &>/dev/null \
-		&& bwrap --ro-bind / / true &>/dev/null; then
-		cowork_backend='bubblewrap (namespace sandbox)'
+	elif command -v bwrap &>/dev/null; then
+		# bwrap is installed: if the probe succeeds, use it;
+		# otherwise fall to host (matching daemon behavior, so we
+		# don't silently imply KVM will be chosen when bwrap is
+		# blocked — see #351).
+		if bwrap --ro-bind / / true &>/dev/null; then
+			cowork_backend='bubblewrap (namespace sandbox)'
+		else
+			cowork_backend='host-direct (bwrap probe failed — see above)'
+		fi
 	elif [[ -e /dev/kvm ]] \
 		&& [[ -r /dev/kvm && -w /dev/kvm ]] \
 		&& command -v qemu-system-x86_64 &>/dev/null \

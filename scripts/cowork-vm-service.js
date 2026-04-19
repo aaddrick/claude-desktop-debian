@@ -2190,6 +2190,35 @@ class KvmBackend extends BackendBase {
 // Backend Detection
 // ============================================================
 
+// Classify a failed `bwrap --ro-bind / / true` probe. Returns
+// { kind: 'userns' | 'unknown', stderr: string }.
+//
+// Ubuntu 24.04+ ships `apparmor_restrict_unprivileged_userns=1` by
+// default, which blocks bwrap from creating the user namespace it
+// needs. The probe then fails with EPERM or an AppArmor denial in
+// dmesg; bwrap's own stderr is usually "Creating new user namespace:
+// Operation not permitted" or similar. Matching these patterns lets
+// the daemon and the `--doctor` check emit a specific, actionable
+// diagnosis instead of a generic "bwrap not available" that masks
+// the real problem (issue #351).
+function classifyBwrapProbeError(e) {
+    const stderr = (e && e.stderr ? e.stderr.toString() : '')
+        + (e && e.stdout ? e.stdout.toString() : '');
+    const haystack = (e && e.message ? e.message : '') + '\n' + stderr;
+    const usernsPatterns = [
+        /user[ _-]?namespace/i,
+        /apparmor/i,
+        /operation not permitted/i,
+        /setting up (uid|gid) map/i,
+        /CLONE_NEW(USER|NS)/i,
+        /CAP_SYS_ADMIN/i,
+    ];
+    const kind = usernsPatterns.some((re) => re.test(haystack))
+        ? 'userns'
+        : 'unknown';
+    return { kind, stderr: stderr.trim() };
+}
+
 function detectBackend(emitEvent) {
     const override = BACKEND_OVERRIDE;
     if (override) {
@@ -2206,22 +2235,55 @@ function detectBackend(emitEvent) {
         }
     }
 
-    // Auto-detect: try bwrap first, then KVM, then host.
+    // Auto-detect: try bwrap first. If bwrap is installed but the
+    // sandbox probe fails, stop at host rather than silently falling
+    // through to KVM — KVM auto-selection in that state leads users
+    // into a broken retry loop when the rootfs isn't ready (#351).
+    let bwrapInstalled = false;
     try {
         execFileSync('which', ['bwrap'], { stdio: 'pipe' });
-        execFileSync('bwrap', ['--ro-bind', '/', '/', 'true'], {
-            stdio: 'pipe', timeout: 5000
-        });
-        log('Backend: bwrap');
-        // Hint for users upgrading from KVM-first auto-detection
+        bwrapInstalled = true;
+    } catch (_) {
+        log('bwrap not installed');
+    }
+
+    if (bwrapInstalled) {
         try {
-            fs.accessSync('/dev/kvm', fs.constants.R_OK | fs.constants.W_OK);
-            log('Note: KVM is available but bwrap is now the default. '
-                + 'Set COWORK_VM_BACKEND=kvm for full VM isolation.');
-        } catch (_) { /* KVM not available, no hint needed */ }
-        return new BwrapBackend(emitEvent);
-    } catch (e) {
-        log(`bwrap not available: ${e.message}`);
+            execFileSync('bwrap', ['--ro-bind', '/', '/', 'true'], {
+                stdio: 'pipe', timeout: 5000
+            });
+            log('Backend: bwrap');
+            // Hint for users upgrading from KVM-first auto-detection
+            try {
+                fs.accessSync('/dev/kvm',
+                    fs.constants.R_OK | fs.constants.W_OK);
+                log('Note: KVM is available but bwrap is now the default. '
+                    + 'Set COWORK_VM_BACKEND=kvm for full VM isolation.');
+            } catch (_) { /* KVM not available, no hint needed */ }
+            return new BwrapBackend(emitEvent);
+        } catch (e) {
+            const { kind, stderr } = classifyBwrapProbeError(e);
+            if (kind === 'userns') {
+                logError(
+                    'bwrap is installed but cannot create a user '
+                    + 'namespace. This is common on Ubuntu 24.04+ where '
+                    + 'AppArmor blocks unprivileged user namespaces by '
+                    + 'default (apparmor_restrict_unprivileged_userns=1). '
+                    + 'See the "Cowork on Ubuntu 24.04" section in '
+                    + 'docs/TROUBLESHOOTING.md for the AppArmor profile '
+                    + 'fix.');
+            } else {
+                logError(`bwrap probe failed: ${e.message || '(no message)'}`);
+            }
+            if (stderr) {
+                logError(`bwrap stderr: ${stderr.slice(0, 500)}`);
+            }
+            logError(
+                'Falling back to host-direct (no isolation). Set '
+                + 'COWORK_VM_BACKEND=kvm to opt into KVM, or fix the '
+                + 'bwrap issue above to restore sandbox isolation.');
+            return new HostBackend(emitEvent);
+        }
     }
 
     // Note: rootfs is NOT checked here — the app downloads it to
@@ -2549,4 +2611,5 @@ module.exports = {
     validateMountPath,
     loadBwrapMountsConfig,
     mergeBwrapArgs,
+    classifyBwrapProbeError,
 };
