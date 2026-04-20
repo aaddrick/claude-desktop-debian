@@ -38,8 +38,10 @@ output="${4:?output path required}"
 
 anchor_date=""
 if [[ -n "${claimed_version}" && "${claimed_version}" != "null" ]]; then
+	# --fixed-strings so the dots in X.Y.Z aren't treated as regex
+	# wildcards (a 1.3.23 search would otherwise match 1x3y23).
 	anchor_date=$(git log --all \
-		--grep="${claimed_version}" \
+		--fixed-strings --grep="${claimed_version}" \
 		--pretty=format:'%cI' \
 		2>/dev/null \
 		| tail -1 || true)

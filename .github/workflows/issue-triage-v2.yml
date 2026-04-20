@@ -17,6 +17,11 @@ on:
         description: "Issue number to triage"
         required: true
         type: number
+      dry_run:
+        description: "Run the pipeline but skip posting the comment and applying labels (artifacts still uploaded)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   issues: write
@@ -132,7 +137,7 @@ jobs:
           {
             cat .claude/scripts/prompts/classify.txt
             echo ""
-            echo "<issue_title>${title}</issue_title>"
+            echo "<issue_title source=\"reporter, untrusted\">${title}</issue_title>"
             echo ""
             echo "<issue_body source=\"reporter, untrusted\">"
             printf '%s\n' "${body}"
@@ -179,7 +184,7 @@ jobs:
           {
             cat .claude/scripts/prompts/classify-doublecheck-bugfeature.txt
             echo ""
-            echo "<issue_title>${title}</issue_title>"
+            echo "<issue_title source=\"reporter, untrusted\">${title}</issue_title>"
             echo ""
             echo "<issue_body source=\"reporter, untrusted\">"
             printf '%s\n' "${body}"
@@ -335,7 +340,7 @@ jobs:
             printf '%s\n' "${classification}"
             echo '```'
             echo ""
-            echo "<issue_title>${title}</issue_title>"
+            echo "<issue_title source=\"reporter, untrusted\">${title}</issue_title>"
             echo ""
             echo "<issue_body source=\"reporter, untrusted\">"
             printf '%s\n' "${body}"
@@ -459,12 +464,17 @@ jobs:
           passed="${{ steps.validate.outputs.findings_passed }}"
           avg="${{ steps.validate.outputs.avg_confidence }}"
 
-          if [[ "${fetch_ok}" != "true" ]]; then
-            variant=8b
-            reason_id=reference-source-unavailable
-          elif [[ "${drift}" == "true" ]]; then
+          # Priority per spec §7 — drift first. When drift and fetch
+          # both fire, version-drift gives the maintainer a more
+          # specific signal than reference-source-unavailable (and is
+          # the only path that hands them drift-bridge candidates, when
+          # investigation produced files to sweep against).
+          if [[ "${drift}" == "true" ]]; then
             variant=8b
             reason_id=version-drift
+          elif [[ "${fetch_ok}" != "true" ]]; then
+            variant=8b
+            reason_id=reference-source-unavailable
           elif [[ "${invest_ok}" != "true" ]]; then
             variant=8b
             reason_id=no-findings
@@ -715,7 +725,10 @@ jobs:
       # Stage 9 — labels. 8a → triage: investigated. 8b → triage: needs-
       # human / needs-info / not-actionable per classification. Phase 2
       # doesn't promote `triage: duplicate` yet (needs Stage 6 confirm).
+      # Skipped under dry_run — the step-summary table still shows what
+      # would have been applied.
       - name: Apply labels
+        if: inputs.dry_run != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -798,6 +811,7 @@ jobs:
           done
 
       - name: Post comment
+        if: inputs.dry_run != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -815,13 +829,20 @@ jobs:
           FINDINGS_TOTAL: ${{ steps.validate.outputs.findings_total }}
           FINDINGS_PASSED: ${{ steps.validate.outputs.findings_passed }}
           DRIFT_DETECTED: ${{ steps.drift.outputs.drift_detected }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           {
             echo "## Triage v2 — Phase 2"
             echo ""
+            if [[ "${DRY_RUN}" == "true" ]]; then
+              echo "> ⚠ **Dry run** — no comment posted, no labels applied."
+              echo "> Inspect the rendered comment under the uploaded \`comment.md\` artifact."
+              echo ""
+            fi
             echo "| Metric | Value |"
             echo "|---|---|"
             echo "| Issue | #${ISSUE_NUMBER} |"
+            echo "| Dry run | ${DRY_RUN:-false} |"
             echo "| Classification | ${CLASSIFICATION} |"
             echo "| Confidence | ${CONFIDENCE} |"
             echo "| Doublecheck disagreed | ${DISAGREED:-n/a} |"
@@ -829,7 +850,7 @@ jobs:
             echo "| Findings proposed | ${FINDINGS_TOTAL:-0} |"
             echo "| Findings passed mechanical | ${FINDINGS_PASSED:-0} |"
             echo "| Findings passed review | n/a (Phase 3) |"
-            echo "| Comment variant posted | ${VARIANT} |"
+            echo "| Comment variant rendered | ${VARIANT} |"
             echo "| Deferral reason (if applicable) | ${REASON_TEXT:-n/a} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
