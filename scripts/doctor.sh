@@ -630,22 +630,17 @@ print(len(servers))
 		if [[ $_vfsd_path == "$_vfsd_on_path" ]]; then
 			_pass 'virtiofsd: found'
 		elif $_kvm_active; then
-			_warn \
-				"virtiofsd: found at $_vfsd_path but not on PATH"
-			_info \
-				'KvmBackend spawns by PATH name and will fall back'
-			_info \
-				'to virtio-9p (lower performance) without a symlink.'
-			_info \
-				"Fix: sudo ln -s $_vfsd_path /usr/local/bin/virtiofsd"
+			_warn "virtiofsd: found at $_vfsd_path but not on PATH"
+			_info 'KvmBackend spawns by PATH name and will fall back'
+			_info 'to virtio-9p (lower performance) without a symlink.'
+			_info "Fix: sudo ln -s $_vfsd_path /usr/local/bin/virtiofsd"
 		else
 			_pass "virtiofsd: found at $_vfsd_path (not on PATH)"
 		fi
 	else
 		"$_kvm_issue" 'virtiofsd: not found'
 		if $_kvm_active; then
-			_info \
-				"Fix: $(_cowork_pkg_hint "$_distro_id" virtiofsd)"
+			_info "Fix: $(_cowork_pkg_hint "$_distro_id" virtiofsd)"
 		fi
 	fi
 
