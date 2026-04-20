@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "enum": ["bug", "feature", "ambiguous"],
+      "description": "Second-pass verdict on the bug/feature axis. 'ambiguous' means signals are mixed or weak."
+    },
+    "signal_quotes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 3,
+      "description": "Verbatim excerpts from the issue body that drove the verdict. One to three items."
+    }
+  },
+  "required": ["verdict", "signal_quotes"]
+}

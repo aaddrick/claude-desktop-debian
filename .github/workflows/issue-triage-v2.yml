@@ -2,9 +2,10 @@ name: Issue Triage v2
 run-name: |
   Triage v2: #${{ inputs.issue_number }}
 
-# Phase 0 scaffold — workflow_dispatch-only, no live behavior.
-# See docs/issue-triage/implementation-plan.md for the build sequence.
+# Phase 1 — Stages 1, 2, 8b, 9. Every dispatched issue gets a structured
+# human-deferral comment + triage label. No investigation yet (Phase 2).
 # v1 (issue-triage.yml) stays wired to its own triggers during rollout.
+# See docs/issue-triage/README.md and docs/issue-triage/implementation-plan.md.
 
 on:
   workflow_dispatch:
@@ -14,28 +15,430 @@ on:
         required: true
         type: number
 
-permissions: {}
+permissions:
+  issues: write
+  contents: read
 
 concurrency:
   group: issue-triage-v2-${{ inputs.issue_number }}
   cancel-in-progress: true
 
 jobs:
-  skeleton:
-    name: Phase 0 Skeleton
+  # ──────────────────────────────────────────────────────────────────────
+  # Stage 1 — Gate. Bot-author skip is the only gate in v2 on dispatch;
+  # manual dispatch intentionally bypasses the already-triaged and
+  # needs-human checks (those only matter on the opened trigger, which v2
+  # doesn't wire up until cutover).
+  # ──────────────────────────────────────────────────────────────────────
+  gate:
+    name: Gate
     runs-on: ubuntu-latest
-    env:
-      ISSUE_NUMBER: ${{ inputs.issue_number }}
+    outputs:
+      should_triage: ${{ steps.check.outputs.should_triage }}
+      issue_number: ${{ steps.check.outputs.issue_number }}
     steps:
-      - name: Echo issue number
+      - name: Evaluate gate
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
-          echo "Phase 0 skeleton: would triage issue #${ISSUE_NUMBER}"
-          echo "No API calls, no comments, no labels."
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+
+          author=$(gh issue view "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json author --jq '.author.login')
+
+          if [[ "${author}" == "github-actions[bot]" ]]; then
+            echo "should_triage=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping bot-authored issue"
+            exit 0
+          fi
+
+          echo "should_triage=true" >> "$GITHUB_OUTPUT"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Stages 1-snapshot / 2 classify + doublecheck / 8b render / 9 label +
+  # post + archive.
+  # ──────────────────────────────────────────────────────────────────────
+  triage:
+    name: Triage
+    runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.should_triage == 'true'
+    env:
+      ISSUE_NUMBER: ${{ needs.gate.outputs.issue_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Stage 1 — input snapshot. issue.body, issue.updated_at,
+      # sha256(issue.body), plus metadata for downstream use. Archived at
+      # the end; edit-during-triage comparison lands in Phase 4.
+      - name: Capture input snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/triage
+          gh issue view "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json number,title,body,author,updatedAt,createdAt \
+            > /tmp/triage/issue.json
+
+          body=$(jq -r '.body // ""' /tmp/triage/issue.json)
+          updated_at=$(jq -r '.updatedAt' /tmp/triage/issue.json)
+          body_sha=$(printf '%s' "${body}" | sha256sum | awk '{print $1}')
+
+          jq -n \
+            --argjson n "${ISSUE_NUMBER}" \
+            --arg body "${body}" \
+            --arg updated_at "${updated_at}" \
+            --arg sha "${body_sha}" \
+            '{
+              issue_number: $n,
+              issue_body: $body,
+              updated_at: $updated_at,
+              body_sha256: $sha
+            }' \
+            > /tmp/triage/input_snapshot.json
+
+      # Stage 9 prep — cache the repo's label set once per run. Used by
+      # the suggested-labels gate below.
+      - name: Cache repo label set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --limit 200 \
+            --json name --jq '[.[].name]' \
+            > /tmp/triage/repo-labels.json
+
+      # Stage 2 — first-pass classify.
+      - name: Classify issue
+        id: classify
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          schema=$(cat .claude/scripts/schemas/classify.json)
+          title=$(jq -r '.title' /tmp/triage/issue.json)
+          body=$(jq -r '.body // ""' /tmp/triage/issue.json)
+
           {
-            echo "## Phase 0 skeleton run"
+            cat .claude/scripts/prompts/classify.txt
             echo ""
-            echo "Issue: #${ISSUE_NUMBER}"
+            echo "<issue_title>${title}</issue_title>"
             echo ""
-            echo "No live behavior yet — stages land in Phase 1+."
-            echo "See \`docs/issue-triage/implementation-plan.md\`."
+            echo "<issue_body source=\"reporter, untrusted\">"
+            printf '%s\n' "${body}"
+            echo "</issue_body>"
+          } > /tmp/triage/classify-prompt.txt
+
+          result=$(claude -p "$(cat /tmp/triage/classify-prompt.txt)" \
+            --output-format json \
+            --json-schema "${schema}" \
+            --model claude-sonnet-4-6 \
+            --max-budget-usd 1.00 \
+            2>/dev/null) || {
+              echo "::error::classify call failed"
+              exit 1
+            }
+
+          structured=$(printf '%s' "${result}" \
+            | jq -c '.structured_output // empty')
+          if [[ -z "${structured}" ]]; then
+            echo "::error::no structured_output from classify"
+            exit 1
+          fi
+          printf '%s' "${structured}" > /tmp/triage/classification.json
+
+          classification=$(jq -r '.classification' \
+            /tmp/triage/classification.json)
+          confidence=$(jq -r '.confidence' /tmp/triage/classification.json)
+          {
+            echo "classification=${classification}"
+            echo "confidence=${confidence}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Stage 2 — second-pass check on the bug/feature axis. Only runs
+      # when the first pass returned bug or feature, since those two
+      # routes diverge downstream (bug → 8a findings in Phase 2, feature
+      # → 8c in Phase 4).
+      - name: Classify double-check (bug/feature)
+        id: doublecheck
+        if: steps.classify.outputs.classification == 'bug' || steps.classify.outputs.classification == 'feature'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          schema=$(cat .claude/scripts/schemas/classify-doublecheck-bugfeature.json)
+          title=$(jq -r '.title' /tmp/triage/issue.json)
+          body=$(jq -r '.body // ""' /tmp/triage/issue.json)
+
+          {
+            cat .claude/scripts/prompts/classify-doublecheck-bugfeature.txt
+            echo ""
+            echo "<issue_title>${title}</issue_title>"
+            echo ""
+            echo "<issue_body source=\"reporter, untrusted\">"
+            printf '%s\n' "${body}"
+            echo "</issue_body>"
+          } > /tmp/triage/doublecheck-prompt.txt
+
+          result=$(claude -p "$(cat /tmp/triage/doublecheck-prompt.txt)" \
+            --output-format json \
+            --json-schema "${schema}" \
+            --model claude-sonnet-4-6 \
+            --max-budget-usd 1.00 \
+            2>/dev/null) || {
+              echo "::error::doublecheck call failed"
+              exit 1
+            }
+
+          structured=$(printf '%s' "${result}" \
+            | jq -c '.structured_output // empty')
+          if [[ -z "${structured}" ]]; then
+            echo "::error::no structured_output from doublecheck"
+            exit 1
+          fi
+          printf '%s' "${structured}" \
+            > /tmp/triage/classification-doublecheck.json
+
+          first_pass="${{ steps.classify.outputs.classification }}"
+          verdict=$(jq -r '.verdict' \
+            /tmp/triage/classification-doublecheck.json)
+
+          if [[ "${verdict}" == "ambiguous" || "${verdict}" != "${first_pass}" ]]; then
+            echo "disagreed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "disagreed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Stage 7 (partial) — deterministic reason selection for Phase 1.
+      # Phase 1 has no investigation, so every issue defers. Only two
+      # reasons fire: 'ambiguous' when the doublecheck disagrees,
+      # 'no-findings' for everything else. Drift, duplicate, low-
+      # confidence, and suspicious-input reasons light up in Phases 2-4
+      # as their gates come online.
+      - name: Pick deferral reason
+        id: reason
+        run: |
+          disagreed="${{ steps.doublecheck.outputs.disagreed }}"
+
+          if [[ "${disagreed}" == "true" ]]; then
+            reason_id="ambiguous"
+          else
+            reason_id="no-findings"
+          fi
+
+          reason_text=$(jq -r --arg id "${reason_id}" \
+            '.reasons[] | select(.id==$id) | .text' \
+            .claude/scripts/reasons.json)
+
+          {
+            echo "reason_id=${reason_id}"
+            echo "reason_text=${reason_text}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Stage 8b — bash-only template renderer. No LLM call. First-issue
+      # privacy note appended when the reporter has no prior issues on the
+      # repo (one-time informative, per spec §PII).
+      - name: Render 8b deferral comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REASON_TEXT: ${{ steps.reason.outputs.reason_text }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          author=$(jq -r '.author.login' /tmp/triage/issue.json)
+
+          # Count this reporter's issues on the repo. gh's --limit 2 is
+          # the cheapest way to distinguish first-ever from "has history"
+          # without paging.
+          prior_count=$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --author "${author}" \
+            --state all \
+            --limit 2 \
+            --json number --jq 'length')
+
+          privacy_note=""
+          if [[ "${prior_count}" -le 1 ]]; then
+            privacy_note=$'\n\n(This bot processes issue text via Anthropic'"'"'s API. See [README §Privacy](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#privacy) for what that means.)'
+          fi
+
+          {
+            echo "**Automated draft — AI analysis, not maintainer judgment.** This bot looked at the issue but couldn't reach a confident read. Routing to a human for review."
+            echo ""
+            echo "Reason: ${REASON_TEXT}"
+            echo ""
+            echo "${RUN_URL} has the raw classification artifact if helpful for context.${privacy_note}"
+          } > /tmp/triage/comment.md
+
+      # Stage 8b post-processor. Two invariants from spec §8b:
+      # (1) reason line must match one of the enumerated values;
+      # (2) comment is under 150 words. The reason check normalizes
+      # `#<digits>` back to the `#{duplicate_of}` placeholder so the same
+      # code works once Phase 3+ starts emitting the duplicate reason.
+      - name: Post-processor check on 8b comment
+        run: |
+          reason_line=$(grep -oP '^Reason: \K.*$' /tmp/triage/comment.md \
+            || true)
+          if [[ -z "${reason_line}" ]]; then
+            echo "::error::No 'Reason: ...' line in rendered comment"
+            exit 1
+          fi
+
+          reason_check=$(printf '%s' "${reason_line}" \
+            | sed -E 's/#[0-9]+/#\{duplicate_of\}/')
+
+          if ! jq -e --arg r "${reason_check}" \
+              '.reasons | map(.text) | any(. == $r)' \
+              .claude/scripts/reasons.json >/dev/null; then
+            echo "::error::Reason '${reason_line}' not in reasons.json enum"
+            exit 1
+          fi
+
+          words=$(wc -w < /tmp/triage/comment.md)
+          if [[ "${words}" -gt 150 ]]; then
+            echo "::error::Comment exceeds 150 words (got ${words})"
+            exit 1
+          fi
+
+      # Stage 9 — label + post + archive. Cardinality-1 slots applied
+      # directly; categories filtered through the cached repo label set
+      # and the blocklist. Phase 1 routes all non-question / non-
+      # not-actionable issues to triage: needs-human because no Stage 4-6
+      # pipeline exists yet to earn triage: investigated.
+      - name: Apply labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          classification="${{ steps.classify.outputs.classification }}"
+          disagreed="${{ steps.doublecheck.outputs.disagreed }}"
+
+          if [[ "${disagreed}" == "true" ]]; then
+            triage_label="triage: needs-human"
+            class_label=""
+          else
+            case "${classification}" in
+              bug)
+                triage_label="triage: needs-human"
+                class_label="bug"
+                ;;
+              feature)
+                triage_label="triage: needs-human"
+                class_label="enhancement"
+                ;;
+              question)
+                triage_label="triage: needs-info"
+                class_label="question"
+                ;;
+              duplicate)
+                triage_label="triage: needs-human"
+                class_label=""
+                ;;
+              needs-info)
+                triage_label="triage: needs-info"
+                class_label=""
+                ;;
+              not-actionable)
+                triage_label="triage: not-actionable"
+                class_label=""
+                ;;
+              *)
+                triage_label="triage: needs-human"
+                class_label=""
+                ;;
+            esac
+          fi
+
+          priority_label=$(jq -r \
+            '.suggested_labels[]? | select(startswith("priority:"))' \
+            /tmp/triage/classification.json | head -1)
+          if [[ -z "${priority_label}" ]]; then
+            priority_label="priority: medium"
+          fi
+          if [[ "${priority_label}" == "priority: critical" ]]; then
+            priority_label="priority: medium"
+          fi
+
+          apply_if_valid() {
+            local candidate="$1"
+            [[ -z "${candidate}" ]] && return 0
+            if jq -e --arg l "${candidate}" \
+                '.blocked_labels | any(. == $l)' \
+                .claude/scripts/taxonomies/label-blocklist.json \
+                >/dev/null; then
+              echo "::notice::Label '${candidate}' blocked by blocklist"
+              return 0
+            fi
+            if ! jq -e --arg l "${candidate}" 'any(. == $l)' \
+                /tmp/triage/repo-labels.json >/dev/null; then
+              echo "::notice::Label '${candidate}' not in repo label set"
+              return 0
+            fi
+            gh issue edit "${ISSUE_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --add-label "${candidate}" 2>/dev/null || true
+          }
+
+          gh issue edit "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --add-label "${triage_label}"
+
+          apply_if_valid "${class_label}"
+          apply_if_valid "${priority_label}"
+
+          mapfile -t categories < <(jq -r \
+            '.suggested_labels[]? | select(startswith("priority:") | not)' \
+            /tmp/triage/classification.json)
+          for cat in "${categories[@]}"; do
+            case "${cat}" in
+              bug|enhancement|documentation|question) continue ;;
+              triage:*) continue ;;
+            esac
+            apply_if_valid "${cat}"
+          done
+
+      - name: Post comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body-file /tmp/triage/comment.md
+
+      - name: Write step summary
+        env:
+          CLASSIFICATION: ${{ steps.classify.outputs.classification }}
+          CONFIDENCE: ${{ steps.classify.outputs.confidence }}
+          REASON_TEXT: ${{ steps.reason.outputs.reason_text }}
+          DISAGREED: ${{ steps.doublecheck.outputs.disagreed }}
+        run: |
+          {
+            echo "## Triage v2 — Phase 1"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| Issue | #${ISSUE_NUMBER} |"
+            echo "| Classification | ${CLASSIFICATION} |"
+            echo "| Confidence | ${CONFIDENCE} |"
+            echo "| Doublecheck disagreed | ${DISAGREED:-n/a} |"
+            echo "| Comment variant posted | human-deferral (8b) |"
+            echo "| Deferral reason | ${REASON_TEXT} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-v2-phase-1-issue-${{ needs.gate.outputs.issue_number }}
+          path: /tmp/triage/
+          retention-days: 14
