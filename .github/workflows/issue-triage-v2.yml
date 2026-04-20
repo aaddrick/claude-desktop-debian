@@ -306,6 +306,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          schema=$(cat .claude/scripts/schemas/investigate.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
           body=$(jq -r '.body // ""' /tmp/triage/issue.json)
           classification=$(cat /tmp/triage/classification.json)
@@ -348,29 +349,25 @@ jobs:
           } > /tmp/triage/investigate-prompt.txt
 
           # The investigation call runs with tool access (read/grep) so
-          # Claude can verify claims against actual source. Output is
-          # the model's final message; we parse JSON out and validate
-          # shape.
+          # Claude can verify claims against actual source. `--json-schema`
+          # constrains the FINAL message; tool-call intermediates flow
+          # freely. Per CLI docs, validation is post-hoc — conforming
+          # output lands in `.structured_output`, prose in `.result`.
+          # We prefer `.structured_output` and fall back to the
+          # extract-json.py helper on the `.result` field in case the
+          # CLI hands back prose for any reason.
           #
-          # Hardening against the two failure modes seen in the first
-          # dispatch round (PR #460 follow-up):
-          #
-          # * `timeout 300s` bounds the step at 5 min so a wedged CLI
-          #   call can't run to the job-level timeout.
-          # * Stderr goes to an archived log file so post-mortem
-          #   debugging has something to read — previously `2>/dev/null`
-          #   swallowed everything, leaving a silent 8-min gap in the
-          #   step log when the call hung.
-          # * Raw CLI response + extracted payload are archived before
-          #   schema checks, so a schema-reject still leaves artifacts
-          #   to inspect.
-          # * JSON extraction uses Python's `raw_decode` — robust to
-          #   leading OR trailing prose around the JSON body, unlike
-          #   the fence-strip + jq-presence-check it replaces.
+          # Step hardening from earlier PR:
+          # * `timeout 300s` bounds the step at 5 min
+          # * Stderr to an archived log file so a silent hang is
+          #   post-mortem debuggable
+          # * Raw response + extracted payload archived before schema
+          #   checks so a reject still leaves artifacts to inspect
           set +o pipefail
           raw=$(timeout 300s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
             --dangerously-skip-permissions \
             --output-format json \
+            --json-schema "${schema}" \
             --model claude-sonnet-4-6 \
             --max-budget-usd 3.00 \
             2>/tmp/triage/investigate-stderr.log)
@@ -389,28 +386,35 @@ jobs:
             exit 0
           fi
 
-          payload=$(printf '%s' "${raw}" | jq -r '.result // empty')
-          printf '%s' "${payload}" > /tmp/triage/investigate-payload.txt
+          # Prefer the CLI-validated structured_output when the schema
+          # fit cleanly.
+          extracted=$(printf '%s' "${raw}" | jq -c '.structured_output // empty')
 
-          if [[ -z "${payload}" ]]; then
-            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::empty investigation result"
-            exit 0
+          if [[ -z "${extracted}" ]]; then
+            # Fallback: pull .result and try to rescue JSON from prose.
+            # Handles the case where the CLI's schema enforcement
+            # didn't land a structured_output (e.g. tool-use loop
+            # drifted and the CLI returned prose in .result).
+            payload=$(printf '%s' "${raw}" | jq -r '.result // empty')
+            printf '%s' "${payload}" > /tmp/triage/investigate-payload.txt
+
+            if [[ -z "${payload}" ]]; then
+              echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::empty investigation result"
+              exit 0
+            fi
+
+            extracted=$(python3 .claude/scripts/triage/extract-json.py \
+              < /tmp/triage/investigate-payload.txt) || {
+              echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::no valid JSON object in investigation payload"
+              exit 0
+            }
           fi
-
-          # Extract the first complete JSON object from the payload.
-          # Handles leading prose ("Here is...") and trailing prose
-          # ("Let me know...") that the fence-strip didn't catch.
-          extracted=$(python3 .claude/scripts/triage/extract-json.py \
-            < /tmp/triage/investigate-payload.txt) || {
-            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::no valid JSON object found in investigation payload"
-            exit 0
-          }
 
           # Type-check the four required top-level arrays — presence
           # alone would pass `{"findings": "oops"}` which then explodes
-          # in validate.sh (PR #459 review item 7).
+          # in validate.sh. When `--json-schema` bit, this is a no-op.
           if ! printf '%s' "${extracted}" | jq -e '
               (.findings | type == "array")
               and (.pattern_sweep | type == "array")
