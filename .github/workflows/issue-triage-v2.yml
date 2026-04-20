@@ -348,40 +348,81 @@ jobs:
           } > /tmp/triage/investigate-prompt.txt
 
           # The investigation call runs with tool access (read/grep) so
-          # Claude can verify claims against actual source. Output is the
-          # model's final message; we parse JSON out and validate shape.
-          raw=$(claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
+          # Claude can verify claims against actual source. Output is
+          # the model's final message; we parse JSON out and validate
+          # shape.
+          #
+          # Hardening against the two failure modes seen in the first
+          # dispatch round (PR #460 follow-up):
+          #
+          # * `timeout 300s` bounds the step at 5 min so a wedged CLI
+          #   call can't run to the job-level timeout.
+          # * Stderr goes to an archived log file so post-mortem
+          #   debugging has something to read — previously `2>/dev/null`
+          #   swallowed everything, leaving a silent 8-min gap in the
+          #   step log when the call hung.
+          # * Raw CLI response + extracted payload are archived before
+          #   schema checks, so a schema-reject still leaves artifacts
+          #   to inspect.
+          # * JSON extraction uses Python's `raw_decode` — robust to
+          #   leading OR trailing prose around the JSON body, unlike
+          #   the fence-strip + jq-presence-check it replaces.
+          set +o pipefail
+          raw=$(timeout 300s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
             --dangerously-skip-permissions \
             --output-format json \
             --model claude-sonnet-4-6 \
             --max-budget-usd 3.00 \
-            2>/dev/null) || {
-              echo "::warning::investigate call failed"
-              echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            }
+            2>/tmp/triage/investigate-stderr.log)
+          claude_exit=$?
+          set -o pipefail
 
-          # Extract the final message; strip any markdown code fences.
+          printf '%s' "${raw}" > /tmp/triage/investigate-raw.json
+
+          if [[ "${claude_exit}" == "124" ]]; then
+            echo "::warning::investigate call timed out at 300s"
+            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [[ "${claude_exit}" != "0" ]]; then
+            echo "::warning::investigate call failed (exit ${claude_exit})"
+            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           payload=$(printf '%s' "${raw}" | jq -r '.result // empty')
+          printf '%s' "${payload}" > /tmp/triage/investigate-payload.txt
+
           if [[ -z "${payload}" ]]; then
             echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
             echo "::warning::empty investigation result"
             exit 0
           fi
 
-          # Drop fence lines so a naked JSON body remains for jq.
-          payload=$(printf '%s' "${payload}" | grep -vE '^```')
+          # Extract the first complete JSON object from the payload.
+          # Handles leading prose ("Here is...") and trailing prose
+          # ("Let me know...") that the fence-strip didn't catch.
+          extracted=$(python3 .claude/scripts/triage/extract-json.py \
+            < /tmp/triage/investigate-payload.txt) || {
+            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::no valid JSON object found in investigation payload"
+            exit 0
+          }
 
-          if ! printf '%s' "${payload}" | jq -e '
-              .findings and .pattern_sweep
-              and .proposed_anchors and .related_issues
+          # Type-check the four required top-level arrays — presence
+          # alone would pass `{"findings": "oops"}` which then explodes
+          # in validate.sh (PR #459 review item 7).
+          if ! printf '%s' "${extracted}" | jq -e '
+              (.findings | type == "array")
+              and (.pattern_sweep | type == "array")
+              and (.proposed_anchors | type == "array")
+              and (.related_issues | type == "array")
               ' >/dev/null 2>&1; then
             echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::investigation output failed minimum schema check"
+            echo "::warning::investigation output failed shape check"
             exit 0
           fi
 
-          printf '%s' "${payload}" > /tmp/triage/investigation.json
+          printf '%s' "${extracted}" > /tmp/triage/investigation.json
           echo "investigate_ok=true" >> "$GITHUB_OUTPUT"
 
       # Stage 5 — mechanical validation. Pure bash via validate.sh.
