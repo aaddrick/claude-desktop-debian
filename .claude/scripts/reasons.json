@@ -1,0 +1,30 @@
+{
+  "comment": "Single source of truth for Stage 8b human-deferral reasons. Consumed by the 8b template renderer and its post-processor. Adding a new reason is a one-file change. See docs/issue-triage/README.md §8b.",
+  "reasons": [
+    {
+      "id": "version-drift",
+      "text": "version drift"
+    },
+    {
+      "id": "no-findings",
+      "text": "no findings survived validation"
+    },
+    {
+      "id": "low-confidence",
+      "text": "findings below confidence threshold"
+    },
+    {
+      "id": "duplicate",
+      "text": "likely-duplicate-of-#{duplicate_of}",
+      "placeholders": ["duplicate_of"]
+    },
+    {
+      "id": "ambiguous",
+      "text": "ambiguous bug/feature classification"
+    },
+    {
+      "id": "suspicious-input",
+      "text": "suspicious-input — manual review"
+    }
+  ]
+}

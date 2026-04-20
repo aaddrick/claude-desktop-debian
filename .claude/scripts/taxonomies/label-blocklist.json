@@ -1,0 +1,10 @@
+{
+  "comment": "Labels that the triage bot never applies, even if they exist in the repo's label set. These are closing decisions or maintainer prerogatives. See docs/issue-triage/README.md §Stage 9 for the gating model.",
+  "blocked_labels": [
+    "wontfix",
+    "invalid",
+    "duplicate",
+    "help wanted",
+    "good first issue"
+  ]
+}

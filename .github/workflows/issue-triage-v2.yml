@@ -1,0 +1,41 @@
+name: Issue Triage v2
+run-name: |
+  Triage v2: #${{ inputs.issue_number }}
+
+# Phase 0 scaffold — workflow_dispatch-only, no live behavior.
+# See docs/issue-triage/implementation-plan.md for the build sequence.
+# v1 (issue-triage.yml) stays wired to its own triggers during rollout.
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to triage"
+        required: true
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: issue-triage-v2-${{ inputs.issue_number }}
+  cancel-in-progress: true
+
+jobs:
+  skeleton:
+    name: Phase 0 Skeleton
+    runs-on: ubuntu-latest
+    env:
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+    steps:
+      - name: Echo issue number
+        run: |
+          echo "Phase 0 skeleton: would triage issue #${ISSUE_NUMBER}"
+          echo "No API calls, no comments, no labels."
+          {
+            echo "## Phase 0 skeleton run"
+            echo ""
+            echo "Issue: #${ISSUE_NUMBER}"
+            echo ""
+            echo "No live behavior yet — stages land in Phase 1+."
+            echo "See \`docs/issue-triage/implementation-plan.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"

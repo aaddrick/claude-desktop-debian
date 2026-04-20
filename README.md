@@ -245,6 +245,14 @@ The build scripts in this repository are dual-licensed under:
 
 The Claude Desktop application itself is subject to [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
 
+## Privacy
+
+This repository uses an automated triage bot that sends issue contents to Anthropic's API for classification and investigation when you file a bug report or feature request. The bot reads the issue body, title, and any referenced related issues; it does not follow URLs, execute code blocks, or read content outside the triggering issue.
+
+Do not include credentials, tokens, personal data, or anything you wouldn't put on a public issue tracker. If you post sensitive content and then edit it out, the bot's original read is preserved as a run artifact for audit — GitHub's UI hides the edit, but the bot's view of what you wrote is recoverable by maintainers.
+
+Full design and data inventory: [`docs/issue-triage/README.md`](docs/issue-triage/README.md).
+
 ## Contributing
 
 Contributions are welcome! By submitting a contribution, you agree to license it under the same dual-license terms as this project.
