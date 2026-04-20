@@ -38,6 +38,18 @@ if (resolvedMode !== rawMenuBarMode) {
 }
 console.log(`[Frame Fix] Menu bar mode: ${MENU_BAR_MODE}`);
 
+// Keep the app alive when the main window is closed (hide to tray),
+// so in-app schedulers / MCP servers / the tray icon survive a
+// stray click on X. Explicit quit paths (Ctrl+Q global shortcut
+// registered below, tray menu Quit, File > Quit, cmd+Q, SIGTERM)
+// still go through app.quit() → before-quit, which arms the flag
+// so the close handler lets the windows actually close.
+// Set CLAUDE_QUIT_ON_CLOSE=1 to restore the Electron-default
+// "closing the last window quits the app" behaviour.
+const CLOSE_TO_TRAY = process.platform === 'linux'
+  && process.env.CLAUDE_QUIT_ON_CLOSE !== '1';
+console.log(`[Frame Fix] Close-to-tray: ${CLOSE_TO_TRAY ? 'on' : 'off'}`);
+
 // Detect if a window intends to be frameless (popup/Quick Entry/About)
 // Quick Entry: titleBarStyle:"", skipTaskbar:true, transparent:true, resizable:false
 // About:       titleBarStyle:"", skipTaskbar:true, resizable:false
@@ -142,6 +154,22 @@ Module.prototype.require = function(id) {
             }
 
             if (!popup) {
+              // Close-to-tray: intercept close on main windows and hide
+              // instead. app.on('before-quit') below sets the flag when
+              // the user picks an explicit quit path, so real quits still
+              // let the window actually close. Popups (Quick Entry,
+              // About) already dismiss via hide() in the upstream code;
+              // they never see close events, so they're unaffected.
+              // Fixes: #448
+              if (CLOSE_TO_TRAY) {
+                this.on('close', (e) => {
+                  if (!result.app._quittingIntentionally && !this.isDestroyed()) {
+                    e.preventDefault();
+                    this.hide();
+                  }
+                });
+              }
+
               // Directly set child view bounds to match content size.
               // This bypasses Chromium's stale LayoutManagerBase cache
               // (only invalidated via _NET_WM_STATE atom changes, which
@@ -341,6 +369,17 @@ Module.prototype.require = function(id) {
         registerQuitShortcut();
       } else {
         result.app.once('ready', registerQuitShortcut);
+      }
+
+      // Arm the close-to-tray flag on every real quit path
+      // (app.quit() from Ctrl+Q, tray Quit, cmd+Q, SIGTERM). The
+      // BrowserWindow close handler above checks this flag to
+      // decide whether to hide or actually close. Harmless when
+      // CLOSE_TO_TRAY is off (the close handler is never attached).
+      if (CLOSE_TO_TRAY) {
+        result.app.on('before-quit', () => {
+          result.app._quittingIntentionally = true;
+        });
       }
 
       console.log('[Frame Fix] Patches built successfully');
