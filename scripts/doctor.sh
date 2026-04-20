@@ -104,9 +104,11 @@ _info() { echo -e "       $*"; }
 # the above. Search PATH first, then the well-known fallback paths.
 #
 # Prints the discovered path on stdout; returns 0 on hit, 1 on miss.
-# Fallback paths are overridable via _COWORK_DOCTOR_VFSD_PATHS
+# Fallback paths are overridable via _COWORK_VFSD_PATHS
 # (colon-separated) so tests can point at a stub directory. The
 # namespaced prefix signals "internal test hook — not a user knob".
+# Shared with the VM daemon (cowork-vm-service.js) so doctor's
+# diagnosis and the daemon's actual probe stay in lock-step.
 _find_virtiofsd() {
 	local bin
 	bin=$(command -v virtiofsd 2>/dev/null)
@@ -115,7 +117,7 @@ _find_virtiofsd() {
 		return 0
 	fi
 
-	local fallback_paths="${_COWORK_DOCTOR_VFSD_PATHS:-}"
+	local fallback_paths="${_COWORK_VFSD_PATHS:-}"
 	if [[ -z $fallback_paths ]]; then
 		fallback_paths='/usr/libexec/virtiofsd'
 		fallback_paths+=':/usr/lib/qemu/virtiofsd'

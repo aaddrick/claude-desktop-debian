@@ -679,7 +679,7 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	# shellcheck source=scripts/launcher-common.sh
 	source "scripts/launcher-common.sh"
 	PATH="${TEST_TMP}/bin" \
-		_COWORK_DOCTOR_VFSD_PATHS='/nonexistent/virtiofsd' \
+		_COWORK_VFSD_PATHS='/nonexistent/virtiofsd' \
 		run _find_virtiofsd
 	[[ "$status" -eq 0 ]]
 	[[ "$output" == "$stub" ]]
@@ -695,7 +695,7 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	source "scripts/launcher-common.sh"
 	# Empty PATH so `command -v` cannot resolve virtiofsd
 	PATH='' \
-		_COWORK_DOCTOR_VFSD_PATHS="$stub" \
+		_COWORK_VFSD_PATHS="$stub" \
 		run _find_virtiofsd
 	[[ "$status" -eq 0 ]]
 	[[ "$output" == "$stub" ]]
@@ -711,7 +711,7 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	source "scripts/launcher-common.sh"
 	# First fallback is missing; second is present. Expect second.
 	PATH='' \
-		_COWORK_DOCTOR_VFSD_PATHS="/nonexistent/virtiofsd:$stub" \
+		_COWORK_VFSD_PATHS="/nonexistent/virtiofsd:$stub" \
 		run _find_virtiofsd
 	[[ "$status" -eq 0 ]]
 	[[ "$output" == "$stub" ]]
@@ -721,7 +721,7 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	# shellcheck source=scripts/launcher-common.sh
 	source "scripts/launcher-common.sh"
 	PATH='' \
-		_COWORK_DOCTOR_VFSD_PATHS='/nonexistent/a:/nonexistent/b' \
+		_COWORK_VFSD_PATHS='/nonexistent/a:/nonexistent/b' \
 		run _find_virtiofsd
 	[[ "$status" -eq 1 ]]
 	[[ -z "$output" ]]
@@ -737,7 +737,7 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	# shellcheck source=scripts/launcher-common.sh
 	source "scripts/launcher-common.sh"
 	PATH='' \
-		_COWORK_DOCTOR_VFSD_PATHS="$stub" \
+		_COWORK_VFSD_PATHS="$stub" \
 		run _find_virtiofsd
 	[[ "$status" -eq 1 ]]
 	[[ -z "$output" ]]
@@ -745,7 +745,7 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 
 @test "_find_virtiofsd: default path list covers deb/rpm/arch" {
 	# Guard against regression: the built-in fallback list (used when
-	# _COWORK_DOCTOR_VFSD_PATHS is unset) must include the off-PATH
+	# _COWORK_VFSD_PATHS is unset) must include the off-PATH
 	# install locations for Debian/Ubuntu, legacy Debian, and Arch.
 	# shellcheck source=scripts/launcher-common.sh
 	source "scripts/launcher-common.sh"
