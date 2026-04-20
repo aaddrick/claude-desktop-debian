@@ -25,6 +25,10 @@
     {
       "id": "suspicious-input",
       "text": "suspicious-input — manual review"
+    },
+    {
+      "id": "reference-source-unavailable",
+      "text": "reference-source unavailable"
     }
   ]
 }

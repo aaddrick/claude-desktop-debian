@@ -2,10 +2,13 @@ name: Issue Triage v2
 run-name: |
   Triage v2: #${{ inputs.issue_number }}
 
-# Phase 1 — Stages 1, 2, 8b, 9. Every dispatched issue gets a structured
-# human-deferral comment + triage label. No investigation yet (Phase 2).
+# Phase 2 — Stages 1, 2, 3, 4, 5, 7 (partial), 8a, 8b, 9.
+# Bug-classified issues run through investigate → mechanical-validate →
+# decision gate → findings (8a) or deferral (8b with drift-bridge block).
+# Non-bug classifications fall through to 8b. No adversarial reviewer
+# yet — Stage 7 gates on mechanical validation only (Phase 3).
 # v1 (issue-triage.yml) stays wired to its own triggers during rollout.
-# See docs/issue-triage/README.md and docs/issue-triage/implementation-plan.md.
+# See docs/issue-triage/{README.md,implementation-plan.md}.
 
 on:
   workflow_dispatch:
@@ -25,10 +28,7 @@ concurrency:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────
-  # Stage 1 — Gate. Bot-author skip is the only gate in v2 on dispatch;
-  # manual dispatch intentionally bypasses the already-triaged and
-  # needs-human checks (those only matter on the opened trigger, which v2
-  # doesn't wire up until cutover).
+  # Stage 1 — Gate.
   # ──────────────────────────────────────────────────────────────────────
   gate:
     name: Gate
@@ -58,8 +58,7 @@ jobs:
           echo "should_triage=true" >> "$GITHUB_OUTPUT"
 
   # ──────────────────────────────────────────────────────────────────────
-  # Stages 1-snapshot / 2 classify + doublecheck / 8b render / 9 label +
-  # post + archive.
+  # Main pipeline. Stages 1-snapshot / 2 / 3 / 4 / 5 / 7 / 8a|8b / 9.
   # ──────────────────────────────────────────────────────────────────────
   triage:
     name: Triage
@@ -71,6 +70,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -80,9 +81,7 @@ jobs:
       - name: Install Claude CLI
         run: npm install -g @anthropic-ai/claude-code
 
-      # Stage 1 — input snapshot. issue.body, issue.updated_at,
-      # sha256(issue.body), plus metadata for downstream use. Archived at
-      # the end; edit-during-triage comparison lands in Phase 4.
+      # Stage 1 — input snapshot.
       - name: Capture input snapshot
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,8 +109,6 @@ jobs:
             }' \
             > /tmp/triage/input_snapshot.json
 
-      # Stage 9 prep — cache the repo's label set once per run. Used by
-      # the suggested-labels gate below.
       - name: Cache repo label set
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,7 +119,7 @@ jobs:
             --json name --jq '[.[].name]' \
             > /tmp/triage/repo-labels.json
 
-      # Stage 2 — first-pass classify.
+      # Stage 2 — classify.
       - name: Classify issue
         id: classify
         env:
@@ -168,10 +165,7 @@ jobs:
             echo "confidence=${confidence}"
           } >> "$GITHUB_OUTPUT"
 
-      # Stage 2 — second-pass check on the bug/feature axis. Only runs
-      # when the first pass returned bug or feature, since those two
-      # routes diverge downstream (bug → 8a findings in Phase 2, feature
-      # → 8c in Phase 4).
+      # Stage 2 — bug/feature doublecheck.
       - name: Classify double-check (bug/feature)
         id: doublecheck
         if: steps.classify.outputs.classification == 'bug' || steps.classify.outputs.classification == 'feature'
@@ -221,46 +215,422 @@ jobs:
             echo "disagreed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Stage 7 (partial) — deterministic reason selection for Phase 1.
-      # Phase 1 has no investigation, so every issue defers. Only two
-      # reasons fire: 'ambiguous' when the doublecheck disagrees,
-      # 'no-findings' for everything else. Drift, duplicate, low-
-      # confidence, and suspicious-input reasons light up in Phases 2-4
-      # as their gates come online.
-      - name: Pick deferral reason
-        id: reason
+      # Route decision — 'bug-investigate' enters Stages 3-7; 'deferral'
+      # skips straight to 8b. Phase 2 still routes all non-bug classes
+      # (feature, question, duplicate, needs-info, not-actionable,
+      # needs-human) to deferral; feature gets its own 8c variant in
+      # Phase 4.
+      - name: Decide route
+        id: route
         run: |
+          classification="${{ steps.classify.outputs.classification }}"
           disagreed="${{ steps.doublecheck.outputs.disagreed }}"
 
           if [[ "${disagreed}" == "true" ]]; then
-            reason_id="ambiguous"
+            echo "route=deferral" >> "$GITHUB_OUTPUT"
+            echo "deferral_reason_id=ambiguous" >> "$GITHUB_OUTPUT"
+          elif [[ "${classification}" == "bug" ]]; then
+            echo "route=bug-investigate" >> "$GITHUB_OUTPUT"
           else
-            reason_id="no-findings"
+            echo "route=deferral" >> "$GITHUB_OUTPUT"
+            echo "deferral_reason_id=no-findings" >> "$GITHUB_OUTPUT"
           fi
 
-          reason_text=$(jq -r --arg id "${reason_id}" \
-            '.reasons[] | select(.id==$id) | .text' \
-            .claude/scripts/reasons.json)
+      # Stage 3a — version drift check. Compares classify's
+      # claimed_version against the repo variable CLAUDE_DESKTOP_VERSION.
+      # Investigation still runs regardless; the drift flag steers the
+      # final decision gate.
+      - name: Check version drift
+        id: drift
+        if: steps.route.outputs.route == 'bug-investigate'
+        env:
+          CURRENT_VERSION: ${{ vars.CLAUDE_DESKTOP_VERSION }}
+        run: |
+          claimed=$(jq -r '.claimed_version // ""' \
+            /tmp/triage/classification.json)
+          if [[ -n "${claimed}" && "${claimed}" != "null" \
+              && -n "${CURRENT_VERSION}" \
+              && "${claimed}" != "${CURRENT_VERSION}" ]]; then
+            echo "drift_detected=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::version drift: claimed=${claimed} current=${CURRENT_VERSION}"
+          else
+            echo "drift_detected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Stage 3 — fetch reference. 3× retry with exponential backoff
+      # per spec §Reference tarball failure mode (2s, 8s, 32s).
+      - name: Fetch reference source
+        id: fetch
+        if: steps.route.outputs.route == 'bug-investigate'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/ref-source
+          fetched=false
+          for backoff in 2 8 32; do
+            if gh release download \
+                --repo "${GITHUB_REPOSITORY}" \
+                --pattern 'reference-source.tar.gz' \
+                --dir /tmp/ref-source \
+                --clobber 2>/dev/null; then
+              fetched=true
+              break
+            fi
+            echo "::notice::fetch failed, sleeping ${backoff}s"
+            sleep "${backoff}"
+          done
+
+          if [[ "${fetched}" != "true" \
+              || ! -s /tmp/ref-source/reference-source.tar.gz ]]; then
+            echo "fetch_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::reference-source.tar.gz fetch exhausted retries"
+            exit 0
+          fi
+
+          tar -xzf /tmp/ref-source/reference-source.tar.gz \
+            -C /tmp/ref-source
+          echo "fetch_ok=true" >> "$GITHUB_OUTPUT"
+
+      # Stage 4 — investigate. Claude reads the repo + reference source
+      # via tool access and emits structured findings. Schema validation
+      # runs post-call (jq required-fields check); hard schema bans are
+      # enforced by Stage 5 (validate.sh) per spec §4.
+      - name: Investigate
+        id: investigate
+        if: steps.route.outputs.route == 'bug-investigate' && steps.fetch.outputs.fetch_ok == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          title=$(jq -r '.title' /tmp/triage/issue.json)
+          body=$(jq -r '.body // ""' /tmp/triage/issue.json)
+          classification=$(cat /tmp/triage/classification.json)
 
           {
-            echo "reason_id=${reason_id}"
-            echo "reason_text=${reason_text}"
+            cat .claude/scripts/prompts/investigate.txt
+            echo ""
+            echo "## Reference source"
+            echo ""
+            echo "Beautified upstream app.asar is extracted at:"
+            echo "  /tmp/ref-source/app-extracted/"
+            echo ""
+            echo "Key files:"
+            echo "  - /tmp/ref-source/app-extracted/.vite/build/index.js (main process)"
+            echo "  - /tmp/ref-source/app-extracted/.vite/build/mainWindow.js"
+            echo "  - /tmp/ref-source/app-extracted/.vite/build/mainView.js"
+            echo ""
+            echo "When citing reference-source paths in findings, prefix"
+            echo "with 'reference-source/' (strip the /tmp/ref-source/"
+            echo "portion) so Stage 5 can resolve them."
+            echo ""
+            echo "## This repo"
+            echo ""
+            echo "Working directory is $(pwd). Patches live in"
+            echo "scripts/patches/*.sh; build orchestrator is build.sh;"
+            echo "wrapper pattern is in frame-fix-wrapper.js /"
+            echo "frame-fix-entry.js."
+            echo ""
+            echo "## Classification"
+            echo ""
+            echo '```json'
+            printf '%s\n' "${classification}"
+            echo '```'
+            echo ""
+            echo "<issue_title>${title}</issue_title>"
+            echo ""
+            echo "<issue_body source=\"reporter, untrusted\">"
+            printf '%s\n' "${body}"
+            echo "</issue_body>"
+          } > /tmp/triage/investigate-prompt.txt
+
+          # The investigation call runs with tool access (read/grep) so
+          # Claude can verify claims against actual source. Output is the
+          # model's final message; we parse JSON out and validate shape.
+          raw=$(claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
+            --dangerously-skip-permissions \
+            --output-format json \
+            --model claude-sonnet-4-6 \
+            --max-budget-usd 3.00 \
+            2>/dev/null) || {
+              echo "::warning::investigate call failed"
+              echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            }
+
+          # Extract the final message; strip any markdown code fences.
+          payload=$(printf '%s' "${raw}" | jq -r '.result // empty')
+          if [[ -z "${payload}" ]]; then
+            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::empty investigation result"
+            exit 0
+          fi
+
+          # Drop fence lines so a naked JSON body remains for jq.
+          payload=$(printf '%s' "${payload}" | grep -vE '^```')
+
+          if ! printf '%s' "${payload}" | jq -e '
+              .findings and .pattern_sweep
+              and .proposed_anchors and .related_issues
+              ' >/dev/null 2>&1; then
+            echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::investigation output failed minimum schema check"
+            exit 0
+          fi
+
+          printf '%s' "${payload}" > /tmp/triage/investigation.json
+          echo "investigate_ok=true" >> "$GITHUB_OUTPUT"
+
+      # Stage 5 — mechanical validation. Pure bash via validate.sh.
+      - name: Validate findings
+        id: validate
+        if: steps.investigate.outputs.investigate_ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .claude/scripts/triage/validate.sh \
+            /tmp/triage/investigation.json \
+            "${GITHUB_WORKSPACE}" \
+            /tmp/ref-source/app-extracted \
+            "${GITHUB_REPOSITORY}" \
+            /tmp/triage/validation.json
+
+          findings_passed=$(jq -r '.summary.findings_passed' \
+            /tmp/triage/validation.json)
+          findings_total=$(jq -r '.summary.findings_total' \
+            /tmp/triage/validation.json)
+
+          # Average confidence over surviving findings. high=3, medium=2,
+          # low=1. 2.0 is the "at least medium" threshold per spec §7.
+          avg=$(jq -r '
+            [.findings[] | select(.passed==true) | .finding.confidence
+             | {high:3, medium:2, low:1}[.]] as $c
+            | if ($c | length) == 0 then 0
+              else ($c | add / length) end
+          ' /tmp/triage/validation.json)
+
+          {
+            echo "findings_passed=${findings_passed}"
+            echo "findings_total=${findings_total}"
+            echo "avg_confidence=${avg}"
           } >> "$GITHUB_OUTPUT"
 
-      # Stage 8b — bash-only template renderer. No LLM call. First-issue
-      # privacy note appended when the reporter has no prior issues on the
-      # repo (one-time informative, per spec §PII).
-      - name: Render 8b deferral comment
+      # Stage 3 sub-sweep — drift-bridge candidates. Runs only when
+      # drift was detected AND investigation produced findings (we need
+      # the file list to seed the sweep).
+      - name: Drift-bridge sweep
+        id: drift_bridge
+        if: |
+          steps.drift.outputs.drift_detected == 'true'
+          && steps.investigate.outputs.investigate_ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          claimed=$(jq -r '.claimed_version // ""' \
+            /tmp/triage/classification.json)
+          bash .claude/scripts/triage/drift-bridge.sh \
+            /tmp/triage/investigation.json \
+            "${claimed}" \
+            "${GITHUB_REPOSITORY}" \
+            /tmp/triage/drift-bridge-candidates.json
+
+          candidate_count=$(jq \
+            '(.commits | length) + (.prs | length)' \
+            /tmp/triage/drift-bridge-candidates.json)
+          echo "candidate_count=${candidate_count}" >> "$GITHUB_OUTPUT"
+
+      # Stage 7 — decision gate. Selects the final comment variant and
+      # reason. Priority per spec §7: drift > no findings > low
+      # confidence > findings variant. For the deferral route (non-bug),
+      # the reason was set in Decide route.
+      - name: Decide comment variant
+        id: decide
+        run: |
+          route="${{ steps.route.outputs.route }}"
+
+          if [[ "${route}" == "deferral" ]]; then
+            echo "variant=8b" >> "$GITHUB_OUTPUT"
+            echo "reason_id=${{ steps.route.outputs.deferral_reason_id }}" \
+              >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          fetch_ok="${{ steps.fetch.outputs.fetch_ok }}"
+          invest_ok="${{ steps.investigate.outputs.investigate_ok }}"
+          drift="${{ steps.drift.outputs.drift_detected }}"
+          passed="${{ steps.validate.outputs.findings_passed }}"
+          avg="${{ steps.validate.outputs.avg_confidence }}"
+
+          if [[ "${fetch_ok}" != "true" ]]; then
+            variant=8b
+            reason_id=reference-source-unavailable
+          elif [[ "${drift}" == "true" ]]; then
+            variant=8b
+            reason_id=version-drift
+          elif [[ "${invest_ok}" != "true" ]]; then
+            variant=8b
+            reason_id=no-findings
+          elif [[ -z "${passed}" || "${passed}" == "0" ]]; then
+            variant=8b
+            reason_id=no-findings
+          elif awk -v a="${avg:-0}" \
+              'BEGIN{exit !(a+0 < 2.0)}'; then
+            variant=8b
+            reason_id=low-confidence
+          else
+            variant=8a
+            reason_id=
+          fi
+
+          {
+            echo "variant=${variant}"
+            echo "reason_id=${reason_id}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve reason text
+        id: reason
+        if: steps.decide.outputs.reason_id != ''
+        env:
+          REASON_ID: ${{ steps.decide.outputs.reason_id }}
+        run: |
+          reason_text=$(jq -r --arg id "${REASON_ID}" \
+            '.reasons[] | select(.id==$id) | .text' \
+            .claude/scripts/reasons.json)
+          echo "reason_text=${reason_text}" >> "$GITHUB_OUTPUT"
+
+      # Stage 8a — findings variant. Sonnet call that emits structured
+      # comment object; bash renders the markdown.
+      - name: Draft 8a comment (findings variant)
+        id: draft_8a
+        if: steps.decide.outputs.variant == '8a'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          schema=$(cat .claude/scripts/schemas/comment-findings.json)
+
+          # Extract surviving findings + source excerpts + related-issue
+          # fetched bodies.
+          surviving=$(jq '[.findings[] | select(.passed==true)]' \
+            /tmp/triage/validation.json)
+          related=$(jq '.related_issues' /tmp/triage/validation.json)
+
+          # Source excerpts for each surviving finding (±5 lines).
+          excerpts='[]'
+          while IFS= read -r v; do
+            f=$(jq -r '.finding.file' <<<"${v}")
+            ls=$(jq -r '.finding.line_start' <<<"${v}")
+            le=$(jq -r '.finding.line_end' <<<"${v}")
+            if [[ "${f}" == reference-source/* ]]; then
+              resolved="/tmp/ref-source/app-extracted/${f#reference-source/}"
+            else
+              resolved="${GITHUB_WORKSPACE}/${f}"
+            fi
+            es=$((ls - 5))
+            (( es < 1 )) && es=1
+            ee=$((le + 5))
+            excerpt=$(sed -n "${es},${ee}p" "${resolved}" 2>/dev/null || echo "")
+            entry=$(jq -n \
+              --arg f "${f}" --argjson ls "${ls}" --argjson le "${le}" \
+              --arg excerpt "${excerpt}" \
+              '{file: $f, line_start: $ls, line_end: $le, excerpt: $excerpt}')
+            excerpts=$(jq --argjson e "${entry}" '. + [$e]' \
+              <<<"${excerpts}")
+          done < <(jq -c '.[]' <<<"${surviving}")
+
+          {
+            cat .claude/scripts/prompts/comment-findings.txt
+            echo ""
+            echo "## Surviving findings (Stage 5 passed)"
+            echo '```json'
+            printf '%s\n' "${surviving}"
+            echo '```'
+            echo ""
+            echo "## Source excerpts at claim sites"
+            echo '```json'
+            printf '%s\n' "${excerpts}"
+            echo '```'
+            echo ""
+            echo "## Related issues (fetched bodies)"
+            echo '```json'
+            printf '%s\n' "${related}"
+            echo '```'
+          } > /tmp/triage/render-8a-prompt.txt
+
+          result=$(claude -p "$(cat /tmp/triage/render-8a-prompt.txt)" \
+            --output-format json \
+            --json-schema "${schema}" \
+            --model claude-sonnet-4-6 \
+            --max-budget-usd 2.00 \
+            2>/dev/null) || {
+              echo "::error::8a draft call failed"
+              exit 1
+            }
+
+          structured=$(printf '%s' "${result}" \
+            | jq -c '.structured_output // empty')
+          if [[ -z "${structured}" ]]; then
+            echo "::error::no structured_output from 8a draft"
+            exit 1
+          fi
+          printf '%s' "${structured}" > /tmp/triage/comment-findings.json
+
+      - name: Render 8a comment markdown
+        if: steps.decide.outputs.variant == '8a'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          c=/tmp/triage/comment-findings.json
+          hypothesis=$(jq -r '.hypothesis_line' "${c}")
+
+          {
+            echo "**Automated draft — AI analysis, not maintainer judgment.** This bot won't close issues, apply labels beyond triage routing, or claim fixes are shipped. Findings below are starting points; the code citations are what to verify first."
+            echo ""
+            echo "${hypothesis}"
+            echo ""
+            jq -r '.findings[] |
+              "- \(.text) (\(.citation.file):\(.citation.line_start)-\(.citation.line_end))"' \
+              "${c}"
+
+            # Patch sketch rendered only when body is non-null.
+            if [[ "$(jq -r '.patch_sketch.body // "null"' "${c}")" != "null" ]]; then
+              echo ""
+              echo "<details>"
+              echo "<summary>Unverified patch sketch (draft, not applied)</summary>"
+              echo ""
+              lang=$(jq -r '.patch_sketch.language // ""' "${c}")
+              echo '```'"${lang}"
+              jq -r '.patch_sketch.body' "${c}"
+              echo '```'
+              echo ""
+              echo "</details>"
+            fi
+
+            # Related issues line — only non-unrelated relations.
+            related_line=$(jq -r '
+              [.related_issues[]
+                | select(.relation != "unrelated")
+                | "#\(.number) — \(.relation)"]
+              | join(", ")
+            ' "${c}")
+            if [[ -n "${related_line}" && "${related_line}" != "" ]]; then
+              echo ""
+              echo "Related: ${related_line}"
+            fi
+
+            echo ""
+            echo "Full investigation artifacts (\`investigation.json\`, \`validation.json\`) are attached to the [triage workflow run](${RUN_URL})."
+          } > /tmp/triage/comment.md
+
+      # Stage 8b render — reason-based deferral. Includes the optional
+      # drift-bridge-candidates block when drift was detected and the
+      # sweep returned ≥1 candidate.
+      - name: Render 8b comment
+        if: steps.decide.outputs.variant == '8b'
         env:
           GH_TOKEN: ${{ github.token }}
           REASON_TEXT: ${{ steps.reason.outputs.reason_text }}
+          REASON_ID: ${{ steps.decide.outputs.reason_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           author=$(jq -r '.author.login' /tmp/triage/issue.json)
-
-          # Count this reporter's issues on the repo. gh's --limit 2 is
-          # the cheapest way to distinguish first-ever from "has history"
-          # without paging.
           prior_count=$(gh issue list \
             --repo "${GITHUB_REPOSITORY}" \
             --author "${author}" \
@@ -273,25 +643,44 @@ jobs:
             privacy_note=$'\n\n(This bot processes issue text via Anthropic'"'"'s API. See [README §Privacy](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#privacy) for what that means.)'
           fi
 
+          # Drift-bridge block (only for version-drift reason with
+          # non-empty candidate list).
+          drift_block=""
+          if [[ "${REASON_ID}" == "version-drift" \
+              && -f /tmp/triage/drift-bridge-candidates.json ]]; then
+            candidate_count=$(jq \
+              '(.commits | length) + (.prs | length)' \
+              /tmp/triage/drift-bridge-candidates.json)
+            if [[ "${candidate_count}" -gt 0 ]]; then
+              drift_block=$'\n\n'"Drift-bridge candidates — commits or PRs in the drift window that touched the relevant surface and may already address this:"$'\n'
+              drift_block+=$(jq -r '
+                (.commits[]? | "- \(.sha[0:8]) — \(.subject) (\(.date))"),
+                (.prs[]? | "- #\(.number) — \(.title) (\(.mergedAt))")
+              ' /tmp/triage/drift-bridge-candidates.json)
+            fi
+          fi
+
           {
             echo "**Automated draft — AI analysis, not maintainer judgment.** This bot looked at the issue but couldn't reach a confident read. Routing to a human for review."
             echo ""
             echo "Reason: ${REASON_TEXT}"
+            if [[ -n "${drift_block}" ]]; then
+              printf '%s' "${drift_block}"
+              echo ""
+            fi
             echo ""
             echo "${RUN_URL} has the raw classification artifact if helpful for context.${privacy_note}"
           } > /tmp/triage/comment.md
 
-      # Stage 8b post-processor. Two invariants from spec §8b:
-      # (1) reason line must match one of the enumerated values;
-      # (2) comment is under 150 words. The reason check normalizes
-      # `#<digits>` back to the `#{duplicate_of}` placeholder so the same
-      # code works once Phase 3+ starts emitting the duplicate reason.
-      - name: Post-processor check on 8b comment
+      # 8b post-processor — runs on the 8b variant only. 8a is schema-
+      # constrained, no prose-stripping needed per spec.
+      - name: Post-processor check (8b)
+        if: steps.decide.outputs.variant == '8b'
         run: |
           reason_line=$(grep -oP '^Reason: \K.*$' /tmp/triage/comment.md \
             || true)
           if [[ -z "${reason_line}" ]]; then
-            echo "::error::No 'Reason: ...' line in rendered comment"
+            echo "::error::No 'Reason: ...' line in 8b comment"
             exit 1
           fi
 
@@ -307,55 +696,56 @@ jobs:
 
           words=$(wc -w < /tmp/triage/comment.md)
           if [[ "${words}" -gt 150 ]]; then
-            echo "::error::Comment exceeds 150 words (got ${words})"
+            echo "::error::8b comment exceeds 150 words (got ${words})"
             exit 1
           fi
 
-      # Stage 9 — label + post + archive. Cardinality-1 slots applied
-      # directly; categories filtered through the cached repo label set
-      # and the blocklist. Phase 1 routes all non-question / non-
-      # not-actionable issues to triage: needs-human because no Stage 4-6
-      # pipeline exists yet to earn triage: investigated.
+      # 8a post-processor — truncate <details> block if over 400 words.
+      - name: Post-processor check (8a)
+        if: steps.decide.outputs.variant == '8a'
+        run: |
+          words=$(wc -w < /tmp/triage/comment.md)
+          if [[ "${words}" -gt 400 ]]; then
+            # Strip the <details>...</details> block and re-check.
+            sed -i '/<details>/,/<\/details>/d' /tmp/triage/comment.md
+            words=$(wc -w < /tmp/triage/comment.md)
+            echo "::notice::Truncated 8a patch-sketch block to meet 400-word cap (${words} words after)"
+          fi
+
+      # Stage 9 — labels. 8a → triage: investigated. 8b → triage: needs-
+      # human / needs-info / not-actionable per classification. Phase 2
+      # doesn't promote `triage: duplicate` yet (needs Stage 6 confirm).
       - name: Apply labels
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           classification="${{ steps.classify.outputs.classification }}"
-          disagreed="${{ steps.doublecheck.outputs.disagreed }}"
+          variant="${{ steps.decide.outputs.variant }}"
 
-          if [[ "${disagreed}" == "true" ]]; then
-            triage_label="triage: needs-human"
-            class_label=""
+          if [[ "${variant}" == "8a" ]]; then
+            triage_label="triage: investigated"
+            class_label="bug"
           else
             case "${classification}" in
-              bug)
+              bug|feature|duplicate)
                 triage_label="triage: needs-human"
-                class_label="bug"
                 ;;
-              feature)
-                triage_label="triage: needs-human"
-                class_label="enhancement"
-                ;;
-              question)
+              question|needs-info)
                 triage_label="triage: needs-info"
-                class_label="question"
-                ;;
-              duplicate)
-                triage_label="triage: needs-human"
-                class_label=""
-                ;;
-              needs-info)
-                triage_label="triage: needs-info"
-                class_label=""
                 ;;
               not-actionable)
                 triage_label="triage: not-actionable"
-                class_label=""
                 ;;
               *)
                 triage_label="triage: needs-human"
-                class_label=""
                 ;;
+            esac
+
+            case "${classification}" in
+              bug)     class_label="bug" ;;
+              feature) class_label="enhancement" ;;
+              question) class_label="question" ;;
+              *)       class_label="" ;;
             esac
           fi
 
@@ -419,11 +809,15 @@ jobs:
         env:
           CLASSIFICATION: ${{ steps.classify.outputs.classification }}
           CONFIDENCE: ${{ steps.classify.outputs.confidence }}
-          REASON_TEXT: ${{ steps.reason.outputs.reason_text }}
           DISAGREED: ${{ steps.doublecheck.outputs.disagreed }}
+          VARIANT: ${{ steps.decide.outputs.variant }}
+          REASON_TEXT: ${{ steps.reason.outputs.reason_text }}
+          FINDINGS_TOTAL: ${{ steps.validate.outputs.findings_total }}
+          FINDINGS_PASSED: ${{ steps.validate.outputs.findings_passed }}
+          DRIFT_DETECTED: ${{ steps.drift.outputs.drift_detected }}
         run: |
           {
-            echo "## Triage v2 — Phase 1"
+            echo "## Triage v2 — Phase 2"
             echo ""
             echo "| Metric | Value |"
             echo "|---|---|"
@@ -431,14 +825,18 @@ jobs:
             echo "| Classification | ${CLASSIFICATION} |"
             echo "| Confidence | ${CONFIDENCE} |"
             echo "| Doublecheck disagreed | ${DISAGREED:-n/a} |"
-            echo "| Comment variant posted | human-deferral (8b) |"
-            echo "| Deferral reason | ${REASON_TEXT} |"
+            echo "| Version drift | ${DRIFT_DETECTED:-n/a} |"
+            echo "| Findings proposed | ${FINDINGS_TOTAL:-0} |"
+            echo "| Findings passed mechanical | ${FINDINGS_PASSED:-0} |"
+            echo "| Findings passed review | n/a (Phase 3) |"
+            echo "| Comment variant posted | ${VARIANT} |"
+            echo "| Deferral reason (if applicable) | ${REASON_TEXT:-n/a} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: triage-v2-phase-1-issue-${{ needs.gate.outputs.issue_number }}
+          name: triage-v2-phase-2-issue-${{ needs.gate.outputs.issue_number }}
           path: /tmp/triage/
           retention-days: 14
