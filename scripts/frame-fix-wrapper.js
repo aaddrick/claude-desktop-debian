@@ -373,6 +373,65 @@ Module.prototype.require = function(id) {
         });
       }
 
+      // Route app.{get,set}LoginItemSettings through XDG Autostart on Linux.
+      // Electron's openAtLogin is a no-op on Linux (electron/electron#15198),
+      // which both prevents the app's "Run on startup" toggle from
+      // persisting and makes isStartupOnLoginEnabled() return undefined
+      // (the app's IPC handler then fails boolean validation). Writing
+      // ~/.config/autostart/claude-desktop.desktop is honoured by every
+      // mainstream DE (GNOME/KDE/XFCE/Cinnamon/MATE/LXQt). Fixes: #128
+      if (process.platform === 'linux') {
+        const fs = require('fs');
+        const os = require('os');
+        const autostartDir = path.join(os.homedir(), '.config', 'autostart');
+        const autostartPath = path.join(autostartDir, 'claude-desktop.desktop');
+        const autostartContent = `[Desktop Entry]
+Type=Application
+Name=Claude
+Exec=claude-desktop
+Icon=claude-desktop
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+`;
+
+        const origGetLoginItemSettings = result.app.getLoginItemSettings.bind(result.app);
+        result.app.getLoginItemSettings = function(...args) {
+          const settings = origGetLoginItemSettings(...args);
+          const enabled = fs.existsSync(autostartPath);
+          settings.openAtLogin = enabled;
+          // executableWillLaunchAtLogin is Windows-only in Electron and
+          // comes back undefined on Linux; coerce to boolean so the app's
+          // IPC handler's typeof === 'boolean' validation passes.
+          settings.executableWillLaunchAtLogin = enabled;
+          return settings;
+        };
+
+        const origSetLoginItemSettings = result.app.setLoginItemSettings.bind(result.app);
+        result.app.setLoginItemSettings = function(opts = {}) {
+          if (typeof opts.openAtLogin === 'boolean') {
+            try {
+              fs.mkdirSync(autostartDir, { recursive: true });
+              if (opts.openAtLogin) {
+                fs.writeFileSync(autostartPath, autostartContent);
+                console.log('[Autostart] wrote', autostartPath);
+              } else {
+                try {
+                  fs.unlinkSync(autostartPath);
+                  console.log('[Autostart] removed', autostartPath);
+                } catch (err) {
+                  if (err.code !== 'ENOENT') throw err;
+                }
+              }
+            } catch (err) {
+              console.error('[Autostart] failed to toggle', autostartPath, err);
+            }
+          }
+          return origSetLoginItemSettings(opts);
+        };
+        console.log('[Autostart] XDG Autostart shim installed');
+      }
+
       console.log('[Frame Fix] Patches built successfully');
     }
 
