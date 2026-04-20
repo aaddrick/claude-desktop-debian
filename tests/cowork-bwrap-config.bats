@@ -665,3 +665,93 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	# Should just show info that no custom mounts are configured
 	[[ "$output" != *"FAIL"* ]]
 }
+
+# =============================================================================
+# _find_virtiofsd (issue #447)
+# =============================================================================
+
+@test "_find_virtiofsd: finds virtiofsd on PATH" {
+	mkdir -p "${TEST_TMP}/bin"
+	local stub="${TEST_TMP}/bin/virtiofsd"
+	printf '#!/bin/sh\nexit 0\n' > "$stub"
+	chmod +x "$stub"
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	PATH="${TEST_TMP}/bin" \
+		_COWORK_DOCTOR_VFSD_PATHS='/nonexistent/virtiofsd' \
+		run _find_virtiofsd
+	[[ "$status" -eq 0 ]]
+	[[ "$output" == "$stub" ]]
+}
+
+@test "_find_virtiofsd: falls back to /usr/libexec-like path" {
+	mkdir -p "${TEST_TMP}/libexec"
+	local stub="${TEST_TMP}/libexec/virtiofsd"
+	printf '#!/bin/sh\nexit 0\n' > "$stub"
+	chmod +x "$stub"
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	# Empty PATH so `command -v` cannot resolve virtiofsd
+	PATH='' \
+		_COWORK_DOCTOR_VFSD_PATHS="$stub" \
+		run _find_virtiofsd
+	[[ "$status" -eq 0 ]]
+	[[ "$output" == "$stub" ]]
+}
+
+@test "_find_virtiofsd: tries fallback paths in order" {
+	mkdir -p "${TEST_TMP}/alt"
+	local stub="${TEST_TMP}/alt/virtiofsd"
+	printf '#!/bin/sh\nexit 0\n' > "$stub"
+	chmod +x "$stub"
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	# First fallback is missing; second is present. Expect second.
+	PATH='' \
+		_COWORK_DOCTOR_VFSD_PATHS="/nonexistent/virtiofsd:$stub" \
+		run _find_virtiofsd
+	[[ "$status" -eq 0 ]]
+	[[ "$output" == "$stub" ]]
+}
+
+@test "_find_virtiofsd: returns non-zero and empty when missing" {
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	PATH='' \
+		_COWORK_DOCTOR_VFSD_PATHS='/nonexistent/a:/nonexistent/b' \
+		run _find_virtiofsd
+	[[ "$status" -eq 1 ]]
+	[[ -z "$output" ]]
+}
+
+@test "_find_virtiofsd: skips non-executable fallback paths" {
+	mkdir -p "${TEST_TMP}/libexec"
+	local stub="${TEST_TMP}/libexec/virtiofsd"
+	# Create a readable but NOT executable file — must be rejected
+	printf 'not executable\n' > "$stub"
+	chmod 644 "$stub"
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	PATH='' \
+		_COWORK_DOCTOR_VFSD_PATHS="$stub" \
+		run _find_virtiofsd
+	[[ "$status" -eq 1 ]]
+	[[ -z "$output" ]]
+}
+
+@test "_find_virtiofsd: default path list covers deb/rpm/arch" {
+	# Guard against regression: the built-in fallback list (used when
+	# _COWORK_DOCTOR_VFSD_PATHS is unset) must include the off-PATH
+	# install locations for Debian/Ubuntu, legacy Debian, and Arch.
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	local body
+	body=$(declare -f _find_virtiofsd)
+	[[ "$body" == *'/usr/libexec/virtiofsd'* ]]
+	[[ "$body" == *'/usr/lib/qemu/virtiofsd'* ]]
+	[[ "$body" == *'/usr/lib/virtiofsd'* ]]
+}
