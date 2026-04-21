@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "description": "Stage 8c enhancement-design comment object. Structured output — the workflow's bash renderer turns this into the posted markdown. No free-form prose slots beyond `acknowledgment_line` and per-surface `text`; design questions are drawn from a fixed taxonomy by ID only.",
+  "properties": {
+    "acknowledgment_line": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One sentence in hypothesis voice acknowledging the request without agreeing to implement it. Starts with 'Looks like', 'Likely', 'Appears to', or 'Worth checking first'. Example: 'Looks like the ask is to surface an in-app scheduler that survives window close.'"
+    },
+    "existing_surfaces": {
+      "type": "array",
+      "description": "Existing code the enhancement would touch, with citations. Zero entries is valid — some enhancement requests don't map cleanly to existing surfaces, in which case the comment still carries design questions. Max three entries to keep the comment short.",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One-line description of the surface in hypothesis voice. Example: 'app.on(\"window-all-closed\") currently quits the app, which the minimize-to-tray request would need to intercept.'"
+          },
+          "citation": {
+            "type": "object",
+            "properties": {
+              "file": {"type": "string"},
+              "line_start": {"type": "integer", "minimum": 1},
+              "line_end": {"type": "integer", "minimum": 1}
+            },
+            "required": ["file", "line_start", "line_end"]
+          }
+        },
+        "required": ["text", "citation"]
+      }
+    },
+    "design_question_ids": {
+      "type": "array",
+      "description": "Keys into taxonomies/enhancement-design-questions.json. The renderer looks up the human-readable question text; an invalid ID cannot be emitted because the enum is schema-enforced. Pick one to three questions that the request actually raises — don't pad.",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "enum": [
+          "config-schema-stability",
+          "backward-compat",
+          "security-surface",
+          "test-coverage",
+          "observability",
+          "packaging-format"
+        ]
+      }
+    }
+  },
+  "required": ["acknowledgment_line", "existing_surfaces", "design_question_ids"]
+}
