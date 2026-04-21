@@ -357,27 +357,34 @@ jobs:
           # extract-json.py helper on the `.result` field in case the
           # CLI hands back prose for any reason.
           #
-          # Step hardening from earlier PR:
-          # * `timeout 300s` bounds the step at 5 min
+          # Step hardening from earlier PRs:
+          # * `timeout 600s` bounds the step at 10 min
+          # * `if cmd; then; else` form — GHA's `bash -e` treats a
+          #   failing command substitution as a fatal error and aborts
+          #   before `claude_exit=$?` can run; the if-form is the only
+          #   reliable way to capture the exit code and branch on it.
+          #   Matters because a timeout (exit 124) must fall through to
+          #   8b gracefully, not fail the whole step.
           # * Stderr to an archived log file so a silent hang is
-          #   post-mortem debuggable
+          #   post-mortem debuggable.
           # * Raw response + extracted payload archived before schema
-          #   checks so a reject still leaves artifacts to inspect
-          set +o pipefail
-          raw=$(timeout 300s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
-            --dangerously-skip-permissions \
-            --output-format json \
-            --json-schema "${schema}" \
-            --model claude-sonnet-4-6 \
-            --max-budget-usd 3.00 \
-            2>/tmp/triage/investigate-stderr.log)
-          claude_exit=$?
-          set -o pipefail
+          #   checks so a reject still leaves artifacts to inspect.
+          if raw=$(timeout 600s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
+              --dangerously-skip-permissions \
+              --output-format json \
+              --json-schema "${schema}" \
+              --model claude-sonnet-4-6 \
+              --max-budget-usd 3.00 \
+              2>/tmp/triage/investigate-stderr.log); then
+            claude_exit=0
+          else
+            claude_exit=$?
+          fi
 
           printf '%s' "${raw}" > /tmp/triage/investigate-raw.json
 
           if [[ "${claude_exit}" == "124" ]]; then
-            echo "::warning::investigate call timed out at 300s"
+            echo "::warning::investigate call timed out at 600s"
             echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           elif [[ "${claude_exit}" != "0" ]]; then
