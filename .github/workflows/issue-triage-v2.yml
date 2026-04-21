@@ -326,15 +326,14 @@ jobs:
         if: steps.route.outputs.route == 'investigate' && steps.fetch.outputs.fetch_ok == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLASSIFICATION_NAME: ${{ steps.classify.outputs.classification }}
         run: |
           schema=$(cat .claude/scripts/schemas/investigate.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
           body=$(jq -r '.body // ""' /tmp/triage/issue.json)
           classification=$(cat /tmp/triage/classification.json)
-          class_name=$(jq -r '.classification' \
-            /tmp/triage/classification.json)
 
-          if [[ "${class_name}" == "enhancement" ]]; then
+          if [[ "${CLASSIFICATION_NAME}" == "enhancement" ]]; then
             investigate_prompt=.claude/scripts/prompts/investigate-enhancement.txt
           else
             investigate_prompt=.claude/scripts/prompts/investigate.txt
@@ -582,6 +581,7 @@ jobs:
               || steps.dup_fetch.outputs.dup_fetched == 'true')
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLASSIFICATION_NAME: ${{ steps.classify.outputs.classification }}
         run: |
           schema=$(cat .claude/scripts/schemas/review.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
@@ -641,9 +641,7 @@ jobs:
           # reframed rubric ("is this an existing surface the
           # enhancement would touch?" rather than "is this defect claim
           # correct?"). Schema is identical.
-          class_name=$(jq -r '.classification' \
-            /tmp/triage/classification.json)
-          if [[ "${class_name}" == "enhancement" ]]; then
+          if [[ "${CLASSIFICATION_NAME}" == "enhancement" ]]; then
             review_prompt=.claude/scripts/prompts/review-enhancement.txt
           else
             review_prompt=.claude/scripts/prompts/review.txt
