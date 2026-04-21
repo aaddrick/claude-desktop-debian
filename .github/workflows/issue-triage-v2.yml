@@ -296,6 +296,14 @@ jobs:
       # claimed_version against the repo variable CLAUDE_DESKTOP_VERSION.
       # Investigation still runs regardless; the drift flag steers the
       # final decision gate.
+      #
+      # Both sides are normalized before compare: strip a leading `v`,
+      # then strip anything from the first `-` or space onward.
+      # Handles the common case where a reporter pastes the deb
+      # package version (`claude-desktop 1.3561.0-2.0.0` — upstream +
+      # REPO_VERSION suffix) or the AppImage filename (which can
+      # carry the same suffix). A bare upstream version still
+      # round-trips unchanged.
       - name: Check version drift
         id: drift
         if: steps.route.outputs.route == 'investigate'
@@ -304,11 +312,22 @@ jobs:
         run: |
           claimed=$(jq -r '.claimed_version // ""' \
             /tmp/triage/classification.json)
-          if [[ -n "${claimed}" && "${claimed}" != "null" \
-              && -n "${CURRENT_VERSION}" \
-              && "${claimed}" != "${CURRENT_VERSION}" ]]; then
+
+          normalize() {
+            local v="${1#v}"
+            v="${v%%-*}"
+            v="${v%% *}"
+            printf '%s' "${v}"
+          }
+
+          claimed_norm=$(normalize "${claimed}")
+          current_norm=$(normalize "${CURRENT_VERSION}")
+
+          if [[ -n "${claimed_norm}" && "${claimed_norm}" != "null" \
+              && -n "${current_norm}" \
+              && "${claimed_norm}" != "${current_norm}" ]]; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::version drift: claimed=${claimed} current=${CURRENT_VERSION}"
+            echo "::notice::version drift: claimed=${claimed} (normalized ${claimed_norm}) current=${CURRENT_VERSION} (normalized ${current_norm})"
           else
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
           fi
