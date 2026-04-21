@@ -65,6 +65,21 @@
 /STYLEGUIDE.md                          @aaddrick
 /docs/                                  @aaddrick
 
+# ---- Testing & release quality ----
+# Integration test suite, artifact validation, flag-parsing tests,
+# and the --doctor diagnostic tool. Cowork-specific tests stay with
+# @RayCharlizard via the override below.
+/tests/                                 @sabiut
+/scripts/doctor.sh                      @sabiut
+/.github/workflows/test-artifacts.yml   @sabiut
+/.github/workflows/test-flags.yml       @sabiut
+
+# Shared review — either owner can approve.
+# TROUBLESHOOTING is mostly the --doctor user-facing guide; lint
+# touches everything, so either maintainer can sign off.
+/docs/TROUBLESHOOTING.md                @aaddrick @sabiut
+/.github/workflows/shellcheck.yml       @aaddrick @sabiut
+
 #===============================================================================
 # Overrides — listed last so their assignments stick against the
 # broad globs above (/docs/, /.github/, etc.)
