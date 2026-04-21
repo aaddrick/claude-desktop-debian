@@ -210,6 +210,8 @@ const BLOCKED_ENV_KEYS = new Set([
     "CLAUDECODE", "ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ASAR",
 ]);
 
+const FORWARDED_ENV_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN"];
+
 function filterEnv(source, stripPrefixes = []) {
     const result = {};
     for (const [k, v] of Object.entries(source)) {
@@ -220,12 +222,22 @@ function filterEnv(source, stripPrefixes = []) {
     return result;
 }
 
-function buildSpawnEnv(appEnv, mountMap) {
+function buildBaseSpawnEnv(appEnv) {
     const mergedEnv = {
         ...filterEnv(process.env, ["CLAUDE_CODE_"]),
         ...filterEnv(appEnv || {}),
         TERM: "xterm-256color",
     };
+    for (const key of FORWARDED_ENV_KEYS) {
+        if (process.env[key] && mergedEnv[key] === undefined) {
+            mergedEnv[key] = process.env[key];
+        }
+    }
+    return mergedEnv;
+}
+
+function buildSpawnEnv(appEnv, mountMap) {
+    const mergedEnv = buildBaseSpawnEnv(appEnv);
     if (mergedEnv.CLAUDE_CONFIG_DIR &&
         mergedEnv.CLAUDE_CONFIG_DIR.startsWith("/sessions/")) {
         const translated = translateGuestPath(
@@ -1114,6 +1126,55 @@ assertEqual(env.GOOD_VAR, 'keep', 'non-blocked kept');
 	run node -e "${NODE_PREAMBLE}
 const env = buildSpawnEnv({ TERM: 'dumb' }, {});
 assertEqual(env.TERM, 'xterm-256color', 'TERM forced');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+# Regression coverage for issue #482: the CLAUDE_CODE_ prefix strip used to
+# remove CLAUDE_CODE_OAUTH_TOKEN from process.env, severing the only auth
+# channel available to the in-VM claude binary.
+
+@test "buildSpawnEnv: forwards CLAUDE_CODE_OAUTH_TOKEN from process.env" {
+	CLAUDE_CODE_OAUTH_TOKEN='tok-from-daemon' run node -e "${NODE_PREAMBLE}
+const env = buildSpawnEnv({}, {});
+assertEqual(env.CLAUDE_CODE_OAUTH_TOKEN,
+    'tok-from-daemon',
+    'OAUTH_TOKEN forwarded from process.env');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "buildSpawnEnv: appEnv CLAUDE_CODE_OAUTH_TOKEN wins over process.env" {
+	CLAUDE_CODE_OAUTH_TOKEN='tok-from-daemon' run node -e "${NODE_PREAMBLE}
+const env = buildSpawnEnv(
+    { CLAUDE_CODE_OAUTH_TOKEN: 'tok-from-app' },
+    {}
+);
+assertEqual(env.CLAUDE_CODE_OAUTH_TOKEN,
+    'tok-from-app',
+    'appEnv token takes precedence');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "buildSpawnEnv: explicit empty appEnv token wins over process.env" {
+	CLAUDE_CODE_OAUTH_TOKEN='tok-from-daemon' run node -e "${NODE_PREAMBLE}
+const env = buildSpawnEnv(
+    { CLAUDE_CODE_OAUTH_TOKEN: '' },
+    {}
+);
+assertEqual(env.CLAUDE_CODE_OAUTH_TOKEN,
+    '',
+    'explicit empty-string preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "buildSpawnEnv: still strips unrelated CLAUDE_CODE_* from process.env" {
+	CLAUDE_CODE_SSE_PORT='9999' run node -e "${NODE_PREAMBLE}
+const env = buildSpawnEnv({}, {});
+assert(!('CLAUDE_CODE_SSE_PORT' in env),
+    'non-allowlisted CLAUDE_CODE_ var still stripped');
 "
 	[[ "$status" -eq 0 ]]
 }

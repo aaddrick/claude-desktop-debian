@@ -144,6 +144,20 @@ Module.prototype.require = function(id) {
               this.webContents.insertCSS(LINUX_CSS).catch(() => {});
             });
 
+            // Quit on Ctrl+Q, but only when Claude has keyboard focus.
+            // Replaces a prior globalShortcut registration that grabbed
+            // the key system-wide and, on non-QWERTY layouts (e.g.
+            // AZERTY), swallowed other shortcuts like Ctrl+A because
+            // Electron matches globals by physical keycode. Fixes: #399
+            this.webContents.on('before-input-event', (event, input) => {
+              if (input.type !== 'keyDown') return;
+              if (!input.control) return;
+              if (input.alt || input.shift || input.meta) return;
+              if (input.key !== 'q' && input.key !== 'Q') return;
+              event.preventDefault();
+              electronModule.app.quit();
+            });
+
             // In 'hidden' mode, suppress Alt toggle by re-hiding
             // on every show event. In 'auto' mode, let
             // autoHideMenuBar handle the toggle natively.

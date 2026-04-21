@@ -139,6 +139,21 @@ const BLOCKED_ENV_KEYS = new Set([
 ]);
 
 /**
+ * CLAUDE_CODE_* keys forwarded from process.env despite the prefix
+ * strip in filterEnv. Upstream's seA() intends these to arrive via
+ * the spawn RPC's params.env, but on Linux the daemon's inherited
+ * process.env is the only surviving source, so we re-add it as a
+ * fallback. appEnv values take precedence when present.
+ *
+ * Caveat: process.env is snapshotted at daemon launch, so a token
+ * refresh in ~/.claude/.credentials.json won't be picked up until
+ * the daemon restarts.
+ *
+ * See https://github.com/aaddrick/claude-desktop-debian/issues/482.
+ */
+const FORWARDED_ENV_KEYS = ['CLAUDE_CODE_OAUTH_TOKEN'];
+
+/**
  * Filter environment variables, removing blocked keys and optional prefixes.
  */
 function filterEnv(source, stripPrefixes = []) {
@@ -149,6 +164,30 @@ function filterEnv(source, stripPrefixes = []) {
         result[k] = v;
     }
     return result;
+}
+
+/**
+ * Shared base env for HostBackend (buildSpawnEnv) and
+ * BwrapBackend.spawn: strips the CLAUDE_CODE_ prefix from
+ * process.env, overlays appEnv, forces TERM, then re-adds
+ * FORWARDED_ENV_KEYS as a fallback.
+ *
+ * The `=== undefined` check (not truthiness) lets an explicit
+ * empty-string in appEnv (e.g. Foundry mode signalling "no
+ * token") win over the daemon's inherited value.
+ */
+function buildBaseSpawnEnv(appEnv) {
+    const mergedEnv = {
+        ...filterEnv(process.env, ['CLAUDE_CODE_']),
+        ...filterEnv(appEnv || {}),
+        TERM: 'xterm-256color',
+    };
+    for (const key of FORWARDED_ENV_KEYS) {
+        if (process.env[key] && mergedEnv[key] === undefined) {
+            mergedEnv[key] = process.env[key];
+        }
+    }
+    return mergedEnv;
 }
 
 // ============================================================
@@ -267,11 +306,7 @@ function findPrimaryMount(mountMap) {
  * CLAUDE_CONFIG_DIR and CLAUDE_COWORK_MEMORY_PATH_OVERRIDE using mountMap.
  */
 function buildSpawnEnv(appEnv, mountMap) {
-    const mergedEnv = {
-        ...filterEnv(process.env, ['CLAUDE_CODE_']),
-        ...filterEnv(appEnv || {}),
-        TERM: 'xterm-256color',
-    };
+    const mergedEnv = buildBaseSpawnEnv(appEnv);
 
     // Translate CLAUDE_CONFIG_DIR from guest path to host path, or
     // remove it so Claude Code falls back to ~/.claude/.
@@ -576,6 +611,70 @@ function resolveCommand(command, sdkBinaryPath) {
     } catch (e) {
         return { command: null, error: `${command} not found` };
     }
+}
+
+/**
+ * Probe for an executable at the given path.
+ * Guards against broken symlinks, directories, and non-executable
+ * files so stale install artifacts don't masquerade as a binary.
+ */
+function isExecutableFile(p) {
+    try {
+        const st = fs.statSync(p);
+        if (!st.isFile()) return false;
+        fs.accessSync(p, fs.constants.X_OK);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * Locate the virtiofsd binary.
+ *
+ * On Debian/Ubuntu virtiofsd ships at /usr/libexec/virtiofsd, on
+ * Arch/CachyOS/Manjaro at /usr/lib/virtiofsd — neither directory is
+ * on the default PATH, so `spawn('virtiofsd', ...)` ENOENTs even
+ * when the package is installed. KvmBackend silently falls back to
+ * virtio-9p in that case (lower performance).
+ *
+ * Search order (matches scripts/doctor.sh::_find_virtiofsd):
+ *   1. COWORK_VM_VIRTIOFSD_BIN — explicit user override
+ *   2. PATH (via `which`)
+ *   3. Known install locations
+ *
+ * Override _COWORK_VFSD_PATHS (colon-separated) replaces the built-in
+ * fallback list. Shared with doctor.sh so doctor's diagnosis and the
+ * daemon's actual probe stay in lock-step. Internal test hook —
+ * underscore prefix signals "not a user knob".
+ *
+ * Returns the absolute path to the binary, or null on miss.
+ */
+function findVirtiofsd() {
+    const override = process.env.COWORK_VM_VIRTIOFSD_BIN;
+    if (override) {
+        return isExecutableFile(override) ? override : null;
+    }
+
+    try {
+        const onPath = execFileSync('which', ['virtiofsd'],
+            { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
+        ).trim();
+        if (onPath && isExecutableFile(onPath)) return onPath;
+    } catch (_) { /* fall through to fallback-path probe */ }
+
+    const fallbackEnv = process.env._COWORK_VFSD_PATHS;
+    const fallbacks = fallbackEnv
+        ? fallbackEnv.split(':').filter(Boolean)
+        : [
+            '/usr/libexec/virtiofsd',   // deb/rpm
+            '/usr/lib/qemu/virtiofsd',  // legacy Debian
+            '/usr/lib/virtiofsd',       // Arch/CachyOS/Manjaro
+        ];
+    for (const p of fallbacks) {
+        if (isExecutableFile(p)) return p;
+    }
+    return null;
 }
 
 // ============================================================
@@ -1163,11 +1262,7 @@ class BwrapBackend extends LocalBackend {
         // Guest paths (/sessions/...) exist inside our bwrap sandbox,
         // so pass args and env through as-is (no guest->host translation).
         const rawArgs = params.args || [];
-        const mergedEnv = {
-            ...filterEnv(process.env, ['CLAUDE_CODE_']),
-            ...filterEnv(params.env || {}),
-            TERM: 'xterm-256color',
-        };
+        const mergedEnv = buildBaseSpawnEnv(params.env);
 
         // Build a minimal sandbox: empty tmpfs root with only the
         // necessary system paths bound in read-only. This avoids
@@ -1462,40 +1557,67 @@ class KvmBackend extends BackendBase {
         // Start home directory share for guest VM.
         // Try virtiofsd first (best performance), fall back to virtio-9p
         // (built into QEMU, no daemon needed, works unprivileged).
+        //
+        // On stock Debian/Ubuntu/Arch the virtiofsd binary lives outside
+        // the default PATH, so resolve it via findVirtiofsd() before
+        // spawning — otherwise `spawn('virtiofsd', ...)` ENOENTs and we
+        // silently drop to 9p even though the package is installed.
         const virtiofsSock = path.join(this.sessionDir, 'virtiofs.sock');
-        try {
-            this.virtiofsdProcess = spawnProcess('virtiofsd', [
-                `--socket-path=${virtiofsSock}`,
-                '-o', `source=${os.homedir()}`,
-                '-o', 'cache=auto',
-            ], {
-                stdio: ['ignore', 'pipe', 'pipe'],
-            });
-            this.virtiofsdProcess.on('error', (err) => {
-                log('KvmBackend: virtiofsd error:', err.message);
-                this.virtiofsdProcess = null;
-            });
-            log(`KvmBackend: virtiofsd started, socket=${virtiofsSock}`);
+        const virtiofsdBin = findVirtiofsd();
+        if (!virtiofsdBin) {
+            log('KvmBackend: virtiofsd binary not found on PATH or at '
+                + 'known install locations (/usr/libexec, /usr/lib/qemu, '
+                + '/usr/lib); using virtio-9p fallback. Install the '
+                + 'virtiofsd package or set COWORK_VM_VIRTIOFSD_BIN to '
+                + 'use virtiofs.');
+        } else {
+            log(`KvmBackend: virtiofsd resolved: ${virtiofsdBin}`);
+            // Local flag so the socket-wait loop can bail the moment
+            // the async 'error' event fires (e.g. binary removed between
+            // probe and exec) instead of stalling for the full 5s.
+            let spawnFailed = false;
+            try {
+                this.virtiofsdProcess = spawnProcess(virtiofsdBin, [
+                    `--socket-path=${virtiofsSock}`,
+                    '-o', `source=${os.homedir()}`,
+                    '-o', 'cache=auto',
+                ], {
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                });
+                this.virtiofsdProcess.on('error', (err) => {
+                    log('KvmBackend: virtiofsd error:', err.message);
+                    spawnFailed = true;
+                    this.virtiofsdProcess = null;
+                });
+                log(`KvmBackend: virtiofsd started, ` +
+                    `socket=${virtiofsSock}`);
 
-            // Wait for virtiofsd to create its socket before starting QEMU
-            const vfsWaitStart = Date.now();
-            while (!fs.existsSync(virtiofsSock) &&
-                   Date.now() - vfsWaitStart < 5000) {
-                await new Promise(r => setTimeout(r, 100));
-            }
-            if (fs.existsSync(virtiofsSock)) {
-                log('KvmBackend: virtiofsd socket ready ' +
-                    `(${Date.now() - vfsWaitStart}ms)`);
-                this.homeShareType = 'virtiofs';
-            } else {
-                log('KvmBackend: virtiofsd socket not ready ' +
-                    'after 5s, will try virtio-9p fallback');
-                this.virtiofsdProcess.kill();
+                // Wait for virtiofsd to create its socket before
+                // starting QEMU. Bail early on async spawn failure.
+                const vfsWaitStart = Date.now();
+                while (!spawnFailed && !fs.existsSync(virtiofsSock) &&
+                       Date.now() - vfsWaitStart < 5000) {
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                if (!spawnFailed && fs.existsSync(virtiofsSock)) {
+                    log('KvmBackend: virtiofsd socket ready ' +
+                        `(${Date.now() - vfsWaitStart}ms)`);
+                    this.homeShareType = 'virtiofs';
+                } else {
+                    const reason = spawnFailed
+                        ? 'spawn failed'
+                        : 'socket not ready after 5s';
+                    log(`KvmBackend: virtiofsd ${reason}, ` +
+                        'will try virtio-9p fallback');
+                    if (this.virtiofsdProcess) {
+                        this.virtiofsdProcess.kill();
+                        this.virtiofsdProcess = null;
+                    }
+                }
+            } catch (e) {
+                log(`KvmBackend: virtiofsd not available: ${e.message}`);
                 this.virtiofsdProcess = null;
             }
-        } catch (e) {
-            log(`KvmBackend: virtiofsd not available: ${e.message}`);
-            this.virtiofsdProcess = null;
         }
 
         // Fallback: use virtio-9p if virtiofsd failed. virtio-9p is

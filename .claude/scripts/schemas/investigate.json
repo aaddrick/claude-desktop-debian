@@ -1,0 +1,127 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim_type": {
+            "enum": ["identifier", "behavior", "flow", "absence"],
+            "description": "identifier: claims a specific name exists in a specific enum/switch/object. behavior: claims code at a site does a specific thing. flow: claims a cross-site operation flow. absence: claims a specific site is NOT handling something it should."
+          },
+          "claim": {
+            "type": "string",
+            "description": "The factual assertion being made. One sentence, hypothesis-voice."
+          },
+          "file": {
+            "type": "string",
+            "description": "Path relative to repo root or reference-source root. For reference-source files, prefix with 'reference-source/' (e.g. 'reference-source/.vite/build/index.js')."
+          },
+          "line_start": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "evidence_quote": {
+            "type": "string",
+            "description": "Verbatim source excerpt supporting the claim. Must grep-match at the cited file:line_start in Stage 5."
+          },
+          "confidence": {
+            "enum": ["high", "medium", "low"]
+          },
+          "enclosing_construct": {
+            "type": ["string", "null"],
+            "description": "Required for claim_type='identifier'. Name or short description of the enum/switch/object-literal containing the identifier, for closed-world extraction in Stage 5."
+          }
+        },
+        "required": [
+          "claim_type",
+          "claim",
+          "file",
+          "line_start",
+          "line_end",
+          "evidence_quote",
+          "confidence"
+        ]
+      }
+    },
+    "pattern_sweep": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern used to sweep the repo and reference source."
+          },
+          "match_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total match count (before capping matches[] at 20)."
+          },
+          "matches": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {"type": "string"},
+                "line": {"type": "integer", "minimum": 1},
+                "snippet": {"type": "string"}
+              },
+              "required": ["file", "line", "snippet"]
+            }
+          }
+        },
+        "required": ["pattern", "match_count", "matches"]
+      }
+    },
+    "proposed_anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "regex": {"type": "string"},
+          "expected_match_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Exact count; must match Stage 5's grep result exactly. Never >=N."
+          },
+          "target_file": {"type": "string"},
+          "word_boundary_required": {
+            "type": "boolean",
+            "description": "If true, Stage 5 wraps identifier portions with \\b. Required when regex targets an identifier claim."
+          }
+        },
+        "required": [
+          "description",
+          "regex",
+          "expected_match_count",
+          "target_file",
+          "word_boundary_required"
+        ]
+      }
+    },
+    "related_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {"type": "integer", "minimum": 1},
+          "why_related": {"type": "string"},
+          "quoted_excerpt": {
+            "type": "string",
+            "description": "Snippet from the cited issue body that supports why_related. Stage 5 fetches the real body and Stage 6 rates exact/related/unrelated."
+          }
+        },
+        "required": ["number", "why_related", "quoted_excerpt"]
+      }
+    }
+  },
+  "required": ["findings", "pattern_sweep", "proposed_anchors", "related_issues"]
+}

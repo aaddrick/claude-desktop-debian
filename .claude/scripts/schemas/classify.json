@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "properties": {
+    "classification": {
+      "enum": [
+        "bug",
+        "enhancement",
+        "question",
+        "duplicate",
+        "needs-info",
+        "not-actionable",
+        "needs-human"
+      ],
+      "description": "Primary classification of the issue. `enhancement` matches the repo's GitHub label vocabulary — reporter-framed feature requests, missing-behavior asks, and scope-expansion proposals all land here."
+    },
+    "confidence": {
+      "enum": ["high", "medium", "low"],
+      "description": "How confident the classification is."
+    },
+    "claimed_version": {
+      "type": ["string", "null"],
+      "description": "Version string parsed from `--doctor` output, 'claude-desktop (X.Y.Z)' references, or AppImage filenames in the issue body. Null if no version is present. Drives the Stage 7 drift gate in later phases."
+    },
+    "suggested_labels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Repo-vocabulary labels (e.g. 'priority: high', 'format: rpm', 'cowork', 'tray'). Stage 9 filters these through the cached repo label set and the blocklist before applying. Do not invent new labels."
+    },
+    "duplicate_of": {
+      "type": ["integer", "null"],
+      "description": "Issue number this duplicates, or null. Only set when classification is 'duplicate'."
+    },
+    "regression_of": {
+      "type": ["integer", "null"],
+      "description": "Set iff the reporter explicitly names a culprit PR or commit (e.g. 'broken since #305', 'after commit abc123'). Integer PR number for PR references; null for commit SHAs or when the reporter has not bisected."
+    }
+  },
+  "required": [
+    "classification",
+    "confidence",
+    "claimed_version",
+    "suggested_labels",
+    "duplicate_of",
+    "regression_of"
+  ]
+}

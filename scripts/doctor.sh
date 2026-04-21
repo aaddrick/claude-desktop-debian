@@ -93,6 +93,48 @@ _fail() {
 _warn() { echo -e "${_yellow}[WARN]${_reset} $*"; }
 _info() { echo -e "       $*"; }
 
+# Locate the virtiofsd binary. Distros install it at different
+# off-PATH locations:
+#   - Debian/Ubuntu: /usr/libexec/virtiofsd (qemu-system-common)
+#   - Fedora/RHEL:   /usr/libexec/virtiofsd
+#   - Older Debian:  /usr/lib/qemu/virtiofsd
+#   - Arch/Manjaro:  /usr/lib/virtiofsd
+#
+# `command -v virtiofsd` alone produces a false negative on any of
+# the above. Search PATH first, then the well-known fallback paths.
+#
+# Prints the discovered path on stdout; returns 0 on hit, 1 on miss.
+# Fallback paths are overridable via _COWORK_VFSD_PATHS
+# (colon-separated) so tests can point at a stub directory. The
+# namespaced prefix signals "internal test hook — not a user knob".
+# Shared with the VM daemon (cowork-vm-service.js) so doctor's
+# diagnosis and the daemon's actual probe stay in lock-step.
+_find_virtiofsd() {
+	local bin
+	bin=$(command -v virtiofsd 2>/dev/null)
+	if [[ -n $bin ]]; then
+		printf '%s' "$bin"
+		return 0
+	fi
+
+	local fallback_paths="${_COWORK_VFSD_PATHS:-}"
+	if [[ -z $fallback_paths ]]; then
+		fallback_paths='/usr/libexec/virtiofsd'
+		fallback_paths+=':/usr/lib/qemu/virtiofsd'
+		fallback_paths+=':/usr/lib/virtiofsd'
+	fi
+
+	local fallback
+	local IFS=:
+	for fallback in $fallback_paths; do
+		if [[ -x $fallback ]]; then
+			printf '%s' "$fallback"
+			return 0
+		fi
+	done
+	return 1
+}
+
 # Check custom bwrap mount configuration and report findings
 _doctor_check_bwrap_mounts() {
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
@@ -552,12 +594,12 @@ print(len(servers))
 		fi
 	fi
 
-	# KVM tools: QEMU, socat, virtiofsd
+	# KVM tools: QEMU, socat. virtiofsd is handled separately below
+	# because Debian/Ubuntu install it off-PATH.
 	local _tool_label _tool_bin _tool_pkg
 	for _tool_label in \
 		'QEMU:qemu-system-x86_64:qemu' \
-		'socat:socat:socat' \
-		'virtiofsd:virtiofsd:virtiofsd'
+		'socat:socat:socat'
 	do
 		_tool_bin="${_tool_label#*:}"
 		_tool_pkg="${_tool_bin#*:}"
@@ -574,6 +616,35 @@ print(len(servers))
 			fi
 		fi
 	done
+
+	# virtiofsd: ships off-PATH on several distros (see _find_virtiofsd
+	# above). Probe known locations so we don't report "not found" when
+	# the package is actually installed. KvmBackend spawns by PATH name
+	# and silently falls back to virtio-9p (lower perf) if the spawn
+	# fails — so when KVM is the active backend and virtiofsd is only
+	# reachable off-PATH, surface a [WARN] so the user knows they need
+	# a symlink to actually get virtiofs performance. On the bwrap
+	# default path virtiofsd is unused, so [PASS] is fine.
+	local _vfsd_path _vfsd_on_path
+	_vfsd_on_path=$(command -v virtiofsd 2>/dev/null)
+	_vfsd_path=$(_find_virtiofsd)
+	if [[ -n $_vfsd_path ]]; then
+		if [[ $_vfsd_path == "$_vfsd_on_path" ]]; then
+			_pass 'virtiofsd: found'
+		elif $_kvm_active; then
+			_warn "virtiofsd: found at $_vfsd_path but not on PATH"
+			_info 'KvmBackend spawns by PATH name and will fall back'
+			_info 'to virtio-9p (lower performance) without a symlink.'
+			_info "Fix: sudo ln -s $_vfsd_path /usr/local/bin/virtiofsd"
+		else
+			_pass "virtiofsd: found at $_vfsd_path (not on PATH)"
+		fi
+	else
+		"$_kvm_issue" 'virtiofsd: not found'
+		if $_kvm_active; then
+			_info "Fix: $(_cowork_pkg_hint "$_distro_id" virtiofsd)"
+		fi
+	fi
 
 	# VM image
 	local vm_image

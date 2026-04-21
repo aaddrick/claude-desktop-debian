@@ -1,0 +1,29 @@
+{
+  "comment": "Fixed taxonomy of design-review questions for the Stage 8c enhancement-design variant. IDs are enum-matched in schemas/comment-enhancement.json; adding a new question is a two-file change (here + the schema enum). Wording is surfaced verbatim in the rendered comment — keep each question short, specific, and answerable.",
+  "questions": [
+    {
+      "id": "config-schema-stability",
+      "text": "If this adds a new config key or changes an existing one, how is the schema versioned? Old configs should keep loading without error."
+    },
+    {
+      "id": "backward-compat",
+      "text": "Does this change the shape of existing user-facing behavior (flags, paths, environment variables, default state)? If yes, is there a deprecation path for users on the prior behavior?"
+    },
+    {
+      "id": "security-surface",
+      "text": "Does this widen what the app reads, writes, or executes outside the sandbox? Any new file paths, network endpoints, IPC channels, or shelled-out commands should be named up front."
+    },
+    {
+      "id": "test-coverage",
+      "text": "What's the smallest test that would catch a regression of this feature? Pointing at an existing test file or a BATS case that the new code would be added alongside keeps review concrete."
+    },
+    {
+      "id": "observability",
+      "text": "When this feature fails for a user, what do they see in `--doctor` output or `~/.cache/claude-desktop-debian/launcher.log`? Silent failure is the default without explicit logging."
+    },
+    {
+      "id": "packaging-format",
+      "text": "Does this touch deb, rpm, appimage, or nix builds unevenly? The four formats diverge on paths, launchers, and sandboxing — a change that works on one can silently break another."
+    }
+  ]
+}

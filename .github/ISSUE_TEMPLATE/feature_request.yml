@@ -1,0 +1,34 @@
+name: Feature Request
+description: Request a feature or improvement.
+title: "[feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you file:** This repository uses an automated triage bot that
+        sends issue contents to Anthropic's API for classification and
+        investigation. Do not include credentials, tokens, personal data, or
+        anything you wouldn't put on a public issue tracker. See the
+        [Privacy section in the README](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#privacy)
+        for what the bot does with your issue.
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like
+      description: Describe the feature or improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Why do you need this? What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: workarounds
+    attributes:
+      label: Existing workarounds
+      description: Any existing workarounds, or hints at related surfaces / features already in the app.
+    validations:
+      required: false

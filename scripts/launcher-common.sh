@@ -67,6 +67,22 @@ build_electron_args() {
 	# Disable CustomTitlebar for better Linux integration
 	electron_args+=('--disable-features=CustomTitlebar')
 
+	# Remote XRDP sessions lack GPU acceleration and render a blank
+	# window when GPU compositing is enabled. Detect via XRDP_SESSION
+	# (set by xrdp's session init) and loginctl session Type. We do
+	# not probe xrdp-sesman via pgrep because that daemon also runs
+	# on hosts where the user is on a local (non-XRDP) session.
+	# Fixes: #319
+	local rdp_session_type=''
+	[[ -n ${XDG_SESSION_ID:-} ]] && rdp_session_type=$(
+		loginctl show-session "$XDG_SESSION_ID" \
+			-p Type --value 2>/dev/null
+	)
+	if [[ -n ${XRDP_SESSION:-} || $rdp_session_type == xrdp ]]; then
+		electron_args+=('--disable-gpu' '--disable-software-rasterizer')
+		log_message 'XRDP session detected - GPU compositing disabled'
+	fi
+
 	# X11 session - no special flags needed
 	if [[ $is_wayland != true ]]; then
 		log_message 'X11 session detected'
@@ -88,6 +104,10 @@ build_electron_args() {
 		electron_args+=('--ozone-platform=wayland')
 		electron_args+=('--enable-wayland-ime')
 		electron_args+=('--wayland-text-input-version=3')
+		# Override any system-wide GDK_BACKEND=x11 that would silently
+		# prevent GTK from connecting to the Wayland compositor, causing
+		# blurry rendering or launch failures on HiDPI displays.
+		export GDK_BACKEND=wayland
 	fi
 }
 
