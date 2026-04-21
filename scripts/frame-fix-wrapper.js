@@ -378,22 +378,66 @@ Module.prototype.require = function(id) {
       // which both prevents the app's "Run on startup" toggle from
       // persisting and makes isStartupOnLoginEnabled() return undefined
       // (the app's IPC handler then fails boolean validation). Writing
-      // ~/.config/autostart/claude-desktop.desktop is honoured by every
-      // mainstream DE (GNOME/KDE/XFCE/Cinnamon/MATE/LXQt). Fixes: #128
+      // $XDG_CONFIG_HOME/autostart/claude-desktop.desktop is honoured by
+      // every mainstream DE (GNOME/KDE/XFCE/Cinnamon/MATE/LXQt). Fixes: #128
       if (process.platform === 'linux') {
         const fs = require('fs');
         const os = require('os');
-        const autostartDir = path.join(os.homedir(), '.config', 'autostart');
+
+        // XDG Base Directory Spec §3: autostart lives under $XDG_CONFIG_HOME/autostart,
+        // falling back to ~/.config/autostart only when the env var is unset or empty.
+        // Home-manager / dotfile setups relocate this; writing unconditionally to
+        // ~/.config would drop the entry in the wrong place for those users.
+        const xdgConfigHome = process.env.XDG_CONFIG_HOME && process.env.XDG_CONFIG_HOME.trim()
+          ? process.env.XDG_CONFIG_HOME
+          : path.join(os.homedir(), '.config');
+        const autostartDir = path.join(xdgConfigHome, 'autostart');
         const autostartPath = path.join(autostartDir, 'claude-desktop.desktop');
-        const autostartContent = `[Desktop Entry]
+
+        // Desktop Entry Exec= escaping (freedesktop.org Desktop Entry Spec):
+        // quote args containing whitespace or reserved chars; double-backslash
+        // and escape inner quotes inside the quoted form.
+        const escapeExecArg = (s) => {
+          const reserved = /[\s"`$\\]/;
+          if (!reserved.test(s)) return s;
+          return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+        };
+
+        // Resolve the Exec/Icon targets at toggle time (not module load),
+        // so an AppImage run picks up process.env.APPIMAGE — the absolute
+        // path to the current .AppImage, set by the AppImage runtime.
+        // Without this, AppImage users who haven't integrated via
+        // AppImageLauncher get a file that launches a `claude-desktop`
+        // binary not on $PATH, silently failing at next login. Icon=
+        // accepts an absolute file path; DEs fall back gracefully when
+        // they can't extract the embedded icon. For deb/RPM/Nix,
+        // 'claude-desktop' resolves via the launcher shim and the
+        // hicolor icon name matches scripts/packaging/{deb,rpm}.sh.
+        const resolveAutostartTarget = () => {
+          if (process.env.APPIMAGE) {
+            return {
+              exec: escapeExecArg(process.env.APPIMAGE),
+              icon: escapeExecArg(process.env.APPIMAGE),
+            };
+          }
+          return { exec: 'claude-desktop', icon: 'claude-desktop' };
+        };
+
+        // StartupWMClass matches the value set by scripts/packaging/{deb,rpm}.sh
+        // so DEs group an autostarted window with user-launched instances
+        // under the same taskbar / dock entry.
+        const buildAutostartContent = () => {
+          const { exec, icon } = resolveAutostartTarget();
+          return `[Desktop Entry]
 Type=Application
 Name=Claude
-Exec=claude-desktop
-Icon=claude-desktop
+Exec=${exec}
+Icon=${icon}
+StartupWMClass=Claude
 Terminal=false
-Categories=Utility;
 X-GNOME-Autostart-enabled=true
 `;
+        };
 
         const origGetLoginItemSettings = result.app.getLoginItemSettings.bind(result.app);
         result.app.getLoginItemSettings = function(...args) {
@@ -409,11 +453,17 @@ X-GNOME-Autostart-enabled=true
 
         const origSetLoginItemSettings = result.app.setLoginItemSettings.bind(result.app);
         result.app.setLoginItemSettings = function(opts = {}) {
+          // Intentionally ignore opts.path / opts.name: process.execPath on
+          // Electron is the electron binary itself, not the launcher script
+          // that sets up ELECTRON_FORCE_IS_PACKAGED / ozone flags / orphan
+          // cleanup. Honouring opts.path would write a broken autostart
+          // entry that skips all of that. resolveAutostartTarget() derives
+          // the right Exec line from the current runtime instead.
           if (typeof opts.openAtLogin === 'boolean') {
             try {
               fs.mkdirSync(autostartDir, { recursive: true });
               if (opts.openAtLogin) {
-                fs.writeFileSync(autostartPath, autostartContent);
+                fs.writeFileSync(autostartPath, buildAutostartContent());
                 console.log('[Autostart] wrote', autostartPath);
               } else {
                 try {
