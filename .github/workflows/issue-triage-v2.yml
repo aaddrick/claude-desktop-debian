@@ -368,10 +368,10 @@ jobs:
             exit 0
           fi
 
-          # Date comparison — mergedAt < createdAt means the PR
-          # actually predates the report. `sort -u` with ISO 8601
-          # timestamps compares lexicographically, which matches
-          # chronological ordering.
+          # Date comparison — if mergedAt is AFTER createdAt, the PR
+          # can't be what the reporter is citing. ISO 8601 timestamps
+          # compare lexicographically in chronological order, so `[[ >
+          # ]]` on the raw strings is correct.
           if [[ "${pr_merged_at}" > "${issue_created}" ]]; then
             jq -n --argjson n "${reg}" \
               --arg m "${pr_merged_at}" --arg c "${issue_created}" \
