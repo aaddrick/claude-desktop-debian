@@ -167,33 +167,27 @@ function filterEnv(source, stripPrefixes = []) {
 }
 
 /**
- * Re-add explicitly-forwarded keys from process.env that the
- * CLAUDE_CODE_ prefix strip in filterEnv removed. Uses
- * `mergedEnv[key] === undefined` so an explicit empty-string in
- * appEnv (e.g. Foundry mode signalling "no token") wins over the
- * daemon's inherited value.
+ * Shared base env for HostBackend (buildSpawnEnv) and
+ * BwrapBackend.spawn: strips the CLAUDE_CODE_ prefix from
+ * process.env, overlays appEnv, forces TERM, then re-adds
+ * FORWARDED_ENV_KEYS as a fallback.
+ *
+ * The `=== undefined` check (not truthiness) lets an explicit
+ * empty-string in appEnv (e.g. Foundry mode signalling "no
+ * token") win over the daemon's inherited value.
  */
-function forwardAuthEnv(mergedEnv) {
+function buildBaseSpawnEnv(appEnv) {
+    const mergedEnv = {
+        ...filterEnv(process.env, ['CLAUDE_CODE_']),
+        ...filterEnv(appEnv || {}),
+        TERM: 'xterm-256color',
+    };
     for (const key of FORWARDED_ENV_KEYS) {
         if (process.env[key] && mergedEnv[key] === undefined) {
             mergedEnv[key] = process.env[key];
         }
     }
     return mergedEnv;
-}
-
-/**
- * Shared base env construction for both HostBackend (buildSpawnEnv)
- * and BwrapBackend.spawn. Strips the CLAUDE_CODE_ prefix from
- * process.env (stale daemon inheritance), overlays appEnv, forces
- * TERM, then re-adds FORWARDED_ENV_KEYS as a fallback.
- */
-function buildBaseSpawnEnv(appEnv) {
-    return forwardAuthEnv({
-        ...filterEnv(process.env, ['CLAUDE_CODE_']),
-        ...filterEnv(appEnv || {}),
-        TERM: 'xterm-256color',
-    });
 }
 
 // ============================================================

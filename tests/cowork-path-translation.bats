@@ -222,21 +222,18 @@ function filterEnv(source, stripPrefixes = []) {
     return result;
 }
 
-function forwardAuthEnv(mergedEnv) {
+function buildBaseSpawnEnv(appEnv) {
+    const mergedEnv = {
+        ...filterEnv(process.env, ["CLAUDE_CODE_"]),
+        ...filterEnv(appEnv || {}),
+        TERM: "xterm-256color",
+    };
     for (const key of FORWARDED_ENV_KEYS) {
         if (process.env[key] && mergedEnv[key] === undefined) {
             mergedEnv[key] = process.env[key];
         }
     }
     return mergedEnv;
-}
-
-function buildBaseSpawnEnv(appEnv) {
-    return forwardAuthEnv({
-        ...filterEnv(process.env, ["CLAUDE_CODE_"]),
-        ...filterEnv(appEnv || {}),
-        TERM: "xterm-256color",
-    });
 }
 
 function buildSpawnEnv(appEnv, mountMap) {
