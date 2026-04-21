@@ -24,6 +24,30 @@ JSON only, matching the attached schema. No prose outside the schema.
   "Please add", "support for", "it would be nice if", "currently there's no
   way to". Matches the repo's GitHub `enhancement` label.
 - `question` — usage or config question, not a defect claim.
+
+### Bug vs. enhancement — broken-expectation rule
+
+A report that says a behavior **contradicts a reasonable expectation**
+is a `bug` even when it's framed as a "please add" or "should support"
+ask. Defects hide inside enhancement-shaped framing:
+
+- "The app quits when the last window closes; breaks minimize-to-tray"
+  → bug (broken expectation), not enhancement, even though it sounds
+  like "please add minimize-to-tray"
+- "git clone pulls 6 GiB again; regressed since #294" → bug
+  (regression), not enhancement
+- "CTRL+C doesn't close the app" → bug (expectation broken), not a
+  request to add CTRL+C support
+- Any phrase in the shape "breaks X" / "stopped working" / "broken
+  since" / "used to work" / "regressed" / "contradicts Y expectation"
+  is a strong bug signal; let it outweigh adjacent "please add"
+  framing.
+
+Prefer `enhancement` only when the report is a **pure** request for a
+capability that was never there — no broken expectation anywhere in
+the body. When both a broken expectation and a request-for-change are
+present, the broken expectation wins.
+
 - `duplicate` — body explicitly references another issue as a duplicate OR
   obviously restates an existing issue you can identify. Set `duplicate_of`
   to the integer issue number.
