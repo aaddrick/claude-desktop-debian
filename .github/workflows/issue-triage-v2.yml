@@ -20,7 +20,7 @@ run-name: |
 # triage on backfilled issues. v1 (issue-triage.yml) is kept as a
 # workflow_dispatch-only fallback — its `issues` trigger was
 # disabled when v2 took over production routing.
-# See docs/issue-triage/{README.md,implementation-plan.md}.
+# See docs/issue-triage/README.md.
 
 on:
   issues:

@@ -1,6 +1,6 @@
 # Issue Triage Pipeline
 
-Automated first-pass triage for GitHub issues. Runs on manual `workflow_dispatch`; the `issues: [opened]` auto-trigger is deferred — see [Potential future improvements](#potential-future-improvements).
+Automated first-pass triage for GitHub issues. Fires on `issues: [opened]` as the production path; `workflow_dispatch` is available for manual re-runs and dry-run testing. The legacy v1 workflow (`issue-triage.yml`) is kept as a manual-only fallback and no longer auto-triggers.
 
 The pipeline classifies the issue, investigates likely root cause against the repo and upstream beautified source, validates every factual claim mechanically and with a fresh-context LLM reviewer, and posts an **explicitly non-authoritative draft comment** plus triage labels once findings clear hard gates.
 
@@ -24,7 +24,6 @@ Three simultaneous goals constrain everything that follows:
 - [What is explicitly out of scope](#what-is-explicitly-out-of-scope)
 - [References](#references)
 
-Companions: [Implementation plan](implementation-plan.md) · [Research trail](research-trail.md)
 
 ---
 
@@ -347,21 +346,28 @@ Structured as a **devil's-advocate analyst** — directly modeled on the contrar
 
 The reviewer cannot propose new findings, rewrite claims, or insert prose. Its only powers: approve, downgrade, reject — each with structured rationale.
 
-Reviewer calibration is not observed automatically in v1. Rubber-stamping (approving fabricated claims) and over-rejection (dropping every finding) are both plausible failure modes. The v1 mitigation is structural — adversarial prompt shape, closed-world inputs, structured-rationale requirements — and the detection mechanism is manual inspection of archived `review.json` artifacts. Promoting that to a rolling alarm is called out in [Potential future improvements](#potential-future-improvements).
+Reviewer calibration is not observed automatically. Rubber-stamping (approving fabricated claims) and over-rejection (dropping every finding) are both plausible failure modes. The current mitigation is structural — adversarial prompt shape, closed-world inputs, structured-rationale requirements — and the detection mechanism is manual inspection of archived `review.json` artifacts. Promoting that to a rolling alarm is called out in [Potential future improvements](#potential-future-improvements).
 
 ### 7. Decision gate
 
 Deterministic. Evaluates hard gates and **selects which Stage 8 template variant runs**. Every issue gets a comment; the gate only chooses which kind.
 
+Priority order (first match wins): fetch-failure → confirmed-duplicate → invest-failure → review-failure → enhancement → no-findings → low-confidence → findings variant. Version drift is handled as a **modifier**, not a veto (see below).
+
 | Gate | Trigger | Effect on Stage 8 |
 |------|---------|-------------------|
-| Version drift | `claimed_version != CLAUDE_DESKTOP_VERSION` | Human-deferral; `triage: needs-human`. Drift-bridge sweep ([Stage 3](#3-fetch-reference)) attaches any candidate commits or PRs to the comment |
+| Reference-source unavailable | `gh release download` retries exhausted | Human-deferral; `triage: needs-human` |
 | Confirmed duplicate | classification = `duplicate`, `duplicate_of` passed Stage 5, Stage 6 rated `exact` or `related` | Human-deferral; reason `likely-duplicate-of-#N`; `triage: duplicate` |
-| Enhancement request | classification = `enhancement` | Enhancement-design variant (8c); `triage: investigated` + suggested `enhancement` |
-| No surviving findings | Zero items passed mechanical + review | Human-deferral; `triage: needs-human` |
-| Low average confidence | Avg confidence of survivors < medium | Human-deferral; `triage: needs-human` |
+| Investigation failure | Stage 4 timeout / schema reject | Human-deferral; `triage: needs-human` |
+| Review failure | Stage 6 timeout / schema reject while findings exist | Human-deferral; `triage: needs-human` |
+| Enhancement request | classification = `enhancement`, review ran cleanly (or zero findings, review skipped by design) | Enhancement-design variant (8c); `triage: investigated` + `enhancement` |
+| No surviving findings | Zero items passed mechanical + review on a bug/duplicate path | Human-deferral; `triage: needs-human` |
+| Low average confidence | Avg confidence of survivors < medium on a bug/duplicate path | Human-deferral; `triage: needs-human` |
 | Ambiguous bug/enhancement | Stage 2 second-pass disagreed with first on the bug-vs-enhancement axis | Human-deferral; `triage: needs-human` |
-| All gates pass | At least one finding survives at ≥ medium | Findings variant |
+| Suspicious-input | Stage 2a tripwire matched a prompt-injection tell before the LLM ran | Human-deferral; `triage: needs-human`; no Sonnet calls |
+| All gates pass | At least one finding survives at ≥ medium | Findings variant (8a) |
+
+**Version drift is a banner, not a gate.** When `claimed_version != CLAUDE_DESKTOP_VERSION` AND the pipeline reaches 8a or 8c cleanly, the renderer prepends a drift banner (`⚠ You reported this on X; the bot investigated against Y…`) and appends the drift-bridge-candidates block at the bottom. Finding citations still stand — they describe current code in hypothesis voice, which the reader can verify against their own checkout. When drift is detected AND any other gate routes to 8b, the deferral reason is overridden to `version drift` because drift + drift-bridge candidates is more actionable for the maintainer than "no findings" on its own. The confirmed-duplicate reason wins over the drift override — `triage: duplicate` is the more specific read.
 
 If classification = `duplicate` but `duplicate_of` fails Stage 5 validation or Stage 6 rates `unrelated`, the duplicate claim is discarded and remaining gates apply to the investigation output — the issue is treated as a regular bug for routing. The failed-duplicate-check is logged to `validation.json` for later human review.
 
@@ -415,6 +421,13 @@ close issues, apply labels beyond triage routing, or claim fixes are
 shipped. Findings below are starting points; the code citations are what
 to verify first.
 
+[Conditional — only when drift detected:]
+⚠ You reported this on `{claimed_version}`; the bot investigated against
+the current release `{CLAUDE_DESKTOP_VERSION}`. Findings below are from
+current code — if the drift-bridge candidates at the bottom already
+address your case, you can probably close. Otherwise the file:line
+citations may still apply.
+
 {hypothesis_line}
 
 - {findings[0].text} ({findings[0].citation.file}:{line_start}-{line_end})
@@ -431,11 +444,18 @@ to verify first.
 
 Related: #{related_issues[0].number} — {related_issues[0].relation}
 
+[Conditional — only when drift detected AND drift_bridge_candidates
+is non-empty:]
+Drift-bridge candidates — commits or PRs in the drift window that
+touched the relevant surface and may already address this:
+- {commit_sha} / #{pr_number} — {subject} ({date})
+- ...
+
 Full investigation artifacts (`investigation.json`, `validation.json`,
 `review.json`) are attached to the [triage workflow run]({run_url}).
 ````
 
-The `<details>` patch block renders only when `patch_sketch.body` is non-null and the corresponding `proposed_anchor` passed Stage 5's exact-match-count check. The Related line renders only when `related_issues` is non-empty.
+The `<details>` patch block renders only when `patch_sketch.body` is non-null and the corresponding `proposed_anchor` passed Stage 5's exact-match-count check. The Related line renders only when `related_issues` is non-empty. The drift banner and drift-bridge candidates block render only on the drift-modifier path (see [Stage 7](#7-decision-gate)).
 
 #### 8b. Human-deferral variant (any gate failed)
 
@@ -446,8 +466,8 @@ Purely procedural — no claims, no citations, no patch sketch. Exists so the re
 looked at the issue but couldn't reach a confident read. Routing to a
 human for review.
 
-Reason: [one of: version drift | no findings survived validation |
-findings below confidence threshold |
+Reason: [one of: version drift | reference-source unavailable |
+no findings survived validation | findings below confidence threshold |
 likely-duplicate-of-#{duplicate_of} |
 ambiguous bug/enhancement classification | suspicious-input — manual review]
 
@@ -464,7 +484,7 @@ the relevant surface and may already address this:
 Reason is filled in deterministically from the gate that fired. No model-authored prose.
 
 > [!NOTE]
-> **Reason enum is duplicated** here and in the post-processor check ("verify reason line is one of the enumerated values"). Keep these in sync via a single source of truth — `lib/templates/reasons.json` or equivalent — referenced by both the template renderer and the post-processor. Adding a new reason should be a one-file change.
+> **Reason enum single source of truth:** `.claude/scripts/reasons.json`. Both the 8b template renderer and the post-processor enum check read it. Adding a new reason is a one-file change.
 
 #### 8c. Enhancement-design variant (classification = `enhancement`)
 
@@ -572,12 +592,17 @@ Blocklist-rather-than-allowlist means new repo labels are automatically usable b
 
 Rejected labels are logged to `validation.json` as classifier-calibration signal — a classifier consistently inventing the same out-of-set label is evidence the prompt should enumerate the allowed values explicitly, or that a new repo label is wanted.
 
-Uploads four artifacts (14-day retention):
+Uploads the full `/tmp/triage/` directory per run (14-day retention). Load-bearing artifacts:
 
 - `input_snapshot.json` — `issue.body`, `issue.updated_at`, `sha256(issue.body)` captured at Stage 1; audit trail against edit-races and inject-then-delete
-- `investigation.json` — raw investigation output
-- `validation.json` — per-item mechanical + review verdicts
-- `review.json` — counter-readings and closed-world answers
+- `classification.json` — Stage 2 output (classification, confidence, suggested labels, `duplicate_of`, `regression_of`, `claimed_version`)
+- `investigation.json` — Stage 4 structured findings
+- `validation.json` — Stage 5 per-item mechanical verdicts (file-exists, line-range, evidence-quote, closed-world options)
+- `review.json` — Stage 6 counter-readings, closed-world answers, exact/related/unrelated ratings
+- `drift-bridge-candidates.json` — Stage 3 sweep output when drift detected (commits + PRs)
+- `regression-of.json` — Stage 3b validation of reporter-named culprit PR (valid/invalid + diff metadata)
+- `suspicious-input.json` — Stage 2a tripwire output (`matched_tells[]`)
+- `comment.md` — the rendered comment that was posted (or would have been, under `dry_run=true`)
 
 Writes a structured summary to `$GITHUB_STEP_SUMMARY`:
 
@@ -728,11 +753,9 @@ Design-time decisions about runtime posture — privacy, security, failure handl
 
 ### Rollout posture
 
-v2 ships greenfield as `.github/workflows/issue-triage-v2.yml`, built alongside the existing v1 workflow rather than replacing it in-place. v2 runs **`workflow_dispatch`-only** — no automatic `issues` trigger — so it can be exercised against hand-picked real issues without changing the live public-facing surface. v1 stays wired to its current triggers in the interim.
+The pipeline lives at `.github/workflows/issue-triage-v2.yml` and fires automatically on `issues: [opened]`. `workflow_dispatch` is kept for manual re-runs, dry-run testing, and triage on backfilled issues. The legacy v1 workflow (`issue-triage.yml`) is kept as a `workflow_dispatch`-only fallback — its `issues` trigger was removed when v2 took over production routing. Rollback to v1-as-primary is a one-file change in either workflow.
 
-Cutover to the `issues: [opened]` trigger is **deferred** and called out in [Potential future improvements](#potential-future-improvements). Before flipping the automatic trigger, dispatched runs need to show the pipeline isn't posting confidently-wrong comments against the canonical failure-mode set (identifier hallucination, missed-site, version drift, false duplicate). The evidence set is accumulated through manual inspection of archived `investigation.json` / `validation.json` / `review.json` artifacts; v1 has no automated feedback loop to short-circuit that.
-
-See [implementation-plan.md](implementation-plan.md) for the phased build sequence and per-phase exit criteria.
+During the pre-production phase, the pipeline was dispatched against real issues with `dry_run=true` across the canonical failure-mode set (identifier hallucination, missed-site, version drift, false duplicate). Archived artifacts (`investigation.json`, `validation.json`, `review.json`) are retained 14 days per run so the maintainer can inspect any surprising output.
 
 ### Implementation layout
 
@@ -740,11 +763,12 @@ Single reference table for where each piece of the pipeline lives on disk.
 
 | Purpose | Path |
 |---------|------|
-| Main pipeline workflow (v2, during rollout) | `.github/workflows/issue-triage-v2.yml` |
-| Main pipeline workflow (v1) | `.github/workflows/issue-triage.yml` |
-| Stage prompts | `.claude/scripts/prompts/{stage}.txt` — one file per stage (classify, classify-doublecheck-bug-vs-enhancement, investigate, review, comment-findings, comment-enhancement, …); referenced by jobs via `cat`. Avoids heredoc bloat in YAML |
-| Output schemas | `.claude/scripts/schemas/{stage}.json` — passed to `claude --json-schema`; v1 convention continued |
+| Production pipeline workflow | `.github/workflows/issue-triage-v2.yml` |
+| Legacy v1 workflow (manual fallback) | `.github/workflows/issue-triage.yml` |
+| Stage prompts | `.claude/scripts/prompts/{stage}.txt` — classify, classify-doublecheck-bug-vs-enhancement, investigate, investigate-enhancement, review, review-enhancement, comment-findings, comment-enhancement |
+| Output schemas | `.claude/scripts/schemas/{stage}.json` — passed to `claude --json-schema` |
 | Fixed taxonomies | `.claude/scripts/taxonomies/{name}.json` — `enhancement-design-questions`, `suspicious-input-tells`, `label-blocklist` |
+| Helper scripts | `.claude/scripts/triage/{name}.sh` — `validate.sh` (Stage 5), `drift-bridge.sh` (drift sweep), `suspicious-input-scan.sh` (Stage 2a), `extract-json.py` (prose-to-JSON fallback) |
 | Deferral-reason enum (SSOT) | `.claude/scripts/reasons.json` — shared by the 8b template renderer and its post-processor ([see 8b note](#8b-human-deferral-variant-any-gate-failed)) |
 
 ### Concurrency and LLM-call failure
@@ -787,7 +811,7 @@ Explicitly **not granted**:
 | `pull-requests: write` | Bot does not open, comment on, or label PRs. PR review out of scope |
 | `contents: write` | Bot does not push commits, branches, or releases |
 | `actions: write` | Bot does not trigger or cancel other workflows |
-| `actions: read` | Not needed — no downstream workflow consumes main-pipeline artifacts in v1 |
+| `actions: read` | Not needed — no downstream workflow consumes main-pipeline artifacts |
 | `repository-projects: *` | Bot does not modify project boards |
 | `admin: *` | Never |
 
@@ -868,11 +892,7 @@ None is bulletproof in isolation. Together they make the most likely successful 
 
 ## Potential future improvements
 
-The v1 pipeline is deliberately minimal — it triages, validates, reviews, and posts. What it doesn't do is learn from its own track record or alarm on its own miscalibration. Below are extensions considered during design that were deferred until the base pipeline has accumulated enough real-run evidence to calibrate them against. Listed roughly in the order they're likely to matter.
-
-### Cutover to `issues: [opened]` auto-trigger
-
-v1 runs on `workflow_dispatch` only. Flipping the automatic trigger makes the bot public-facing on every new issue and raises the cost of a wrong comment from "the maintainer saw it in a dispatched run" to "the reporter got a wrong take within minutes of filing." Cutover is gated on manual inspection of enough dispatched runs to convince the maintainer the canonical failure modes are under control (identifier hallucination, missed-site, version drift, false duplicate). No fixed threshold — it's a judgment call against archived artifacts.
+The current pipeline is deliberately minimal — it triages, validates, reviews, and posts. What it doesn't do is learn from its own track record or alarm on its own miscalibration. Below are extensions considered during design that were deferred until the base pipeline has accumulated enough real-run evidence to calibrate them against. Listed roughly in the order they're likely to matter.
 
 ### Retrospective loop
 
@@ -925,7 +945,7 @@ Required constraints before shipping any version: closed taxonomy with explicit 
 - **Closing issues, merging patches, assigning priority beyond label routing.** Label scope is `triage: *` and `suggested_labels` from classification. Priority, assignee, milestone are manual.
 - **Speculative fixes for out-of-scope categories.** Driver/hardware/kernel route to human-deferral without investigation; no launcher-flag workarounds prescribed.
 - **Silent suppression of any triage run.** Every issue that survives Stage 1 gets a comment, even if human-deferral explicitly stating the bot couldn't reach a confident read ([Principle 4](#4-always-comment-confidence-shapes-the-comment-not-whether-to-post)).
-- **Outcome-based learning.** v1 does not observe what happened to the issue after triage. Quality is a design-time property, reviewed via manual inspection of archived `investigation.json` / `validation.json` / `review.json` artifacts. Automated retrospective comparison, rolling health alarms, and retrospectives-as-context are deferred — see [Potential future improvements](#potential-future-improvements).
+- **Outcome-based learning.** The current pipeline does not observe what happened to the issue after triage. Quality is a design-time property, reviewed via manual inspection of archived `investigation.json` / `validation.json` / `review.json` artifacts. Automated retrospective comparison, rolling health alarms, and retrospectives-as-context are deferred — see [Potential future improvements](#potential-future-improvements).
 
 ---
 
@@ -973,6 +993,3 @@ Required constraints before shipping any version: closed taxonomy with explicit 
 
 ---
 
-## Research trail
-
-Full search-and-source set from the design pass — search queries run, sources fetched and the verdict on each, and the unvisited-but-noted pointer set — lives in [research-trail.md](research-trail.md).
