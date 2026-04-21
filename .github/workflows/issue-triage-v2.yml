@@ -982,15 +982,20 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # Stage 7 — decision gate. Selects the final comment variant and
-      # reason. Priority per spec §7 with Phase 3's duplicate gate and
-      # Phase 4's enhancement gate slotted in:
-      #   drift → fetch-failure → duplicate → invest-failure →
-      #   review-failure → enhancement (8c) → no-findings →
-      #   low-confidence → 8a
-      # The enhancement gate fires for `classification=enhancement`
-      # after review succeeded (or for 0-findings enhancements where
-      # review was skipped by design). For bug/duplicate paths the
-      # no-findings + low-confidence checks still gate 8a.
+      # reason. Priority per spec §7 with Phase 3's duplicate gate,
+      # Phase 4's enhancement gate, and drift demoted from top-of-gate
+      # veto to a banner modifier:
+      #   fetch-failure → duplicate → invest-failure → review-failure
+      #   → enhancement (8c) → no-findings → low-confidence → 8a
+      # Drift no longer vetoes the comment. When drift is detected
+      # AND 8a or 8c would render, the renderer prepends a drift
+      # banner and appends the drift-bridge candidates block; the
+      # finding citations stand but the reader is warned they're on
+      # current code, not the reporter's version. When drift is
+      # detected AND any other gate routes to 8b, the reason is
+      # overridden to `version-drift` (drift is the more actionable
+      # signal for the maintainer than the underlying no-findings /
+      # low-confidence cause).
       - name: Decide comment variant
         id: decide
         run: |
@@ -1014,10 +1019,7 @@ jobs:
           dup_rating="${{ steps.filter.outputs.duplicate_of_rating }}"
 
           # Shared gates that apply to every investigate route.
-          if [[ "${drift}" == "true" ]]; then
-            variant=8b
-            reason_id=version-drift
-          elif [[ "${fetch_ok}" != "true" ]]; then
+          if [[ "${fetch_ok}" != "true" ]]; then
             variant=8b
             reason_id=reference-source-unavailable
           elif [[ "${classification}" == "duplicate" \
@@ -1060,6 +1062,19 @@ jobs:
           else
             variant=8a
             reason_id=
+          fi
+
+          # Drift override — when drift is detected AND the pipeline
+          # would fall back to 8b for any other reason, report drift
+          # as the deferral reason. Drift-bridge candidates give the
+          # maintainer a more actionable signal than "no findings" /
+          # "low confidence" on their own. When the pipeline reaches
+          # 8a or 8c cleanly, drift stays as a banner flag — handled
+          # by the renderer, not this gate.
+          if [[ "${drift}" == "true" \
+              && "${variant}" == "8b" \
+              && "${reason_id}" != "duplicate" ]]; then
+            reason_id=version-drift
           fi
 
           {
@@ -1220,12 +1235,29 @@ jobs:
         if: steps.decide.outputs.variant == '8a'
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DRIFT_DETECTED: ${{ steps.drift.outputs.drift_detected }}
+          CURRENT_VERSION: ${{ vars.CLAUDE_DESKTOP_VERSION }}
         run: |
           c=/tmp/triage/comment-findings.json
           hypothesis=$(jq -r '.hypothesis_line' "${c}")
 
+          # Drift banner — prepended when the classifier picked up a
+          # claimed_version that differs from CLAUDE_DESKTOP_VERSION.
+          # The finding citations still stand (they describe current
+          # code), but the reader needs to know the gap.
+          drift_banner=""
+          if [[ "${DRIFT_DETECTED}" == "true" ]]; then
+            claimed=$(jq -r '.claimed_version // "unknown"' \
+              /tmp/triage/classification.json)
+            drift_banner="⚠ You reported this on \`${claimed}\`; the bot investigated against the current release \`${CURRENT_VERSION}\`. Findings below are from current code — if the drift-bridge candidates at the bottom already address your case, you can probably close. Otherwise the file:line citations may still apply."
+          fi
+
           {
             echo "**Automated draft — AI analysis, not maintainer judgment.** This bot won't close issues, apply labels beyond triage routing, or claim fixes are shipped. Findings below are starting points; the code citations are what to verify first."
+            if [[ -n "${drift_banner}" ]]; then
+              echo ""
+              echo "${drift_banner}"
+            fi
             echo ""
             echo "${hypothesis}"
             echo ""
@@ -1257,6 +1289,23 @@ jobs:
             if [[ -n "${related_line}" && "${related_line}" != "" ]]; then
               echo ""
               echo "Related: ${related_line}"
+            fi
+
+            # Drift-bridge candidates block — same shape as in 8b,
+            # appended here when drift detected + sweep returned ≥1.
+            if [[ "${DRIFT_DETECTED}" == "true" \
+                && -f /tmp/triage/drift-bridge-candidates.json ]]; then
+              candidate_count=$(jq \
+                '(.commits | length) + (.prs | length)' \
+                /tmp/triage/drift-bridge-candidates.json)
+              if [[ "${candidate_count}" -gt 0 ]]; then
+                echo ""
+                echo "Drift-bridge candidates — commits or PRs in the drift window that touched the relevant surface and may already address this:"
+                jq -r '
+                  (.commits[]? | "- \(.sha[0:8]) — \(.subject) (\(.date))"),
+                  (.prs[]? | "- #\(.number) — \(.title) (\(.mergedAt))")
+                ' /tmp/triage/drift-bridge-candidates.json
+              fi
             fi
 
             echo ""
@@ -1393,14 +1442,30 @@ jobs:
         if: steps.decide.outputs.variant == '8c'
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DRIFT_DETECTED: ${{ steps.drift.outputs.drift_detected }}
+          CURRENT_VERSION: ${{ vars.CLAUDE_DESKTOP_VERSION }}
         run: |
           c=/tmp/triage/comment-enhancement.json
           tax=.claude/scripts/taxonomies/enhancement-design-questions.json
           ack=$(jq -r '.acknowledgment_line' "${c}")
           surface_count=$(jq '.existing_surfaces | length' "${c}")
 
+          # Drift banner — same shape as 8a; reframed for enhancements
+          # (surfaces point at current code, which may have moved
+          # since the reporter's version).
+          drift_banner=""
+          if [[ "${DRIFT_DETECTED}" == "true" ]]; then
+            claimed=$(jq -r '.claimed_version // "unknown"' \
+              /tmp/triage/classification.json)
+            drift_banner="⚠ You reported this on \`${claimed}\`; the bot surfaced existing code on the current release \`${CURRENT_VERSION}\`. If the drift-bridge candidates at the bottom already address the enhancement, those may be a better starting point than the surfaces below."
+          fi
+
           {
             echo "**Automated draft — AI analysis, not maintainer judgment.** This bot won't approve enhancements, prioritize roadmap, or commit timelines. The notes below flag existing surfaces and design questions that may be worth considering before implementation."
+            if [[ -n "${drift_banner}" ]]; then
+              echo ""
+              echo "${drift_banner}"
+            fi
             echo ""
             echo "${ack}"
 
@@ -1425,6 +1490,24 @@ jobs:
                   then error("taxonomy missing id: \($id)")
                   else "- \($text)" end
             ' "${c}"
+
+            # Drift-bridge candidates block — appended when drift
+            # detected + sweep returned ≥1 (spec §7). Helps the
+            # maintainer spot PRs that may already address the ask.
+            if [[ "${DRIFT_DETECTED}" == "true" \
+                && -f /tmp/triage/drift-bridge-candidates.json ]]; then
+              candidate_count=$(jq \
+                '(.commits | length) + (.prs | length)' \
+                /tmp/triage/drift-bridge-candidates.json)
+              if [[ "${candidate_count}" -gt 0 ]]; then
+                echo ""
+                echo "Drift-bridge candidates — commits or PRs in the drift window that touched the relevant surface and may already address this:"
+                jq -r '
+                  (.commits[]? | "- \(.sha[0:8]) — \(.subject) (\(.date))"),
+                  (.prs[]? | "- #\(.number) — \(.title) (\(.mergedAt))")
+                ' /tmp/triage/drift-bridge-candidates.json
+              fi
+            fi
 
             echo ""
             echo "Full investigation artifacts attached to the [triage workflow run](${RUN_URL})."

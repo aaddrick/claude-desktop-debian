@@ -76,8 +76,14 @@ commit the result to the schema slots:
      weaker than the finding's confidence says — e.g. the source
      excerpt supports the claim but the cited site is one of several
      similar sites (cross-cutting sweep obligation missed), or the
-     issue body is consistent but ambiguous. Stage 7 keeps the finding
-     but reduces its contribution to the average-confidence gate.
+     issue body is consistent but ambiguous. Also downgrade when the
+     classification shows `claimed_version` differs from the current
+     release AND the cited surface looks like code that clearly
+     post-dates the reporter's version (new file paths, new
+     identifiers obviously introduced after the reporter's version
+     string) — the finding may be valid on current but not reproduce
+     on what the reporter saw. Stage 7 keeps the finding but reduces
+     its contribution to the average-confidence gate.
    - `reject`: evidence contradicts the claim. Closed-world miss,
      disconfirming source quote, or the issue body describes a
      different failure mode.
