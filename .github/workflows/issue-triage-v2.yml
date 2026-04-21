@@ -131,9 +131,34 @@ jobs:
             --json name --jq '[.[].name]' \
             > /tmp/triage/repo-labels.json
 
+      # Stage 2a — suspicious-input scan. Runs before the classifier
+      # Sonnet call so a matched tell short-circuits to 8b without
+      # sending the issue body through an LLM. The scan is a
+      # conservative tripwire; the actual injection mitigations (wrap-
+      # as-data, fresh-context reviewer, schema-constrained output)
+      # remain in place downstream. Any match routes to 8b with reason
+      # `suspicious-input — manual review` via the Decide route step.
+      - name: Suspicious-input scan
+        id: suspicious
+        run: |
+          bash .claude/scripts/triage/suspicious-input-scan.sh \
+            /tmp/triage/issue.json \
+            .claude/scripts/taxonomies/suspicious-input-tells.json \
+            /tmp/triage/suspicious-input.json
+
+          hit=$(jq -r '.suspicious' /tmp/triage/suspicious-input.json)
+          echo "suspicious=${hit}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${hit}" == "true" ]]; then
+            matched=$(jq -r '.matched_tells | join(",")' \
+              /tmp/triage/suspicious-input.json)
+            echo "::warning::suspicious-input tells matched: ${matched}"
+          fi
+
       # Stage 2 — classify.
       - name: Classify issue
         id: classify
+        if: steps.suspicious.outputs.suspicious != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -232,17 +257,23 @@ jobs:
       # `bug` so Stage 5 + Stage 6 can rate the `duplicate_of` target.
       # Phase 4 adds `enhancement` to the investigate route — needed
       # for the 8c variant, which renders existing-surface citations
-      # from reviewer-kept findings. All three classifications run
-      # through the same Stage 3-7 pipeline; Stage 7 selects between
-      # 8a (bug findings), 8c (enhancement-design), and 8b (deferral)
-      # based on classification + reviewer state.
+      # from reviewer-kept findings. Phase 4 also adds a
+      # suspicious-input short-circuit: when Stage 2a matched any
+      # prompt-injection tell, route straight to 8b with reason
+      # `suspicious-input — manual review`, bypassing the LLM
+      # classifier entirely.
       - name: Decide route
         id: route
         run: |
+          suspicious="${{ steps.suspicious.outputs.suspicious }}"
           classification="${{ steps.classify.outputs.classification }}"
           disagreed="${{ steps.doublecheck.outputs.disagreed }}"
 
-          if [[ "${disagreed}" == "true" ]]; then
+          if [[ "${suspicious}" == "true" ]]; then
+            echo "route=deferral" >> "$GITHUB_OUTPUT"
+            echo "deferral_reason_id=suspicious-input" \
+              >> "$GITHUB_OUTPUT"
+          elif [[ "${disagreed}" == "true" ]]; then
             echo "route=deferral" >> "$GITHUB_OUTPUT"
             echo "deferral_reason_id=ambiguous" >> "$GITHUB_OUTPUT"
           elif [[ "${classification}" == "bug" \
@@ -1530,6 +1561,7 @@ jobs:
 
       - name: Write step summary
         env:
+          SUSPICIOUS: ${{ steps.suspicious.outputs.suspicious }}
           CLASSIFICATION: ${{ steps.classify.outputs.classification }}
           CONFIDENCE: ${{ steps.classify.outputs.confidence }}
           DISAGREED: ${{ steps.doublecheck.outputs.disagreed }}
@@ -1558,8 +1590,9 @@ jobs:
             echo "|---|---|"
             echo "| Issue | #${ISSUE_NUMBER} |"
             echo "| Dry run | ${DRY_RUN:-false} |"
-            echo "| Classification | ${CLASSIFICATION} |"
-            echo "| Confidence | ${CONFIDENCE} |"
+            echo "| Suspicious-input tripped | ${SUSPICIOUS:-false} |"
+            echo "| Classification | ${CLASSIFICATION:-n/a (scan blocked)} |"
+            echo "| Confidence | ${CONFIDENCE:-n/a} |"
             echo "| Doublecheck disagreed | ${DISAGREED:-n/a} |"
             echo "| Version drift | ${DRIFT_DETECTED:-n/a} |"
             echo "| Findings proposed | ${FINDINGS_TOTAL:-0} |"

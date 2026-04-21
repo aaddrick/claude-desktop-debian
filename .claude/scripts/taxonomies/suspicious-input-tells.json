@@ -1,0 +1,46 @@
+{
+  "comment": "Fixed list of prompt-injection tells scanned against the raw issue body at Stage 2 before any LLM call. A hit routes the issue to 8b with reason 'suspicious-input — manual review'; no investigation, no labels beyond triage routing. The goal is a conservative, easy-to-audit front-line filter — not to replace the structured prompt-injection defenses downstream (wrap-as-data, fresh-context reviewer, schema-constrained output), which are the actual mitigation. Stage 2 is a tripwire; if it fires the maintainer reads the issue themselves rather than asking an LLM to.",
+  "rationale": "Regex patterns are case-insensitive (ripgrep -i semantics). Each pattern targets a specific tactic documented in the prompt-injection literature or observed in real spam/abuse attempts. Keep the list narrow — over-broad patterns block legitimate reports. Any hit defers to a human; there is no 'this is fine, investigate anyway' fallback.",
+  "tells": [
+    {
+      "id": "ignore-prior-instructions",
+      "pattern": "ignore (all )?(prior|previous|above) (instructions|prompts|directives)",
+      "description": "Classic prompt-injection opener. Seen verbatim in indirect-injection research (Willison, Greshake et al.)."
+    },
+    {
+      "id": "system-prompt-leak",
+      "pattern": "(reveal|print|show|output|disclose) (your )?(system|initial|original) (prompt|instructions|directive)",
+      "description": "Attempts to exfiltrate the surrounding prompt context. Legitimate reports don't need the system prompt."
+    },
+    {
+      "id": "role-override",
+      "pattern": "you are (now|actually|really) (a |an )?(different|new|evil|jailbroken|unrestricted|developer-mode)",
+      "description": "Role-reassignment attack. Legitimate issues don't redefine the bot's role."
+    },
+    {
+      "id": "forget-instructions",
+      "pattern": "(forget|disregard|override) (everything|all|your|the) (above|prior|previous|instructions|training)",
+      "description": "Variation of ignore-prior-instructions with different verb."
+    },
+    {
+      "id": "developer-mode",
+      "pattern": "(enter|activate|enable) (developer|dan|jailbreak|unrestricted|admin|root) mode",
+      "description": "Named jailbreak tactic. No legitimate reporter asks for this."
+    },
+    {
+      "id": "instruction-injection-sysrole",
+      "pattern": "<\\|?(system|im_start|assistant)\\|?>",
+      "description": "Chat-template tokens. A legitimate Markdown issue body would not contain these; they exist to try to forge conversation turns."
+    },
+    {
+      "id": "long-base64-block",
+      "pattern": "[A-Za-z0-9+/]{200,}={0,2}",
+      "description": "A contiguous base64-looking run of 200+ characters is almost always an attempt to smuggle encoded instructions past visible scanning. Legitimate logs with base64 payloads (certificate fingerprints, compressed traces) should be uploaded as files or quoted in short snippets."
+    },
+    {
+      "id": "unicode-tag-sequence",
+      "pattern": "[\\x{E0000}-\\x{E007F}]{3,}",
+      "description": "Unicode Tag block (U+E0000-E007F) is invisible in most renderers and used to smuggle hidden instructions. Three or more consecutive tag characters is a deliberate signal, not accidental."
+    }
+  ]
+}
