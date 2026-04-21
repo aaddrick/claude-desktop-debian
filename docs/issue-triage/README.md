@@ -97,14 +97,14 @@ flowchart TD
     B -->|needs-human or<br/>already triaged| Z[exit]
     B -->|proceed| C[2. Classify + double-check]
     C -->|suspicious-input<br/>injection tell| H
-    C -->|"ambiguous bug/feature<br/>(second-pass disagreed)"| H
-    C -->|investigable bug /<br/>feature / duplicate /<br/>needs-info| D[3. Fetch reference]
+    C -->|"ambiguous bug/enhancement<br/>(second-pass disagreed)"| H
+    C -->|investigable bug /<br/>enhancement / duplicate /<br/>needs-info| D[3. Fetch reference]
     D -->|fetch ok,<br/>version matches| E[4. Investigate<br/>structured output]
     D -->|fetch failed /<br/>version drift| H
     E --> F[5. Mechanical validation<br/>grep + gh + ast-grep]
     F --> G[6. Adversarial review<br/>fresh context,<br/>steel-man then counter]
     G --> H[7. Decision gate<br/>selects template variant]
-    H -->|classification = feature| I1[8c. Feature-design variant<br/>Sonnet, tightened prompt]
+    H -->|classification = enhancement| I1[8c. Enhancement-design variant<br/>Sonnet, tightened prompt]
     H -->|≥1 finding survives<br/>at ≥ medium confidence| I2[8a. Findings variant<br/>Sonnet, hypothesis voice]
     H -->|version drift / no findings /<br/>low confidence / duplicate /<br/>fetch-failed /<br/>suspicious-input| I3[8b. Human-deferral variant<br/>template only, no LLM]
     I1 --> L[9. Label + post + archive<br/>upload investigation.json,<br/>validation.json, review.json]
@@ -129,13 +129,13 @@ Blue stages are LLM calls (Sonnet); amber are deterministic bash. The 8b human-d
 | Stage | Tool | Purpose |
 |-------|------|---------|
 | 1. Gate | bash | Skip already-triaged, capture input snapshot |
-| 2. Classify | Sonnet (×2) | Categorize + double-check bug/feature axis |
+| 2. Classify | Sonnet (×2) | Categorize + double-check bug-vs-enhancement axis |
 | 3. Fetch reference | bash | Download `reference-source.tar.gz` |
 | 4. Investigate | Sonnet | Structured findings + sweeps + anchors |
 | 5. Mechanical validation | bash | Grep, `gh`, closed-world extraction |
 | 6. Adversarial review | Sonnet | Counter-reading + verdict, fresh context |
 | 7. Decision gate | bash | Select comment template variant |
-| 8. Comment generation | Sonnet (8a, 8c) / bash (8b) | Three template variants: 8a Findings · 8b Human-deferral · 8c Feature-design |
+| 8. Comment generation | Sonnet (8a, 8c) / bash (8b) | Three template variants: 8a Findings · 8b Human-deferral · 8c Enhancement-design |
 | 9. Label + post + archive | bash | Labels, comment, artifact upload |
 
 Every issue that survives Stage 1 flows through stages 8–9, even if human-deferral — silent suppression is not a routing option ([Principle 4](#4-always-comment-confidence-shapes-the-comment-not-whether-to-post)).
@@ -172,7 +172,7 @@ First Sonnet call. Structured JSON output only.
 
 ```json
 {
-  "classification": "bug|feature|question|duplicate|needs-info|not-actionable|needs-human",
+  "classification": "bug|enhancement|question|duplicate|needs-info|not-actionable|needs-human",
   "confidence": "high|medium|low",
   "claimed_version": "1.3109.0 | null",
   "suggested_labels": ["priority: high", "format: rpm", ...],
@@ -187,9 +187,9 @@ First Sonnet call. Structured JSON output only.
 - `regression_of` is set when the reporter has done the bisection. When set, Stage 4 fetches that PR's diff via `gh pr diff` as a primary input — the defect site is almost always inside the named PR's changed files. Stage 5 verifies the PR exists and is merged.
 
 > [!WARNING]
-> **Classification is verified by a second Sonnet pass on the bug/feature axis.** If the first pass returns `bug` or `feature`, a second call sees only the issue body and a fixed rubric — bug signals (stack trace, version string, `--doctor` output, "expected X, got Y" phrasing, error screenshot) vs. feature signals ("it would be nice if", "please add", "support for", "currently there's no way to"). Second pass returns `bug`, `feature`, or `ambiguous` with the signal quotes it relied on. Only if both agree does routing proceed; `ambiguous` or disagreement routes to human-deferral with reason `ambiguous bug/feature classification`.
+> **Classification is verified by a second Sonnet pass on the bug-vs-enhancement axis.** If the first pass returns `bug` or `enhancement`, a second call sees only the issue body and a fixed rubric — bug signals (stack trace, version string, `--doctor` output, "expected X, got Y" phrasing, "breaks X" / "stopped working" against a reasonable expectation, error screenshot) vs. enhancement signals ("it would be nice if", "please add", "support for", "currently there's no way to"). A broken expectation wins over enhancement-shaped framing when both are present — defects hide inside "please add" asks. Second pass returns `bug`, `enhancement`, or `ambiguous` with the signal quotes it relied on. Only if both agree does routing proceed; `ambiguous` or disagreement routes to human-deferral with reason `ambiguous bug/enhancement classification`.
 >
-> The axis is checked because it routes to completely different downstream behavior — bug → 8a findings with defect anchors; feature → 8c design-surface variant with fixed taxonomy. A miscall sends the drafter down the wrong track entirely, and the downstream validation (which checks claims, not classification) won't catch it.
+> The axis is checked because it routes to completely different downstream behavior — bug → 8a findings with defect anchors; enhancement → 8c design-surface variant with fixed taxonomy. A miscall sends the drafter down the wrong track entirely, and the downstream validation (which checks claims, not classification) won't catch it.
 
 ### 3. Fetch reference
 
@@ -357,10 +357,10 @@ Deterministic. Evaluates hard gates and **selects which Stage 8 template variant
 |------|---------|-------------------|
 | Version drift | `claimed_version != CLAUDE_DESKTOP_VERSION` | Human-deferral; `triage: needs-human`. Drift-bridge sweep ([Stage 3](#3-fetch-reference)) attaches any candidate commits or PRs to the comment |
 | Confirmed duplicate | classification = `duplicate`, `duplicate_of` passed Stage 5, Stage 6 rated `exact` or `related` | Human-deferral; reason `likely-duplicate-of-#N`; `triage: duplicate` |
-| Feature request | classification = `feature` | Feature-design variant (8c); `triage: investigated` + suggested `enhancement` |
+| Enhancement request | classification = `enhancement` | Enhancement-design variant (8c); `triage: investigated` + suggested `enhancement` |
 | No surviving findings | Zero items passed mechanical + review | Human-deferral; `triage: needs-human` |
 | Low average confidence | Avg confidence of survivors < medium | Human-deferral; `triage: needs-human` |
-| Ambiguous bug/feature | Stage 2 second-pass disagreed with first on the bug/feature axis | Human-deferral; `triage: needs-human` |
+| Ambiguous bug/enhancement | Stage 2 second-pass disagreed with first on the bug-vs-enhancement axis | Human-deferral; `triage: needs-human` |
 | All gates pass | At least one finding survives at ≥ medium | Findings variant |
 
 If classification = `duplicate` but `duplicate_of` fails Stage 5 validation or Stage 6 rates `unrelated`, the duplicate claim is discarded and remaining gates apply to the investigation output — the issue is treated as a regular bug for routing. The failed-duplicate-check is logged to `validation.json` for later human review.
@@ -449,7 +449,7 @@ human for review.
 Reason: [one of: version drift | no findings survived validation |
 findings below confidence threshold |
 likely-duplicate-of-#{duplicate_of} |
-ambiguous bug/feature classification | suspicious-input — manual review]
+ambiguous bug/enhancement classification | suspicious-input — manual review]
 
 [Conditional — only when reason = version drift AND drift_bridge_candidates
 is non-empty:]
@@ -466,12 +466,12 @@ Reason is filled in deterministically from the gate that fired. No model-authore
 > [!NOTE]
 > **Reason enum is duplicated** here and in the post-processor check ("verify reason line is one of the enumerated values"). Keep these in sync via a single source of truth — `lib/templates/reasons.json` or equivalent — referenced by both the template renderer and the post-processor. Adding a new reason should be a one-file change.
 
-#### 8c. Feature-design variant (classification = `feature`)
+#### 8c. Enhancement-design variant (classification = `enhancement`)
 
-The defect-shaped findings/anchor/sweep machinery does not produce useful output for features — no defect site to anchor, no patch to sketch, no closed-world enum to validate. Features routed through the findings variant produce procedurally correct but substantively empty comments; through human-deferral they ignore useful parts of investigation (existing related surfaces, constraints enforced elsewhere). The feature-design variant is the third option: lightweight surface-pointer + structured design-review questions.
+The defect-shaped findings/anchor/sweep machinery does not produce useful output for enhancements — no defect site to anchor, no patch to sketch, no closed-world enum to validate. Enhancements routed through the findings variant produce procedurally correct but substantively empty comments; through human-deferral they ignore useful parts of investigation (existing related surfaces, constraints enforced elsewhere). The enhancement-design variant is the third option: lightweight surface-pointer + structured design-review questions.
 
 <details>
-<summary><b>Feature-design comment schema</b></summary>
+<summary><b>Enhancement-design comment schema</b></summary>
 
 ```json
 {
@@ -492,7 +492,7 @@ The defect-shaped findings/anchor/sweep machinery does not produce useful output
 
 ```markdown
 **Automated draft — AI analysis, not maintainer judgment.** This bot
-won't approve features, prioritize roadmap, or commit timelines. The
+won't approve enhancements, prioritize roadmap, or commit timelines. The
 notes below flag existing surfaces and design questions that may be
 worth considering before implementation.
 
@@ -508,11 +508,11 @@ worth considering before implementation.
 Full investigation artifacts attached to the [triage workflow run]({run_url}).
 ```
 
-`design_question_ids` are keys into `taxonomies/feature-design-questions.json` — the taxonomy holds the fixed set (config-schema-stability, backward-compat, security-surface, test-coverage, observability, packaging-format). Schema enforces `maxItems: 3` and enum-matched IDs; the renderer looks up the human-readable question text. This replaces the prior prose + post-processor-enforces-taxonomy approach with schema-enforced structure: an invalid ID cannot be emitted.
+`design_question_ids` are keys into `taxonomies/enhancement-design-questions.json` — the taxonomy holds the fixed set (config-schema-stability, backward-compat, security-surface, test-coverage, observability, packaging-format). Schema enforces `maxItems: 3` and enum-matched IDs; the renderer looks up the human-readable question text. This replaces the prior prose + post-processor-enforces-taxonomy approach with schema-enforced structure: an invalid ID cannot be emitted.
 
-Stage 4 still runs for features but with a tightened prompt: only surface findings of `claim_type: identifier` or `claim_type: behavior` describing **existing** code the proposed feature would interact with. Speculative findings about how the feature *should* be implemented are banned (no `claim_type: absence` for "the feature is missing"). Stage 5 runs unchanged. Stage 6 is reframed: "is this an existing surface the feature would touch?" instead of "is this defect claim correct?"
+Stage 4 still runs for enhancements but with a tightened prompt: only surface findings of `claim_type: identifier` or `claim_type: behavior` describing **existing** code the proposed enhancement would interact with. Speculative findings about how the enhancement *should* be implemented are banned (no `claim_type: absence` for "the capability is missing"). Stage 5 runs unchanged. Stage 6 is reframed: "is this an existing surface the enhancement would touch?" instead of "is this defect claim correct?"
 
-Design-review questions are drawn from a fixed taxonomy because LLM-authored open-ended questions on features devolve into generic "have you considered…" prose.
+Design-review questions are drawn from a fixed taxonomy because LLM-authored open-ended questions on enhancements devolve into generic "have you considered…" prose.
 
 The `{run_url}` placeholder in any variant is filled at post time with `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`. Matters most for findings — a single-sentence finding may have accumulated three evidence quotes, a closed-world-options list, and a rejected counter-reading in the artifacts. For human-deferral, the link surfaces what *was* tried.
 
@@ -523,11 +523,11 @@ The `{run_url}` placeholder in any variant is filled at post time with `${{ gith
 - [x] After render, if total length exceeds 400 words, truncate the `<details>` patch body only — never truncate findings
 - [x] If the upstream pipeline left zero findings, Stage 7 routed to 8b; 8a never runs with an empty `findings` array
 
-**Post-processor enforcement (8c feature-design variant):**
+**Post-processor enforcement (8c enhancement-design variant):**
 
 - [x] Schema enforces `maxItems: 3` on `design_question_ids` and enum-matches each ID against the taxonomy
 - [x] Schema requires file:line on every `existing_surfaces` entry
-- [x] Schema has no `patch_sketch` slot — feature implementations out of scope by construction
+- [x] Schema has no `patch_sketch` slot — enhancement implementations out of scope by construction
 - [x] After render, truncate if total exceeds 350 words (drop last `existing_surfaces` entry first)
 
 **Post-processor enforcement (8b human-deferral variant):**
@@ -544,7 +544,7 @@ Deterministic. Applies labels per the outcome taxonomy below. **Always posts the
 | Slot | Cardinality | Source | Notes |
 |------|-------------|--------|-------|
 | Triage state | exactly 1 | Deterministic map from `classification` | `triage: investigated \| duplicate \| needs-info \| not-actionable \| needs-human` |
-| Class | exactly 1 | Deterministic map from `classification` | `bug` (for `bug` / `needs-info` on a bug-shaped report), `enhancement` (for `feature`), `documentation` (for doc-only issues), or `question` (for `question`) |
+| Class | exactly 1 | Deterministic map from `classification` | `bug` (for `bug` / `needs-info` on a bug-shaped report), `enhancement` (for `enhancement`), `documentation` (for doc-only issues), or `question` (for `question`). The classifier's vocabulary matches the repo's label vocabulary 1:1 — no remap. |
 | Priority | exactly 1 | `suggested_labels` entry in `priority:*` namespace; default `priority: medium` if classifier omits | Bot never emits `priority: critical` — that's a maintainer call |
 | Category | 0 or more | `suggested_labels` entries outside the three reserved namespaces above | e.g. `cowork`, `format: deb`, `format: rpm`, `build`, `tray`, `nix` — anything in the repo's label set that isn't triage/class/priority |
 
@@ -556,7 +556,7 @@ Selection is mechanical: Stage 9 partitions `suggested_labels` by namespace pref
 |----------------|--------------|-------|----------|------------|
 | `bug` → findings variant | `triage: investigated` | `bug` | suggested or `medium` | e.g. `cowork`, `format: deb` |
 | `bug` → human-deferral | `triage: needs-human` | `bug` | suggested or `medium` | as above |
-| `feature` | `triage: investigated` | `enhancement` | suggested or `medium` | e.g. `cowork`, `tray` |
+| `enhancement` | `triage: investigated` | `enhancement` | suggested or `medium` | e.g. `cowork`, `tray` |
 | `duplicate` (confirmed) | `triage: duplicate` | class from target issue if resolvable, else omit | suggested or `medium` | inherit from target where possible |
 | `needs-info` | `triage: needs-info` | best-guess class or omit | `priority: low` default | categories if evident |
 | `not-actionable` | `triage: not-actionable` | omit | omit | categories if evident |
@@ -590,7 +590,7 @@ Writes a structured summary to `$GITHUB_STEP_SUMMARY`:
 | Findings passed mechanical | 3 |
 | Findings passed review | 2 |
 | Comment variant posted | findings \| human-deferral |
-| Deferral reason (if applicable) | version drift \| no findings \| low confidence \| duplicate \| ambiguous bug/feature \| suspicious-input |
+| Deferral reason (if applicable) | version drift \| no findings \| low confidence \| duplicate \| ambiguous bug/enhancement \| suspicious-input |
 | Issue body edited during triage | true \| false (from `input_snapshot.json` vs. Stage 9 `updated_at`) |
 
 ---
@@ -614,7 +614,7 @@ flowchart LR
 
     subgraph REPO["Repo-owned (trusted)"]
         SRC["Repo files at HEAD<br/>grep + ast-grep targets"]
-        TAX["Fixed taxonomies:<br/>feature questions · suspicious-input tells<br/>label blocklist · label hints"]
+        TAX["Fixed taxonomies:<br/>enhancement questions · suspicious-input tells<br/>label blocklist · label hints"]
     end
 
     subgraph RELEASE["Release-owned (CI-signed)"]
@@ -688,7 +688,7 @@ flowchart LR
 |---|---|---|---|---|
 | Issue body + title | Reporter-controlled | Webhook payload / `gh issue view` | 1, 2, 4, 6, 8 | Classification, investigation, review input. Wrapped as untrusted data in every prompt |
 | Issue metadata (author, labels, `createdAt`, `updatedAt`) | GitHub-authoritative | Webhook payload | 1 | Gate check + Stage 1 input snapshot |
-| Fixed taxonomies — feature-design question set, suspicious-input tells, label blocklist, schema enums | Repo-owned | Embedded in workflow / prompt templates | 2, 4, 6, 8 | Closed vocabulary for classification and output structure |
+| Fixed taxonomies — enhancement-design question set, suspicious-input tells, label blocklist, schema enums | Repo-owned | Embedded in workflow / prompt templates | 2, 4, 6, 8 | Closed vocabulary for classification and output structure |
 | `CLAUDE_DESKTOP_VERSION` | Repo-owned | Workflow variable | 3 | Release pin for reference-source fetch |
 | `reference-source.tar.gz` | CI-signed | GitHub release asset | 3, 4, 5, 6 | Beautified `.vite/build/*.js` — primary claim-verification target |
 | Repo files at HEAD | Repo-owned | Workflow checkout | 4, 5, 6 | `grep` + `ast-grep` anchor and sweep targets |
@@ -742,9 +742,9 @@ Single reference table for where each piece of the pipeline lives on disk.
 |---------|------|
 | Main pipeline workflow (v2, during rollout) | `.github/workflows/issue-triage-v2.yml` |
 | Main pipeline workflow (v1) | `.github/workflows/issue-triage.yml` |
-| Stage prompts | `.claude/scripts/prompts/{stage}.txt` — one file per stage (classify, classify-doublecheck-bugfeature, investigate, review, comment-findings, comment-feature, …); referenced by jobs via `cat`. Avoids heredoc bloat in YAML |
+| Stage prompts | `.claude/scripts/prompts/{stage}.txt` — one file per stage (classify, classify-doublecheck-bug-vs-enhancement, investigate, review, comment-findings, comment-enhancement, …); referenced by jobs via `cat`. Avoids heredoc bloat in YAML |
 | Output schemas | `.claude/scripts/schemas/{stage}.json` — passed to `claude --json-schema`; v1 convention continued |
-| Fixed taxonomies | `.claude/scripts/taxonomies/{name}.json` — `feature-design-questions`, `suspicious-input-tells`, `label-blocklist` |
+| Fixed taxonomies | `.claude/scripts/taxonomies/{name}.json` — `enhancement-design-questions`, `suspicious-input-tells`, `label-blocklist` |
 | Deferral-reason enum (SSOT) | `.claude/scripts/reasons.json` — shared by the 8b template renderer and its post-processor ([see 8b note](#8b-human-deferral-variant-any-gate-failed)) |
 
 ### Concurrency and LLM-call failure
@@ -831,7 +831,7 @@ contact_links:
 | Logs / errors | `textarea` | no | Stage 4 consumes stack traces; hint text points to `~/.config/Claude/logs/` and `~/.cache/claude-desktop-debian/launcher.log` |
 | Anything else | `textarea` | no | Catchall — low classifier weight |
 
-**`feature_request.yml`** — shapes input to Stage 8c's design-question taxonomy.
+**`feature_request.yml`** — filename kept as the GitHub convention reporters recognize on the issue-chooser page; the classifier buckets requests filed through it as `enhancement`. Shapes input to Stage 8c's design-question taxonomy.
 
 | Field | Type | Required | Purpose |
 |-------|------|----------|---------|

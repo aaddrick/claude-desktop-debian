@@ -44,8 +44,8 @@ Each `finding` asserts one specific, mechanically-verifiable claim:
 - `claim_type: absence` — claims a specific site *should* handle
   something but doesn't. Narrow scope only — a defect claim about a
   missing case in an existing switch / enum, with the enclosing
-  construct named. Do NOT use `absence` to claim "feature X is
-  missing" — that's a feature request, not a bug finding.
+  construct named. Do NOT use `absence` to claim "capability X is
+  missing" — that's an enhancement request, not a bug finding.
 
 Hard bans (Stage 5 will reject the entire investigation output if any
 are present):

@@ -2,8 +2,8 @@
   "type": "object",
   "properties": {
     "verdict": {
-      "enum": ["bug", "feature", "ambiguous"],
-      "description": "Second-pass verdict on the bug/feature axis. 'ambiguous' means signals are mixed or weak."
+      "enum": ["bug", "enhancement", "ambiguous"],
+      "description": "Second-pass verdict on the bug-vs-enhancement axis. 'ambiguous' means signals are mixed or weak."
     },
     "signal_quotes": {
       "type": "array",

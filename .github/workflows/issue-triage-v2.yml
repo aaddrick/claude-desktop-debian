@@ -174,19 +174,19 @@ jobs:
             echo "confidence=${confidence}"
           } >> "$GITHUB_OUTPUT"
 
-      # Stage 2 — bug/feature doublecheck.
-      - name: Classify double-check (bug/feature)
+      # Stage 2 — bug/enhancement doublecheck.
+      - name: Classify double-check (bug/enhancement)
         id: doublecheck
-        if: steps.classify.outputs.classification == 'bug' || steps.classify.outputs.classification == 'feature'
+        if: steps.classify.outputs.classification == 'bug' || steps.classify.outputs.classification == 'enhancement'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          schema=$(cat .claude/scripts/schemas/classify-doublecheck-bugfeature.json)
+          schema=$(cat .claude/scripts/schemas/classify-doublecheck-bug-vs-enhancement.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
           body=$(jq -r '.body // ""' /tmp/triage/issue.json)
 
           {
-            cat .claude/scripts/prompts/classify-doublecheck-bugfeature.txt
+            cat .claude/scripts/prompts/classify-doublecheck-bug-vs-enhancement.txt
             echo ""
             echo "<issue_title source=\"reporter, untrusted\">${title}</issue_title>"
             echo ""
@@ -230,7 +230,7 @@ jobs:
       # `duplicate_of` target (exact/related/unrelated) — the duplicate
       # gate in Stage 7 needs that rating. When the reviewer rates the
       # target `unrelated`, the remaining gates apply to the regular
-      # investigation output (per spec §7). `feature` still defers;
+      # investigation output (per spec §7). `enhancement` still defers;
       # 8c lands in Phase 4.
       - name: Decide route
         id: route
@@ -1186,7 +1186,7 @@ jobs:
             fi
           else
             case "${classification}" in
-              bug|feature|duplicate)
+              bug|enhancement|duplicate)
                 triage_label="triage: needs-human"
                 ;;
               question|needs-info)
@@ -1201,10 +1201,8 @@ jobs:
             esac
 
             case "${classification}" in
-              bug)     class_label="bug" ;;
-              feature) class_label="enhancement" ;;
-              question) class_label="question" ;;
-              *)       class_label="" ;;
+              bug|enhancement|question) class_label="${classification}" ;;
+              *) class_label="" ;;
             esac
           fi
 

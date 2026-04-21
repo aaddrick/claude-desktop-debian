@@ -4,14 +4,14 @@
     "classification": {
       "enum": [
         "bug",
-        "feature",
+        "enhancement",
         "question",
         "duplicate",
         "needs-info",
         "not-actionable",
         "needs-human"
       ],
-      "description": "Primary classification of the issue."
+      "description": "Primary classification of the issue. `enhancement` matches the repo's GitHub label vocabulary — reporter-framed feature requests, missing-behavior asks, and scope-expansion proposals all land here."
     },
     "confidence": {
       "enum": ["high", "medium", "low"],
