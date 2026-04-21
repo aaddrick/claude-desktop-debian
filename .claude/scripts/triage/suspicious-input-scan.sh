@@ -31,17 +31,12 @@ tells_json="${2:?tells.json required}"
 output="${3:?output path required}"
 
 # ─── Read fields ──────────────────────────────────────────────────
-# A null body jq-extracts as the literal string "null"; guard so we
-# don't scan that against injection patterns.
+# `// ""` turns a JSON null into an empty string. `-r` strips the
+# quotes so a legitimately-empty field is "" rather than the literal
+# four-char string "null".
 
 title=$(jq -r '.title // ""' "${issue_json}")
 body=$(jq -r '.body // ""' "${issue_json}")
-if [[ "${body}" == "null" ]]; then
-	body=""
-fi
-if [[ "${title}" == "null" ]]; then
-	title=""
-fi
 
 # ─── Scan ─────────────────────────────────────────────────────────
 # Each tell's regex runs against the concatenated title + body. Using
@@ -61,9 +56,10 @@ while IFS= read -r tell; do
 	tell_id=$(jq -r '.id' <<<"${tell}")
 	pattern=$(jq -r '.pattern' <<<"${tell}")
 
-	# `|| true` keeps pipefail quiet when grep finds zero matches.
-	# grep -zP reads the whole input as one record; `-q` because we
-	# only need the exit status.
+	# grep -zP reads the whole input as one record so patterns can
+	# span lines; -q because we only need the exit status. `if`
+	# consumes grep's exit code, so the non-match exit 1 doesn't trip
+	# pipefail + errexit.
 	if printf '%s' "${combined}" \
 			| grep -qziP -- "${pattern}" 2>/dev/null; then
 		matched=$(jq --arg id "${tell_id}" \
@@ -73,10 +69,7 @@ done < <(jq -c '.tells[]' "${tells_json}")
 
 # ─── Output ───────────────────────────────────────────────────────
 
-suspicious=false
-if [[ "$(jq 'length' <<<"${matched}")" != "0" ]]; then
-	suspicious=true
-fi
+suspicious=$(jq 'length > 0' <<<"${matched}")
 
 jq -n \
 	--argjson suspicious "${suspicious}" \
