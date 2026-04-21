@@ -139,6 +139,21 @@ const BLOCKED_ENV_KEYS = new Set([
 ]);
 
 /**
+ * CLAUDE_CODE_* keys forwarded from process.env despite the prefix
+ * strip in filterEnv. Upstream's seA() intends these to arrive via
+ * the spawn RPC's params.env, but on Linux the daemon's inherited
+ * process.env is the only surviving source, so we re-add it as a
+ * fallback. appEnv values take precedence when present.
+ *
+ * Caveat: process.env is snapshotted at daemon launch, so a token
+ * refresh in ~/.claude/.credentials.json won't be picked up until
+ * the daemon restarts.
+ *
+ * See https://github.com/aaddrick/claude-desktop-debian/issues/482.
+ */
+const FORWARDED_ENV_KEYS = ['CLAUDE_CODE_OAUTH_TOKEN'];
+
+/**
  * Filter environment variables, removing blocked keys and optional prefixes.
  */
 function filterEnv(source, stripPrefixes = []) {
@@ -149,6 +164,36 @@ function filterEnv(source, stripPrefixes = []) {
         result[k] = v;
     }
     return result;
+}
+
+/**
+ * Re-add explicitly-forwarded keys from process.env that the
+ * CLAUDE_CODE_ prefix strip in filterEnv removed. Uses
+ * `mergedEnv[key] === undefined` so an explicit empty-string in
+ * appEnv (e.g. Foundry mode signalling "no token") wins over the
+ * daemon's inherited value.
+ */
+function forwardAuthEnv(mergedEnv) {
+    for (const key of FORWARDED_ENV_KEYS) {
+        if (process.env[key] && mergedEnv[key] === undefined) {
+            mergedEnv[key] = process.env[key];
+        }
+    }
+    return mergedEnv;
+}
+
+/**
+ * Shared base env construction for both HostBackend (buildSpawnEnv)
+ * and BwrapBackend.spawn. Strips the CLAUDE_CODE_ prefix from
+ * process.env (stale daemon inheritance), overlays appEnv, forces
+ * TERM, then re-adds FORWARDED_ENV_KEYS as a fallback.
+ */
+function buildBaseSpawnEnv(appEnv) {
+    return forwardAuthEnv({
+        ...filterEnv(process.env, ['CLAUDE_CODE_']),
+        ...filterEnv(appEnv || {}),
+        TERM: 'xterm-256color',
+    });
 }
 
 // ============================================================
@@ -267,11 +312,7 @@ function findPrimaryMount(mountMap) {
  * CLAUDE_CONFIG_DIR and CLAUDE_COWORK_MEMORY_PATH_OVERRIDE using mountMap.
  */
 function buildSpawnEnv(appEnv, mountMap) {
-    const mergedEnv = {
-        ...filterEnv(process.env, ['CLAUDE_CODE_']),
-        ...filterEnv(appEnv || {}),
-        TERM: 'xterm-256color',
-    };
+    const mergedEnv = buildBaseSpawnEnv(appEnv);
 
     // Translate CLAUDE_CONFIG_DIR from guest path to host path, or
     // remove it so Claude Code falls back to ~/.claude/.
@@ -1227,11 +1268,7 @@ class BwrapBackend extends LocalBackend {
         // Guest paths (/sessions/...) exist inside our bwrap sandbox,
         // so pass args and env through as-is (no guest->host translation).
         const rawArgs = params.args || [];
-        const mergedEnv = {
-            ...filterEnv(process.env, ['CLAUDE_CODE_']),
-            ...filterEnv(params.env || {}),
-            TERM: 'xterm-256color',
-        };
+        const mergedEnv = buildBaseSpawnEnv(params.env);
 
         // Build a minimal sandbox: empty tmpfs root with only the
         // necessary system paths bound in read-only. This avoids
