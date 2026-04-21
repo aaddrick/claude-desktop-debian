@@ -539,7 +539,6 @@ jobs:
 
           printf '%s' "${fetched}" > /tmp/triage/duplicate-of.json
           echo "dup_fetched=true" >> "$GITHUB_OUTPUT"
-          echo "dup_num=${dup_num}" >> "$GITHUB_OUTPUT"
 
       # Stage 6 — adversarial review. Fresh-context Sonnet call, no
       # tool access: the input set is pre-assembled (surviving findings
@@ -770,11 +769,8 @@ jobs:
               end
           ')
 
-          dup_rating=$(jq -r '
-            if .duplicate_of_rating == null
-            then "none"
-            else .duplicate_of_rating.rating end
-          ' "${review}")
+          dup_rating=$(jq -r '.duplicate_of_rating.rating // "none"' \
+            "${review}")
 
           {
             echo "review_findings_kept=${kept}"
