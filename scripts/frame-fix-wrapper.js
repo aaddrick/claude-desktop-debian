@@ -132,6 +132,20 @@ Module.prototype.require = function(id) {
               this.webContents.insertCSS(LINUX_CSS).catch(() => {});
             });
 
+            // Quit on Ctrl+Q, but only when Claude has keyboard focus.
+            // Replaces a prior globalShortcut registration that grabbed
+            // the key system-wide and, on non-QWERTY layouts (e.g.
+            // AZERTY), swallowed other shortcuts like Ctrl+A because
+            // Electron matches globals by physical keycode. Fixes: #399
+            this.webContents.on('before-input-event', (event, input) => {
+              if (input.type !== 'keyDown') return;
+              if (!input.control) return;
+              if (input.alt || input.shift || input.meta) return;
+              if (input.key !== 'q' && input.key !== 'Q') return;
+              event.preventDefault();
+              electronModule.app.quit();
+            });
+
             // In 'hidden' mode, suppress Alt toggle by re-hiding
             // on every show event. In 'auto' mode, let
             // autoHideMenuBar handle the toggle natively.
@@ -319,29 +333,6 @@ Module.prototype.require = function(id) {
           console.log('[Frame Fix] Menu bar hidden on all windows');
         }
       };
-
-      // Register Ctrl+Q as a global shortcut to quit the app.
-      // The upstream menu has CmdOrCtrl+Q but Electron doesn't fire
-      // menu accelerators when the menu bar is hidden/auto-hide on
-      // Linux. This ensures Ctrl+Q always works. Fixes: #321
-      const registerQuitShortcut = () => {
-        try {
-          if (!result.globalShortcut.isRegistered('CommandOrControl+Q')) {
-            result.globalShortcut.register('CommandOrControl+Q', () => {
-              console.log('[Frame Fix] Ctrl+Q pressed, quitting');
-              result.app.quit();
-            });
-            console.log('[Frame Fix] Ctrl+Q quit shortcut registered');
-          }
-        } catch (e) {
-          console.log('[Frame Fix] Failed to register Ctrl+Q shortcut:', e.message);
-        }
-      };
-      if (result.app.isReady()) {
-        registerQuitShortcut();
-      } else {
-        result.app.once('ready', registerQuitShortcut);
-      }
 
       console.log('[Frame Fix] Patches built successfully');
     }
