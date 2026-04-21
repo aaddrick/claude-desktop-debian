@@ -54,13 +54,17 @@ Code block only — no prose inside. The renderer wraps it in
 
 ## related_issues
 
-Copy one-to-one from the related-issue rating attached to the input.
-The reviewer runs in a later phase, but for Phase 2 you receive Stage
-5's fetched-body snapshots; rate each as:
+Copy the reviewer's ratings verbatim from the
+"Reviewer ratings for related issues" block in the input — don't
+re-rate. The reviewer's verdict is authoritative; your job is to
+surface it to the reader.
 
-- `exact`: same failure mode, same surface
-- `related`: adjacent surface or same category, different failure mode
-- `unrelated`: fetched body doesn't match the `why_related` claim
+Each entry:
+- `number`: matches the reviewer rating's `number`
+- `relation`: one of `exact`, `related`, `unrelated` — exactly as the
+  reviewer emitted it
 
-Include at most three entries. Drop unrelated ones rather than
-including them with `unrelated` relation.
+Include at most three entries. Drop `unrelated` ones rather than
+including them in the comment body — the renderer filters them out of
+the Related line anyway, and omitting them here keeps the drafter's
+output aligned with the rendered output.

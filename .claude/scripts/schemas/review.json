@@ -1,0 +1,111 @@
+{
+  "type": "object",
+  "description": "Stage 6 adversarial reviewer output. One call, per-finding verdicts, plus exact/related/unrelated ratings for each cited related_issue and the duplicate_of target when present. Reviewer cannot propose new findings, rewrite claims, or insert prose — only approve, downgrade, reject with structured rationale.",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "description": "One entry per surviving finding from validation.json. Order matches the input — use finding_index to cross-reference.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "finding_index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based index into the surviving findings array passed in the prompt."
+          },
+          "steelman": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Strongest reading of the claim. One or two sentences. Re-states what makes it look correct given the evidence quote and the actual code. Required before counter-reading."
+          },
+          "counter_reading": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Strongest counter-reading. One or two sentences. What would make this claim wrong given the actual code or the issue body? Required even on approve — forces the reviewer to have looked."
+          },
+          "closed_world_check": {
+            "type": ["object", "null"],
+            "description": "Populated only for claim_type='identifier'. Null for behavior/flow/absence claims.",
+            "properties": {
+              "claimed_identifier": {
+                "type": "string",
+                "description": "The identifier the finding claims exists, copied verbatim from the finding's claim or evidence_quote."
+              },
+              "option_list_considered": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "The closed_world_options list the reviewer considered, echoed back. Empty array if the input provided none."
+              },
+              "exact_match_found": {
+                "type": "boolean",
+                "description": "True iff the claimed_identifier appears verbatim in option_list_considered. Exact match only — no substring, no case-folding."
+              }
+            },
+            "required": [
+              "claimed_identifier",
+              "option_list_considered",
+              "exact_match_found"
+            ]
+          },
+          "verdict": {
+            "enum": ["approve", "downgrade-confidence", "reject"],
+            "description": "approve: claim holds on source + issue body. downgrade-confidence: claim is plausible but evidence is weaker than the finding's confidence indicates (Stage 7 reduces its contribution to the average-confidence gate). reject: claim contradicted by source or issue body; Stage 7 drops the finding."
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Structured rationale. For reject/downgrade, must cite the specific contradicting evidence (closed-world miss naming the actual option list, disconfirming source quote, issue-body mismatch). For approve, state which step of steel-man/counter-reading/closed-world confirmed the finding."
+          }
+        },
+        "required": [
+          "finding_index",
+          "steelman",
+          "counter_reading",
+          "closed_world_check",
+          "verdict",
+          "rationale"
+        ]
+      }
+    },
+    "related_issues_ratings": {
+      "type": "array",
+      "description": "One entry per related_issue the investigation cited. Order matches the input.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {"type": "integer", "minimum": 1},
+          "rating": {
+            "enum": ["exact", "related", "unrelated"],
+            "description": "exact: same failure mode, same surface. related: adjacent surface or same category, different failure mode. unrelated: fetched body does not match the why_related claim."
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One sentence citing specific overlap or divergence between the finding's claim and the fetched issue body."
+          }
+        },
+        "required": ["number", "rating", "rationale"]
+      }
+    },
+    "duplicate_of_rating": {
+      "type": ["object", "null"],
+      "description": "Populated only when classification='duplicate' and duplicate_of was supplied. Null otherwise. Load-bearing: Stage 7 only routes to `triage: duplicate` when rating is 'exact' or 'related'.",
+      "properties": {
+        "number": {"type": "integer", "minimum": 1},
+        "rating": {
+          "enum": ["exact", "related", "unrelated"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["number", "rating", "rationale"]
+    }
+  },
+  "required": [
+    "findings",
+    "related_issues_ratings",
+    "duplicate_of_rating"
+  ]
+}
