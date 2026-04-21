@@ -756,9 +756,14 @@ jobs:
             exit 1
           fi
 
+          # 300-word cap accommodates the optional drift-bridge-
+          # candidates block, which alone can add ~130 words for 10
+          # bullets. Spec §8b flagged "account for optional
+          # drift-bridge-candidates block"; the original 150 was the
+          # base-comment budget.
           words=$(wc -w < /tmp/triage/comment.md)
-          if [[ "${words}" -gt 150 ]]; then
-            echo "::error::8b comment exceeds 150 words (got ${words})"
+          if [[ "${words}" -gt 300 ]]; then
+            echo "::error::8b comment exceeds 300 words (got ${words})"
             exit 1
           fi
 
