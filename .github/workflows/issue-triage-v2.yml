@@ -1,8 +1,8 @@
 name: Issue Triage v2
 run-name: |
-  Triage v2: #${{ inputs.issue_number }}
+  Triage v2: #${{ github.event.issue.number || inputs.issue_number }}
 
-# Phase 4 — Stages 1, 2, 3, 4, 5, 6, 7, 8a, 8b, 8c, 9.
+# Production — Stages 1, 2, 3, 4, 5, 6, 7, 8a, 8b, 8c, 9.
 # Bug / duplicate / enhancement classifications run through
 # investigate → mechanical-validate → adversarial-review → decision
 # gate. Decision gate selects between 8a (bug findings), 8c
@@ -14,10 +14,17 @@ run-name: |
 # keeps it at reduced weight in the avg-confidence gate; reject
 # drops it. Confirmed-duplicate routing fires only when the reviewer
 # rated the duplicate_of target exact or related.
-# v1 (issue-triage.yml) stays wired to its own triggers during rollout.
+#
+# Triggers: fires automatically on `issues: [opened]`; also accepts
+# `workflow_dispatch` for re-runs, dry-run testing, and manual
+# triage on backfilled issues. v1 (issue-triage.yml) is kept as a
+# workflow_dispatch-only fallback — its `issues` trigger was
+# disabled when v2 took over production routing.
 # See docs/issue-triage/{README.md,implementation-plan.md}.
 
 on:
+  issues:
+    types: [opened]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -35,7 +42,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: issue-triage-v2-${{ inputs.issue_number }}
+  group: issue-triage-v2-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: true
 
 jobs:
@@ -53,7 +60,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
 
@@ -539,7 +546,10 @@ jobs:
           # CLI hands back prose for any reason.
           #
           # Step hardening from earlier PRs:
-          # * `timeout 600s` bounds the step at 10 min
+          # * `timeout 1200s` bounds the step at 20 min. Bumped from
+          #   10m after repeated timeouts on complex issues (e.g. #311
+          #   on two consecutive dispatches) where the investigator
+          #   needed more tool-call budget to verify claims.
           # * `if cmd; then; else` form — GHA's `bash -e` treats a
           #   failing command substitution as a fatal error and aborts
           #   before `claude_exit=$?` can run; the if-form is the only
@@ -550,7 +560,7 @@ jobs:
           #   post-mortem debuggable.
           # * Raw response + extracted payload archived before schema
           #   checks so a reject still leaves artifacts to inspect.
-          if raw=$(timeout 600s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
+          if raw=$(timeout 1200s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
               --dangerously-skip-permissions \
               --output-format json \
               --json-schema "${schema}" \

@@ -1,10 +1,17 @@
-name: Issue Triage
+name: Issue Triage (v1 — manual fallback only)
 run-name: |
-  Triage: #${{ github.event.issue.number || inputs.issue_number }}
+  Triage v1: #${{ inputs.issue_number }}
+
+# v1 pipeline kept as a workflow_dispatch-only fallback. Automatic
+# triggering on `issues` was removed when v2 (issue-triage-v2.yml)
+# took over production routing. If v2 is ever paused or rolled back,
+# re-enable the `issues: [opened, reopened]` trigger here.
+#
+# Kept (not deleted) because v1 uses different code paths for
+# investigation and label application, which still occasionally help
+# for backfilled issues the maintainer wants a second opinion on.
 
 on:
-  issues:
-    types: [opened, reopened]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -18,7 +25,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: issue-triage-${{ github.event.issue.number || inputs.issue_number }}
+  group: issue-triage-${{ inputs.issue_number }}
   cancel-in-progress: true
 
 jobs:
