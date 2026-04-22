@@ -64,6 +64,9 @@ resources_dir="$install_dir/lib/$package_name/node_modules/electron/dist/resourc
 mkdir -p "$resources_dir" || exit 1
 cp "$app_staging_dir/app.asar" "$resources_dir/" || exit 1
 cp -r "$app_staging_dir/app.asar.unpacked" "$resources_dir/" || exit 1
+if [[ -d $app_staging_dir/ion-dist ]]; then
+	cp -r "$app_staging_dir/ion-dist" "$resources_dir/" || exit 1
+fi
 echo 'Application files copied to Electron resources directory'
 
 # Copy shared launcher library (launcher-common.sh sources doctor.sh

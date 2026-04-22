@@ -216,6 +216,9 @@ $icon_install_cmds
 cp -r $app_staging_dir/node_modules %{buildroot}/usr/lib/$package_name/
 cp $app_staging_dir/app.asar %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
 cp -r $app_staging_dir/app.asar.unpacked %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
+if [ -d $app_staging_dir/ion-dist ]; then
+    cp -r $app_staging_dir/ion-dist %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
+fi
 
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)

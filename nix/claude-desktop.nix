@@ -142,6 +142,13 @@ stdenvNoCC.mkDerivation {
     cp build/electron-app/app.asar $electron_tree/resources/
     cp -r build/electron-app/app.asar.unpacked $electron_tree/resources/
 
+    # Install ion-dist frontend assets (served by app:// protocol handler)
+    if [[ -d build/electron-app/nix-resources/ion-dist ]]; then
+      cp -r build/electron-app/nix-resources/ion-dist \
+        $electron_tree/resources/
+      echo "Installed ion-dist frontend assets"
+    fi
+
     # Install tray icons into resources
     for tray_icon in build/electron-app/nix-resources/Tray*; do
       [[ -f "$tray_icon" ]] && cp "$tray_icon" $electron_tree/resources/

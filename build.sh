@@ -72,6 +72,8 @@ source "$script_dir/scripts/staging/locales.sh"
 source "$script_dir/scripts/staging/ssh-helpers.sh"
 # shellcheck source=scripts/staging/cowork-resources.sh
 source "$script_dir/scripts/staging/cowork-resources.sh"
+# shellcheck source=scripts/staging/ion-dist.sh
+source "$script_dir/scripts/staging/ion-dist.sh"
 
 #===============================================================================
 # Packaging Functions
@@ -297,6 +299,7 @@ main() {
 	process_icons
 	copy_ssh_helpers
 	copy_cowork_resources
+	copy_ion_dist
 
 	cd "$project_root" || exit 1
 
