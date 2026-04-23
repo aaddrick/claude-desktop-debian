@@ -1,6 +1,7 @@
 #===============================================================================
-# Cowork runtime resources: plugin shim script and architecture-specific
-# smol-bin VHDX for KVM guest SDK access.
+# Cowork runtime resources: plugin shim script, architecture-specific smol-bin
+# VHDX for KVM guest SDK access, and ion-dist static assets for the app://
+# protocol handler used by the Third-Party Inference setup window.
 #
 # Sourced by: build.sh
 # Sourced globals:
@@ -39,6 +40,19 @@ copy_cowork_resources() {
 	else
 		echo "Warning: smol-bin VHDX not found at $smol_vhdx"
 		echo "KVM Cowork will rely on virtiofs for SDK access"
+	fi
+
+	# Copy ion-dist static assets. The app registers an app:// protocol
+	# handler rooted at process.resourcesPath/ion-dist; without these
+	# assets, the Third-Party Inference setup window fails to load with
+	# ERR_UNEXPECTED (see issue #488).
+	local ion_dist_src="$resources_src/ion-dist"
+	if [[ -d $ion_dist_src ]]; then
+		cp -a "$ion_dist_src" "$electron_resources_dest/ion-dist"
+		echo 'Copied ion-dist'
+	else
+		echo "Warning: ion-dist not found at $ion_dist_src" \
+			'— Third-Party Inference setup will fail'
 	fi
 
 	section_footer 'Cowork Resources'

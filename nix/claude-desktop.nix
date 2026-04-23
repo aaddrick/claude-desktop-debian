@@ -162,6 +162,14 @@ stdenvNoCC.mkDerivation {
       fi
     done
 
+    # Install ion-dist static assets (app:// protocol handler root for
+    # Third-Party Inference setup — see issue #488)
+    if [[ -d build/electron-app/nix-resources/ion-dist ]]; then
+      cp -r build/electron-app/nix-resources/ion-dist \
+        $electron_tree/resources/
+      echo "Installed cowork resource: ion-dist"
+    fi
+
     # Install locale JSON files into resources
     for locale_json in build/claude-extract/lib/net45/resources/*-*.json; do
       [[ -f "$locale_json" ]] \
