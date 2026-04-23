@@ -85,9 +85,11 @@ jobs:
             sleep 10
           done
 
-          # Walk redirect chain hop-by-hop, asserting each hop's pattern in order
+          # Walk redirect chain hop-by-hop, asserting each hop's pattern
+          # in order. Hop 0 may be http:// (see ci.yml smoke-test comment
+          # for the Pages https_enforced=false background).
           expected_hops=(
-            "https://${WORKER_DOMAIN}/"
+            "https?://${WORKER_DOMAIN}/"
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/"
             "https://objects\\.githubusercontent\\.com/"
           )

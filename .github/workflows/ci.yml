@@ -529,8 +529,13 @@ jobs:
           done
 
           # Walk redirect chain hop-by-hop
+          # Hop 0 is Pages' auto-301 from github.io to pkg.<domain>.
+          # Pages emits http:// in the Location because https_enforced
+          # can't be set (DNS points at Cloudflare, not Pages, so Pages
+          # can't provision its own cert). Cloudflare/Worker answers
+          # both schemes, so http vs https is cosmetic here.
           expected_hops=(
-            "https://${WORKER_DOMAIN}/"
+            "https?://${WORKER_DOMAIN}/"
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
             "https://objects\\.githubusercontent\\.com/"
           )
@@ -738,8 +743,13 @@ jobs:
             sleep 10
           done
 
+          # Hop 0 is Pages' auto-301 from github.io to pkg.<domain>.
+          # Pages emits http:// in the Location because https_enforced
+          # can't be set (DNS points at Cloudflare, not Pages, so Pages
+          # can't provision its own cert). Cloudflare/Worker answers
+          # both schemes, so http vs https is cosmetic here.
           expected_hops=(
-            "https://${WORKER_DOMAIN}/"
+            "https?://${WORKER_DOMAIN}/"
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
             "https://objects\\.githubusercontent\\.com/"
           )
