@@ -6,9 +6,7 @@
 // for every tagged release.
 //
 // The Worker only emits redirect responses; binary bytes flow directly from
-// objects.githubusercontent.com to the user, never crossing Cloudflare.
-//
-// See docs/worker-apt-plan.md for the full architecture.
+// release-assets.githubusercontent.com to the user, never crossing Cloudflare.
 
 // Raw gh-pages content, bypassing the Pages routing layer. Fetching
 // via aaddrick.github.io auto-301s back to pkg.<domain> once the CNAME

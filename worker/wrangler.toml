@@ -1,10 +1,11 @@
 # Cloudflare Worker configuration for the APT/DNF binary redirect.
-# See docs/worker-apt-plan.md for the architecture.
 #
-# Production route is live. Phase 2 container validation passed against
-# pkg-staging.<domain>; Phase 4a cuts the Worker over to pkg.<domain>.
+# The Worker serves repo metadata from the gh-pages origin and
+# 302-redirects .deb/.rpm binary requests to GitHub Release assets,
+# which sidesteps GitHub's 100MB per-file push cap on gh-pages (#493).
 # The strip step in .github/workflows/ci.yml gates on this route's
-# liveness, so flipping here is what unblocks the >100MB .deb push path.
+# liveness — it only deletes binaries from the local pool tree if
+# this domain is actually reachable.
 
 name = "claude-desktop-debian-pkg-redirect"
 main = "src/worker.js"
