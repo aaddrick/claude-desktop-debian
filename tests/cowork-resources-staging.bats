@@ -85,15 +85,15 @@ write_shim_src() {
 	write_shim_src lf
 
 	local src="$claude_extract_dir/lib/net45/resources/cowork-plugin-shim.sh"
-	local src_sum
-	src_sum=$(sha256sum "$src" | awk '{print $1}')
+	local src_sum _
+	read -r src_sum _ < <(sha256sum "$src")
 
 	run copy_cowork_resources
 	[[ "$status" -eq 0 ]]
 
 	local dest="$electron_resources_dest/cowork-plugin-shim.sh"
 	local dest_sum
-	dest_sum=$(sha256sum "$dest" | awk '{print $1}')
+	read -r dest_sum _ < <(sha256sum "$dest")
 	[[ "$src_sum" == "$dest_sum" ]]
 }
 
