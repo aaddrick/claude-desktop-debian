@@ -453,6 +453,26 @@ jobs:
             reprepro --section utils --priority optional includedeb stable "$deb"
           done
 
+      - name: Strip binaries from pool (gated on Worker liveness)
+        working-directory: apt-repo
+        env:
+          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
+        run: |
+          # The Worker on WORKER_DOMAIN serves /pool/.../*.deb requests by
+          # 302-redirecting to GitHub Release assets. When it's live we strip
+          # binaries from the gh-pages tree (the metadata's Filename: field
+          # still references pool paths; the Worker intercepts).
+          # When the Worker isn't live (pre-Phase-4a, outage, misconfiguration)
+          # the strip is skipped to avoid serving 404s for binary fetches.
+          probe_url="https://${WORKER_DOMAIN}/dists/stable/InRelease"
+          if curl -fsI --max-time 10 "$probe_url" >/dev/null; then
+            echo "Worker live at ${WORKER_DOMAIN}; stripping binaries from pool"
+            find pool -type f -name '*.deb' -delete
+          else
+            echo "Worker not responding at ${WORKER_DOMAIN}; preserving .debs in pool"
+            echo "(expected before Phase 4a; after that, an error worth investigating)"
+          fi
+
       - name: Commit and push changes
         working-directory: apt-repo
         run: |
@@ -471,6 +491,67 @@ jobs:
             echo "Push failed, retrying in ${wait_time}s... (attempt $i/5)"
             sleep "$wait_time"
           done
+
+      - name: Smoke test published deb (ordered chain + size)
+        env:
+          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! curl -fsI --max-time 10 \
+              "https://${WORKER_DOMAIN}/dists/stable/InRelease" >/dev/null; then
+            echo "Worker not live; skipping smoke test (expected before Phase 4a)"
+            exit 0
+          fi
+
+          # Parse versions from tag (e.g., v2.0.2+claude1.3883.0)
+          repoVer="${TAG#v}"; repoVer="${repoVer%+claude*}"
+          claudeVer="${TAG#*+claude}"
+          deb_name="claude-desktop_${claudeVer}-${repoVer}_amd64.deb"
+          deb_url="https://aaddrick.github.io/claude-desktop-debian/pool/main/c/claude-desktop/${deb_name}"
+
+          # Wait for propagation
+          deadline=$((SECONDS + 300))
+          until curl -fsI --max-time 10 "$deb_url" -o /dev/null; do
+            [[ $SECONDS -gt $deadline ]] \
+              && { echo "::error::Reachability timeout for ${deb_url}"; exit 1; }
+            sleep 10
+          done
+
+          # Walk redirect chain hop-by-hop
+          expected_hops=(
+            "https://${WORKER_DOMAIN}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://objects\\.githubusercontent\\.com/"
+          )
+          url="$deb_url"
+          for i in "${!expected_hops[@]}"; do
+            hop_status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            redirect_url=$(curl -s -o /dev/null -w '%{redirect_url}' "$url")
+            echo "Hop ${i}: ${hop_status} ${url} -> ${redirect_url}"
+            [[ "$hop_status" =~ ^30[12]$ ]] \
+              || { echo "::error::Hop ${i} expected 301/302, got ${hop_status}"; exit 1; }
+            [[ "$redirect_url" =~ ^${expected_hops[$i]} ]] \
+              || { echo "::error::Hop ${i} mismatch: expected ${expected_hops[$i]}, got ${redirect_url}"; exit 1; }
+            url="$redirect_url"
+          done
+
+          # Fetch and validate
+          curl -fsSL -o /tmp/smoke.deb "$deb_url"
+          file /tmp/smoke.deb | grep -q 'Debian binary package' \
+            || { echo "::error::Not a valid Debian package"; exit 1; }
+
+          # Size match against the Releases asset
+          asset_size=$(gh release view "$TAG" \
+            --repo aaddrick/claude-desktop-debian \
+            --json assets \
+            --jq ".assets[] | select(.name == \"${deb_name}\") | .size")
+          local_size=$(stat -c %s /tmp/smoke.deb)
+          [[ "$asset_size" == "$local_size" ]] \
+            || { echo "::error::Size mismatch: ${local_size} vs ${asset_size}"; exit 1; }
+
+          echo "APT smoke test passed: chain validated, file matches Releases asset"
 
   update-dnf-repo:
     name: Update DNF Repository
@@ -570,6 +651,23 @@ jobs:
             'gpgkey=https://aaddrick.github.io/claude-desktop-debian/KEY.gpg' \
             > rpm/claude-desktop.repo
 
+      - name: Strip RPMs from pool (gated on Worker liveness)
+        working-directory: dnf-repo
+        env:
+          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
+        run: |
+          # Mirror of the APT-side strip. Repodata (signed) stays; the .rpm
+          # binaries themselves are deleted because the Worker 302-redirects
+          # /rpm/<arch>/*.rpm requests to GitHub Release assets.
+          probe_url="https://${WORKER_DOMAIN}/dists/stable/InRelease"
+          if curl -fsI --max-time 10 "$probe_url" >/dev/null; then
+            echo "Worker live; stripping RPMs from pool (repodata + signatures retained)"
+            find rpm -type f -name '*.rpm' -delete
+          else
+            echo "Worker not responding; preserving .rpms in pool"
+            echo "(expected before Phase 4a; after that, an error worth investigating)"
+          fi
+
       - name: Commit and push changes
         working-directory: dnf-repo
         run: |
@@ -588,6 +686,62 @@ jobs:
             echo "Push failed, retrying in ${wait_time}s... (attempt $i/5)"
             sleep "$wait_time"
           done
+
+      - name: Smoke test published rpm (ordered chain + size)
+        env:
+          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! curl -fsI --max-time 10 \
+              "https://${WORKER_DOMAIN}/dists/stable/InRelease" >/dev/null; then
+            echo "Worker not live; skipping smoke test (expected before Phase 4a)"
+            exit 0
+          fi
+
+          repoVer="${TAG#v}"; repoVer="${repoVer%+claude*}"
+          claudeVer="${TAG#*+claude}"
+          rpm_name="claude-desktop-${claudeVer}-${repoVer}-1.x86_64.rpm"
+          rpm_url="https://aaddrick.github.io/claude-desktop-debian/rpm/x86_64/${rpm_name}"
+
+          deadline=$((SECONDS + 300))
+          until curl -fsI --max-time 10 "$rpm_url" -o /dev/null; do
+            [[ $SECONDS -gt $deadline ]] \
+              && { echo "::error::Reachability timeout for ${rpm_url}"; exit 1; }
+            sleep 10
+          done
+
+          expected_hops=(
+            "https://${WORKER_DOMAIN}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://objects\\.githubusercontent\\.com/"
+          )
+          url="$rpm_url"
+          for i in "${!expected_hops[@]}"; do
+            hop_status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            redirect_url=$(curl -s -o /dev/null -w '%{redirect_url}' "$url")
+            echo "Hop ${i}: ${hop_status} ${url} -> ${redirect_url}"
+            [[ "$hop_status" =~ ^30[12]$ ]] \
+              || { echo "::error::Hop ${i} expected 301/302, got ${hop_status}"; exit 1; }
+            [[ "$redirect_url" =~ ^${expected_hops[$i]} ]] \
+              || { echo "::error::Hop ${i} mismatch: expected ${expected_hops[$i]}, got ${redirect_url}"; exit 1; }
+            url="$redirect_url"
+          done
+
+          curl -fsSL -o /tmp/smoke.rpm "$rpm_url"
+          rpm -qpi /tmp/smoke.rpm >/dev/null \
+            || { echo "::error::Not a valid RPM"; exit 1; }
+
+          asset_size=$(gh release view "$TAG" \
+            --repo aaddrick/claude-desktop-debian \
+            --json assets \
+            --jq ".assets[] | select(.name == \"${rpm_name}\") | .size")
+          local_size=$(stat -c %s /tmp/smoke.rpm)
+          [[ "$asset_size" == "$local_size" ]] \
+            || { echo "::error::Size mismatch: ${local_size} vs ${asset_size}"; exit 1; }
+
+          echo "DNF smoke test passed: chain validated, file matches Releases asset"
 
   update-aur-repo:
     name: Update AUR Package

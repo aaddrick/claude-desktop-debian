@@ -1,6 +1,6 @@
 # Plan: APT/DNF binary distribution via Cloudflare Worker → GitHub Releases
 
-**Status:** Draft (post-contrarian-review revision 3)
+**Status:** Draft (post-contrarian-review revision 3, domain locked in)
 **Issue:** [#493](https://github.com/aaddrick/claude-desktop-debian/issues/493)
 **Trigger:** [run 24811974733](https://github.com/aaddrick/claude-desktop-debian/actions/runs/24811974733) — `update-apt-repo` push rejected because `.deb` exceeds GitHub's 100 MB per-file cap
 **Relationship to #449:** This plan addresses the **forward** component of #449's gh-pages clone-bloat (no new `.deb` accumulation after Phase 4b). Backfill — shrinking the existing history — is a mandatory follow-up via one-time orphan-reset of `gh-pages`, not optional. The previously-drafted `gh-pages-split-plan.md` is deleted in this branch; the split-into-separate-repo machinery is no longer required.
@@ -21,9 +21,10 @@ Reference architecture: Cloudflare's own apt/yum repo at [`pkg.cloudflare.com`](
 
 | Decision | Value |
 |---|---|
-| Custom domain | New domain, registered for this purpose (~$10–15/yr) |
-| Cloudflare account | Free tier; new account if none exists, owned by a non-personal email |
-| Worker route | `apt.<domain>/*` |
+| Custom domain | `claude-desktop-debian.dev` (registered at Cloudflare Registrar) |
+| Cloudflare account | Free tier; account email aliased to `cf-pkg@claude-desktop-debian.dev` |
+| Worker route (production) | `pkg.claude-desktop-debian.dev/*` |
+| Worker route (staging, initial) | `pkg-staging.claude-desktop-debian.dev/*` |
 | Worker source | `worker/` directory in this repo, version-controlled, deployed via CI |
 | Worker deploy creds | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` as repo secrets |
 | RPM filename regex | Verify against actual CI-produced filename in Phase 1 |
@@ -38,7 +39,7 @@ existing user with old sources.list
        ▼
 github.io/.../foo.deb
    ↓ 301 (Pages auto-redirect from CNAME file)
-apt.<domain>/.../foo.deb
+pkg.claude-desktop-debian.dev/.../foo.deb
    ↓ Worker route handler
    ├─ /dists/*, /KEY.gpg, /index.html, /repodata/*  →  fetch() from gh-pages origin (200)
    └─ /pool/.../*.deb, /rpm/*/*.rpm                  →  302 to github.com/.../releases/download/<tag>/<asset>
@@ -91,7 +92,7 @@ Two surgical edits to `.github/workflows/ci.yml`. The first adds a step to both 
 +      - name: Strip binaries from pool (gated on Worker liveness)
 +        working-directory: apt-repo
 +        env:
-+          WORKER_DOMAIN: apt.<domain>
++          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
 +        run: |
 +          probe_url="https://${WORKER_DOMAIN}/dists/stable/InRelease"
 +          if curl -fsI --max-time 10 "$probe_url" >/dev/null; then
@@ -112,7 +113,7 @@ The second adds a smoke-test step at the end of each repo-update job that **walk
 ```yaml
       - name: Smoke test published deb (ordered chain + size)
         env:
-          WORKER_DOMAIN: apt.<domain>  # the registered custom domain
+          WORKER_DOMAIN: pkg.claude-desktop-debian.dev  # the registered custom domain
           GH_TOKEN: ${{ github.token }}
         run: |
           deb_name="claude-desktop_${CLAUDE_VERSION}-${REPO_VERSION}_amd64.deb"
@@ -187,11 +188,15 @@ The honest reality: `@aaddrick` is the sole maintainer for everything outside co
 - **CI-only deploys:** `wrangler` credentials live as repo secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`), never on a single workstation. Deploys happen via CI from any pushed commit, not from `aaddrick`'s laptop. This eliminates the "lost workstation" failure mode without requiring a second human
 - **Recovery runbook:** `docs/learnings/apt-worker-architecture.md` (created in Phase 5) documents which Cloudflare account and which registrar own what, plus exact steps for a future maintainer to take over (rotate API token, point registrar contact at new email, update DNS if migrating accounts)
 
-**Cloudflare API token scopes** (for the `CLOUDFLARE_API_TOKEN` repo secret):
+**Cloudflare API token scopes** (for the `CLOUDFLARE_API_TOKEN` repo secret).
 
-- `Account.Workers Scripts:Edit` — required to deploy Worker code
-- `Zone.Workers Routes:Edit` — required to bind the Worker to `apt.<domain>/*`
-- `Zone.Zone:Read` — required by `wrangler` to enumerate zones during deploy
+Recommended path: use the **"Edit Cloudflare Workers" template** in Cloudflare's Custom Token creation UI. It bundles all required permissions plus Workers KV / R2 Storage edit (broader than strictly needed today, harmless if you don't use those resources, and avoids needing to rotate the token if you add KV/R2 later). Cloudflare maintains the template and updates it as API changes happen.
+
+Minimum-viable explicit alternative (current as of 2026-04, having survived a recent dropdown rename — the previously-documented `Zone.Zone:Read` is no longer the right label):
+
+- Account → `Workers Scripts` → **Edit** (deploy Worker code)
+- Account → `Account Settings` → **Read** (wrangler validates account context during deploy)
+- Zone → `Workers Routes` → **Edit** (bind Worker to `pkg.claude-desktop-debian.dev/*`)
 
 A token missing `Workers Routes:Edit` will deploy the Worker successfully but fail silently to bind the route — the Worker will exist but receive no traffic. Phase 3's post-deploy probe catches this.
 
@@ -204,7 +209,7 @@ compatibility_date = "2026-04-22"
 account_id = "<from CLOUDFLARE_ACCOUNT_ID secret at deploy time>"
 
 routes = [
-  { pattern = "apt.<domain>/*", zone_name = "<domain>" }
+  { pattern = "pkg.claude-desktop-debian.dev/*", zone_name = "claude-desktop-debian.dev" }
 ]
 ```
 
@@ -237,7 +242,7 @@ Exit: both `curl` checks succeed against the previously-published version; RPM r
 
 ### Phase 2 — Test domain validation (broad container matrix)
 
-- Deploy Worker to `apt-test.<domain>/*`, no production traffic
+- Deploy Worker to `pkg-staging.claude-desktop-debian.dev/*`, no production traffic
 - Container matrix expanded beyond happy-path distros to catch real-world configurations:
 
 | Container | Why |
@@ -248,9 +253,9 @@ Exit: both `curl` checks succeed against the previously-published version; RPM r
 | `fedora:latest` | DNF baseline |
 | `rockylinux:9` | RHEL-family compat |
 | `debian:stable` + `apt-cacher-ng` | Caching proxy in front of apt — RFC says don't cache 302s, in practice some configs do |
-| `debian:stable` --network with IPv6-only | Confirm `apt.<domain>` and `objects.githubusercontent.com` resolve AAAA |
+| `debian:stable` --network with IPv6-only | Confirm `pkg.claude-desktop-debian.dev` and `objects.githubusercontent.com` resolve AAAA |
 
-For each container, drop a temporary `sources.list` pointing at `apt-test.<domain>`, run `apt update && apt install claude-desktop` (or DNF equivalent). Specifically validate a `.deb > 100 MB` install (use 1.3883.0).
+For each container, drop a temporary `sources.list` pointing at `pkg-staging.claude-desktop-debian.dev`, run `apt update && apt install claude-desktop` (or DNF equivalent). Specifically validate a `.deb > 100 MB` install (use 1.3883.0).
 
 **`apt-secure` origin-change check** — requires a **two-step run** because `apt` only emits the "changed its 'Origin'" warning when comparing against a previously-cached state. A fresh container has no prior origin recorded, so the warning never fires regardless of behavior. The check has to establish baseline first, then change URL, then re-update:
 
@@ -262,7 +267,7 @@ echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg] https://aaddrick.gi
 apt-get update
 
 # Step 2: switch sources.list to the test custom domain directly
-echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg] https://apt-test.<domain> stable main" \
+echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg] https://pkg-staging.claude-desktop-debian.dev stable main" \
   > /etc/apt/sources.list.d/claude-desktop.list
 
 # Step 3: re-update with debug; this is when the warning would surface
@@ -280,10 +285,10 @@ Exit: all containers install successfully with the >100 MB `.deb`; no `apt-secur
 
 ### Phase 3 — CI plumbing PR (NOT YET ENABLING THE PRODUCTION DOMAIN)
 
-- PR adds the Worker source under `worker/` with `wrangler.toml` (route bound to staging `apt-test.<domain>/*` initially), and a CI workflow `.github/workflows/deploy-worker.yml` that runs `wrangler deploy` on push to `main` when `worker/**` changes. Workflow needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repo secrets
+- PR adds the Worker source under `worker/` with `wrangler.toml` (route bound to staging `pkg-staging.claude-desktop-debian.dev/*` initially), and a CI workflow `.github/workflows/deploy-worker.yml` that runs `wrangler deploy` on push to `main` when `worker/**` changes. Workflow needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repo secrets
 - PR adds the **liveness-probed** strip step (`curl -fsI` against `https://${WORKER_DOMAIN}/dists/stable/InRelease`) to both `update-apt-repo` and `update-dnf-repo`. Gating mechanism: the destructive `find ... -delete` runs only if the probe succeeds. Before Phase 4a, the production Worker doesn't exist, so the probe fails harmlessly and binaries stay in pool. After Phase 4a, the probe succeeds and binaries get stripped. **No env-var gating** — the gate is the actual reachability of the production endpoint
 - PR adds smoke-test step (deb + rpm versions) to each repo-update job, also implicitly gated by Worker existence
-- PR adds a **post-Worker-deploy probe** to `deploy-worker.yml` that confirms the Worker received the update and the route resolves: `curl -fsI https://apt-test.<domain>/dists/stable/InRelease` (against the staging route during this phase)
+- PR adds a **post-Worker-deploy probe** to `deploy-worker.yml` that confirms the Worker received the update and the route resolves: `curl -fsI https://pkg-staging.claude-desktop-debian.dev/dists/stable/InRelease` (against the staging route during this phase)
 
 Manually trigger CI on a test tag (e.g., `v0.0.0-test+claude0.0.0`) to confirm:
 - Worker deploys to staging route successfully
@@ -296,10 +301,10 @@ Exit: CI green on test tag; staging Worker deployed and reachable; strip step co
 
 The critical insight from contrarian review: **don't strip `.deb`s from gh-pages until the Worker path is proven live in production.** Otherwise there's a guaranteed user-visible outage between strip and Worker enable.
 
-- Add `CNAME` file to `gh-pages` root containing `apt.<domain>` (Pages settings UI)
+- Add `CNAME` file to `gh-pages` root containing `pkg.claude-desktop-debian.dev` (Pages settings UI)
 - Wait for Let's Encrypt cert provisioning. Typical: ~1h. Edge cases: 24h+ for DNS CAA records, registrar propagation delays, Let's Encrypt rate limits. Monitor in Pages settings UI
-- Update `wrangler.toml` route from staging (`apt-test.<domain>/*`) to production (`apt.<domain>/*`) and merge — CI deploys the Worker to the production route
-- **Important correction from earlier draft:** once the CNAME is live, GitHub Pages auto-301s **all** `aaddrick.github.io/claude-desktop-debian/...` traffic to `apt.<domain>/...`. So the "direct path" via github.io is no longer directly serving — the auto-301 makes the Worker the active path for all traffic. The `.deb`s remaining in gh-pages are not actively serving most users; they exist as a **cold standby for rollback only** (if we unbind the Worker route, gh-pages still has the binaries to serve directly via the github.io URL, since CNAME removal stops the auto-301)
+- Update `wrangler.toml` route from staging (`pkg-staging.claude-desktop-debian.dev/*`) to production (`pkg.claude-desktop-debian.dev/*`) and merge — CI deploys the Worker to the production route
+- **Important correction from earlier draft:** once the CNAME is live, GitHub Pages auto-301s **all** `aaddrick.github.io/claude-desktop-debian/...` traffic to `pkg.claude-desktop-debian.dev/...`. So the "direct path" via github.io is no longer directly serving — the auto-301 makes the Worker the active path for all traffic. The `.deb`s remaining in gh-pages are not actively serving most users; they exist as a **cold standby for rollback only** (if we unbind the Worker route, gh-pages still has the binaries to serve directly via the github.io URL, since CNAME removal stops the auto-301)
 - Validation, on each container in Phase 2's matrix: clean install with original `sources.list` succeeds via the Worker chain
 - Validation: `curl -IL https://aaddrick.github.io/claude-desktop-debian/dists/stable/InRelease` shows the 301 chain landing on the custom domain
 
@@ -348,7 +353,7 @@ jobs:
         format: [deb, rpm]
     runs-on: ubuntu-latest
     env:
-      WORKER_DOMAIN: apt.<domain>
+      WORKER_DOMAIN: pkg.claude-desktop-debian.dev
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Resolve latest release for ${{ matrix.format }}
@@ -499,7 +504,7 @@ docker run --rm -it fedora:latest bash -c '
 | Filename regex divergence between deb and rpm | Phase 1 dev with both filename samples in hand; both smoke tests in CI |
 | Apt-secure origin-change warnings | Phase 2 explicit check with `Debug::Acquire::http=true`; do not exit Phase 2 with this unresolved |
 | `apt-cacher-ng` caches 302 incorrectly | Phase 2 matrix entry; if regression, document workaround or flag as known issue |
-| IPv6-only network breaks chain | Phase 2 matrix entry; both `apt.<domain>` and `objects.githubusercontent.com` must have AAAA records |
+| IPv6-only network breaks chain | Phase 2 matrix entry; both `pkg.claude-desktop-debian.dev` and `objects.githubusercontent.com` must have AAAA records |
 | Domain registrar lapse | Auto-renewal + secondary contact email + heartbeat catches |
 | GitHub Releases per-account egress throttle (503) | Heartbeat catches; if persistent, consider authenticated CDN (rare in practice for desktop-app traffic) |
 | GitHub changes Releases asset URL format | Smoke test catches first failed release; documented mitigation: update Worker `RELEASES` constant |
@@ -511,7 +516,7 @@ docker run --rm -it fedora:latest bash -c '
 If Phase 4b cutover causes user-visible breakage:
 
 1. **Cold-standby restore via CNAME removal** (Pages settings, ~5 min): remove the CNAME file from `gh-pages`. github.io URL stops 301-ing. Apt fetches directly from gh-pages — and because the strip step's liveness probe targets the *production* Worker URL (which now no longer 301s into existence), future CI runs will see the probe fail and stop stripping binaries. The pre-Phase-4a `.deb`s still in gh-pages history serve direct-from-Pages until the next release re-pushes binaries
-2. **Fast Worker disable** (Cloudflare dashboard, <1 min): unbind the Worker from `apt.<domain>/*`. Custom domain still resolves but Cloudflare returns Pages content directly. Useful for isolating "is this a Worker bug?" — but if the most recent release already stripped `.deb`s from gh-pages (Phase 4b succeeded), binary fetches still 404. Combine with #1 if user impact is ongoing
+2. **Fast Worker disable** (Cloudflare dashboard, <1 min): unbind the Worker from `pkg.claude-desktop-debian.dev/*`. Custom domain still resolves but Cloudflare returns Pages content directly. Useful for isolating "is this a Worker bug?" — but if the most recent release already stripped `.deb`s from gh-pages (Phase 4b succeeded), binary fetches still 404. Combine with #1 if user impact is ongoing
 3. **Recovery if architecture is fundamentally broken**: rollback via #1, then accept that the next upstream growth triggers the original cap problem, and pursue one of the documented fallbacks (split-package, R2, commercial CDN)
 
 The critical invariant: Phase 4a completing successfully (cert + Worker live + container tests pass with original `sources.list`) means Phase 4b is a low-risk *release trigger* (no PR-merge required — the strip step's liveness probe activates automatically once the production Worker is up). Phases 2 + 4a must catch issues before Phase 4b. Once 4b ships and the smoke test passes, the path forward from a regression is forward (fix Worker bug, push new release) or backward via rollback #1.

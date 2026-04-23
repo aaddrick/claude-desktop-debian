@@ -1,0 +1,49 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+
+      - name: Verify route is bound and Worker responds
+        env:
+          # Probe whichever route wrangler.toml currently binds. Update this
+          # when Phase 4a switches wrangler.toml to the production hostname.
+          PROBE_HOST: pkg-staging.claude-desktop-debian.dev
+        run: |
+          # Wait briefly for deploy + DNS propagation
+          sleep 30
+
+          # Worker proxies metadata path through to gh-pages; expect any
+          # 2xx/3xx. A 5xx or 521/523/530 means the route isn't bound or
+          # the Worker errored at edge.
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            --max-time 30 \
+            "https://${PROBE_HOST}/dists/stable/InRelease")
+          echo "Probe status: ${status}"
+          if [[ ! "$status" =~ ^[23] ]]; then
+            echo "::error::Worker probe at ${PROBE_HOST} returned ${status}"
+            echo "::error::Expected 2xx or 3xx (route bound + Worker responding)"
+            exit 1
+          fi
+          echo "Route bound, Worker responding."
