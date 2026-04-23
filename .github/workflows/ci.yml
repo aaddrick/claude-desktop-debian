@@ -537,7 +537,7 @@ jobs:
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
-            "https://objects\\.githubusercontent\\.com/"
+            "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$deb_url"
           for i in "${!expected_hops[@]}"; do
@@ -751,7 +751,7 @@ jobs:
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
-            "https://objects\\.githubusercontent\\.com/"
+            "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$rpm_url"
           for i in "${!expected_hops[@]}"; do

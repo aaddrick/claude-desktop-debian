@@ -91,7 +91,7 @@ jobs:
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/"
-            "https://objects\\.githubusercontent\\.com/"
+            "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$URL"
           for i in "${!expected_hops[@]}"; do
