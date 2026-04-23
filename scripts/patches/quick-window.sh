@@ -84,6 +84,7 @@ const anchors = [
     'Navigating to existing chat',
     'Creating new chat with submit_quick_entry',
 ];
+const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 for (const anchor of anchors) {
     const anchorIdx = code.indexOf(anchor);
     if (anchorIdx === -1) {
@@ -98,9 +99,9 @@ for (const anchor of anchors) {
             anchor.substring(0, 30) + '..."');
         continue;
     }
+    // matches: <focusFn>()||(someVar).show()
     const showRe = new RegExp(
-        focusFn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        '\\(\\)\\|\\|(\\w+)\\.show\\(\\)'
+        escapeRegExp(focusFn) + String.raw`\(\)\|\|(\w+)\.show\(\)`
     );
     const showMatch = region.match(showRe);
     if (showMatch) {
