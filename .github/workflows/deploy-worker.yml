@@ -27,9 +27,8 @@ jobs:
 
       - name: Verify route is bound and Worker responds
         env:
-          # Probe whichever route wrangler.toml currently binds. Update this
-          # when Phase 4a switches wrangler.toml to the production hostname.
-          PROBE_HOST: pkg-staging.claude-desktop-debian.dev
+          # Must match the hostname in worker/wrangler.toml's route.
+          PROBE_HOST: pkg.claude-desktop-debian.dev
         run: |
           # Wait briefly for deploy + DNS propagation
           sleep 30

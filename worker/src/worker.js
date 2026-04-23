@@ -10,7 +10,13 @@
 //
 // See docs/worker-apt-plan.md for the full architecture.
 
-const ORIGIN = 'https://aaddrick.github.io/claude-desktop-debian';
+// Raw gh-pages content, bypassing the Pages routing layer. Fetching
+// via aaddrick.github.io auto-301s back to pkg.<domain> once the CNAME
+// is in place (Pages' custom-domain redirect), creating a loop through
+// this Worker. raw.githubusercontent.com serves the same branch content
+// directly and is unaffected by the custom-domain config.
+const ORIGIN =
+	'https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/gh-pages';
 const RELEASES =
 	'https://github.com/aaddrick/claude-desktop-debian/releases/download';
 
