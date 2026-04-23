@@ -1,10 +1,10 @@
 # Cloudflare Worker configuration for the APT/DNF binary redirect.
 # See docs/worker-apt-plan.md for the architecture.
 #
-# Initially deployed to pkg-staging.<domain> only. Phase 4a switches the
-# route to pkg.<domain> after Phase 2 container validation passes. The
-# strip step in .github/workflows/ci.yml gates on the production route's
-# liveness, so the production route's existence is the cutover signal.
+# Production route is live. Phase 2 container validation passed against
+# pkg-staging.<domain>; Phase 4a cuts the Worker over to pkg.<domain>.
+# The strip step in .github/workflows/ci.yml gates on this route's
+# liveness, so flipping here is what unblocks the >100MB .deb push path.
 
 name = "claude-desktop-debian-pkg-redirect"
 main = "src/worker.js"
@@ -12,8 +12,6 @@ compatibility_date = "2026-04-22"
 
 # Custom Domain (auto-DNS) routing. Cloudflare creates the DNS record
 # automatically when this is deployed; no separate dummy A record needed.
-# Switch `pattern` to "pkg.claude-desktop-debian.dev" when cutting to
-# production in Phase 4a.
 routes = [
-	{ pattern = "pkg-staging.claude-desktop-debian.dev", custom_domain = true },
+	{ pattern = "pkg.claude-desktop-debian.dev", custom_domain = true },
 ]
