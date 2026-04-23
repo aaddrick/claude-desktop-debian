@@ -11,6 +11,7 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 - [`nix.md`](docs/learnings/nix.md) — NixOS packaging, Electron resource path resolution, testing without NixOS
 - [`cowork-vm-daemon.md`](docs/learnings/cowork-vm-daemon.md) — Cowork VM daemon lifecycle, respawn logic, crash diagnosis
 - [`plugin-install.md`](docs/learnings/plugin-install.md) — Anthropic & Partners plugin install flow, gate logic, backend endpoints, and DevTools recipes
+- [`apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) — APT/DNF binary distribution via Cloudflare Worker + GitHub Releases, redirect chain, credential ownership, heartbeat runbook
 
 ## Code Style
 
@@ -312,6 +313,21 @@ gh run download RUN_ID -n artifact-name
 - `claude-desktop-VERSION-arm64.deb` - Debian package for ARM64
 - `claude-desktop-VERSION-arm64.AppImage` - AppImage for ARM64
 - `result/` - Nix build output (symlink, gitignored)
+
+## Distribution
+
+APT and DNF binaries are fronted by a Cloudflare Worker at `pkg.claude-desktop-debian.dev`. Metadata (`InRelease`, `Packages`, `KEY.gpg`, `repodata/*`) passes through to the `gh-pages` branch; binary requests (`/pool/.../*.deb`, `/rpm/*/*.rpm`) get 302'd to the corresponding GitHub Release asset. This keeps `.deb` / `.rpm` files out of `gh-pages` entirely, so they never hit GitHub's 100 MB per-file push cap.
+
+Key files:
+- `worker/src/worker.js` — Worker source
+- `worker/wrangler.toml` — Worker config (route, `custom_domain = true`)
+- `.github/workflows/deploy-worker.yml` — deploys on push to `main` when `worker/**` changes
+- `.github/workflows/apt-repo-heartbeat.yml` — daily chain validation, auto-opens tracking issue on failure
+- `update-apt-repo` and `update-dnf-repo` jobs in `.github/workflows/ci.yml` — gate a strip step on Worker liveness, so binaries are removed from the local pool tree before push
+
+Repo secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Token scoped to the "Edit Cloudflare Workers" template.
+
+Full details including the redirect chain, the http-scheme-downgrade gotcha, credential ownership, and heartbeat failure runbook: [`docs/learnings/apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md).
 
 ## Testing
 
