@@ -6,19 +6,9 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 ---
 
-> **⚠️ EXPERIMENTAL: Cowork Mode Support**
-> Cowork mode is **enabled by default** in this build with a pluggable isolation backend:
+> **⚠️ APT migration notice (April 2026)**
 >
-> | Backend | Isolation | Requirements |
-> |---------|-----------|-------------|
-> | **bubblewrap** (default) | Namespace sandbox | `bwrap` installed and functional |
-> | **host** (fallback) | None — runs directly on host | No additional requirements |
->
-> The best available backend is auto-detected at startup. Run `claude-desktop --doctor` to check which backend will be used and which dependencies are missing.
->
-> **Note:** The bubblewrap backend mounts your home directory as read-only (only the project working directory is writable). The host backend provides no isolation — use it only if you understand the security implications.
->
-> **KVM status:** The KVM/QEMU backend code exists but is non-functional — VM file downloads are disabled on Linux to prevent a checksum loop (#337). The backend code remains for potential future use.
+> The APT/DNF repo moved to `pkg.claude-desktop-debian.dev` (#493) — binaries are now served from GitHub Releases via a Cloudflare Worker so they don't hit the 100 MB per-file push cap on `gh-pages`. **DNF users are unaffected.** APT users on the legacy `aaddrick.github.io` sources.list will see a scheme-downgrade error on `apt update`. [One-line `sed` fix](#migrating-from-the-old-aaddrickgithubio-url).
 
 ---
 
