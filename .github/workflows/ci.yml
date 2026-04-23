@@ -435,6 +435,16 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
 
+      - name: Publish KEY.gpg with all public keys from keyring
+        # Fix #501: APT InRelease and DNF repomd.xml are signed with
+        # different keys from the same keyring. Export every public key
+        # so strict clients (e.g. rockylinux:9) can verify both.
+        working-directory: apt-repo
+        run: |
+          gpg --armor --export > KEY.gpg
+          echo "Keys published in KEY.gpg:"
+          gpg --show-keys < KEY.gpg
+
       - name: Add packages to repository
         working-directory: apt-repo
         run: |
@@ -651,6 +661,24 @@ jobs:
             'repo_gpgcheck=1' \
             'gpgkey=https://aaddrick.github.io/claude-desktop-debian/KEY.gpg' \
             > rpm/claude-desktop.repo
+
+      - name: Re-upload signed RPMs to GitHub Release
+        # Fix #500: rpmsign --addsign mutates the RPM in place. The release
+        # job (needs: release) already uploaded the unsigned build artifact.
+        # Clobber it with the signed copy so the sha256 in repodata matches
+        # the binary the Worker redirects to.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: dnf-repo
+        run: |
+          for arch in x86_64 aarch64; do
+            if ls "rpm/$arch/"*.rpm 1> /dev/null 2>&1; then
+              gh release upload "${{ github.ref_name }}" \
+                "rpm/$arch/"*.rpm \
+                --repo aaddrick/claude-desktop-debian \
+                --clobber
+            fi
+          done
 
       - name: Strip RPMs from pool (gated on Worker liveness)
         working-directory: dnf-repo
