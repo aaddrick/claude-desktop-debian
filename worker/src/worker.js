@@ -16,28 +16,24 @@ const RELEASES =
 
 // claude-desktop_<claudeVer>-<repoVer>_<arch>.deb
 const DEB_RE = new RegExp(
-	'^/pool/main/c/claude-desktop/(claude-desktop_' +
-		'(?<claudeVer>[^-]+)-(?<repoVer>[^_]+)_(?<arch>amd64|arm64)\\.deb)$'
+	'^/pool/main/c/claude-desktop/(?<asset>claude-desktop_' +
+		'(?<claudeVer>[^-]+)-(?<repoVer>[^_]+)_(?:amd64|arm64)\\.deb)$'
 );
 
 // claude-desktop-<claudeVer>-<repoVer>-<rpmRelease>.<arch>.rpm
 const RPM_RE = new RegExp(
-	'^/rpm/(?<arch>x86_64|aarch64)/(claude-desktop-' +
+	'^/rpm/(?:x86_64|aarch64)/(?<asset>claude-desktop-' +
 		'(?<claudeVer>[\\d.]+)-(?<repoVer>[\\d.]+)-\\d+\\.[^.]+\\.rpm)$'
 );
-
-function tagFor(claudeVer, repoVer) {
-	return `v${repoVer}+claude${claudeVer}`;
-}
 
 export default {
 	async fetch(request) {
 		const url = new URL(request.url);
 		const m = DEB_RE.exec(url.pathname) || RPM_RE.exec(url.pathname);
 		if (m) {
-			const { claudeVer, repoVer } = m.groups;
-			const releaseUrl = `${RELEASES}/${tagFor(claudeVer, repoVer)}/${m[1]}`;
-			return Response.redirect(releaseUrl, 302);
+			const { asset, claudeVer, repoVer } = m.groups;
+			const tag = `v${repoVer}+claude${claudeVer}`;
+			return Response.redirect(`${RELEASES}/${tag}/${asset}`, 302);
 		}
 		return fetch(ORIGIN + url.pathname + url.search, request);
 	},

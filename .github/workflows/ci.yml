@@ -405,6 +405,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      WORKER_DOMAIN: pkg.claude-desktop-debian.dev
 
     steps:
       - name: Checkout gh-pages branch
@@ -455,8 +457,6 @@ jobs:
 
       - name: Strip binaries from pool (gated on Worker liveness)
         working-directory: apt-repo
-        env:
-          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
         run: |
           # The Worker on WORKER_DOMAIN serves /pool/.../*.deb requests by
           # 302-redirecting to GitHub Release assets. When it's live we strip
@@ -494,7 +494,6 @@ jobs:
 
       - name: Smoke test published deb (ordered chain + size)
         env:
-          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
@@ -560,6 +559,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      WORKER_DOMAIN: pkg.claude-desktop-debian.dev
 
     steps:
       - name: Checkout gh-pages branch
@@ -653,8 +654,6 @@ jobs:
 
       - name: Strip RPMs from pool (gated on Worker liveness)
         working-directory: dnf-repo
-        env:
-          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
         run: |
           # Mirror of the APT-side strip. Repodata (signed) stays; the .rpm
           # binaries themselves are deleted because the Worker 302-redirects
@@ -689,7 +688,6 @@ jobs:
 
       - name: Smoke test published rpm (ordered chain + size)
         env:
-          WORKER_DOMAIN: pkg.claude-desktop-debian.dev
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |

@@ -148,28 +148,24 @@ jobs:
           script: |
             const fmt = process.env.FORMAT;
             const label = `heartbeat-failure-${fmt}`;
-            const title = `APT/DNF repo heartbeat failing (${fmt})`;
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = `Heartbeat failed for \`${fmt}\` at ${new Date().toISOString()}.\nRun: ${runUrl}`;
-            const open = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo,
               labels: label,
               state: 'open',
             });
-            if (open.data.length === 0) {
+            if (open.length === 0) {
               await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
+                ...context.repo,
+                title: `APT/DNF repo heartbeat failing (${fmt})`,
                 body,
                 labels: [label],
               });
             } else {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: open.data[0].number,
+                ...context.repo,
+                issue_number: open[0].number,
                 body,
               });
             }
@@ -183,22 +179,19 @@ jobs:
           script: |
             const fmt = process.env.FORMAT;
             const label = `heartbeat-failure-${fmt}`;
-            const open = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo,
               labels: label,
               state: 'open',
             });
-            for (const issue of open.data) {
+            for (const issue of open) {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                ...context.repo,
                 issue_number: issue.number,
                 body: `Heartbeat for \`${fmt}\` recovered at ${new Date().toISOString()}; auto-closing.`,
               });
               await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                ...context.repo,
                 issue_number: issue.number,
                 state: 'closed',
               });
