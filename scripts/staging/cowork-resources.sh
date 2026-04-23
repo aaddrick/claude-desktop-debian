@@ -14,11 +14,15 @@ copy_cowork_resources() {
 
 	local resources_src="$claude_extract_dir/lib/net45/resources"
 
-	# Copy cowork-plugin-shim.sh (used by app for MCP plugin sandboxing)
+	# Copy cowork-plugin-shim.sh (used by app for MCP plugin sandboxing).
+	# The upstream file ships from the Windows .exe extract with CRLF line
+	# endings; bash exec fails on CRLF shebangs and command lines (issue #499).
 	local shim_src="$resources_src/cowork-plugin-shim.sh"
+	local shim_dest="$electron_resources_dest/cowork-plugin-shim.sh"
 	if [[ -f $shim_src ]]; then
-		cp "$shim_src" "$electron_resources_dest/cowork-plugin-shim.sh"
-		chmod +x "$electron_resources_dest/cowork-plugin-shim.sh"
+		cp "$shim_src" "$shim_dest"
+		sed -i 's/\r$//' "$shim_dest"
+		chmod +x "$shim_dest"
 		echo "Copied cowork-plugin-shim.sh"
 	else
 		echo "Warning: cowork-plugin-shim.sh not found at $shim_src"
