@@ -69,7 +69,7 @@ console.log('  Found focus check function: ' + focusFn);
 // Find the sibling isVisible function defined near the focus function
 const focusFnIdx = code.indexOf('function ' + focusFn + '(');
 const nearbyCode = code.substring(focusFnIdx, focusFnIdx + 500);
-const visFnRe = /function (\w+)\(\)\{return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
+const visFnRe = /function (\w+)\(\)\{var e;return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
 const visMatch = nearbyCode.match(visFnRe);
 if (!visMatch) {
     console.log('  WARNING: Could not find visibility function near ' +
