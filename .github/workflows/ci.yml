@@ -282,8 +282,8 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
-            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
+            echo "curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
+            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
             echo ""
             echo "# Install or update:"
             echo "sudo apt update && sudo apt install claude-desktop"
@@ -293,7 +293,7 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
+            echo "sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
             echo ""
             echo "# Install or update:"
             echo "sudo dnf install claude-desktop"
@@ -340,8 +340,8 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
-            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
+            echo "curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
+            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
             echo ""
             echo "# Install or update:"
             echo "sudo apt update && sudo apt install claude-desktop"
@@ -351,7 +351,7 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
+            echo "sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
             echo ""
             echo "# Install or update:"
             echo "sudo dnf install claude-desktop"
@@ -518,6 +518,10 @@ jobs:
           repoVer="${TAG#v}"; repoVer="${repoVer%+claude*}"
           claudeVer="${TAG#*+claude}"
           deb_name="claude-desktop_${claudeVer}-${repoVer}_amd64.deb"
+          # Intentionally starts at the github.io URL: the smoke test
+          # walks the full Pages-301 → Worker-302 → Releases chain to
+          # confirm the legacy redirect path still works for clients
+          # that follow HTTPS→HTTP downgrades (DNF, curl without -L).
           deb_url="https://aaddrick.github.io/claude-desktop-debian/pool/main/c/claude-desktop/${deb_name}"
 
           # Wait for propagation
@@ -660,11 +664,11 @@ jobs:
           printf '%s\n' \
             '[claude-desktop]' \
             'name=Claude Desktop for Fedora/RHEL' \
-            'baseurl=https://aaddrick.github.io/claude-desktop-debian/rpm/$basearch' \
+            'baseurl=https://pkg.claude-desktop-debian.dev/rpm/$basearch' \
             'enabled=1' \
             'gpgcheck=1' \
             'repo_gpgcheck=1' \
-            'gpgkey=https://aaddrick.github.io/claude-desktop-debian/KEY.gpg' \
+            'gpgkey=https://pkg.claude-desktop-debian.dev/KEY.gpg' \
             > rpm/claude-desktop.repo
 
       - name: Re-upload signed RPMs to GitHub Release
@@ -734,6 +738,8 @@ jobs:
           repoVer="${TAG#v}"; repoVer="${repoVer%+claude*}"
           claudeVer="${TAG#*+claude}"
           rpm_name="claude-desktop-${claudeVer}-${repoVer}-1.x86_64.rpm"
+          # Intentionally starts at the github.io URL — see APT smoke
+          # test comment above for why.
           rpm_url="https://aaddrick.github.io/claude-desktop-debian/rpm/x86_64/${rpm_name}"
 
           deadline=$((SECONDS + 300))

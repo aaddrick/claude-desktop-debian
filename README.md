@@ -50,10 +50,10 @@ Add the repository for automatic updates via `apt`:
 
 ```bash
 # Add the GPG key
-curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
+curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
 
 # Add the repository
-echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list
+echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list
 
 # Update and install
 sudo apt update
@@ -68,13 +68,30 @@ Add the repository for automatic updates via `dnf`:
 
 ```bash
 # Add the repository
-sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo
+sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo
 
 # Install
 sudo dnf install claude-desktop
 ```
 
 Future updates will be installed automatically with your regular system updates (`sudo dnf upgrade`).
+
+#### Migrating from the old `aaddrick.github.io` URL
+
+If you installed claude-desktop before April 2026, your repo config points at `https://aaddrick.github.io/claude-desktop-debian`. That URL now auto-redirects to `pkg.claude-desktop-debian.dev` — DNF follows the redirect transparently, but **apt refuses it as a security downgrade**, so `apt update` fails. Update your sources list to the new URL:
+
+```bash
+# APT (Debian/Ubuntu)
+sudo sed -i 's|https://aaddrick\.github\.io/claude-desktop-debian|https://pkg.claude-desktop-debian.dev|g' \
+  /etc/apt/sources.list.d/claude-desktop.list
+sudo apt update
+
+# DNF (Fedora/RHEL) — optional refresh; the old URL still works but pointing directly at the new host is cleaner
+sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo \
+  -o /etc/yum.repos.d/claude-desktop.repo
+```
+
+Background: binaries for recent releases are no longer committed to the `gh-pages` branch — `.deb` files grew past GitHub's 100 MB per-file cap (#493). The new URL is fronted by a small Cloudflare Worker that serves the existing metadata directly and 302-redirects package downloads to the corresponding GitHub Release asset. Bandwidth and package bytes still come from GitHub; the Worker just handles the routing.
 
 ### Using AUR (Arch Linux)
 
