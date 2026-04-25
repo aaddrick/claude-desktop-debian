@@ -11,6 +11,21 @@ body:
         anything you wouldn't put on a public issue tracker. See the
         [Privacy section in the README](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#privacy)
         for what the bot does with your issue.
+  - type: markdown
+    attributes:
+      value: |
+        **Is `apt update` failing?** If you're seeing
+        `Redirection from https to 'http://pkg.claude-desktop-debian.dev/...' is forbidden`,
+        your sources.list still points at the legacy `aaddrick.github.io` URL —
+        no need to file a bug. Run:
+
+        ```bash
+        sudo sed -i 's|https://aaddrick\.github\.io/claude-desktop-debian|https://pkg.claude-desktop-debian.dev|g' \
+          /etc/apt/sources.list.d/claude-desktop.list
+        sudo apt update
+        ```
+
+        Background: [README — Migrating from the old `aaddrick.github.io` URL](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#migrating-from-the-old-aaddrickgithubio-url).
   - type: textarea
     id: doctor
     attributes:
