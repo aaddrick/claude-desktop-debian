@@ -60,8 +60,8 @@ upstream releases**.
 
 ## Status
 
-**Upstream Anthropic Claude Desktop bug. Not patchable in this
-repo.** A fix would require either:
+**Upstream Claude Desktop bug. Not patchable in this repo.** A
+fix would require either:
 
 - Routing the SDK stdio transport through `oUt`/`hZ` (the
   existing serialized-per-name registry), or

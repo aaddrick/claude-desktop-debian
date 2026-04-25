@@ -13,7 +13,7 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 - [`plugin-install.md`](docs/learnings/plugin-install.md) — Anthropic & Partners plugin install flow, gate logic, backend endpoints, and DevTools recipes
 - [`apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) — APT/DNF binary distribution via Cloudflare Worker + GitHub Releases, redirect chain, credential ownership, heartbeat runbook
 - [`tray-rebuild-race.md`](docs/learnings/tray-rebuild-race.md) — why destroy + recreate on `nativeTheme` updates briefly duplicates the tray icon on KDE Plasma, and the in-place `setImage` + `setContextMenu` fast-path that avoids the SNI re-registration race
-- [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when both chat and Code/Agent panels are active; upstream Anthropic bug, MCP-author workaround documented
+- [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when chat and Code/Agent panels are both active, root cause in upstream session managers, MCP-author workaround
 
 ## Code Style
 
