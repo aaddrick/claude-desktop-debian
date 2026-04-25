@@ -32,9 +32,11 @@ jobs:
           echo "line=$line" >> "$GITHUB_OUTPUT"
 
       - name: Append to issue body
+        env:
+          LINE: ${{ steps.dig.outputs.line }}
         run: |
           body=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json body -q .body)
-          new_body="${body}"$'\n'"${{ steps.dig.outputs.line }}"
+          new_body="${body}"$'\n'"${LINE}"
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$new_body"
 
       - name: Disable workflow on resolution
