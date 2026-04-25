@@ -46,6 +46,12 @@ function assertDeepEqual(actual, expected, msg) {
 setup() {
 	TEST_TMP=$(mktemp -d)
 	export TEST_TMP
+
+	# The doctor checks resolve config via ${XDG_CONFIG_HOME:-$HOME/.config}.
+	# Sandboxing HOME alone is insufficient because GitHub Actions runners
+	# (and many user environments) export XDG_CONFIG_HOME ambient, which
+	# overrides the per-test HOME and makes the function read the wrong dir.
+	unset XDG_CONFIG_HOME
 }
 
 teardown() {
