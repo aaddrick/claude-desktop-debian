@@ -4,44 +4,44 @@ Hash: SHA512
 Origin: claude-desktop-debian
 Label: Claude Desktop for Linux
 Codename: stable
-Date: Thu, 23 Apr 2026 15:15:08 UTC
+Date: Sat, 25 Apr 2026 01:46:32 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Claude Desktop unofficial Linux packages
 MD5Sum:
- 0fd33f706dddf7a28c73b26e44dba9fb 635 main/binary-amd64/Packages
- 9c04328d4d49be7f368b3556335d66f4 426 main/binary-amd64/Packages.gz
+ 3f2f14cf281bfa4cd7943fa7786f312a 635 main/binary-amd64/Packages
+ 9381815d16cffa5d1dd8d4bf86f8be63 426 main/binary-amd64/Packages.gz
  02bfdb0962fdcbc813da34967372124d 152 main/binary-amd64/Release
- 0ce18fcd6bc334584ad60775cf17dca6 635 main/binary-arm64/Packages
- 962b19503827292e7bf3eb89cf7a4a1f 427 main/binary-arm64/Packages.gz
+ 2a2a9d5f626b3c3847e63d969232ae07 635 main/binary-arm64/Packages
+ 5e6a364a07c36f619fca4d5653cef5fe 425 main/binary-arm64/Packages.gz
  a34b0e690522268f14683fbce7f31005 152 main/binary-arm64/Release
 SHA1:
- e308a26cdcad9254b2ad58f0b370c7aa8856c5a5 635 main/binary-amd64/Packages
- 7d7deed0086c81cf07eab42f2672f265b2ece64e 426 main/binary-amd64/Packages.gz
+ 7a0c977c5ef434623bc9b4616d239b18fe5f4d9d 635 main/binary-amd64/Packages
+ dd32c57036ffa5d9f835ceeb7c89e56f607021fb 426 main/binary-amd64/Packages.gz
  7e6572fbede38f2753bbf46197b1db20fc4c57a0 152 main/binary-amd64/Release
- 22e3469fab88a33c5afd14f468a4cb8f538e8517 635 main/binary-arm64/Packages
- 607ec179d54385b0f7be0495bdbb76591a095679 427 main/binary-arm64/Packages.gz
+ c90c8e4fb51767768706f4a577504f560e151ab5 635 main/binary-arm64/Packages
+ 755fce948c0147a705a4a56d900d4b7cb188b15f 425 main/binary-arm64/Packages.gz
  9802bd79bf2009c5180e1df0d99da2dc7ba8f2f4 152 main/binary-arm64/Release
 SHA256:
- c73cca951d5cd7492a8fc9a6c435b1a784750edc7eac60579084799daf8853f4 635 main/binary-amd64/Packages
- b3b078ab96ae640d8b3cc0ecaaa60bc776dd4b1b45450c52999b379b9e51f402 426 main/binary-amd64/Packages.gz
+ c56b3871cef7f69b834381f6ac26b480c66383ed14500df06a8050188a30de62 635 main/binary-amd64/Packages
+ cf3e7ebd3e3f09ef933d8483119f40bd35ca5bfb8563531a1368a732e142bf64 426 main/binary-amd64/Packages.gz
  2a288260d0eff0aee3beac611d50b711a495e6eaf053fffddf35ebdf498b0247 152 main/binary-amd64/Release
- 7ae8e6a682dcd9af318e5f4f8948a079ef118aa6be8545d7edbfa9a3b58f9f0c 635 main/binary-arm64/Packages
- 0f96a98ea16e667ef6e44b07990204172f18a8936e6beac19151b25af3572a63 427 main/binary-arm64/Packages.gz
+ 7dffb33e0418e69f6c697ee705869ef0436cf00960ccaf823dbf7931922cd5f1 635 main/binary-arm64/Packages
+ e288ae3b403cead1f3c608206ed17dc1a4fddc675c68bc0216342bb082681f9b 425 main/binary-arm64/Packages.gz
  96728c0041e79a804531562cb2d8fb2e94869e09578537b2bc0afacf3de7025e 152 main/binary-arm64/Release
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAmnqN3wACgkQeM6R1yqp
-6bmmfxAAk5LF3Rn77QTrkkso9jXHujj3bkXVkt0qfrM0w4M4vZtyeMWw20R3HtzV
-lZD3IQQ+32HzR/xTQn4SePq06T1CpVegkZvDc84d249/L3FiOkbn2Q2eB3LgWszg
-X5i1alrFqyzXY7dbddjiL6JGEhyrXz+iAsmyJlLGyDfqGjKY3mwSh61HKVIpZiOL
-ww2giPVhlX/PD2bnNsa4jRPSOsd8KXefA/9J4kFzGZMvVszKCNvgjX7aIjOIFd4N
-oFGBkNnpkKPT1yEgszX2jEGGUK3/2BQpUNJXm4jbqdIpAa0fil0nkfP3aMRK0J4B
-lGx/ecxVdpXsjlrnfwG7JKuG/2ZtlBvI0K2D6mbzYUPMJe5hqqNZICdTLbRTzAuE
-k9G1TquYb1i+apy30tzwKmIP073y2qjYwderaxGq60lFPL6tnsxhLrW5A7SkDu8M
-XqcuYprYWJqyfhigN+tFHUGwVd3ZipTojqn0jwSt4/y5DvzIy3l8DqIO+v0GRq7Z
-lrQuVgUzwRR3bVS0u7wF2ThDQ4nQ+MsEQkdZo2I+271kxMNIdYYDDqJ1erAZGH1L
-uWhDZ0LXvgtHlujqoiWQcIEULjVkwC8Gpnjjb9LHo4GSAieBq9JWAt//TQazCDGm
-GgSZPAFXTy//m3cSsrfTBXeKwqbqFrk4XKt6K1uh8W9Cg4O1nBE=
-=Oxs+
+iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAmnsHPgACgkQeM6R1yqp
+6bmB8w/+MufBvCt6Tw+pvUJN+qBUAAm6qe+eHPi4V0hzw9be6LuYjMOBvRvQ+G8t
+u2PVnCirs9iHYIHRwZwpZmEszgQjJ2khG7B+2+d8lfxZUYXyZCTyxvBNyneUvbzw
+hQu5sHksXu+01BOQTIQnitiNhzWzvpAfP7xuTmsLNQy7Pii4gYyY3C70reSfyLJF
+uf/SFI+uEssjPdkjybadVBP9V6Axo2IPXnNSViq9eeJXXX0paf4V4mKBlZEHzJjS
+w33Ur95t3YfaQ3iZEEUVodfW1plqlHPCzvjJ2LGkGoc0/YcjA4stmhA4xbitebBV
+wwybbe1z2ZLYHgLLA/o15G//SmIzZX4SIq0i893Wo7DnRmBEyLzRhiC+A0h+9CMY
+Ye9bALrpFdqUM4vjoGckET9sHXyoEVOWwitbuhSMBnRyS3MHPuNu/T+oByQQ2nR2
+d6c/N7u9hR8cK7/7i9tD/gxw4z1zGb2ZkMb3kKoaIEkUmnv4MNLpp/x8r7pBJMuo
+4LDOpEC5H8Xk5xKhFXqC4cOlCunBp6M1eV+T7n6UN/l0fWw6pUpQlIxHVqWjnPS0
+wbyBVKbjWURgZa9DjTCOKHRzo+7O86p6sJ8YVGHXf0GQBRkjvXMOide7MHZ399Aj
+VcETSt/9aWTvP6GjKJ13m42ugl03JhBitgFcXSmq9tcmnkasYPo=
+=OAca
 -----END PGP SIGNATURE-----
