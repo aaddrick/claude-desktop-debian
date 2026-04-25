@@ -1,0 +1,45 @@
+name: BATS Tests
+run-name: |
+  BATS: ${{
+    github.event_name == 'pull_request' && format('PR #{0} by @{1} - {2}', github.event.pull_request.number, github.actor, github.event.pull_request.title) ||
+    github.event_name == 'push' && github.event.head_commit && format('Push by @{0} - {1}', github.actor, github.event.head_commit.message) ||
+    format('{0} triggered by @{1}', github.event_name, github.actor)
+  }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bats-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bats:
+    name: BATS unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install BATS and Node.js
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats nodejs
+
+      - name: Run BATS test suite
+        # Cowork tests load scripts/cowork-vm-service.js via `node` —
+        # the `nodejs` install above is what they need.
+        run: bats --print-output-on-failure tests/*.bats

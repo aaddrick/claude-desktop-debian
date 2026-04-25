@@ -73,6 +73,7 @@
 /scripts/doctor.sh                      @sabiut
 /.github/workflows/test-artifacts.yml   @sabiut
 /.github/workflows/test-flags.yml       @sabiut
+/.github/workflows/tests.yml            @sabiut
 
 # Shared review — either owner can approve.
 # TROUBLESHOOTING is mostly the --doctor user-facing guide; lint
