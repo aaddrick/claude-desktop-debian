@@ -189,25 +189,53 @@ JSEOF
 	if [[ $parser == 'python3' ]]; then
 		parsed_output=$(python3 - "$mounts_json" 2>/dev/null <<'PYEOF'
 import json, sys
+def fmt(p):
+    if isinstance(p, str):
+        return p
+    if isinstance(p, dict) and isinstance(p.get('src'), str) \
+            and isinstance(p.get('dst'), str):
+        return p['src'] + ' -> ' + p['dst']
+    return None
 m = json.loads(sys.argv[1])
 for p in m.get('additionalROBinds', []):
-    print(p)
+    s = fmt(p)
+    if s is not None:
+        print(s)
 print('---')
 for p in m.get('additionalBinds', []):
-    print(p)
+    s = fmt(p)
+    if s is not None:
+        print(s)
 print('---')
 for p in m.get('disabledDefaultBinds', []):
-    print(p)
+    if isinstance(p, str):
+        print(p)
 PYEOF
 )
 	else
 		parsed_output=$(node - "$mounts_json" 2>/dev/null <<'JSEOF'
+function fmt(p) {
+    if (typeof p === 'string') return p;
+    if (p && typeof p === 'object'
+        && typeof p.src === 'string' && typeof p.dst === 'string') {
+        return p.src + ' -> ' + p.dst;
+    }
+    return null;
+}
 const m = JSON.parse(process.argv[1]);
-(m.additionalROBinds || []).forEach(p => console.log(p));
+(m.additionalROBinds || []).forEach(p => {
+    const s = fmt(p);
+    if (s !== null) console.log(s);
+});
 console.log('---');
-(m.additionalBinds || []).forEach(p => console.log(p));
+(m.additionalBinds || []).forEach(p => {
+    const s = fmt(p);
+    if (s !== null) console.log(s);
+});
 console.log('---');
-(m.disabledDefaultBinds || []).forEach(p => console.log(p));
+(m.disabledDefaultBinds || []).forEach(p => {
+    if (typeof p === 'string') console.log(p);
+});
 JSEOF
 )
 	fi
