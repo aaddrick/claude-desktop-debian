@@ -236,6 +236,7 @@ Special thanks to:
 - **[davidamacey](https://github.com/davidamacey)** for identifying and fixing the XRDP GPU compositing blank-window issue on remote desktop sessions
 - **[pb3ck](https://github.com/pb3ck)** for diagnosing the Cowork `CLAUDE_CODE_OAUTH_TOKEN` env-strip bug with a working reference diff
 - **[aJV99](https://github.com/aJV99)** for exporting `GDK_BACKEND=wayland` in native Wayland mode to fix XWayland fallback blur on HiDPI displays
+- **[Andrej730](https://github.com/Andrej730)** for the quick-window regex readability refactor (`String.raw` + `escapeRegExp` helper)
 
 ## Sponsorship
 
