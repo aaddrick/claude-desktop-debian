@@ -66,10 +66,15 @@ if (!focusedMatch) {
 const focusFn = focusedMatch[1];
 console.log('  Found focus check function: ' + focusFn);
 
-// Find the sibling isVisible function defined near the focus function
+// Find the sibling isVisible function defined near the focus function.
+// Tolerate the optional `var <name>(,<name>)*;` declaration the
+// minifier hoists when the function body uses optional chaining
+// (1.3883.0+ shape: `function aZA(){var e;return!Qt...}`). Older
+// builds don't declare anything before `return!`. The non-capturing
+// group keeps the prefix optional in either case.
 const focusFnIdx = code.indexOf('function ' + focusFn + '(');
 const nearbyCode = code.substring(focusFnIdx, focusFnIdx + 500);
-const visFnRe = /function (\w+)\(\)\{var e;return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
+const visFnRe = /function (\w+)\(\)\{(?:var \w+(?:,\w+)*;)?return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
 const visMatch = nearbyCode.match(visFnRe);
 if (!visMatch) {
     console.log('  WARNING: Could not find visibility function near ' +
