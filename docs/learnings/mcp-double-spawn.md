@@ -40,10 +40,14 @@ external services with single-connection contracts, etc.
 Two parallel session managers live inside Electron main, each
 holding an independent Claude Agent SDK `query`:
 
-| Manager class            | IPC namespace                          | Coordinator       |
-|--------------------------|----------------------------------------|-------------------|
-| `LocalSessions`          | `claude.web_$_LocalSessions_$_*`       | `n2t("ccd")`      |
-| `LocalAgentModeSessions` | `claude.web_$_LocalAgentModeSessions_*`| `n2t("cowork")`   |
+| Manager class            | IPC namespace                            | Coordinator     | Logs prefix |
+|--------------------------|------------------------------------------|-----------------|-------------|
+| `LocalSessions`          | `claude.web_$_LocalSessions_$_*`         | `n2t("ccd")`    | `[CCD]`     |
+| `LocalAgentModeSessions` | `claude.web_$_LocalAgentModeSessions_$_*`| `n2t("cowork")` | `[LAM]`     |
+
+The logs prefixes are what to grep `~/.config/Claude/logs/` for to
+confirm a session is hitting both coordinators (and therefore this
+bug specifically).
 
 Each `query` holds its own SDK transport. The transport's
 `spawnLocalProcess` (`Du.spawn`) launches stdio MCPs **without
@@ -98,6 +102,9 @@ can defend themselves:
 1. **Lockfile + staleness check.** `fs.openSync('wx')` with PID,
    verified live via `process.kill(pid, 0)`. The second instance
    detects a live owner and backs off, or reclaims a stale lock.
+   Reclaim atomically — write the new lock to a temp path and
+   `rename()` over the stale one, never `unlink()` then re-open
+   (a third instance can win the gap).
 2. **Idempotent state writes.** Resolve target files/keys from
    the incoming message payload rather than from in-process
    state, so two instances writing the same broadcast end up at
@@ -113,9 +120,10 @@ The reporter's `baro-voyager` MCP shipped both in commit
   `support@anthropic.com`. The duplication happens in
   closed-source Desktop main.
 - **Secondary:** an SDK-transport-flavored issue on
-  `anthropics/claude-code` is defensible — the spawn path goes
-  through the **Claude Agent SDK's** `query` transport, which is
-  shared surface area with the CLI. Reference the missing `hZ`
+  [`anthropics/claude-agent-sdk-typescript`](https://github.com/anthropics/claude-agent-sdk-typescript)
+  is defensible — the spawn path goes through the **Claude Agent
+  SDK's** `query` transport (`spawnLocalProcess` / `Du.spawn`),
+  which is shared surface area. Reference the missing `hZ`
   consultation explicitly.
 
 The embedded Claude Code CLI subprocess inside Claude Desktop is
