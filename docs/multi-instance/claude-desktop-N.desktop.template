@@ -1,0 +1,16 @@
+[Desktop Entry]
+# Template for a side profile entry. Substitute "N" with 2, 3, 4, ...
+# Save as ~/.local/share/applications/claude-desktop-N.desktop and run:
+#   update-desktop-database ~/.local/share/applications/
+#
+# The --class and --name flags give each profile a distinct WM_CLASS so
+# the desktop environment shows them as separate apps in the taskbar.
+# StartupWMClass must match for window-to-launcher pairing.
+Name=Claude (Profile N)
+Exec=env COWORK_VM_BACKEND=bwrap TMPDIR=/home/USER/.config/Claude-N/tmp /usr/bin/claude-desktop --user-data-dir=/home/USER/.config/Claude-N --class=Claude-N --name=Claude-N %u
+Icon=claude-desktop-N
+Type=Application
+Terminal=false
+Categories=Office;Utility;
+MimeType=x-scheme-handler/claude;
+StartupWMClass=Claude-N

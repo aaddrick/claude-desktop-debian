@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# claude-launch — multi-instance launcher for Claude Desktop on Linux
+#
+# Usage:
+#   claude-launch              # main profile (~/.config/Claude)
+#   claude-launch 2|3|4|...    # numbered side profile (~/.config/Claude-N)
+#   claude-launch all          # launch main + 2 + 3 + 4
+#   claude-launch status       # list running instances
+#   claude-launch kill 2       # kill a single profile (SIGTERM, then SIGKILL)
+#   claude-launch kill-extras  # kill every profile except the main one
+#
+# Side profiles share local-agent-mode-sessions, claude-code, etc. with the
+# main profile via symlinks. They keep their own Cookies, IndexedDB, Cache,
+# config.json (incl. oauth:tokenCache), and Singleton* — so they run in
+# parallel and can hold separate logins.
+#
+# On first launch of a profile, the script copies the main profile's
+# oauth:tokenCache (if any) so the new instance starts with a fresh token.
+# Subsequent launches leave any existing token alone — log in to a different
+# account in profile N and the script will not overwrite it.
+
+main_dir="${HOME}/.config/Claude"
+bin='/usr/bin/claude-desktop'
+
+# Items the side profile shares with the main profile (symlinks).
+shared_items=(
+	'claude-code'
+	'claude-code-sessions'
+	'claude-code-vm'
+	'git-worktrees.json'
+	'local-agent-mode-sessions'
+	'pending-uploads'
+	'buddy-tokens.json'
+)
+
+ensure_profile() {
+	local profile="$1"
+	local dir="${HOME}/.config/Claude-${profile}"
+
+	[[ -d "$dir" ]] && return 0
+
+	echo "Creating profile Claude-${profile}..."
+	mkdir -p "$dir/tmp"
+
+	local item
+	for item in "${shared_items[@]}"; do
+		ln -sfn "${main_dir}/${item}" "${dir}/${item}"
+	done
+
+	# Seed config.json so Electron's first launch finds a valid file.
+	[[ -f "${main_dir}/config.json" ]] &&
+		cp "${main_dir}/config.json" "${dir}/config.json"
+	[[ -f "${main_dir}/claude_desktop_config.json" ]] &&
+		cp "${main_dir}/claude_desktop_config.json" \
+			"${dir}/claude_desktop_config.json"
+
+	# ant-did is the per-instance UUID Anthropic uses for telemetry.
+	command -v uuidgen >/dev/null &&
+		printf '%s' "$(uuidgen)" | base64 -w0 >"${dir}/ant-did" &&
+		chmod 600 "${dir}/ant-did"
+}
+
+sync_token_first_run() {
+	# First-run-only: if target has no oauth:tokenCache yet, copy from main.
+	# Existing tokens are preserved (so a different account in profile N is OK).
+	local profile="$1"
+	local target="${HOME}/.config/Claude-${profile}/config.json"
+
+	[[ -f "$target" ]] || return 0
+	[[ -f "${main_dir}/config.json" ]] || return 0
+	command -v jq >/dev/null || return 0
+
+	local target_tc
+	target_tc=$(jq -r '."oauth:tokenCache" // empty' "$target")
+	[[ -n "$target_tc" ]] && return 0
+
+	local main_tc
+	main_tc=$(jq -r '."oauth:tokenCache" // empty' "${main_dir}/config.json")
+	[[ -z "$main_tc" ]] && return 0
+
+	local tmp
+	tmp=$(mktemp)
+	jq --arg tc "$main_tc" '."oauth:tokenCache" = $tc' "$target" >"$tmp" &&
+		mv "$tmp" "$target"
+	echo "  (first-run token sync: copied from main to Claude-${profile})"
+}
+
+launch_profile() {
+	local profile="${1:-}"
+
+	if [[ -z "$profile" || "$profile" == '1' ]]; then
+		nohup "$bin" >/dev/null 2>&1 &
+		echo 'Launched main Claude (Profile 1)'
+		return
+	fi
+
+	ensure_profile "$profile"
+	sync_token_first_run "$profile"
+
+	local dir="${HOME}/.config/Claude-${profile}"
+	nohup env COWORK_VM_BACKEND=bwrap TMPDIR="${dir}/tmp" \
+		"$bin" --user-data-dir="$dir" \
+		--class="Claude-${profile}" --name="Claude-${profile}" \
+		>/dev/null 2>&1 &
+	echo "Launched Claude Profile ${profile}"
+}
+
+kill_profile() {
+	local profile="$1"
+	local pat="user-data-dir=${HOME}/.config/Claude-${profile}"
+
+	if pkill -TERM -f "$pat" 2>/dev/null; then
+		echo "Sent SIGTERM to Claude-${profile}"
+	else
+		echo "Claude-${profile} not running"
+		return 0
+	fi
+	sleep 2
+	pkill -KILL -f "$pat" 2>/dev/null || true
+}
+
+list_status() {
+	echo "=== Running Claude Desktop instances ==="
+	local found=0 line pid args profile
+	while IFS= read -r line; do
+		pid="${line%% *}"
+		args="${line#* }"
+		profile='main (Profile 1)'
+		case "$args" in
+			*user-data-dir=*Claude-2*)  profile='Profile 2' ;;
+			*user-data-dir=*Claude-3*)  profile='Profile 3' ;;
+			*user-data-dir=*Claude-4*)  profile='Profile 4' ;;
+			*user-data-dir=*Claude-*)   profile='Profile (other)' ;;
+		esac
+		printf '  PID %-8s  %s\n' "$pid" "$profile"
+		found=1
+	done < <(pgrep -af '/usr/bin/bash /usr/bin/claude-desktop')
+	[[ "$found" == '0' ]] && echo '  (none running)' || true
+}
+
+case "${1:-}" in
+	'' | 1)
+		launch_profile 1
+		;;
+	[2-9] | [1-9][0-9])
+		launch_profile "$1"
+		;;
+	all)
+		launch_profile 1; sleep 1
+		launch_profile 2; sleep 1
+		launch_profile 3; sleep 1
+		launch_profile 4
+		;;
+	status)
+		list_status
+		;;
+	kill)
+		profile="${2:?Usage: claude-launch kill <N>}"
+		kill_profile "$profile"
+		;;
+	kill-extras)
+		# Kill every Claude-N (N=2..99), leave the main alone.
+		pkill -TERM -f 'user-data-dir='"${HOME}"'/.config/Claude-[0-9]' \
+			2>/dev/null && echo 'Sent SIGTERM to side profiles' ||
+			echo '(no side profiles running)'
+		sleep 2
+		pkill -KILL -f 'user-data-dir='"${HOME}"'/.config/Claude-[0-9]' \
+			2>/dev/null || true
+		echo 'Done. Main Claude is untouched.'
+		;;
+	-h | --help | help)
+		sed -n '2,20p' "$0"
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		echo 'Run: claude-launch --help' >&2
+		exit 1
+		;;
+esac

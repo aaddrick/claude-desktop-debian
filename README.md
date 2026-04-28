@@ -146,6 +146,8 @@ Model Context Protocol settings are stored in:
 
 For additional configuration options including environment variables and Wayland support, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
+For running multiple isolated profiles in parallel (one per monitor, separate accounts, color-coded taskbar icons), see [docs/multi-instance/README.md](docs/multi-instance/README.md). Includes a launcher script, sample `.desktop` template, icon recolor recipe, and notes on the `claude://` link-handler quirk.
+
 ## Troubleshooting
 
 Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
