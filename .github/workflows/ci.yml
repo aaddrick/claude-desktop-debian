@@ -92,37 +92,37 @@ jobs:
 
     steps:
       - name: Download AMD64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-deb
           path: artifacts/
 
       - name: Download AMD64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-rpm
           path: artifacts/
 
       - name: Download AMD64 AppImage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-appimage
           path: artifacts/
 
       - name: Download ARM64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-deb
           path: artifacts/
 
       - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-rpm
           path: artifacts/
 
       - name: Download ARM64 AppImage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-appimage
           path: artifacts/
@@ -131,7 +131,7 @@ jobs:
 
       - name: Checkout claude-desktop-versions
         id: checkout_versions
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         continue-on-error: true
         with:
           repository: aaddrick/claude-desktop-versions
@@ -139,14 +139,14 @@ jobs:
 
       - name: Set up Python 3.12
         if: steps.checkout_versions.outcome == 'success'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         continue-on-error: true
         with:
           python-version: "3.12"
 
       - name: Set up Node.js 20
         if: steps.checkout_versions.outcome == 'success'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         continue-on-error: true
         with:
           node-version: "20"
@@ -165,7 +165,7 @@ jobs:
 
       - name: Checkout repo for git history
         id: checkout_repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         continue-on-error: true
         with:
           fetch-depth: 0
@@ -370,7 +370,7 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ always() }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: artifacts/**/*
           body_path: compare-work/summary.md
@@ -410,19 +410,19 @@ jobs:
 
     steps:
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: gh-pages
           path: apt-repo
 
       - name: Download AMD64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-deb
           path: incoming/
 
       - name: Download ARM64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-deb
           path: incoming/
@@ -431,7 +431,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y reprepro
 
       - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
         with:
           gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
 
@@ -583,19 +583,19 @@ jobs:
 
     steps:
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: gh-pages
           path: dnf-repo
 
       - name: Download AMD64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-rpm
           path: incoming/
 
       - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-rpm
           path: incoming/
@@ -605,7 +605,7 @@ jobs:
 
       - name: Import GPG key
         id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
         with:
           gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
 
@@ -793,7 +793,7 @@ jobs:
 
     steps:
       - name: Download AMD64 AppImage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-appimage
           path: artifacts/

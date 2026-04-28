@@ -143,7 +143,7 @@ jobs:
 
       - name: Open or update failure issue
         if: failure() && steps.gate.outputs.live == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           FORMAT: ${{ matrix.format }}
         with:
@@ -174,7 +174,7 @@ jobs:
 
       - name: Auto-close failure issue on recovery
         if: success() && steps.gate.outputs.live == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           FORMAT: ${{ matrix.format }}
         with:

@@ -103,10 +103,10 @@ jobs:
       confidence: ${{ steps.classify.outputs.confidence }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -199,7 +199,7 @@ jobs:
           echo "Classification: $classification (skip=$skip_comment, investigate=$needs_investigation, confidence=$confidence)"
 
       - name: Upload triage context
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: triage-context
           path: /tmp/triage-context/
@@ -217,7 +217,7 @@ jobs:
       && needs.classify.outputs.skip_comment != 'true'
     steps:
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -271,7 +271,7 @@ jobs:
           echo "Total files: $(find app-extracted -type f | wc -l)"
 
       - name: Upload reference source
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reference-source
           path: /tmp/ref-source/app-extracted/
@@ -290,10 +290,10 @@ jobs:
       has_findings: ${{ steps.investigate.outputs.has_findings }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -301,13 +301,13 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Download triage context
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: triage-context
           path: /tmp/triage-context/
 
       - name: Download reference source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: reference-source
           path: /tmp/ref-source/app-extracted/
@@ -434,7 +434,7 @@ jobs:
 
       - name: Upload investigation findings
         if: steps.investigate.outputs.has_findings == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: investigation-findings
           path: /tmp/investigation.txt
@@ -456,7 +456,7 @@ jobs:
             -o /tmp/voice-profile.md
 
       - name: Upload voice profile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: voice-profile
           path: /tmp/voice-profile.md
@@ -479,10 +479,10 @@ jobs:
       comment_posted: ${{ steps.post.outputs.comment_posted }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -490,21 +490,21 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Download triage context
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: triage-context
           path: /tmp/triage-context/
 
       - name: Download investigation findings
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: investigation-findings
           path: /tmp/investigation/
 
       - name: Download voice profile
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: voice-profile
           path: /tmp/voice/
@@ -617,7 +617,7 @@ jobs:
       && needs.classify.result == 'success'
     steps:
       - name: Download triage context
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: triage-context
           path: /tmp/triage-context/
