@@ -181,7 +181,9 @@ Special thanks to:
   - Quick window submit fix
 - **[janfrederik](https://github.com/janfrederik)** for the `--exe` flag to use a local installer
 - **[MrEdwards007](https://github.com/MrEdwards007)** for discovering the OAuth token cache fix
-- **[lizthegrey](https://github.com/lizthegrey)** for version update contributions
+- **[lizthegrey](https://github.com/lizthegrey)**
+  - Version update contributions
+  - Close-to-tray on Linux to keep in-app schedulers, MCP servers, and the tray icon alive across window close
 - **[mathys-lopinto](https://github.com/mathys-lopinto)**
   - AUR package
   - Automated deployment
