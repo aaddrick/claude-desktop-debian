@@ -40,10 +40,10 @@ console.log(`[Frame Fix] Menu bar mode: ${MENU_BAR_MODE}`);
 
 // Keep the app alive when the main window is closed (hide to tray),
 // so in-app schedulers / MCP servers / the tray icon survive a
-// stray click on X. Explicit quit paths (Ctrl+Q global shortcut
-// registered below, tray menu Quit, File > Quit, cmd+Q, SIGTERM)
-// still go through app.quit() → before-quit, which arms the flag
-// so the close handler lets the windows actually close.
+// stray click on X. Explicit quit paths (Ctrl+Q via the focused
+// webContents listener above, tray menu Quit, File > Quit, cmd+Q,
+// SIGTERM) still go through app.quit() → before-quit, which arms
+// the flag so the close handler lets the windows actually close.
 // Set CLAUDE_QUIT_ON_CLOSE=1 to restore the Electron-default
 // "closing the last window quits the app" behaviour.
 const CLOSE_TO_TRAY = process.platform === 'linux'
@@ -361,29 +361,6 @@ Module.prototype.require = function(id) {
           console.log('[Frame Fix] Menu bar hidden on all windows');
         }
       };
-
-      // Register Ctrl+Q as a global shortcut to quit the app.
-      // The upstream menu has CmdOrCtrl+Q but Electron doesn't fire
-      // menu accelerators when the menu bar is hidden/auto-hide on
-      // Linux. This ensures Ctrl+Q always works. Fixes: #321
-      const registerQuitShortcut = () => {
-        try {
-          if (!result.globalShortcut.isRegistered('CommandOrControl+Q')) {
-            result.globalShortcut.register('CommandOrControl+Q', () => {
-              console.log('[Frame Fix] Ctrl+Q pressed, quitting');
-              result.app.quit();
-            });
-            console.log('[Frame Fix] Ctrl+Q quit shortcut registered');
-          }
-        } catch (e) {
-          console.log('[Frame Fix] Failed to register Ctrl+Q shortcut:', e.message);
-        }
-      };
-      if (result.app.isReady()) {
-        registerQuitShortcut();
-      } else {
-        result.app.once('ready', registerQuitShortcut);
-      }
 
       // Arm the close-to-tray flag on every real quit path
       // (app.quit() from Ctrl+Q, tray Quit, cmd+Q, SIGTERM). The
