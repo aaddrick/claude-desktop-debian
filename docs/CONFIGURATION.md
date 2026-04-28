@@ -103,6 +103,10 @@ host's real `/tmp`:
 
 The string and object forms can be mixed freely in the same array.
 
+> **Caution:** Mapping `dst` onto a default RO mount (`/usr`, `/etc`, `/bin`,
+> `/sbin`, `/lib`, `/lib64`) silently replaces it inside the sandbox; you
+> almost never want this, and `--doctor` will warn if you do.
+
 ### Security notes
 
 - Paths `/`, `/proc`, `/dev`, `/sys` (and their subpaths) are always rejected

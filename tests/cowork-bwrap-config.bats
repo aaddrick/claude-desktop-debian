@@ -704,6 +704,22 @@ assertDeepEqual(result.additionalROBinds, [], 'forbidden dst rejected');
 	[[ "$status" -eq 0 ]]
 }
 
+@test "loadBwrapMountsConfig: rejects {src,dst} with dst under forbidden path" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [{ src: '/opt/tools', dst: '/proc/self' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [], 'dst under /proc rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
 @test "loadBwrapMountsConfig: rejects {src,dst} with non-absolute paths" {
 	run node -e "${NODE_PREAMBLE}
 const configPath = '${TEST_TMP}/config.json';
@@ -941,6 +957,55 @@ assertEqual(result[bindIdx + 2], '/tmp', 'bind dst');
 	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
 	[[ "$output" == *"/opt/tools -> /sandbox/tools"* ]]
 	[[ "$output" == *"persistent-tmp -> /tmp"* ]]
+}
+
+@test "doctor: warns when {src,dst} dst shadows a default RO mount" {
+	mkdir -p "${TEST_TMP}/.config/Claude"
+	local home_tmp="${TEST_TMP}"
+	local config_file="${TEST_TMP}/.config/Claude/claude_desktop_linux_config.json"
+	cat > "$config_file" <<-ENDJSON
+	{
+	    "preferences": {
+	        "coworkBwrapMounts": {
+	            "additionalBinds": [
+	                { "src": "${home_tmp}/fake-etc", "dst": "/etc/foo" }
+	            ]
+	        }
+	    }
+	}
+	ENDJSON
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
+	[[ "$output" == *"WARN"* ]]
+	[[ "$output" == *"/etc/foo"* ]]
+	[[ "$output" == *"shadows a default sandbox mount"* ]]
+}
+
+@test "doctor: does not warn when {src,dst} dst is safe (e.g. /tmp, /sandbox/...)" {
+	mkdir -p "${TEST_TMP}/.config/Claude"
+	local home_tmp="${TEST_TMP}"
+	local config_file="${TEST_TMP}/.config/Claude/claude_desktop_linux_config.json"
+	cat > "$config_file" <<-ENDJSON
+	{
+	    "preferences": {
+	        "coworkBwrapMounts": {
+	            "additionalBinds": [
+	                { "src": "${home_tmp}/cache", "dst": "/tmp" }
+	            ],
+	            "additionalROBinds": [
+	                { "src": "/opt/tools", "dst": "/sandbox/tools" }
+	            ]
+	        }
+	    }
+	}
+	ENDJSON
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
+	[[ "$output" != *"shadows a default sandbox mount"* ]]
 }
 
 @test "doctor: no output when no custom mounts configured" {

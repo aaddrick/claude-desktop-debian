@@ -770,7 +770,7 @@ function loadBwrapMountsConfig(configPath, logFn) {
             if (typeof p === 'string') {
                 const r = validateMountPath(p, { readWrite });
                 if (!r.valid) {
-                    warn(`BwrapConfig: rejected path "${p}": ${r.reason}`);
+                    warn(`BwrapConfig: rejected mount "${p}": ${r.reason}`);
                 }
                 return r.valid;
             }
