@@ -184,6 +184,7 @@ Special thanks to:
 - **[lizthegrey](https://github.com/lizthegrey)**
   - Version update contributions
   - Close-to-tray on Linux to keep in-app schedulers, MCP servers, and the tray icon alive across window close
+  - "Run on startup" persistence on Linux via XDG Autostart, fixing the toggle that would silently revert
 - **[mathys-lopinto](https://github.com/mathys-lopinto)**
   - AUR package
   - Automated deployment
