@@ -1,0 +1,18 @@
+# Cloudflare Worker configuration for the APT/DNF binary redirect.
+#
+# The Worker serves repo metadata from the gh-pages origin and
+# 302-redirects .deb/.rpm binary requests to GitHub Release assets,
+# which sidesteps GitHub's 100MB per-file push cap on gh-pages (#493).
+# The strip step in .github/workflows/ci.yml gates on this route's
+# liveness — it only deletes binaries from the local pool tree if
+# this domain is actually reachable.
+
+name = "claude-desktop-debian-pkg-redirect"
+main = "src/worker.js"
+compatibility_date = "2026-04-22"
+
+# Custom Domain (auto-DNS) routing. Cloudflare creates the DNS record
+# automatically when this is deployed; no separate dummy A record needed.
+routes = [
+	{ pattern = "pkg.claude-desktop-debian.dev", custom_domain = true },
+]

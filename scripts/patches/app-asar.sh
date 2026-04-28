@@ -77,6 +77,10 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	# Patch tray icon selection
 	patch_tray_icon_selection
 
+	# Inject fast-path that updates the tray icon in place on theme
+	# changes (avoids the KDE duplicate-SNI race on destroy+recreate)
+	patch_tray_inplace_update
+
 	# Patch menuBarEnabled to default to true when unset
 	patch_menu_bar_default
 

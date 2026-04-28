@@ -66,10 +66,15 @@ if (!focusedMatch) {
 const focusFn = focusedMatch[1];
 console.log('  Found focus check function: ' + focusFn);
 
-// Find the sibling isVisible function defined near the focus function
+// Find the sibling isVisible function defined near the focus function.
+// Tolerate the optional `var <name>(,<name>)*;` declaration the
+// minifier hoists when the function body uses optional chaining
+// (1.3883.0+ shape: `function aZA(){var e;return!Qt...}`). Older
+// builds don't declare anything before `return!`. The non-capturing
+// group keeps the prefix optional in either case.
 const focusFnIdx = code.indexOf('function ' + focusFn + '(');
 const nearbyCode = code.substring(focusFnIdx, focusFnIdx + 500);
-const visFnRe = /function (\w+)\(\)\{return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
+const visFnRe = /function (\w+)\(\)\{(?:var \w+(?:,\w+)*;)?return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
 const visMatch = nearbyCode.match(visFnRe);
 if (!visMatch) {
     console.log('  WARNING: Could not find visibility function near ' +
@@ -84,6 +89,7 @@ const anchors = [
     'Navigating to existing chat',
     'Creating new chat with submit_quick_entry',
 ];
+const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 for (const anchor of anchors) {
     const anchorIdx = code.indexOf(anchor);
     if (anchorIdx === -1) {
@@ -98,9 +104,9 @@ for (const anchor of anchors) {
             anchor.substring(0, 30) + '..."');
         continue;
     }
+    // matches: <focusFn>()||(someVar).show()
     const showRe = new RegExp(
-        focusFn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        '\\(\\)\\|\\|(\\w+)\\.show\\(\\)'
+        escapeRegExp(focusFn) + String.raw`\(\)\|\|(\w+)\.show\(\)`
     );
     const showMatch = region.match(showRe);
     if (showMatch) {

@@ -30,3 +30,6 @@ build-reference/
 # Nix build output
 result
 result-*
+
+# Wrangler (Cloudflare Worker dev/deploy cache)
+worker/.wrangler/

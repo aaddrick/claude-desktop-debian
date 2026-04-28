@@ -92,37 +92,37 @@ jobs:
 
     steps:
       - name: Download AMD64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-deb
           path: artifacts/
 
       - name: Download AMD64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-rpm
           path: artifacts/
 
       - name: Download AMD64 AppImage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-appimage
           path: artifacts/
 
       - name: Download ARM64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-deb
           path: artifacts/
 
       - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-rpm
           path: artifacts/
 
       - name: Download ARM64 AppImage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-appimage
           path: artifacts/
@@ -131,7 +131,7 @@ jobs:
 
       - name: Checkout claude-desktop-versions
         id: checkout_versions
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         continue-on-error: true
         with:
           repository: aaddrick/claude-desktop-versions
@@ -139,14 +139,14 @@ jobs:
 
       - name: Set up Python 3.12
         if: steps.checkout_versions.outcome == 'success'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         continue-on-error: true
         with:
           python-version: "3.12"
 
       - name: Set up Node.js 20
         if: steps.checkout_versions.outcome == 'success'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         continue-on-error: true
         with:
           node-version: "20"
@@ -165,7 +165,7 @@ jobs:
 
       - name: Checkout repo for git history
         id: checkout_repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         continue-on-error: true
         with:
           fetch-depth: 0
@@ -282,8 +282,8 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
-            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
+            echo "curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
+            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
             echo ""
             echo "# Install or update:"
             echo "sudo apt update && sudo apt install claude-desktop"
@@ -293,7 +293,7 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
+            echo "sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
             echo ""
             echo "# Install or update:"
             echo "sudo dnf install claude-desktop"
@@ -340,8 +340,8 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
-            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
+            echo "curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg"
+            echo 'echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list'
             echo ""
             echo "# Install or update:"
             echo "sudo apt update && sudo apt install claude-desktop"
@@ -351,7 +351,7 @@ jobs:
             echo ""
             echo '```bash'
             echo "# First time? Add the repo:"
-            echo "sudo curl -fsSL https://aaddrick.github.io/claude-desktop-debian/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
+            echo "sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo"
             echo ""
             echo "# Install or update:"
             echo "sudo dnf install claude-desktop"
@@ -370,7 +370,7 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ always() }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: artifacts/**/*
           body_path: compare-work/summary.md
@@ -405,22 +405,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      WORKER_DOMAIN: pkg.claude-desktop-debian.dev
 
     steps:
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: gh-pages
           path: apt-repo
 
       - name: Download AMD64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-deb
           path: incoming/
 
       - name: Download ARM64 deb artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-deb
           path: incoming/
@@ -429,9 +431,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y reprepro
 
       - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
         with:
           gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+
+      - name: Publish KEY.gpg with all public keys from keyring
+        # Fix #501: APT InRelease and DNF repomd.xml are signed with
+        # different keys from the same keyring. Export every public key
+        # so strict clients (e.g. rockylinux:9) can verify both.
+        working-directory: apt-repo
+        run: |
+          gpg --armor --export > KEY.gpg
+          echo "Keys published in KEY.gpg:"
+          gpg --show-keys < KEY.gpg
 
       - name: Add packages to repository
         working-directory: apt-repo
@@ -453,6 +465,24 @@ jobs:
             reprepro --section utils --priority optional includedeb stable "$deb"
           done
 
+      - name: Strip binaries from pool (gated on Worker liveness)
+        working-directory: apt-repo
+        run: |
+          # The Worker on WORKER_DOMAIN serves /pool/.../*.deb requests by
+          # 302-redirecting to GitHub Release assets. When it's live we strip
+          # binaries from the gh-pages tree (the metadata's Filename: field
+          # still references pool paths; the Worker intercepts).
+          # When the Worker isn't live (pre-Phase-4a, outage, misconfiguration)
+          # the strip is skipped to avoid serving 404s for binary fetches.
+          probe_url="https://${WORKER_DOMAIN}/dists/stable/InRelease"
+          if curl -fsI --max-time 10 "$probe_url" >/dev/null; then
+            echo "Worker live at ${WORKER_DOMAIN}; stripping binaries from pool"
+            find pool -type f -name '*.deb' -delete
+          else
+            echo "Worker not responding at ${WORKER_DOMAIN}; preserving .debs in pool"
+            echo "(expected before Phase 4a; after that, an error worth investigating)"
+          fi
+
       - name: Commit and push changes
         working-directory: apt-repo
         run: |
@@ -472,6 +502,75 @@ jobs:
             sleep "$wait_time"
           done
 
+      - name: Smoke test published deb (ordered chain + size)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! curl -fsI --max-time 10 \
+              "https://${WORKER_DOMAIN}/dists/stable/InRelease" >/dev/null; then
+            echo "Worker not live; skipping smoke test (expected before Phase 4a)"
+            exit 0
+          fi
+
+          # Parse versions from tag (e.g., v2.0.2+claude1.3883.0)
+          repoVer="${TAG#v}"; repoVer="${repoVer%+claude*}"
+          claudeVer="${TAG#*+claude}"
+          deb_name="claude-desktop_${claudeVer}-${repoVer}_amd64.deb"
+          # Intentionally starts at the github.io URL: the smoke test
+          # walks the full Pages-301 → Worker-302 → Releases chain to
+          # confirm the legacy redirect path still works for clients
+          # that follow HTTPS→HTTP downgrades (DNF, curl without -L).
+          deb_url="https://aaddrick.github.io/claude-desktop-debian/pool/main/c/claude-desktop/${deb_name}"
+
+          # Wait for propagation
+          deadline=$((SECONDS + 300))
+          until curl -fsI --max-time 10 "$deb_url" -o /dev/null; do
+            [[ $SECONDS -gt $deadline ]] \
+              && { echo "::error::Reachability timeout for ${deb_url}"; exit 1; }
+            sleep 10
+          done
+
+          # Walk redirect chain hop-by-hop
+          # Hop 0 is Pages' auto-301 from github.io to pkg.<domain>.
+          # Pages emits http:// in the Location because https_enforced
+          # can't be set (DNS points at Cloudflare, not Pages, so Pages
+          # can't provision its own cert). Cloudflare/Worker answers
+          # both schemes, so http vs https is cosmetic here.
+          expected_hops=(
+            "https?://${WORKER_DOMAIN}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://(objects|release-assets)\\.githubusercontent\\.com/"
+          )
+          url="$deb_url"
+          for i in "${!expected_hops[@]}"; do
+            hop_status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            redirect_url=$(curl -s -o /dev/null -w '%{redirect_url}' "$url")
+            echo "Hop ${i}: ${hop_status} ${url} -> ${redirect_url}"
+            [[ "$hop_status" =~ ^30[12]$ ]] \
+              || { echo "::error::Hop ${i} expected 301/302, got ${hop_status}"; exit 1; }
+            [[ "$redirect_url" =~ ^${expected_hops[$i]} ]] \
+              || { echo "::error::Hop ${i} mismatch: expected ${expected_hops[$i]}, got ${redirect_url}"; exit 1; }
+            url="$redirect_url"
+          done
+
+          # Fetch and validate
+          curl -fsSL -o /tmp/smoke.deb "$deb_url"
+          file /tmp/smoke.deb | grep -q 'Debian binary package' \
+            || { echo "::error::Not a valid Debian package"; exit 1; }
+
+          # Size match against the Releases asset
+          asset_size=$(gh release view "$TAG" \
+            --repo aaddrick/claude-desktop-debian \
+            --json assets \
+            --jq ".assets[] | select(.name == \"${deb_name}\") | .size")
+          local_size=$(stat -c %s /tmp/smoke.deb)
+          [[ "$asset_size" == "$local_size" ]] \
+            || { echo "::error::Size mismatch: ${local_size} vs ${asset_size}"; exit 1; }
+
+          echo "APT smoke test passed: chain validated, file matches Releases asset"
+
   update-dnf-repo:
     name: Update DNF Repository
     if: startsWith(github.ref, 'refs/tags/v')
@@ -479,22 +578,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      WORKER_DOMAIN: pkg.claude-desktop-debian.dev
 
     steps:
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: gh-pages
           path: dnf-repo
 
       - name: Download AMD64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-rpm
           path: incoming/
 
       - name: Download ARM64 rpm artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-arm64-rpm
           path: incoming/
@@ -504,7 +605,7 @@ jobs:
 
       - name: Import GPG key
         id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
         with:
           gpg_private_key: ${{ secrets.APT_GPG_PRIVATE_KEY }}
 
@@ -563,12 +664,45 @@ jobs:
           printf '%s\n' \
             '[claude-desktop]' \
             'name=Claude Desktop for Fedora/RHEL' \
-            'baseurl=https://aaddrick.github.io/claude-desktop-debian/rpm/$basearch' \
+            'baseurl=https://pkg.claude-desktop-debian.dev/rpm/$basearch' \
             'enabled=1' \
             'gpgcheck=1' \
             'repo_gpgcheck=1' \
-            'gpgkey=https://aaddrick.github.io/claude-desktop-debian/KEY.gpg' \
+            'gpgkey=https://pkg.claude-desktop-debian.dev/KEY.gpg' \
             > rpm/claude-desktop.repo
+
+      - name: Re-upload signed RPMs to GitHub Release
+        # Fix #500: rpmsign --addsign mutates the RPM in place. The release
+        # job (needs: release) already uploaded the unsigned build artifact.
+        # Clobber it with the signed copy so the sha256 in repodata matches
+        # the binary the Worker redirects to.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: dnf-repo
+        run: |
+          for arch in x86_64 aarch64; do
+            if ls "rpm/$arch/"*.rpm 1> /dev/null 2>&1; then
+              gh release upload "${{ github.ref_name }}" \
+                "rpm/$arch/"*.rpm \
+                --repo aaddrick/claude-desktop-debian \
+                --clobber
+            fi
+          done
+
+      - name: Strip RPMs from pool (gated on Worker liveness)
+        working-directory: dnf-repo
+        run: |
+          # Mirror of the APT-side strip. Repodata (signed) stays; the .rpm
+          # binaries themselves are deleted because the Worker 302-redirects
+          # /rpm/<arch>/*.rpm requests to GitHub Release assets.
+          probe_url="https://${WORKER_DOMAIN}/dists/stable/InRelease"
+          if curl -fsI --max-time 10 "$probe_url" >/dev/null; then
+            echo "Worker live; stripping RPMs from pool (repodata + signatures retained)"
+            find rpm -type f -name '*.rpm' -delete
+          else
+            echo "Worker not responding; preserving .rpms in pool"
+            echo "(expected before Phase 4a; after that, an error worth investigating)"
+          fi
 
       - name: Commit and push changes
         working-directory: dnf-repo
@@ -589,6 +723,68 @@ jobs:
             sleep "$wait_time"
           done
 
+      - name: Smoke test published rpm (ordered chain + size)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! curl -fsI --max-time 10 \
+              "https://${WORKER_DOMAIN}/dists/stable/InRelease" >/dev/null; then
+            echo "Worker not live; skipping smoke test (expected before Phase 4a)"
+            exit 0
+          fi
+
+          repoVer="${TAG#v}"; repoVer="${repoVer%+claude*}"
+          claudeVer="${TAG#*+claude}"
+          rpm_name="claude-desktop-${claudeVer}-${repoVer}-1.x86_64.rpm"
+          # Intentionally starts at the github.io URL — see APT smoke
+          # test comment above for why.
+          rpm_url="https://aaddrick.github.io/claude-desktop-debian/rpm/x86_64/${rpm_name}"
+
+          deadline=$((SECONDS + 300))
+          until curl -fsI --max-time 10 "$rpm_url" -o /dev/null; do
+            [[ $SECONDS -gt $deadline ]] \
+              && { echo "::error::Reachability timeout for ${rpm_url}"; exit 1; }
+            sleep 10
+          done
+
+          # Hop 0 is Pages' auto-301 from github.io to pkg.<domain>.
+          # Pages emits http:// in the Location because https_enforced
+          # can't be set (DNS points at Cloudflare, not Pages, so Pages
+          # can't provision its own cert). Cloudflare/Worker answers
+          # both schemes, so http vs https is cosmetic here.
+          expected_hops=(
+            "https?://${WORKER_DOMAIN}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://(objects|release-assets)\\.githubusercontent\\.com/"
+          )
+          url="$rpm_url"
+          for i in "${!expected_hops[@]}"; do
+            hop_status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            redirect_url=$(curl -s -o /dev/null -w '%{redirect_url}' "$url")
+            echo "Hop ${i}: ${hop_status} ${url} -> ${redirect_url}"
+            [[ "$hop_status" =~ ^30[12]$ ]] \
+              || { echo "::error::Hop ${i} expected 301/302, got ${hop_status}"; exit 1; }
+            [[ "$redirect_url" =~ ^${expected_hops[$i]} ]] \
+              || { echo "::error::Hop ${i} mismatch: expected ${expected_hops[$i]}, got ${redirect_url}"; exit 1; }
+            url="$redirect_url"
+          done
+
+          curl -fsSL -o /tmp/smoke.rpm "$rpm_url"
+          rpm -qpi /tmp/smoke.rpm >/dev/null \
+            || { echo "::error::Not a valid RPM"; exit 1; }
+
+          asset_size=$(gh release view "$TAG" \
+            --repo aaddrick/claude-desktop-debian \
+            --json assets \
+            --jq ".assets[] | select(.name == \"${rpm_name}\") | .size")
+          local_size=$(stat -c %s /tmp/smoke.rpm)
+          [[ "$asset_size" == "$local_size" ]] \
+            || { echo "::error::Size mismatch: ${local_size} vs ${asset_size}"; exit 1; }
+
+          echo "DNF smoke test passed: chain validated, file matches Releases asset"
+
   update-aur-repo:
     name: Update AUR Package
     if: startsWith(github.ref, 'refs/tags/v')
@@ -597,7 +793,7 @@ jobs:
 
     steps:
       - name: Download AMD64 AppImage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-amd64-appimage
           path: artifacts/

@@ -1,5 +1,10 @@
 blank_issues_enabled: false
 contact_links:
+  - name: "apt update fails: 'Redirection from https to http... is forbidden'"
+    url: https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#migrating-from-the-old-aaddrickgithubio-url
+    about: |
+      Your sources.list points at the legacy aaddrick.github.io URL.
+      The README has a one-line sed fix to migrate to the new host.
   - name: Questions / usage help
     url: https://github.com/aaddrick/claude-desktop-debian/discussions
     about: General questions belong in Discussions.

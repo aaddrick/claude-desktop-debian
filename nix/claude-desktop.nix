@@ -16,16 +16,16 @@
 }:
 let
   pname = "claude-desktop";
-  version = "1.3561.0";
+  version = "1.4758.0";
 
   srcs = {
     x86_64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/x64/1.3561.0/Claude-fbc74be3fdc714a2c46ef1fb84f71d4e4c062930.exe";
-      hash = "sha256-QSQGm468HHP85eFdyu8dbyB9fr7i+ii61KTLpTtxcfY=";
+      url = "https://downloads.claude.ai/releases/win32/x64/1.4758.0/Claude-fb266c24b61d94290860a3945b138d6d249425f6.exe";
+      hash = "sha256-bcQLsoAeOulw1/HWqnm5Daux2a6RhKHSdLGZUN/2MhU=";
     };
     aarch64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/arm64/1.3561.0/Claude-fbc74be3fdc714a2c46ef1fb84f71d4e4c062930.exe";
-      hash = "sha256-h0mjPM/7Y9LvOs7WUOxwRZjYUpC6z/uwNJwWEUNrioQ=";
+      url = "https://downloads.claude.ai/releases/win32/arm64/1.4758.0/Claude-fb266c24b61d94290860a3945b138d6d249425f6.exe";
+      hash = "sha256-/Nr5BwwH64XayA+un8X4eclvzXgxKiikHXsb1U8++B0=";
     };
   };
 
@@ -161,6 +161,14 @@ stdenvNoCC.mkDerivation {
         echo "Installed cowork resource: $(basename "$cowork_res")"
       fi
     done
+
+    # Install ion-dist static assets (app:// protocol handler root for
+    # Third-Party Inference setup — see issue #488)
+    if [[ -d build/electron-app/nix-resources/ion-dist ]]; then
+      cp -r build/electron-app/nix-resources/ion-dist \
+        $electron_tree/resources/
+      echo "Installed cowork resource: ion-dist"
+    fi
 
     # Install locale JSON files into resources
     for locale_json in build/claude-extract/lib/net45/resources/*-*.json; do

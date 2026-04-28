@@ -1,0 +1,200 @@
+name: APT/DNF Repo Heartbeat
+
+# Walks the published .deb and .rpm URLs through the full
+# Pages 301 → Worker 302 → Releases 302 → CDN 200 chain daily,
+# asserts ordered hops, asserts size match against the Releases
+# asset, and opens a tracking issue (with a format-specific label)
+# on failure. Auto-closes the issue when the format recovers.
+#
+# Pre-Phase-4a: the gate step skips gracefully when the production
+# Worker isn't live yet. Once Phase 4a is done, the gate passes
+# and the full chain is exercised every day.
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # daily noon UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  ping:
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [deb, rpm]
+    runs-on: ubuntu-latest
+    env:
+      WORKER_DOMAIN: pkg.claude-desktop-debian.dev
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Skip if Worker not live yet
+        id: gate
+        run: |
+          if curl -fsI --max-time 10 \
+              "https://${WORKER_DOMAIN}/dists/stable/InRelease" >/dev/null; then
+            echo "live=true" >> "$GITHUB_OUTPUT"
+            echo "Worker live; running heartbeat."
+          else
+            echo "live=false" >> "$GITHUB_OUTPUT"
+            echo "Worker not live; heartbeat skipping (expected before Phase 4a)."
+          fi
+
+      - name: Resolve latest release for ${{ matrix.format }}
+        if: steps.gate.outputs.live == 'true'
+        id: latest
+        run: |
+          tag=$(gh release list --limit 1 --json tagName \
+                  --jq '.[0].tagName' \
+                  --repo aaddrick/claude-desktop-debian)
+          repoVer="${tag#v}"; repoVer="${repoVer%+claude*}"
+          claudeVer="${tag#*+claude}"
+          if [[ "${{ matrix.format }}" == "deb" ]]; then
+            asset="claude-desktop_${claudeVer}-${repoVer}_amd64.deb"
+            url="https://aaddrick.github.io/claude-desktop-debian/pool/main/c/claude-desktop/${asset}"
+          else
+            asset="claude-desktop-${claudeVer}-${repoVer}-1.x86_64.rpm"
+            url="https://aaddrick.github.io/claude-desktop-debian/rpm/x86_64/${asset}"
+          fi
+          {
+            echo "tag=${tag}"
+            echo "asset=${asset}"
+            echo "url=${url}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate ordered chain + fetch + size match
+        if: steps.gate.outputs.live == 'true'
+        env:
+          ASSET: ${{ steps.latest.outputs.asset }}
+          URL: ${{ steps.latest.outputs.url }}
+          TAG: ${{ steps.latest.outputs.tag }}
+          FORMAT: ${{ matrix.format }}
+        run: |
+          set -euo pipefail
+
+          # Wait for propagation; fail after 5 min instead of cargo-cult sleep
+          deadline=$((SECONDS + 300))
+          until curl -fsI --max-time 10 "$URL" -o /dev/null; do
+            if [[ $SECONDS -gt $deadline ]]; then
+              echo "::error::Reachability timeout for ${URL}"
+              exit 1
+            fi
+            sleep 10
+          done
+
+          # Walk redirect chain hop-by-hop, asserting each hop's pattern
+          # in order. Hop 0 may be http:// (see ci.yml smoke-test comment
+          # for the Pages https_enforced=false background).
+          expected_hops=(
+            "https?://${WORKER_DOMAIN}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/"
+            "https://(objects|release-assets)\\.githubusercontent\\.com/"
+          )
+          url="$URL"
+          for i in "${!expected_hops[@]}"; do
+            hop_status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            redirect_url=$(curl -s -o /dev/null -w '%{redirect_url}' "$url")
+            echo "Hop ${i}: ${hop_status} ${url} -> ${redirect_url}"
+            if [[ ! "$hop_status" =~ ^30[12]$ ]]; then
+              echo "::error::Hop ${i}: expected 301/302, got ${hop_status}"
+              exit 1
+            fi
+            if [[ ! "$redirect_url" =~ ^${expected_hops[$i]} ]]; then
+              echo "::error::Hop ${i} mismatch:"
+              echo "::error::  expected: ${expected_hops[$i]}"
+              echo "::error::  got:      ${redirect_url}"
+              exit 1
+            fi
+            url="$redirect_url"
+          done
+
+          # Fetch the asset and validate its format
+          curl -fsSL -o "/tmp/${ASSET}" "$URL"
+
+          if [[ "$FORMAT" == "deb" ]]; then
+            if ! file "/tmp/${ASSET}" | grep -q 'Debian binary package'; then
+              echo "::error::Fetched file is not a valid Debian package"
+              exit 1
+            fi
+          else
+            sudo apt-get update >/dev/null
+            sudo apt-get install -y rpm >/dev/null
+            if ! rpm -qpi "/tmp/${ASSET}" >/dev/null 2>&1; then
+              echo "::error::Fetched file is not a valid RPM"
+              exit 1
+            fi
+          fi
+
+          # Size match against the Releases asset
+          asset_size=$(gh release view "$TAG" \
+            --repo aaddrick/claude-desktop-debian \
+            --json assets \
+            --jq ".assets[] | select(.name == \"${ASSET}\") | .size")
+          local_size=$(stat -c %s "/tmp/${ASSET}")
+          if [[ "$asset_size" != "$local_size" ]]; then
+            echo "::error::Size mismatch: local ${local_size} vs Releases ${asset_size}"
+            exit 1
+          fi
+
+          echo "Heartbeat passed: chain validated, file matches Releases asset."
+
+      - name: Open or update failure issue
+        if: failure() && steps.gate.outputs.live == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          FORMAT: ${{ matrix.format }}
+        with:
+          script: |
+            const fmt = process.env.FORMAT;
+            const label = `heartbeat-failure-${fmt}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `Heartbeat failed for \`${fmt}\` at ${new Date().toISOString()}.\nRun: ${runUrl}`;
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              labels: label,
+              state: 'open',
+            });
+            if (open.length === 0) {
+              await github.rest.issues.create({
+                ...context.repo,
+                title: `APT/DNF repo heartbeat failing (${fmt})`,
+                body,
+                labels: [label],
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: open[0].number,
+                body,
+              });
+            }
+
+      - name: Auto-close failure issue on recovery
+        if: success() && steps.gate.outputs.live == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          FORMAT: ${{ matrix.format }}
+        with:
+          script: |
+            const fmt = process.env.FORMAT;
+            const label = `heartbeat-failure-${fmt}`;
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              labels: label,
+              state: 'open',
+            });
+            for (const issue of open) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: `Heartbeat for \`${fmt}\` recovered at ${new Date().toISOString()}; auto-closing.`,
+              });
+              await github.rest.issues.update({
+                ...context.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }
