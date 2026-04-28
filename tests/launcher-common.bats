@@ -349,6 +349,12 @@ s.bind(sys.argv[1])
 s.close()
 " "$sock" 2>/dev/null || skip "Cannot create test unix socket"
 
+	# Stub pgrep so the test is isolated from host process state:
+	# a real cowork-vm-service daemon on the developer machine would
+	# trip the function's "daemon alive, leave socket alone" branch.
+	pgrep() { return 1; }
+	export -f pgrep
+
 	setup_logging
 	# socat connection should fail since nothing is listening
 	cleanup_stale_cowork_socket
