@@ -15,6 +15,8 @@ topbar. Topbar buttons are clickable. The trade-off vs Windows is
 a stacked layout (DE-drawn titlebar on top, in-app topbar below)
 instead of Windows's combined single bar.
 
+![Hybrid mode on KDE Plasma — DE-drawn "Claude" titlebar on top, claude.ai's in-app topbar (hamburger / search / back-forward) directly below it](images/linux-topbar-hybrid.png)
+
 Modes:
 
 | mode | frame | shim | layout | notes |
