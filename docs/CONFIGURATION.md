@@ -15,6 +15,7 @@ Model Context Protocol settings are stored in:
 |----------|---------|-------------|
 | `CLAUDE_USE_WAYLAND` | unset | Set to `1` to use native Wayland instead of XWayland. Note: Global hotkeys won't work in native Wayland mode. |
 | `CLAUDE_MENU_BAR` | unset (`auto`) | Controls menu bar behavior: `auto` (hidden, Alt toggles), `visible` / `1` (always shown), `hidden` / `0` (always hidden, Alt disabled). See [Menu Bar](#menu-bar) below. |
+| `CLAUDE_TITLEBAR_STYLE` | unset (`hybrid`) | Controls window decoration style: `hybrid` (system frame + in-app topbar), `native` (system frame, no in-app topbar), `hidden` (frameless WCO — broken on X11, kept for diagnostics). See [Titlebar Style](#titlebar-style) below. |
 
 ### Wayland Support
 
@@ -47,6 +48,28 @@ CLAUDE_MENU_BAR=visible claude-desktop
 # Or add to your environment permanently
 export CLAUDE_MENU_BAR=visible
 ```
+
+### Titlebar Style
+
+Claude Desktop's web UI includes a custom topbar (hamburger menu, sidebar toggle, search, back/forward, Cowork ghost). On Windows / macOS the bundle gates rendering on `display-mode: window-controls-overlay`; on Linux a shim convinces the bundle to render anyway. Use `CLAUDE_TITLEBAR_STYLE` to choose the layout:
+
+| Value | Frame | In-app topbar | Window controls drawn by | Notes |
+|-------|-------|--------------|--------------------------|-------|
+| unset / `hybrid` | system | Yes | Desktop environment | **Default.** Stacked layout — DE-drawn titlebar on top, in-app topbar below. Topbar buttons clickable. |
+| `native` | system | No | Desktop environment | When the stacked layout looks wrong on your DE, or you don't need the in-app topbar. |
+| `hidden` | frameless | Yes | Chromium (WCO region) | Matches Windows / macOS upstream config. **Broken on Linux X11** — topbar buttons unresponsive due to a Chromium-level implicit drag region for `frame:false` windows. Kept for diagnostic / Wayland investigation; see [docs/learnings/linux-topbar-shim.md](learnings/linux-topbar-shim.md). |
+
+```bash
+# Switch to the bare native experience (no in-app topbar)
+CLAUDE_TITLEBAR_STYLE=native claude-desktop
+
+# Or add to your environment permanently
+export CLAUDE_TITLEBAR_STYLE=native
+```
+
+This setting applies to the main window only. The Quick Entry and About windows are always frameless.
+
+Run `claude-desktop --doctor` to confirm the resolved titlebar style. The doctor output also flags `hidden` mode as broken on Linux and unrecognized values as fallbacks to `hybrid`.
 
 ## Cowork Sandbox Mounts
 

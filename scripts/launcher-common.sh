@@ -51,6 +51,22 @@ check_display() {
 	[[ -n $DISPLAY || -n $WAYLAND_DISPLAY ]]
 }
 
+# Resolve CLAUDE_TITLEBAR_STYLE to one of {hybrid,native,hidden},
+# defaulting to 'hybrid' when unset or invalid. Echoed (not exported)
+# so callers can branch on it without polluting the environment.
+# 'hybrid' is the recommended Linux experience: native OS frame +
+# in-app topbar via the wco-shim. 'hidden' is upstream's frameless
+# WCO config; broken on Linux X11 (clicks unresponsive) but kept for
+# Wayland/diagnostic comparison.
+_resolve_titlebar_style() {
+	local raw="${CLAUDE_TITLEBAR_STYLE:-hybrid}"
+	raw="${raw,,}"
+	case "$raw" in
+		hybrid|hidden|native) echo "$raw" ;;
+		*) echo 'hybrid' ;;
+	esac
+}
+
 # Build Electron arguments array based on display backend
 # Requires: is_wayland, use_x11_on_wayland to be set
 #           (call detect_display_backend first)
@@ -64,8 +80,21 @@ build_electron_args() {
 	# AppImage always needs --no-sandbox due to FUSE constraints
 	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
-	# Disable CustomTitlebar for better Linux integration
-	electron_args+=('--disable-features=CustomTitlebar')
+	# CLAUDE_TITLEBAR_STYLE selects between:
+	#   hybrid (default) / native: --disable-features=CustomTitlebar
+	#           so Chromium's drawn CSD titlebar doesn't compete with
+	#           the DE-drawn one. Both modes use frame:true.
+	#   hidden: --enable-features=WindowControlsOverlay because WCO
+	#           is off by default on Linux Chromium (Win/macOS have
+	#           it on by default). Without this flag, titleBarOverlay
+	#           is silently ignored at the page level.
+	local _tb
+	_tb=$(_resolve_titlebar_style)
+	if [[ $_tb == 'hidden' ]]; then
+		electron_args+=('--enable-features=WindowControlsOverlay')
+	else
+		electron_args+=('--disable-features=CustomTitlebar')
+	fi
 
 	# Remote XRDP sessions lack GPU acceleration and render a blank
 	# window when GPU compositing is enabled. Detect via XRDP_SESSION
@@ -247,7 +276,12 @@ setup_electron_env() {
 	# copied and app resources co-located in resources/, so resourcesPath
 	# naturally points to the right place on all package types.
 	export ELECTRON_FORCE_IS_PACKAGED=true
-	export ELECTRON_USE_SYSTEM_TITLE_BAR=1
+	# ELECTRON_USE_SYSTEM_TITLE_BAR=1 forces a system titlebar at the
+	# Electron level. Set in 'native' and 'hybrid' modes (both use
+	# frame:true); skipped in 'hidden' mode (frame:false + WCO config).
+	if [[ $(_resolve_titlebar_style) != 'hidden' ]]; then
+		export ELECTRON_USE_SYSTEM_TITLE_BAR=1
+	fi
 }
 
 #===============================================================================

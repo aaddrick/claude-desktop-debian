@@ -52,8 +52,6 @@ source "$script_dir/scripts/setup/download.sh"
 source "$script_dir/scripts/patches/_common.sh"
 # shellcheck source=scripts/patches/app-asar.sh
 source "$script_dir/scripts/patches/app-asar.sh"
-# shellcheck source=scripts/patches/titlebar.sh
-source "$script_dir/scripts/patches/titlebar.sh"
 # shellcheck source=scripts/patches/tray.sh
 source "$script_dir/scripts/patches/tray.sh"
 # shellcheck source=scripts/patches/quick-window.sh
@@ -62,6 +60,8 @@ source "$script_dir/scripts/patches/quick-window.sh"
 source "$script_dir/scripts/patches/claude-code.sh"
 # shellcheck source=scripts/patches/cowork.sh
 source "$script_dir/scripts/patches/cowork.sh"
+# shellcheck source=scripts/patches/wco-shim.sh
+source "$script_dir/scripts/patches/wco-shim.sh"
 # shellcheck source=scripts/staging/electron.sh
 source "$script_dir/scripts/staging/electron.sh"
 # shellcheck source=scripts/staging/icons.sh

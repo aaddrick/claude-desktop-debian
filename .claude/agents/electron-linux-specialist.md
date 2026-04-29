@@ -101,7 +101,7 @@ claude-desktop-debian/
 │   ├── patches/                          # sed/regex patches on minified JS (per-subsystem)
 │   │   ├── _common.sh                    # extract_electron_variable, fix_native_theme_references
 │   │   ├── app-asar.sh                   # Asar repack, frame-fix wrapper injection
-│   │   ├── titlebar.sh
+│   │   ├── wco-shim.sh                   # Inlines WCO/UA shim into mainView.js preload
 │   │   ├── tray.sh                       # Tray menu handler + icon selection
 │   │   ├── quick-window.sh
 │   │   ├── claude-code.sh
@@ -121,7 +121,7 @@ claude-desktop-debian/
 | Function | File | Purpose |
 |----------|------|---------|
 | `patch_app_asar()` | `scripts/patches/app-asar.sh` | Extracts asar, injects frame-fix wrapper, repacks |
-| `patch_titlebar_detection()` | `scripts/patches/titlebar.sh` | Removes `!` from `if(!isWindows && isMainWindow)` to enable titlebar |
+| `patch_wco_shim()` | `scripts/patches/wco-shim.sh` | Inlines `scripts/wco-shim.js` at the top of `mainView.js` (the BrowserView preload) so claude.ai's bundle sees Windows-like UA + matchMedia and renders the in-app topbar on Linux |
 | `extract_electron_variable()` | `scripts/patches/_common.sh` | Finds the minified variable name for `require("electron")` |
 | `fix_native_theme_references()` | `scripts/patches/_common.sh` | Fixes wrong `*.nativeTheme` references to use the correct electron var |
 | `patch_tray_menu_handler()` | `scripts/patches/tray.sh` | Makes tray rebuild async, adds mutex guard, DBus cleanup delay, startup skip |

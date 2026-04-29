@@ -48,7 +48,7 @@ Use this when you're not confident enough to triage automatically. Examples: sec
 ## INVESTIGATION RULES
 
 ### All bugs are ours to fix
-This project's goal is to take a working Anthropic product and make it work on Linux. Every bug is something we can investigate and potentially patch. Check `scripts/patches/*.sh` first for bugs in patched areas (`cowork.sh`, `tray.sh`, `app-asar.sh`, `titlebar.sh`, `quick-window.sh`, `claude-code.sh`). Read the relevant `patch_` function and trace what it modifies. If a behavior difference exists between the Windows/macOS app and our Linux build, that's a gap in our patching, not someone else's problem.
+This project's goal is to take a working Anthropic product and make it work on Linux. Every bug is something we can investigate and potentially patch. Check `scripts/patches/*.sh` first for bugs in patched areas (`cowork.sh`, `tray.sh`, `app-asar.sh`, `wco-shim.sh`, `quick-window.sh`, `claude-code.sh`). Read the relevant `patch_` function and trace what it modifies. If a behavior difference exists between the Windows/macOS app and our Linux build, that's a gap in our patching, not someone else's problem.
 
 ### Verify before stating
 Only state facts you verified by reading actual code or running commands. Never claim code exists, functions behave a certain way, or patterns match without finding them in the source. If you cannot find evidence, say so explicitly rather than speculating.
@@ -80,7 +80,7 @@ When investigating bugs, search these files based on the issue category:
 | Category | Files to check |
 |----------|---------------|
 | Build failures | `build.sh` (orchestrator), `scripts/setup/`, `.github/workflows/ci.yml`, `build-amd64.yml`, `build-arm64.yml` |
-| Window/frame issues | `scripts/frame-fix-wrapper.js`, `scripts/patches/titlebar.sh`, `scripts/patches/app-asar.sh`, reference source for `BrowserWindow` |
+| Window/frame issues | `scripts/frame-fix-wrapper.js`, `scripts/wco-shim.js`, `scripts/patches/wco-shim.sh`, `scripts/patches/app-asar.sh`, reference source for `BrowserWindow` |
 | Tray icon issues | `scripts/patches/tray.sh`, reference source for `Tray`, `StatusNotifier` |
 | Packaging (deb) | `scripts/packaging/deb.sh`, `scripts/launcher-common.sh` |
 | Packaging (rpm) | `scripts/packaging/rpm.sh`, `scripts/launcher-common.sh` |

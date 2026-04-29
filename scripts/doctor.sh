@@ -343,6 +343,29 @@ run_doctor() {
 		_info 'Menu bar mode: auto (default, Alt toggles visibility)'
 	fi
 
+	# -- Titlebar style --
+	local titlebar_style="${CLAUDE_TITLEBAR_STYLE:-}"
+	if [[ -n $titlebar_style ]]; then
+		local resolved_style="${titlebar_style,,}"
+		case "$resolved_style" in
+			hybrid|native)
+				_pass "Titlebar style: $resolved_style" \
+					"(CLAUDE_TITLEBAR_STYLE=$titlebar_style)"
+				;;
+			hidden)
+				_warn "Titlebar style: hidden — topbar clicks unresponsive on Linux (both X11 and Wayland)"
+				_info 'Use hybrid (default) or native for clickable buttons'
+				;;
+			*)
+				_warn "Unknown CLAUDE_TITLEBAR_STYLE: '$titlebar_style'"
+				_info 'Will fall back to hybrid'
+				_info 'Valid values: hybrid, native, hidden'
+				;;
+		esac
+	else
+		_info 'Titlebar style: hybrid (default, native frame + in-app topbar)'
+	fi
+
 	# -- Electron binary --
 	# Version is read from the file next to the binary rather than
 	# launching Electron, which can hang (see #371).

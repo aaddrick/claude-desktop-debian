@@ -36,7 +36,9 @@ setup() {
 	unset NIRI_SOCKET
 	unset XDG_CURRENT_DESKTOP
 	unset CLAUDE_MENU_BAR
+	unset CLAUDE_TITLEBAR_STYLE
 	unset COWORK_VM_BACKEND
+	unset ELECTRON_USE_SYSTEM_TITLE_BAR
 
 	# shellcheck source=scripts/launcher-common.sh
 	source "$SCRIPT_DIR/../scripts/launcher-common.sh"
@@ -271,9 +273,113 @@ teardown() {
 	[[ $ELECTRON_FORCE_IS_PACKAGED == 'true' ]]
 }
 
-@test "setup_electron_env: sets ELECTRON_USE_SYSTEM_TITLE_BAR" {
+@test "setup_electron_env: sets ELECTRON_USE_SYSTEM_TITLE_BAR in hybrid mode (default)" {
 	setup_electron_env
 	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
+}
+
+@test "setup_electron_env: sets ELECTRON_USE_SYSTEM_TITLE_BAR in native mode" {
+	CLAUDE_TITLEBAR_STYLE=native setup_electron_env
+	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
+}
+
+@test "setup_electron_env: skips ELECTRON_USE_SYSTEM_TITLE_BAR in hidden mode" {
+	CLAUDE_TITLEBAR_STYLE=hidden setup_electron_env
+	[[ -z ${ELECTRON_USE_SYSTEM_TITLE_BAR:-} ]]
+}
+
+@test "setup_electron_env: skips ELECTRON_USE_SYSTEM_TITLE_BAR for invalid value (falls back to hybrid)" {
+	CLAUDE_TITLEBAR_STYLE=garbage setup_electron_env
+	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
+}
+
+# =============================================================================
+# _resolve_titlebar_style
+# =============================================================================
+
+@test "_resolve_titlebar_style: returns 'hybrid' when unset" {
+	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
+}
+
+@test "_resolve_titlebar_style: returns 'hybrid' for hybrid" {
+	CLAUDE_TITLEBAR_STYLE=hybrid
+	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
+}
+
+@test "_resolve_titlebar_style: returns 'native' for native" {
+	CLAUDE_TITLEBAR_STYLE=native
+	[[ $(_resolve_titlebar_style) == 'native' ]]
+}
+
+@test "_resolve_titlebar_style: returns 'hidden' for hidden" {
+	CLAUDE_TITLEBAR_STYLE=hidden
+	[[ $(_resolve_titlebar_style) == 'hidden' ]]
+}
+
+@test "_resolve_titlebar_style: case-insensitive (HYBRID)" {
+	CLAUDE_TITLEBAR_STYLE=HYBRID
+	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
+}
+
+@test "_resolve_titlebar_style: case-insensitive (Native)" {
+	CLAUDE_TITLEBAR_STYLE=Native
+	[[ $(_resolve_titlebar_style) == 'native' ]]
+}
+
+@test "_resolve_titlebar_style: case-insensitive (Hidden)" {
+	CLAUDE_TITLEBAR_STYLE=Hidden
+	[[ $(_resolve_titlebar_style) == 'hidden' ]]
+}
+
+@test "_resolve_titlebar_style: falls back to hybrid for invalid value" {
+	CLAUDE_TITLEBAR_STYLE=garbage
+	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
+}
+
+@test "_resolve_titlebar_style: falls back to hybrid for empty value" {
+	CLAUDE_TITLEBAR_STYLE=''
+	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
+}
+
+# =============================================================================
+# build_electron_args: titlebar mode flag selection
+# =============================================================================
+
+@test "build_electron_args: hybrid mode (default) disables CustomTitlebar" {
+	is_wayland=false
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--disable-features=CustomTitlebar'
+	# shellcheck disable=SC2314
+	! has_electron_arg '--enable-features=WindowControlsOverlay'
+}
+
+@test "build_electron_args: native mode disables CustomTitlebar" {
+	CLAUDE_TITLEBAR_STYLE=native
+	is_wayland=false
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--disable-features=CustomTitlebar'
+	# shellcheck disable=SC2314
+	! has_electron_arg '--enable-features=WindowControlsOverlay'
+}
+
+@test "build_electron_args: hidden mode enables WindowControlsOverlay" {
+	CLAUDE_TITLEBAR_STYLE=hidden
+	is_wayland=false
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--enable-features=WindowControlsOverlay'
+	# shellcheck disable=SC2314
+	! has_electron_arg '--disable-features=CustomTitlebar'
+}
+
+@test "build_electron_args: invalid titlebar value falls back to hybrid flags" {
+	CLAUDE_TITLEBAR_STYLE=garbage
+	is_wayland=false
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--disable-features=CustomTitlebar'
 }
 
 # =============================================================================

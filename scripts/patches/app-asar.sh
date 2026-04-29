@@ -62,9 +62,6 @@ console.log('Updated package.json: main entry and node-pty dependency');
 	cp "$claude_extract_dir/lib/net45/resources/Tray"* app.asar.contents/resources/ 2>/dev/null || \
 		echo 'Warning: No tray icon files found for asar inclusion'
 
-	# Patch title bar detection
-	patch_titlebar_detection
-
 	# Extract electron module variable name for tray patches
 	extract_electron_variable
 
@@ -92,6 +89,13 @@ console.log('Updated package.json: main entry and node-pty dependency');
 
 	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
 	patch_cowork_linux
+
+	# Inject WCO shim into the BrowserView preload so claude.ai's
+	# desktop topbar renders on Linux. The shim spoofs the bundle's
+	# isWindows() UA check (load-bearing) plus matchMedia and
+	# windowControlsOverlay (defensive). See
+	# docs/learnings/linux-topbar-shim.md.
+	patch_wco_shim
 
 	# Copy cowork VM service daemon for Linux Cowork mode
 	echo 'Installing cowork VM service daemon...'
