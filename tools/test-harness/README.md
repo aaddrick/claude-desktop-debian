@@ -13,12 +13,12 @@ First vertical slice — covers four tests on KDE-W:
 |------|----------------|-------|
 | [T01](../../docs/testing/cases/launch.md#t01--app-launch) | Main window opens within 10s; launcher log mentions X11/XWayland on Wayland sessions | L1 + L2 |
 | [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid | L2 (DBus) |
-| [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop) |
+| [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop only — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`) |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Renderer triggers `dialog.showOpenDialog` (shallow v1; portal mock is v2) | L1 (Electron-level intercept) |
 
 These four exercise every distinct shape of TS code in the harness:
-`playwright-electron`, `dbus-next`, shell-out helpers (`xprop`, `xdotool`),
-and Electron-main-process intercepts. Everything beyond them should be
+`playwright-electron`, `dbus-next`, shell-out helpers (`xprop`), and
+Electron-main-process intercepts. Everything beyond them should be
 recombination.
 
 ## Prerequisites
@@ -27,7 +27,7 @@ On the host or VM running the sweep:
 
 - Node.js ≥ 20
 - `claude-desktop` installed (deb / rpm / AppImage), reachable via `claude-desktop` on `PATH` or `CLAUDE_DESKTOP_LAUNCHER` env var
-- `xprop`, `xdotool` (for L2 window queries — `dnf install xorg-x11-utils xdotool` on Fedora; `apt install x11-utils xdotool` on Debian/Ubuntu)
+- `xprop` (for L2 window queries — `dnf install xorg-x11-utils` on Fedora; `apt install x11-utils` on Debian/Ubuntu)
 - `zstd` (optional — used to bundle results)
 
 ## Install
@@ -85,7 +85,7 @@ tools/test-harness/
 │   │   ├── electron.ts            # _electron.launch wrapper
 │   │   ├── dbus.ts                # dbus-next session-bus + helpers
 │   │   ├── sni.ts                 # StatusNotifierWatcher / Item
-│   │   ├── wm.ts                  # xprop / xdotool wrappers (X11 + XWayland)
+│   │   ├── wm.ts                  # xprop wrappers (X11 + XWayland)
 │   │   ├── env.ts                 # XDG_CURRENT_DESKTOP / SESSION_TYPE branching
 │   │   ├── retry.ts               # poll-until-true with timeout
 │   │   └── diagnostics.ts         # launcher log, --doctor, session env
@@ -100,7 +100,8 @@ tools/test-harness/
 
 ## Known limitations (v1)
 
-- **T04** uses `xprop` + `xdotool`, which work on X11 native and on KDE Wayland (XWayland), but **not** on native-Wayland sessions where the app is running through Ozone-Wayland directly. Per Decision 6, project default is X11; native-Wayland window-state queries are deferred until those tests get added.
+- **`_electron.launch()` currently fails on this build.** First-run finding from KDE-W: Playwright spawns Electron with `--inspect=0 --remote-debugging-port=0`, the Node-inspector ws connects, Frame Fix reports "Patches built successfully", then the inspector ws disconnects (code 1006) before the renderer ever advertises its DevTools port. Playwright concludes the launch failed and kills the process. Standalone `electron --inspect=0 ... app.asar` (same flags, no Playwright) runs cleanly and shows "Starting app" + window creation, so the failure is specific to Playwright's launch flow under Electron 41 + Frame Fix. Open question: is this a Playwright/Electron 41 compatibility regression, or is something in `index.pre.js` reacting to Playwright's startup signal injection? The harness scaffolding (TS lib, runners, orchestrator) is otherwise sound — L2 tests (T03 tray, T04 window decorations) don't depend on Playwright owning the process and could run by spawning Electron via `child_process` and using `dbus-next` / `xprop` directly. Switching the launch path to `chromium.connectOverCDP()` against an externally-spawned Electron with a fixed `--remote-debugging-port` is the most likely workaround. See `electron.ts` comments.
+- **T04** uses `xprop` (no `xdotool` dependency — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`). Works on X11 native and KDE Wayland (XWayland), **not** on native-Wayland sessions where the app is running through Ozone-Wayland directly. Per Decision 6, project default is X11; native-Wayland window-state queries are deferred until those tests get added.
 - **T17** is shallow — it intercepts `dialog.showOpenDialog` at the Electron main process level. The integration question "does Claude make the right *portal* call?" is a v2 concern; portal-level mocking via `dbus-next` is sketched in [`docs/testing/automation.md`](../../docs/testing/automation.md) but requires displacing the running portal service or running under `dbus-run-session`.
 - **`render-matrix.sh`** isn't here yet. `sweep.sh` prints a summary; the `matrix.md` regen step from JUnit is the next addition.
 - **No CI wrapper.** Decision 4: the harness is invokable from CI but sweeps run from the dev box for the first ~20 tests.

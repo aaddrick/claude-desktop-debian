@@ -11,19 +11,38 @@ export interface FrameExtents {
 }
 
 export async function findX11WindowByPid(pid: number): Promise<string | null> {
-	try {
-		const { stdout } = await exec('xdotool', ['search', '--pid', String(pid)]);
-		const ids = stdout.trim().split('\n').filter(Boolean);
-		// xdotool returns multiple windows for an Electron app (renderer, etc).
-		// Prefer the one that has _NET_WM_NAME set (the visible top-level).
-		for (const id of ids) {
-			const title = await getWindowProperty(id, '_NET_WM_NAME');
-			if (title) return id;
-		}
-		return ids[0] ?? null;
-	} catch {
-		return null;
+	// Walk _NET_CLIENT_LIST and match on _NET_WM_PID. Pure xprop, no
+	// xdotool dependency — Electron's main window will surface here once
+	// the WM has accepted it.
+	const ids = await listClientWindows();
+	let firstMatch: string | null = null;
+	for (const id of ids) {
+		const wmPid = await getWindowPid(id);
+		if (wmPid !== pid) continue;
+		const title = await getWindowProperty(id, '_NET_WM_NAME');
+		if (title) return id;
+		if (!firstMatch) firstMatch = id;
 	}
+	return firstMatch;
+}
+
+async function listClientWindows(): Promise<string[]> {
+	try {
+		const { stdout } = await exec('xprop', ['-root', '_NET_CLIENT_LIST']);
+		// _NET_CLIENT_LIST(WINDOW): window id # 0x1234, 0x5678, ...
+		const m = stdout.match(/#\s*(.+)$/m);
+		if (!m) return [];
+		return m[1]!.split(',').map((s) => s.trim()).filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+async function getWindowPid(windowId: string): Promise<number | null> {
+	const raw = await getWindowProperty(windowId, '_NET_WM_PID');
+	if (!raw) return null;
+	const n = parseInt(raw, 10);
+	return Number.isNaN(n) ? null : n;
 }
 
 export async function getFrameExtents(windowId: string): Promise<FrameExtents | null> {
