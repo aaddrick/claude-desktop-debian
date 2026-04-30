@@ -230,6 +230,7 @@ Special thanks to:
   - Fixing the KVM startup blocker
   - Fixing RPC response id echoing for persistent connections
   - Configurable bwrap mount points via a dedicated Linux config file
+  - `{src, dst}` mount form in `coworkBwrapMounts` for distinct host/sandbox paths (e.g. persistent `/tmp` across Bash tool calls)
 - **[joekale-pp](https://github.com/joekale-pp)** for adding `--doctor` support to the RPM launcher
 - **[ecrevisseMiroir](https://github.com/ecrevisseMiroir)** for the bwrap backend sandbox isolation with tmpfs-based minimal root
 - **[arauhala](https://github.com/arauhala)** for detailed root cause analysis of the NixOS `isPackaged` regression
