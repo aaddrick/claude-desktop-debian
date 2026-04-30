@@ -349,8 +349,11 @@ s.bind(sys.argv[1])
 s.close()
 " "$sock" 2>/dev/null || skip "Cannot create test unix socket"
 
+	# Stub pgrep so a live host daemon doesn't satisfy the daemon-alive
+	# guard in cleanup_stale_cowork_socket and skip the rm path.
+	pgrep() { return 1; }
+
 	setup_logging
-	# socat connection should fail since nothing is listening
 	cleanup_stale_cowork_socket
 	[[ ! -S "$sock" ]]
 }
