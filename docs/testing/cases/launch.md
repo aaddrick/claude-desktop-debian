@@ -8,6 +8,7 @@ Tests covering app startup, the `--doctor` health check, package-format detectio
 **Surface:** App startup
 **Applies to:** All rows
 **Issues:** —
+**Runner:** [`tools/test-harness/src/runners/T01_app_launch.spec.ts`](../../../tools/test-harness/src/runners/T01_app_launch.spec.ts)
 
 **Steps:**
 1. From a clean session, run `claude-desktop` (deb/rpm) or launch the AppImage.

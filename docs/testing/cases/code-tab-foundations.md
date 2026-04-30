@@ -43,6 +43,7 @@ Tests covering Code-tab availability on Linux (officially unsupported per upstre
 **Surface:** Code tab → Environment selection
 **Applies to:** All rows
 **Issues:** —
+**Runner:** [`tools/test-harness/src/runners/T17_folder_picker.spec.ts`](../../../tools/test-harness/src/runners/T17_folder_picker.spec.ts) — shallow v1 (Electron-level `dialog.showOpenDialog` intercept). Verifies the renderer requests a folder; portal-level mocking via `dbus-next` is the v2 upgrade path
 
 **Steps:**
 1. In the Code tab, click the environment pill → **Local** → **Select folder**.

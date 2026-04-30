@@ -8,6 +8,7 @@ Tests covering the tray icon, OS-native window decorations, the hybrid in-app to
 **Surface:** System tray / SNI
 **Applies to:** All rows
 **Issues:** —
+**Runner:** [`tools/test-harness/src/runners/T03_tray_icon_present.spec.ts`](../../../tools/test-harness/src/runners/T03_tray_icon_present.spec.ts) — registration only (left-click toggle + theme-switch in-place rebuild are v2)
 
 **Steps:**
 1. Launch the app. Wait a few seconds.
@@ -27,6 +28,7 @@ Tests covering the tray icon, OS-native window decorations, the hybrid in-app to
 **Surface:** Window chrome
 **Applies to:** All rows
 **Issues:** [PR #127](https://github.com/aaddrick/claude-desktop-debian/pull/127), [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538)
+**Runner:** [`tools/test-harness/src/runners/T04_window_decorations.spec.ts`](../../../tools/test-harness/src/runners/T04_window_decorations.spec.ts) — X11 / XWayland only (checks `_NET_FRAME_EXTENTS`); native-Wayland window-state queries are deferred
 
 **Steps:**
 1. Launch the app.

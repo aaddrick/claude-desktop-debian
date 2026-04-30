@@ -2,11 +2,13 @@
 
 *Last updated: 2026-04-30*
 
-> **Status:** Direction agreed; harness not built. The [Decisions](#decisions)
-> table captures the calls already made; [Still open](#still-open) is the
-> short list of things genuinely undecided. This file will fold into
-> [`README.md`](./README.md) and [`runbook.md`](./runbook.md) once the first
-> vertical slice ships.
+> **Status:** Direction agreed; first vertical slice scaffolded at
+> [`tools/test-harness/`](../../tools/test-harness/) covering T01, T03, T04,
+> T17 on KDE-W. The [Decisions](#decisions) table captures the calls
+> already made; [Still open](#still-open) is the short list of things
+> genuinely undecided. This file will fold into [`README.md`](./README.md)
+> and [`runbook.md`](./runbook.md) once the harness has run a few real
+> sweeps.
 
 The [`README.md`](./README.md) automation roadmap is one paragraph. This file
 is the longer version — what shape the harness takes, which tools fit which
