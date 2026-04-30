@@ -141,7 +141,7 @@ failed:
 4. `setSize` + hide/show cycle — no effect
 5. JS-side `programmaticClickFired: true` confirmed — handlers
    wire correctly, problem is purely OS/WM-level
-6. Pre-emptive global `.draggable { no-drag !important }` from
+6. Preemptive global `.draggable { no-drag !important }` from
    preload — no effect
 
 All six targeted the `.draggable` class as the source. The 7th
