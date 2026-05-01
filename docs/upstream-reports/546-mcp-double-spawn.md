@@ -9,7 +9,7 @@ The `anthropics/claude-code` bug template is built for the Claude Code CLI, not 
 ## Title
 
 ```
-[BUG] Claude Desktop 1.5354.0 — stdio MCP servers double-spawn from independent CCD/LAM coordinator registries
+[BUG] Claude Desktop 1.5354.0: stdio MCP servers double-spawn from independent CCD/LAM coordinator registries
 ```
 
 ## Form fields
@@ -22,25 +22,25 @@ The `anthropics/claude-code` bug template is built for the Claude Code CLI, not 
 
 ### What's Wrong?
 
-I maintain [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian) (~2,300 package downloads/day across the last 3 releases), which repackages the Windows Electron build for Linux. While reading the MCP spawn path in 1.5354.0, I found that stdio MCP servers configured in `claude_desktop_config.json` get spawned twice when both the chat panel and Code/Agent panel are active.
+I maintain [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian) (~2,300 package downloads/day across the last 3 releases), which repackages the Windows Electron build for Linux. I was reading the MCP spawn path in 1.5354.0 and found that stdio MCP servers configured in `claude_desktop_config.json` get spawned twice when both the chat panel and Code/Agent panel are active.
 
 The user-visible symptom is two `node` processes per MCP, both children of the Electron main PID. Killing one disconnects one panel and the other keeps working. They're independent client/server pairs with no failover between them.
 
-The original symptom report came from @communitytranslations against an earlier build (tracked in our repo as #526). I went back and read the bundle to confirm the cause and found something different from what we'd previously documented.
+The original symptom report came from @communitytranslations against an earlier build (tracked in our repo as #526). I went back and read the bundle to confirm the cause. What I found was different from what we'd previously documented.
 
 CCD wraps the spawn path in a per-key promise queue keyed by server name. It shuts down any prior entry in its global registry Map before respawning. That's correct dedup within CCD. But LAM (`LocalMcpServerManager`) has its own `this.connections` Map and its own `getOrCreateConnection` path. It never consults CCD's registry.
 
-CCD and LAM each maintain independent spawn lifecycle management. They each spawn their own copy of the same MCP server. The double-spawn is structural in the current architecture: each coordinator legitimately holds its own connection.
+CCD and LAM each maintain independent spawn lifecycle management. They each spawn their own copy of the same MCP server. The double-spawn is structural in the current architecture. Each coordinator legitimately holds its own connection.
 
-There's also a third coordinator class, `SshMcpServerManager`, that follows the same per-coordinator-registry pattern. It uses an SSH transport so it doesn't contribute to local-node double-spawn directly. Its existence suggests per-coordinator isolated state is a deliberate pattern, not a one-off.
+There's also a third coordinator class, `SshMcpServerManager`, that follows the same per-coordinator-registry pattern. It uses an SSH transport, so it doesn't contribute to local-node double-spawn directly. Its existence suggests per-coordinator isolated state is a deliberate pattern, not a one-off.
 
-Secondary bug worth flagging while you're in this code: the `child_process.spawn` wrapper does proper signal escalation (end stdin, wait 2s, SIGTERM, wait 2s, SIGKILL). The `utilityProcess.fork` wrapper doesn't. It sends `process.kill()` (default SIGTERM), waits 5s, then calls `kill()` again with the same default signal. No SIGKILL escalation. A built-in-node MCP server that ignores SIGTERM could leak as an orphaned utility process.
+Secondary bug worth flagging while you're in this code. The `child_process.spawn` wrapper does proper signal escalation (end stdin, wait 2s, SIGTERM, wait 2s, SIGKILL). The `utilityProcess.fork` wrapper doesn't. It sends `process.kill()` (default SIGTERM), waits 5s, then calls `kill()` again with the same default signal. No SIGKILL escalation. A built-in-node MCP server that ignores SIGTERM could leak as an orphaned utility process.
 
 ### What Should Happen?
 
 One process per stdio MCP server entry in `claude_desktop_config.json`, regardless of how many panels are open. Resource-side that means no more 2x memory and 2x stdin/stdout traffic per server. User-side that means `ps` shows one entry per declared server.
 
-The fix is architectural: CCD and LAM share a registry, or the local-spawn factory dedups at the transport layer, or LAM proxies through CCD when running in-process. Any of those would collapse the duplication.
+The fix is architectural. CCD and LAM share a registry, or the local-spawn factory dedups at the transport layer, or LAM proxies through CCD when running in-process. Any of those would collapse the duplication.
 
 ### Error Messages/Logs
 
