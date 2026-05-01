@@ -22,7 +22,7 @@ The `anthropics/claude-code` bug template is built for the Claude Code CLI, not 
 
 ### What's Wrong?
 
-I maintain [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian), which repackages the Windows Electron build for Linux. While reading the MCP spawn path in 1.5354.0, I found that stdio MCP servers configured in `claude_desktop_config.json` get spawned twice when both the chat panel and Code/Agent panel are active.
+I maintain [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian) (~2,300 package downloads/day across the last 3 releases), which repackages the Windows Electron build for Linux. While reading the MCP spawn path in 1.5354.0, I found that stdio MCP servers configured in `claude_desktop_config.json` get spawned twice when both the chat panel and Code/Agent panel are active.
 
 The user-visible symptom is two `node` processes per MCP, both children of the Electron main PID. Killing one disconnects one panel and the other keeps working. They're independent client/server pairs with no failover between them.
 
