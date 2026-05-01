@@ -11,15 +11,17 @@ First vertical slice — covers four tests on KDE-W:
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
-| [T01](../../docs/testing/cases/launch.md#t01--app-launch) | Main window opens within 10s; launcher log mentions X11/XWayland on Wayland sessions | L1 + L2 |
+| [T01](../../docs/testing/cases/launch.md#t01--app-launch) | An X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop — see CDP auth gate note below) |
 | [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid | L2 (DBus) |
 | [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop only — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`) |
-| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Renderer triggers `dialog.showOpenDialog` (shallow v1; portal mock is v2) | L1 (Electron-level intercept) |
+| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | *(skipped)* — pending v2 portal mock under `dbus-run-session` | — |
 
-These four exercise every distinct shape of TS code in the harness:
-`playwright-electron`, `dbus-next`, shell-out helpers (`xprop`), and
-Electron-main-process intercepts. Everything beyond them should be
-recombination.
+These four were *intended* to exercise every distinct shape of TS code in
+the harness — `playwright-electron`, `dbus-next`, shell-out helpers
+(`xprop`), and Electron-main-process intercepts. The CDP auth gate
+finding pushed `playwright-electron` and main-process-intercepts off the
+table for v1; T01 fell back to the same `xprop` shape as T04. The two
+genuinely live shapes today are `dbus-next` (T03) and `xprop` (T01, T04).
 
 ## Prerequisites
 
@@ -100,7 +102,7 @@ tools/test-harness/
 
 ## Known limitations (v1)
 
-- **`_electron.launch()` currently fails on this build.** First-run finding from KDE-W: Playwright spawns Electron with `--inspect=0 --remote-debugging-port=0`, the Node-inspector ws connects, Frame Fix reports "Patches built successfully", then the inspector ws disconnects (code 1006) before the renderer ever advertises its DevTools port. Playwright concludes the launch failed and kills the process. Standalone `electron --inspect=0 ... app.asar` (same flags, no Playwright) runs cleanly and shows "Starting app" + window creation, so the failure is specific to Playwright's launch flow under Electron 41 + Frame Fix. Open question: is this a Playwright/Electron 41 compatibility regression, or is something in `index.pre.js` reacting to Playwright's startup signal injection? The harness scaffolding (TS lib, runners, orchestrator) is otherwise sound — L2 tests (T03 tray, T04 window decorations) don't depend on Playwright owning the process and could run by spawning Electron via `child_process` and using `dbus-next` / `xprop` directly. Switching the launch path to `chromium.connectOverCDP()` against an externally-spawned Electron with a fixed `--remote-debugging-port` is the most likely workaround. See `electron.ts` comments.
+- **CDP auth gate blocks renderer-level testing.** The shipped `index.pre.js` has `uF(process.argv) && !qL() && process.exit(1)` — if `--remote-debugging-port` is on argv and a valid `CLAUDE_CDP_AUTH` token isn't in env, Electron exits with code 1. Both `_electron.launch()` and `chromium.connectOverCDP()` inject the flag, so both are blocked. Full writeup in [`docs/testing/automation.md`](../../docs/testing/automation.md#the-cdp-auth-gate). Three escape hatches there (token from upstream / app-asar.sh patch / dogtail). Until one lands, L1 tests are limited to external probes — T01 verifies "an X11 window appeared" (not "navigator.userAgent says X11"); deep renderer assertions wait.
 - **T04** uses `xprop` (no `xdotool` dependency — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`). Works on X11 native and KDE Wayland (XWayland), **not** on native-Wayland sessions where the app is running through Ozone-Wayland directly. Per Decision 6, project default is X11; native-Wayland window-state queries are deferred until those tests get added.
 - **T17** is shallow — it intercepts `dialog.showOpenDialog` at the Electron main process level. The integration question "does Claude make the right *portal* call?" is a v2 concern; portal-level mocking via `dbus-next` is sketched in [`docs/testing/automation.md`](../../docs/testing/automation.md) but requires displacing the running portal service or running under `dbus-run-session`.
 - **`render-matrix.sh`** isn't here yet. `sweep.sh` prints a summary; the `matrix.md` regen step from JUnit is the next addition.

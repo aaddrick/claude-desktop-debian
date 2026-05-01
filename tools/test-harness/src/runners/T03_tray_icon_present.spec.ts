@@ -14,14 +14,12 @@ test('T03 — Tray icon present', async ({}, testInfo) => {
 	const app = await launchClaude();
 
 	try {
-		await app.firstWindow({ timeout: 10_000 });
-		const pid = app.process().pid;
-		expect(pid, 'electron main process pid').toBeTruthy();
+		await app.waitForX11Window(15_000);
 
 		// Tray registration may lag the first window by a few hundred ms.
 		// Poll the SNI watcher until our pid shows up among registered items.
 		const ourItem = await retryUntil(
-			async () => findItemByPid(pid!),
+			async () => findItemByPid(app.pid),
 			{ timeout: 15_000, interval: 500 },
 		);
 

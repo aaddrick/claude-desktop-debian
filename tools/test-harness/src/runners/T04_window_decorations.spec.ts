@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { launchClaude } from '../lib/electron.js';
-import { findX11WindowByPid, getFrameExtents, getWindowTitle } from '../lib/wm.js';
-import { retryUntil } from '../lib/retry.js';
+import { getFrameExtents, getWindowTitle } from '../lib/wm.js';
 
 test('T04 — Window decorations draw', async ({}, testInfo) => {
 	testInfo.annotations.push({ type: 'severity', description: 'Smoke' });
@@ -16,17 +15,8 @@ test('T04 — Window decorations draw', async ({}, testInfo) => {
 	const app = await launchClaude();
 
 	try {
-		await app.firstWindow({ timeout: 10_000 });
-		const pid = app.process().pid;
-		expect(pid).toBeTruthy();
-
-		const wid = await retryUntil(
-			async () => findX11WindowByPid(pid!),
-			{ timeout: 10_000, interval: 500 },
-		);
-
+		const wid = await app.waitForX11Window(15_000);
 		expect(wid, 'X11 window for claude-desktop pid was found').toBeTruthy();
-		if (!wid) return;
 
 		await testInfo.attach('window-id', {
 			body: wid,

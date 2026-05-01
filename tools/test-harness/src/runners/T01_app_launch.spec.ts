@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { launchClaude } from '../lib/electron.js';
-import { readLauncherLog, captureSessionEnv } from '../lib/diagnostics.js';
-import { getEnv } from '../lib/env.js';
+import { captureSessionEnv } from '../lib/diagnostics.js';
+import { getWindowTitle } from '../lib/wm.js';
 
 test('T01 — App launch', async ({}, testInfo) => {
 	testInfo.annotations.push({ type: 'severity', description: 'Smoke' });
@@ -12,42 +12,27 @@ test('T01 — App launch', async ({}, testInfo) => {
 		contentType: 'application/json',
 	});
 
-	const app = await launchClaude({ timeout: 30_000 });
+	const app = await launchClaude();
 
 	try {
-		const window = await app.firstWindow({ timeout: 10_000 });
-		expect(window, 'first window appeared within 10s').toBeTruthy();
-
-		await window.waitForLoadState('domcontentloaded', { timeout: 10_000 });
-
-		const title = await window.title();
-		await testInfo.attach('window-title', {
-			body: title,
+		// Anti-debug gate (see lib/electron.ts) prevents CDP / Playwright
+		// renderer access. We verify launch via the X11 window appearing —
+		// which simultaneously confirms (a) Electron started, (b) it picked
+		// the X11 backend (Decision 6: --ozone-platform=x11 was honored),
+		// and (c) the WM accepted the window.
+		const wid = await app.waitForX11Window(15_000);
+		expect(wid, 'X11 window appeared for claude-desktop pid').toBeTruthy();
+		await testInfo.attach('window-id', {
+			body: wid,
 			contentType: 'text/plain',
 		});
 
-		const screenshot = await window.screenshot();
-		await testInfo.attach('main-window', {
-			body: screenshot,
-			contentType: 'image/png',
+		const title = await getWindowTitle(wid);
+		await testInfo.attach('window-title', {
+			body: title ?? '',
+			contentType: 'text/plain',
 		});
-
-		// Decision 6: project default is X11/XWayland on Wayland sessions.
-		// Verify the launcher log reflects the chosen backend.
-		const log = await readLauncherLog();
-		if (log) {
-			await testInfo.attach('launcher-log', {
-				body: log,
-				contentType: 'text/plain',
-			});
-			const env = getEnv();
-			if (env.isWayland) {
-				expect(
-					log,
-					'launcher log mentions X11/XWayland on Wayland session (Decision 6: X11 default)',
-				).toMatch(/x11|xwayland/i);
-			}
-		}
+		expect(title ?? '', 'window title contains "Claude"').toMatch(/claude/i);
 	} finally {
 		await app.close();
 	}

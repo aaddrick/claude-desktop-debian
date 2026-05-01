@@ -192,6 +192,36 @@ parallel bash test scripts; the test code reads as TS.
   (S19 is already the test-isolation primitive). No shared state
   between tests.
 
+## The CDP auth gate
+
+*Discovered during the first KDE-W run-through (commit `3ffd762` and follow-on).*
+
+The shipped `index.pre.js` contains an authenticated-CDP gate:
+
+```js
+uF(process.argv) && !qL() && process.exit(1);
+```
+
+Where:
+- `uF(argv)` matches `--remote-debugging-port` or `--remote-debugging-pipe` on argv
+- `qL()` validates a token in `CLAUDE_CDP_AUTH` (signed payload `${timestamp_ms}.${base64(userDataDir)}`, ed25519 against a hardcoded public key, 5-minute TTL) plus a matching `CLAUDE_USER_DATA_DIR` env var
+
+**If `--remote-debugging-port` is on argv and a valid token is not in env, the app exits with code 1 immediately after `frame-fix-wrapper` completes.** Both Playwright's `_electron.launch()` and `chromium.connectOverCDP()` inject `--remote-debugging-port=0`, so both trigger the gate. The signing key is held by upstream — we can't forge tokens locally.
+
+Implication for this harness: **CDP-driven L1 testing is blocked until one of the following lands**:
+
+1. **Upstream provides a signing token** scoped to test/CI use. Anthropic obviously has the key (they wrote the gate); the question is whether they'd issue dev/test tokens for a downstream packaging project. Worth asking — this is the cleanest answer if available.
+2. **Carry an `app-asar.sh` patch that neutralizes the gate.** The project already maintains a robust patch set against minified upstream code (frame fix, autostart shim, hybrid topbar). One more `sed` replacing `process.exit(1)` in that line with `void 0` (or removing the gate entirely) is well within the project's existing pattern. Tradeoff: the patch needs to track upstream changes (variable names like `uF` and `qL` are minified and may rename), and it weakens upstream's deliberately-shipped security posture inside the *test* build — fine if the patch is gated behind a build flag, less fine if it leaks into release builds.
+3. **Drive the renderer via accessibility (dogtail / AT-SPI).** Skips CDP entirely. The L3 escape-hatch already noted in Decision 1. More work, less reliable than CDP for arbitrary renderer assertions, but bypasses the gate cleanly.
+
+**What the v1 harness does today** (no CDP, no gate trigger): spawn Electron without any debug-port flags and probe externally — `xprop` for window state, `dbus-next` for tray and portal calls. T01 verifies "an X11 window appeared with our pid" rather than "navigator.userAgent says X11"; T03/T04 are external-probe tests already; T17 stays skipped pending the v2 portal mock under `dbus-run-session`. This works for L2 entirely and gives L1 a smoke-test signal (window-exists), but renderer-internal assertions (which test IDs are present, which buttons are clickable, what the URL is) are unavailable.
+
+This is genuine new information — the [Decisions](#decisions) table assumed Playwright would own L1. It can't, today. The split now is:
+
+- **L2 today** — fully working (T03 tray, T04 frame extents, and any future DBus / xprop / portal-mock test).
+- **L1 today** — limited to "process exists, X11 window appeared, window title matches" (T01).
+- **L1 deeper** — blocked on the gate. Reopen Decision 1 / Decision 5 once we know which of the three options above the project takes.
+
 ## Notable shifts since the existing roadmap was written
 
 These three changed the landscape in 2025 and the existing

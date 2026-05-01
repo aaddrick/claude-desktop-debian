@@ -10,7 +10,7 @@ Status legend: `✓` pass · `✗` fail · `🔧` mitigated · `?` untested · `
 
 | Test | KDE-W | KDE-X | GNOME | Ubu | Sway | i3 | Niri | Hypr-O | Hypr-N |
 |------|-------|-------|-------|-----|------|----|------|--------|--------|
-| [T01](./cases/launch.md#t01--app-launch) | ? | ? | ? | ? | ? | ? | ? | ? | ✓ |
+| [T01](./cases/launch.md#t01--app-launch) | ✓ | ? | ? | ? | ? | ? | ? | ? | ✓ |
 | [T02](./cases/launch.md#t02--doctor-health-check) | ? | ? | ? | ? | ? | ? | ? | ? | ? |
 | [T03](./cases/tray-and-window-chrome.md#t03--tray-icon-present) | ✓ | ? | ? | ? | ? | ? | ? | ? | ? |
 | [T04](./cases/tray-and-window-chrome.md#t04--window-decorations-draw) | ✓ | ? | ? | ? | ? | ? | ? | ? | ✓ |
