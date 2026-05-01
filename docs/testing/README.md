@@ -70,16 +70,24 @@ The minimum set that gates a release. Run on **KDE-W** (daily-driver) plus **Hyp
 
 For detailed status by ID, see [`matrix.md`](./matrix.md).
 
-## Automation roadmap
+## Automation status
 
-Today these tests are manual. The structure is laid out to support automation incrementally:
+Automation is partially landed. The harness lives at
+[`tools/test-harness/`](../../tools/test-harness/) and four tests are wired
+in (T01, T03, T04, T17). Three pass on KDE-W today; T17's framework is
+proven end-to-end and skips with rich diagnostics pending selector-tuning
+on its multi-step click chain. See
+[`automation.md`](./automation.md) for the architectural decisions and the
+SIGUSR1 / runtime-attach pattern that bypasses the app's CDP auth gate.
+
+The structure remains automation-friendly for new tests:
 
 1. **Stable test IDs.** `T01`-`T39` and `S01`-`S28` won't move. New tests append. Sequential, not semantic.
 2. **Standardized test bodies.** Every functional test has `Severity`, `Steps`, `Expected`, `Diagnostics on failure`, and `References` sections. The Steps and Diagnostics fields are scripted-runner-shaped.
-3. **Per-element UI checklists.** Each UI surface file lists interactive elements in a table — every row is a candidate Playwright / `xdotool` / DBus assertion.
-4. **Severity-driven sweeps.** The smoke set is the first automation target. When automation lands, individual tests sprout a `runner:` field pointing at a script in `tools/test-runners/`. Status flips from manual to automated per-test, not all-at-once.
+3. **Per-element UI checklists.** Each UI surface file lists interactive elements in a table — every row is a candidate `webContents.executeJavaScript` / `xprop` / DBus assertion.
+4. **Severity-driven sweeps.** Tests with a `runner:` field execute via [`tools/test-harness/orchestrator/sweep.sh`](../../tools/test-harness/orchestrator/sweep.sh); JUnit XML lands in `results/results-${ROW}-${DATE}/junit.xml`. Tests without a `runner:` continue to run manually.
 
-Until then, status updates land in [`matrix.md`](./matrix.md) by hand after each manual sweep.
+For tests that don't have a runner yet, status updates land in [`matrix.md`](./matrix.md) by hand after each manual sweep. For tests that do, the automation invocation is the source of truth — see [`runbook.md`](./runbook.md#automated-runs).
 
 ## Conventions
 

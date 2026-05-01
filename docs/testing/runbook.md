@@ -1,6 +1,8 @@
 # Testing Runbook
 
-How to run a test sweep, capture diagnostics, file failures, and update [`matrix.md`](./matrix.md). For the test specs themselves, see [`cases/`](./cases/) and [`ui/`](./ui/).
+*Last updated: 2026-04-30*
+
+How to run a test sweep, capture diagnostics, file failures, and update [`matrix.md`](./matrix.md). For the test specs themselves, see [`cases/`](./cases/) and [`ui/`](./ui/). For the automation harness, see [`automation.md`](./automation.md) and [`tools/test-harness/`](../../tools/test-harness/).
 
 ## When to sweep
 
@@ -210,10 +212,61 @@ When in doubt, file as **Should**. Smoke and Critical mean release gates — be 
 
 For UI checklist additions, append rows to the relevant `ui/<surface>.md` table. UI rows don't need `T##` / `S##` IDs — the surface file + element name is the identity.
 
-## Eventual automation
+## Automated runs
 
-The structure here is designed to let scripted runners coexist with manual tests:
+The harness at [`tools/test-harness/`](../../tools/test-harness/) drives any
+test with a `runner:` field. As of 2026-04-30, that's T01, T03, T04, T17.
 
-- A test marked `automated: true` (frontmatter, not yet introduced) drops out of the manual sweep checklist; CI status is the source of truth for that test.
-- Until then, `runner:` fields in case files are aspirational; status flows through this runbook.
-- The smoke set is the first automation target — see the roadmap in [`README.md`](./README.md).
+### Invoking a sweep
+
+```sh
+cd tools/test-harness
+npm install                       # first time only
+ROW=KDE-W ./orchestrator/sweep.sh
+```
+
+Output:
+
+- `results/results-${ROW}-${DATE}/junit.xml` — the JUnit summary (one
+  testsuite per `.spec.ts` file, with the test's annotations preserved as
+  metadata).
+- `results/results-${ROW}-${DATE}/test-output/<test>/` — per-test
+  attachments (screenshots, launcher log, session env, frame extents,
+  click-attempt diagnostics, etc.). Captured on every run, not just on
+  failure (Decision 7).
+- `results/results-${ROW}-${DATE}/html/` — Playwright's HTML report.
+- `results/results-${ROW}-${DATE}.tar.zst` — bundled artifact for
+  off-machine inspection (when `zstd` is available).
+
+`sweep.sh` prints a summary line at the end:
+
+```
+summary: tests=4 failures=0 errors=0 skipped=1
+```
+
+### Translating results to the matrix
+
+JUnit `<failure>` → `✗`, `<error>` (harness broke) → `?`, `<skipped>` →
+`-` (when intentionally not applicable) or stays `?` (when the test
+couldn't reach an assertion — common case for renderer tests that need
+sign-in or selectors that haven't been tuned). For now this mapping is
+manual: open `junit.xml`, update `matrix.md` cells, commit. A
+`render-matrix.sh` to do this automatically is on the to-do list.
+
+### Coexistence with manual tests
+
+Tests without a `runner:` continue to flow through the manual loop above.
+The matrix doesn't distinguish automated from manual cells — a `✓` is a
+`✓` regardless of how it was produced. The `runner:` field on each case
+makes the source-of-truth explicit per-test.
+
+### Path through the CDP auth gate (why this works)
+
+The shipped Electron exits if `--remote-debugging-port` is on argv
+without a valid `CLAUDE_CDP_AUTH` token. Both `_electron.launch()` and
+`chromium.connectOverCDP()` inject that flag. The harness sidesteps the
+gate by spawning Electron clean and attaching the Node inspector via
+`SIGUSR1` at runtime — same code path as `Developer → Enable Main
+Process Debugger`. From there, main-process JS evaluation reaches the
+renderer through `webContents.executeJavaScript()`. Full writeup:
+[`automation.md`](./automation.md#the-cdp-auth-gate-and-the-runtime-attach-workaround-that-beats-it).
