@@ -763,21 +763,41 @@ function loadBwrapMountsConfig(configPath, logFn) {
         return empty;
     }
 
-    function filterPaths(arr, readWrite) {
+    function filterMounts(arr, readWrite) {
         if (!Array.isArray(arr)) return [];
         return arr.filter(p => {
-            if (typeof p !== 'string') return false;
-            const result = validateMountPath(p, { readWrite });
-            if (!result.valid) {
-                warn(`BwrapConfig: rejected path "${p}": ${result.reason}`);
+            // String form: "/path" → bind /path /path
+            if (typeof p === 'string') {
+                const r = validateMountPath(p, { readWrite });
+                if (!r.valid) {
+                    warn(`BwrapConfig: rejected mount "${p}": ${r.reason}`);
+                }
+                return r.valid;
             }
-            return result.valid;
+            // Object form: { src, dst } → bind src dst (different paths)
+            if (p && typeof p === 'object'
+                && typeof p.src === 'string' && typeof p.dst === 'string') {
+                const srcRes = validateMountPath(p.src, { readWrite });
+                if (!srcRes.valid) {
+                    warn(`BwrapConfig: rejected mount src "${p.src}": ${srcRes.reason}`);
+                    return false;
+                }
+                // dst is the in-sandbox path — skip the $HOME constraint
+                // (the whole point of {src,dst} is to map outside it).
+                const dstRes = validateMountPath(p.dst, { readWrite: false });
+                if (!dstRes.valid) {
+                    warn(`BwrapConfig: rejected mount dst "${p.dst}": ${dstRes.reason}`);
+                    return false;
+                }
+                return true;
+            }
+            return false;
         });
     }
 
     return {
-        additionalROBinds: filterPaths(mounts.additionalROBinds, false),
-        additionalBinds: filterPaths(mounts.additionalBinds, true),
+        additionalROBinds: filterMounts(mounts.additionalROBinds, false),
+        additionalBinds: filterMounts(mounts.additionalBinds, true),
         disabledDefaultBinds: Array.isArray(mounts.disabledDefaultBinds)
             ? mounts.disabledDefaultBinds
                 .filter(p => {
@@ -844,11 +864,19 @@ function mergeBwrapArgs(defaultArgs, config) {
         }
     }
 
-    for (const p of config.additionalROBinds) {
-        result.push('--ro-bind', p, p);
+    for (const m of config.additionalROBinds) {
+        if (typeof m === 'string') {
+            result.push('--ro-bind', m, m);
+        } else {
+            result.push('--ro-bind', m.src, m.dst);
+        }
     }
-    for (const p of config.additionalBinds) {
-        result.push('--bind', p, p);
+    for (const m of config.additionalBinds) {
+        if (typeof m === 'string') {
+            result.push('--bind', m, m);
+        } else {
+            result.push('--bind', m.src, m.dst);
+        }
     }
 
     return result;

@@ -610,6 +610,279 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 }
 
 # =============================================================================
+# {src, dst} mount form — distinct host/sandbox paths
+# =============================================================================
+
+@test "loadBwrapMountsConfig: accepts RO {src,dst} with src outside HOME" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [{ src: '/opt/tools', dst: '/sandbox/tools' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds,
+    [{ src: '/opt/tools', dst: '/sandbox/tools' }],
+    'object form preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: accepts RW {src,dst} with src under HOME and dst outside HOME" {
+	# This is the /tmp persistence use case: src under \$HOME (passes RW
+	# constraint) but dst can be anywhere (e.g. /tmp inside the sandbox).
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalBinds: [{ src: home + '/persistent-tmp', dst: '/tmp' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalBinds,
+    [{ src: home + '/persistent-tmp', dst: '/tmp' }],
+    'persistent /tmp mapping accepted');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: rejects RW {src,dst} with src outside HOME" {
+	run node -e "${NODE_PREAMBLE}
+const warnings = [];
+function logWarn() { warnings.push(Array.from(arguments).join(' ')); }
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalBinds: [{ src: '/opt/anywhere', dst: '/sandbox/x' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath, logWarn);
+assertDeepEqual(result.additionalBinds, [], 'rejected');
+assertEqual(warnings.length, 1, 'one warning');
+assert(warnings[0].includes('/opt/anywhere'), 'warns about src');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: rejects {src,dst} with forbidden src" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [{ src: '/proc', dst: '/sandbox/p' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [], 'forbidden src rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: rejects {src,dst} with forbidden dst" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [{ src: '/opt/tools', dst: '/proc' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [], 'forbidden dst rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: rejects {src,dst} with dst under forbidden path" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [{ src: '/opt/tools', dst: '/proc/self' }]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [], 'dst under /proc rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: rejects {src,dst} with non-absolute paths" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [
+                { src: 'rel/src', dst: '/abs/dst' },
+                { src: '/abs/src', dst: 'rel/dst' }
+            ]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [], 'both rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: rejects malformed mount objects" {
+	run node -e "${NODE_PREAMBLE}
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [
+                { src: '/opt/a' },
+                { dst: '/sandbox/b' },
+                { src: 42, dst: '/sandbox/c' },
+                {},
+                null
+            ]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [], 'all malformed rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "loadBwrapMountsConfig: accepts mix of string and {src,dst} forms" {
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalROBinds: [
+                '/opt/tools',
+                { src: '/nix/store', dst: '/sandbox/nix' }
+            ],
+            additionalBinds: [
+                home + '/data',
+                { src: home + '/cache', dst: '/tmp' }
+            ]
+        }
+    }
+}));
+const result = loadBwrapMountsConfig(configPath);
+assertDeepEqual(result.additionalROBinds, [
+    '/opt/tools',
+    { src: '/nix/store', dst: '/sandbox/nix' }
+], 'ro mix preserved');
+assertDeepEqual(result.additionalBinds, [
+    home + '/data',
+    { src: home + '/cache', dst: '/tmp' }
+], 'rw mix preserved');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: emits --ro-bind src dst for object form" {
+	run node -e "${NODE_PREAMBLE}
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [{ src: '/opt/tools', dst: '/sandbox/tools' }],
+    additionalBinds: [],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--ro-bind', '/opt/tools', '/sandbox/tools'
+], 'ro object form');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: emits --bind src dst for object form" {
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [],
+    additionalBinds: [{ src: home + '/persistent', dst: '/tmp' }],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--bind', home + '/persistent', '/tmp'
+], 'rw object form');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: mixes string and object forms in same config" {
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [
+        '/opt/tools',
+        { src: '/nix/store', dst: '/sandbox/nix' }
+    ],
+    additionalBinds: [
+        home + '/data',
+        { src: home + '/cache', dst: '/tmp' }
+    ],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--ro-bind', '/opt/tools', '/opt/tools',
+    '--ro-bind', '/nix/store', '/sandbox/nix',
+    '--bind', home + '/data', home + '/data',
+    '--bind', home + '/cache', '/tmp'
+], 'mixed forms');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "buildBwrapArgsWithConfig: persistent /tmp via {src,dst} and disabled default" {
+	# The full /tmp persistence recipe: disable the default --tmpfs /tmp,
+	# then bind a host path under \$HOME onto /tmp inside the sandbox.
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const configPath = '${TEST_TMP}/config.json';
+fs.writeFileSync(configPath, JSON.stringify({
+    preferences: {
+        coworkBwrapMounts: {
+            additionalBinds: [{ src: home + '/claude-tmp', dst: '/tmp' }],
+            disabledDefaultBinds: ['/tmp']
+        }
+    }
+}));
+const config = loadBwrapMountsConfig(configPath);
+const defaults = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
+    '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--tmpfs', '/run'];
+const result = mergeBwrapArgs(defaults, config);
+
+assert(!result.includes('/tmp')
+    || result.indexOf('--tmpfs') !== result.lastIndexOf('--tmpfs')
+    || result[result.indexOf('--tmpfs') + 1] !== '/tmp',
+    'default --tmpfs /tmp must be removed');
+
+const bindIdx = result.indexOf('--bind');
+assertEqual(result[bindIdx + 1], home + '/claude-tmp', 'bind src');
+assertEqual(result[bindIdx + 2], '/tmp', 'bind dst');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+# =============================================================================
 # --doctor integration (bash)
 # =============================================================================
 
@@ -658,6 +931,81 @@ assert(warnings[1].includes('/outside/home'), 'warns about rw outside home');
 	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
 	[[ "$output" == *"WARN"* ]]
 	[[ "$output" == *"/usr"* ]]
+}
+
+@test "doctor: renders {src,dst} mounts as 'src -> dst'" {
+	mkdir -p "${TEST_TMP}/.config/Claude"
+	local home_tmp="${TEST_TMP}"
+	local config_file="${TEST_TMP}/.config/Claude/claude_desktop_linux_config.json"
+	cat > "$config_file" <<-ENDJSON
+	{
+	    "preferences": {
+	        "coworkBwrapMounts": {
+	            "additionalROBinds": [
+	                { "src": "/opt/tools", "dst": "/sandbox/tools" }
+	            ],
+	            "additionalBinds": [
+	                { "src": "${home_tmp}/persistent-tmp", "dst": "/tmp" }
+	            ]
+	        }
+	    }
+	}
+	ENDJSON
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
+	[[ "$output" == *"/opt/tools -> /sandbox/tools"* ]]
+	[[ "$output" == *"persistent-tmp -> /tmp"* ]]
+}
+
+@test "doctor: warns when {src,dst} dst shadows a default RO mount" {
+	mkdir -p "${TEST_TMP}/.config/Claude"
+	local home_tmp="${TEST_TMP}"
+	local config_file="${TEST_TMP}/.config/Claude/claude_desktop_linux_config.json"
+	cat > "$config_file" <<-ENDJSON
+	{
+	    "preferences": {
+	        "coworkBwrapMounts": {
+	            "additionalBinds": [
+	                { "src": "${home_tmp}/fake-etc", "dst": "/etc/foo" }
+	            ]
+	        }
+	    }
+	}
+	ENDJSON
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
+	[[ "$output" == *"WARN"* ]]
+	[[ "$output" == *"/etc/foo"* ]]
+	[[ "$output" == *"shadows a default sandbox mount"* ]]
+}
+
+@test "doctor: does not warn when {src,dst} dst is safe (e.g. /tmp, /sandbox/...)" {
+	mkdir -p "${TEST_TMP}/.config/Claude"
+	local home_tmp="${TEST_TMP}"
+	local config_file="${TEST_TMP}/.config/Claude/claude_desktop_linux_config.json"
+	cat > "$config_file" <<-ENDJSON
+	{
+	    "preferences": {
+	        "coworkBwrapMounts": {
+	            "additionalBinds": [
+	                { "src": "${home_tmp}/cache", "dst": "/tmp" }
+	            ],
+	            "additionalROBinds": [
+	                { "src": "/opt/tools", "dst": "/sandbox/tools" }
+	            ]
+	        }
+	    }
+	}
+	ENDJSON
+
+	# shellcheck source=scripts/launcher-common.sh
+	source "scripts/launcher-common.sh"
+	HOME="${TEST_TMP}" run _doctor_check_bwrap_mounts
+	[[ "$output" != *"shadows a default sandbox mount"* ]]
 }
 
 @test "doctor: no output when no custom mounts configured" {

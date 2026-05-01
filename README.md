@@ -209,7 +209,9 @@ Special thanks to:
   - Detailed analysis of the CI release pipeline failure caused by runner kills during compare-releases
   - Diagnosing the session-start hook sudo blocking issue with three solution approaches
 - **[chukfinley](https://github.com/chukfinley)** for experimental Cowork mode support on Linux
-- **[CyPack](https://github.com/CyPack)** for orphaned cowork daemon cleanup on startup
+- **[CyPack](https://github.com/CyPack)**
+  - Orphaned cowork daemon cleanup on startup
+  - `COWORK_VM_BACKEND` documentation, Cowork troubleshooting sections, and unknown-value warning in `--doctor`
 - **[IliyaBrook](https://github.com/IliyaBrook)**
   - Fixing the platform patch for Claude Desktop >= 1.1.3541 arm64 refactor
   - Fixing the duplicate tray icon on OS theme change with an in-place `setImage`/`setContextMenu` fast-path that avoids the KDE Plasma SNI re-registration race
@@ -230,6 +232,7 @@ Special thanks to:
   - Fixing the KVM startup blocker
   - Fixing RPC response id echoing for persistent connections
   - Configurable bwrap mount points via a dedicated Linux config file
+  - `{src, dst}` mount form in `coworkBwrapMounts` for distinct host/sandbox paths (e.g. persistent `/tmp` across Bash tool calls)
 - **[joekale-pp](https://github.com/joekale-pp)** for adding `--doctor` support to the RPM launcher
 - **[ecrevisseMiroir](https://github.com/ecrevisseMiroir)** for the bwrap backend sandbox isolation with tmpfs-based minimal root
 - **[arauhala](https://github.com/arauhala)** for detailed root cause analysis of the NixOS `isPackaged` regression
