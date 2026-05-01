@@ -118,7 +118,7 @@ if (vmClientLogMatch) {
     const assignRe = new RegExp(
         '(?<!\\|\\|process\\.platform==="linux"\\)?)' +
         win32Var.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        '(\\s*\\?\\s*\\(?\\s*\\w+\\s*=\\s*\\{\\s*vm\\s*:\\s*\\w+\\s*\\}\\s*\\)?)'
+        '(\\s*\\?\\s*\\(?\\s*[\\w$]+\\s*=\\s*\\{\\s*vm\\s*:\\s*[\\w$]+\\s*\\}\\s*\\)?)'
     );
     if (assignRe.test(code)) {
         code = code.replace(assignRe,
@@ -261,7 +261,7 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
 // silent. Falls back to "ignore" if the log dir can't be opened.
 // ============================================================
 const serviceErrorStr = 'VM service not running. The service failed to start.';
-const serviceErrorIdx = code.indexOf(serviceErrorStr);
+const serviceErrorIdx = code.lastIndexOf(serviceErrorStr);
 if (serviceErrorIdx !== -1) {
     // Step 1: Find the ENOENT check and expand it to include ECONNREFUSED
     // Pattern: VAR.code==="ENOENT"
@@ -293,11 +293,11 @@ if (serviceErrorIdx !== -1) {
 
     // Step 2: Inject auto-launch before the retry delay
     // Re-find serviceErrorStr since indices shifted after step 1
-    const newServiceErrorIdx = code.indexOf(serviceErrorStr);
+    const newServiceErrorIdx = code.lastIndexOf(serviceErrorStr);
     const searchEnd = Math.min(code.length, newServiceErrorIdx + 300);
     const searchRegion = code.substring(newServiceErrorIdx, searchEnd);
     const retryMatch = searchRegion.match(
-        /await new Promise\((\w+)=>\s*setTimeout\(\1,\s*(\w+)\)\)/
+        /await new Promise\(([\w$]+)=>\s*setTimeout\(\1,\s*([\w$]+)\)\)/
     );
     if (retryMatch) {
         const retryStr = retryMatch[0];
