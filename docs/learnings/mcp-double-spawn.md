@@ -37,46 +37,67 @@ external services with single-connection contracts, etc.
 
 ## Root Cause (Upstream)
 
-Two parallel session managers live inside Electron main, each
-holding an independent Claude Agent SDK `query`:
+Multiple session managers live inside Electron main, each
+holding its own MCP coordinator state with its own registry. The
+two that spawn stdio MCPs from `claude_desktop_config.json` and
+trigger this bug:
 
 | Manager class            | IPC namespace                            | Coordinator     | Logs prefix |
 |--------------------------|------------------------------------------|-----------------|-------------|
 | `LocalSessions`          | `claude.web_$_LocalSessions_$_*`         | `n2t("ccd")`    | `[CCD]`     |
 | `LocalAgentModeSessions` | `claude.web_$_LocalAgentModeSessions_$_*`| `n2t("cowork")` | `[LAM]`     |
 
+A third coordinator class — `SshMcpServerManager` — follows the
+same per-coordinator-registry pattern but uses an SSH transport
+and doesn't contribute to the local-node double-spawn. Its
+existence does say something about the design intent: per-
+coordinator isolated state appears to be a deliberate
+architectural pattern, not a one-off oversight.
+
 The logs prefixes are what to grep `~/.config/Claude/logs/` for to
 confirm a session is hitting both coordinators (and therefore this
 bug specifically).
 
-Each `query` holds its own SDK transport. The transport's
-`spawnLocalProcess` (`Du.spawn`) launches stdio MCPs **without
-consulting the global registry** that *would* dedupe them
-(`hZ` map, accessed via `oUt(serverName)` /
-`launchMcpServer`). That registry is only used for the
-"internal" cowork in-process MessageChannelMain path.
+Each coordinator dedups **within its own scope**: CCD's launch
+function serializes per server name through a promise queue and
+shuts down any prior entry before respawn; LAM's
+`getOrCreateConnection` reuses connected entries from its own
+`connections` Map. The double-spawn is strictly **cross-
+coordinator** — one process per coordinator that has the server
+in its config.
+
+In current versions (verified against `1.5354.0`) both
+coordinators route their transport creation through a shared
+Claude Desktop-side factory, but the factory itself doesn't
+dedupe and the per-coordinator registries above it aren't
+unified.
 
 Net result: 2 coordinators × N configured MCPs = 2N processes.
 
-Symbol names (`n2t`, `hZ`, `oUt`, `LocalSessions`,
-`LocalAgentModeSessions`) are minified and **will rename across
-upstream releases**.
+### Symbol drift
+
+Minified symbols rename across upstream releases. Issue
+[#546](https://github.com/aaddrick/claude-desktop-debian/issues/546)
+maintains the current symbol mappings (verified against
+`1.5354.0`) plus extraction regexes that work against both
+minified and beautified bundles.
 
 ## Status
 
-**Upstream Claude Desktop bug. Not patchable in this repo.** A
-fix would require either:
+**Upstream Claude Desktop bug. Not patchable in this repo.** The
+proximate cause is in Claude Desktop's session manager wiring. A
+real fix needs either:
 
-- Routing the SDK stdio transport through `oUt`/`hZ` (the
-  existing serialized-per-name registry), or
-- Sharing one MCP-server registry between the `ccd` and
-  `cowork` coordinators.
+- LAM proxying its MCP traffic through CCD's existing connection
+  (so only one coordinator owns the spawn), or
+- A multiplexing wrapper transport that lets one spawned stdio
+  child serve multiple SDK clients via demuxing.
 
-Both live inside the closed-source SDK transport / session
-manager wiring. Regex-matching the minified symbols from
-`scripts/patches/` would be fragile against release-to-release
-renames and exceeds this repo's "minimal Linux-compat patches
-only" charter.
+Stdio MCP is 1:1 at the protocol layer — one stdin/stdout pair,
+one transport, one SDK client. Sharing one process across
+coordinators requires real engineering, not a sed patch on
+minified code, and exceeds this repo's "minimal Linux-compat
+patches only" charter.
 
 ## What's Already Verified Clean
 
@@ -118,13 +139,15 @@ The reporter's `baro-voyager` MCP shipped both in commit
 
 - **Primary:** in-app feedback (Help → Send Feedback) or
   `support@anthropic.com`. The duplication happens in
-  closed-source Desktop main.
-- **Secondary:** an SDK-transport-flavored issue on
+  closed-source Desktop main, in the per-coordinator registry
+  wiring.
+- **Secondary:** an issue on
   [`anthropics/claude-agent-sdk-typescript`](https://github.com/anthropics/claude-agent-sdk-typescript)
-  is defensible — the spawn path goes through the **Claude Agent
-  SDK's** `query` transport (`spawnLocalProcess` / `Du.spawn`),
-  which is shared surface area. Reference the missing `hZ`
-  consultation explicitly.
+  is defensible only if it advocates for a shared-transport /
+  multiplex primitive that would make this kind of bug
+  structurally harder. The SDK's spawn implementation is doing
+  what it's told — the bug is one layer up, in Claude Desktop
+  calling spawn from two separate coordinators.
 
 The embedded Claude Code CLI subprocess inside Claude Desktop is
 **not** the cause — it receives `--mcp-config` only when the
