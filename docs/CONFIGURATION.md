@@ -15,6 +15,7 @@ Model Context Protocol settings are stored in:
 |----------|---------|-------------|
 | `CLAUDE_USE_WAYLAND` | unset | Set to `1` to use native Wayland instead of XWayland. Note: Global hotkeys won't work in native Wayland mode. |
 | `CLAUDE_MENU_BAR` | unset (`auto`) | Controls menu bar behavior: `auto` (hidden, Alt toggles), `visible` / `1` (always shown), `hidden` / `0` (always hidden, Alt disabled). See [Menu Bar](#menu-bar) below. |
+| `COWORK_VM_BACKEND` | unset (auto-detect) | Force a specific Cowork isolation backend: `kvm` (full VM), `bwrap` (bubblewrap namespace sandbox), or `host` (no isolation). See [Cowork Backend](#cowork-backend) below. |
 
 ### Wayland Support
 
@@ -47,6 +48,42 @@ CLAUDE_MENU_BAR=visible claude-desktop
 # Or add to your environment permanently
 export CLAUDE_MENU_BAR=visible
 ```
+
+## Cowork Backend
+
+Cowork mode auto-detects the best available isolation backend:
+
+| Priority | Backend | Isolation | Detection |
+|----------|---------|-----------|-----------|
+| 1 | bubblewrap | Namespace sandbox | `bwrap` installed and functional |
+| 2 | KVM | Full QEMU/KVM VM | `/dev/kvm` (r/w) + `qemu-system-x86_64` + `/dev/vhost-vsock` |
+| 3 | host | None (direct execution) | Always available |
+
+To override auto-detection:
+
+```bash
+# Force bubblewrap (recommended if KVM times out)
+COWORK_VM_BACKEND=bwrap claude-desktop
+
+# Force host mode (no isolation)
+COWORK_VM_BACKEND=host claude-desktop
+
+# Make permanent via desktop entry override
+mkdir -p ~/.local/share/applications/
+cat > ~/.local/share/applications/claude-desktop.desktop << 'EOF'
+[Desktop Entry]
+Name=Claude
+Exec=env COWORK_VM_BACKEND=bwrap /usr/bin/claude-desktop %u
+Icon=claude-desktop
+Type=Application
+Terminal=false
+Categories=Office;Utility;
+MimeType=x-scheme-handler/claude;
+StartupWMClass=Claude
+EOF
+```
+
+Run `claude-desktop --doctor` to see which backend is selected and which dependencies are available.
 
 ## Cowork Sandbox Mounts
 

@@ -134,6 +134,49 @@ Credit: this workaround was contributed by
 [@hfyeh](https://github.com/hfyeh) in
 [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
 
+### Cowork: "VM connection timeout after 60 seconds"
+
+If Cowork fails with a VM timeout, the KVM backend is selected but the guest VM cannot connect back to the host via vsock within the timeout window. Common causes:
+
+1. **First-boot initialization** — the guest VM may take longer than 60 seconds on first launch
+2. **vsock driver issues** — the host may be missing the `vhost_vsock` module (`sudo modprobe vhost_vsock`), or the guest initrd may lack `vmw_vsock_virtio_transport`
+
+**Fix:** Force the bubblewrap backend, which provides namespace-level isolation without a VM:
+
+```bash
+COWORK_VM_BACKEND=bwrap claude-desktop
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md#cowork-backend) for how to make this permanent.
+
+### Cowork: virtiofsd not found (Fedora/RHEL)
+
+On Fedora and RHEL, `virtiofsd` installs to `/usr/libexec/virtiofsd` which is
+outside `$PATH`. The `--doctor` check detects it there automatically and will
+show `[PASS]`, but the KVM backend spawns `virtiofsd` by name at runtime and
+resolves it through `$PATH` only.
+
+**Fix:** Create a symlink so the KVM backend can find it at runtime:
+
+```bash
+sudo ln -s /usr/libexec/virtiofsd /usr/local/bin/virtiofsd
+```
+
+On Debian/Ubuntu, the same issue can occur with `/usr/lib/qemu/virtiofsd`.
+
+### Cowork: cross-device link error on Fedora tmpfs /tmp
+
+On Fedora, `/tmp` is a tmpfs by default. VM bundle downloads may fail with `EXDEV: cross-device link not permitted` when moving files from `/tmp` to `~/.config/Claude/`.
+
+**Fix:** Set `TMPDIR` to a directory on the same filesystem:
+
+```bash
+mkdir -p ~/.config/Claude/tmp
+TMPDIR=~/.config/Claude/tmp claude-desktop
+```
+
+Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` file.
+
 ### Authentication Errors (401)
 
 If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).

@@ -93,6 +93,16 @@ _fail() {
 _warn() { echo -e "${_yellow}[WARN]${_reset} $*"; }
 _info() { echo -e "       $*"; }
 
+# Warn about an unrecognized COWORK_VM_BACKEND value. The daemon
+# (cowork-vm-service.js) ignores invalid values and falls through to
+# auto-detect — see #442 for the daemon-side wart. Called from both
+# COWORK_VM_BACKEND case statements below so the warning fires once
+# at the severity-gating site and once at the user-facing summary.
+_warn_unknown_backend() {
+	_warn "Unknown COWORK_VM_BACKEND: '${COWORK_VM_BACKEND}'"
+	_info 'Valid values: kvm, bwrap, host'
+}
+
 # Locate the virtiofsd binary. Distros install it at different
 # off-PATH locations:
 #   - Debian/Ubuntu: /usr/libexec/virtiofsd (qemu-system-common)
@@ -566,6 +576,14 @@ print(len(servers))
 	local _bwrap_active=true
 	case "${COWORK_VM_BACKEND,,}" in
 		kvm|host) _bwrap_active=false ;;
+		''|bwrap) ;;
+		*)
+			# Unknown values: warn but leave _bwrap_active=true.
+			# The daemon falls through to auto-detect, which
+			# prefers bwrap — keep severity semantics aligned
+			# with that runtime behavior. See #442.
+			_warn_unknown_backend
+			;;
 	esac
 
 	# Bubblewrap (default backend)
@@ -718,6 +736,10 @@ print(len(servers))
 			kvm)  cowork_backend='KVM (full VM isolation, via override)' ;;
 			bwrap) cowork_backend='bubblewrap (namespace sandbox, via override)' ;;
 			host) cowork_backend='host-direct (no isolation, via override)' ;;
+			*)
+				_warn_unknown_backend
+				cowork_backend="auto-detect (invalid override '${COWORK_VM_BACKEND}' — see warning above)"
+				;;
 		esac
 	elif command -v bwrap &>/dev/null; then
 		# bwrap is installed: if the probe succeeds, use it;
