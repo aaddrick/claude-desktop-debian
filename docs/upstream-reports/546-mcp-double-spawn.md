@@ -152,8 +152,9 @@ When you're ready to file:
 1. Open https://github.com/anthropics/claude-code/issues/new?template=bug_report.yml
 2. Paste each section above into the matching form field
 3. Submit
-4. Open Claude Desktop on Linux, run `/bug`, paste a one-liner with the resulting GitHub issue URL so the report ties to build telemetry
-5. Drop the GitHub issue URL as a comment on [#546](https://github.com/aaddrick/claude-desktop-debian/issues/546) so the trail is bidirectional
+4. Drop the GitHub issue URL as a comment on [#546](https://github.com/aaddrick/claude-desktop-debian/issues/546) so the trail is bidirectional
+
+Note: there is no in-app engineering bug-report path in Claude Desktop. `/bug` and `/feedback` are inert. The Help menu has "Get Support" (routes to the support chat, wrong queue for engineering) and "Troubleshooting" (self-diagnostic — useful for attaching `Copy Installation ID` or `Show Logs in File Manager` output to a GitHub issue, but not a reporting step on its own).
 
 ## Voice and authorship
 
