@@ -192,9 +192,10 @@ parallel bash test scripts; the test code reads as TS.
   (S19 is already the test-isolation primitive). No shared state
   between tests.
 
-## The CDP auth gate
+## The CDP auth gate (and the runtime-attach workaround that beats it)
 
-*Discovered during the first KDE-W run-through (commit `3ffd762` and follow-on).*
+*Discovered during the first KDE-W run-through; resolved by routing
+through the in-app debugger menu's code path.*
 
 The shipped `index.pre.js` contains an authenticated-CDP gate:
 
@@ -202,25 +203,69 @@ The shipped `index.pre.js` contains an authenticated-CDP gate:
 uF(process.argv) && !qL() && process.exit(1);
 ```
 
-Where:
-- `uF(argv)` matches `--remote-debugging-port` or `--remote-debugging-pipe` on argv
-- `qL()` validates a token in `CLAUDE_CDP_AUTH` (signed payload `${timestamp_ms}.${base64(userDataDir)}`, ed25519 against a hardcoded public key, 5-minute TTL) plus a matching `CLAUDE_USER_DATA_DIR` env var
+`uF(argv)` matches **`--remote-debugging-port`** or
+**`--remote-debugging-pipe`** on argv. `qL()` validates an ed25519-signed
+token in `CLAUDE_CDP_AUTH` (signed payload
+`${timestamp_ms}.${base64(userDataDir)}`, 5-minute TTL) against a hardcoded
+public key. If the gate flag is on argv and a valid token isn't in env,
+the app exits with code 1 right after `frame-fix-wrapper` completes. Both
+Playwright's `_electron.launch()` and `chromium.connectOverCDP()` inject
+`--remote-debugging-port=0` and trigger the gate. The signing key is held
+upstream; we can't forge tokens.
 
-**If `--remote-debugging-port` is on argv and a valid token is not in env, the app exits with code 1 immediately after `frame-fix-wrapper` completes.** Both Playwright's `_electron.launch()` and `chromium.connectOverCDP()` inject `--remote-debugging-port=0`, so both trigger the gate. The signing key is held by upstream — we can't forge tokens locally.
+**Crucially, the gate doesn't check `--inspect` or runtime SIGUSR1.** Those
+trigger the **Node inspector**, not the Chrome remote-debugging port —
+different surface. Notably, the in-app `Developer → Enable Main Process
+Debugger` menu item *also* opens the Node inspector at runtime; that
+menu's existence is the hint that this path is tolerated by upstream.
 
-Implication for this harness: **CDP-driven L1 testing is blocked until one of the following lands**:
+The harness uses this:
 
-1. **Upstream provides a signing token** scoped to test/CI use. Anthropic obviously has the key (they wrote the gate); the question is whether they'd issue dev/test tokens for a downstream packaging project. Worth asking — this is the cleanest answer if available.
-2. **Carry an `app-asar.sh` patch that neutralizes the gate.** The project already maintains a robust patch set against minified upstream code (frame fix, autostart shim, hybrid topbar). One more `sed` replacing `process.exit(1)` in that line with `void 0` (or removing the gate entirely) is well within the project's existing pattern. Tradeoff: the patch needs to track upstream changes (variable names like `uF` and `qL` are minified and may rename), and it weakens upstream's deliberately-shipped security posture inside the *test* build — fine if the patch is gated behind a build flag, less fine if it leaks into release builds.
-3. **Drive the renderer via accessibility (dogtail / AT-SPI).** Skips CDP entirely. The L3 escape-hatch already noted in Decision 1. More work, less reliable than CDP for arbitrary renderer assertions, but bypasses the gate cleanly.
+1. Spawn Electron with no debug-port flags. Gate stays asleep.
+2. Wait for the X11 window to appear (signal that the app is up).
+3. Send `SIGUSR1` to the main process pid. Same code path as the menu —
+   `inspector.open()` runs at runtime and the Node inspector starts on
+   port 9229.
+4. Connect a WebSocket to `http://127.0.0.1:9229/json/list[0].
+   webSocketDebuggerUrl`.
+5. Use `Runtime.evaluate` to run JS in the main process. From there:
+   - `webContents.getAllWebContents()` lists all live web contents
+     (including `https://claude.ai/...` once it loads into the
+     BrowserView).
+   - `webContents.executeJavaScript(...)` drives renderer-side DOM /
+     state queries.
+   - Main-process mocks (e.g. `dialog.showOpenDialog = ...` for T17) are
+     installed by direct assignment.
 
-**What the v1 harness does today** (no CDP, no gate trigger): spawn Electron without any debug-port flags and probe externally — `xprop` for window state, `dbus-next` for tray and portal calls. T01 verifies "an X11 window appeared with our pid" rather than "navigator.userAgent says X11"; T03/T04 are external-probe tests already; T17 stays skipped pending the v2 portal mock under `dbus-run-session`. This works for L2 entirely and gives L1 a smoke-test signal (window-exists), but renderer-internal assertions (which test IDs are present, which buttons are clickable, what the URL is) are unavailable.
+[`tools/test-harness/src/lib/inspector.ts`](../../tools/test-harness/src/lib/inspector.ts)
+wraps this; [`tools/test-harness/src/lib/electron.ts`](../../tools/test-harness/src/lib/electron.ts)
+exposes `app.attachInspector()` on the launched-app handle.
 
-This is genuine new information — the [Decisions](#decisions) table assumed Playwright would own L1. It can't, today. The split now is:
+**Two implementation gotchas worth recording:**
 
-- **L2 today** — fully working (T03 tray, T04 frame extents, and any future DBus / xprop / portal-mock test).
-- **L1 today** — limited to "process exists, X11 window appeared, window title matches" (T01).
-- **L1 deeper** — blocked on the gate. Reopen Decision 1 / Decision 5 once we know which of the three options above the project takes.
+- **`BrowserWindow.getAllWindows()` returns 0** because frame-fix-wrapper
+  substitutes the `BrowserWindow` class and the substitution breaks the
+  static registry. Use `webContents.getAllWebContents()` instead — that
+  registry stays intact and includes both the shell window and the
+  embedded claude.ai BrowserView.
+- **`Runtime.evaluate` with `awaitPromise: true` + `returnByValue: true`
+  returns empty objects** for awaited Promise resolutions on this build's
+  V8. Workaround: have the IIFE return a `JSON.stringify(value)` and
+  `JSON.parse` on the caller side. `inspector.evalInMain<T>()` does this
+  internally so callers don't think about it.
+
+**Status of the harness today:**
+
+- **L2** — fully working (DBus, xprop). T03 / T04 pass.
+- **L1 — T01** — passes via X11 window probe (no inspector needed).
+- **L1 — T17 / similar** — framework works end-to-end (verified inspector
+  attach + dialog mock + webContents detection + Code-tab navigation
+  click). Selector tuning to match claude.ai's actual Code-tab UI is
+  ordinary iterate-as-needed work, not a blocker.
+- **No `app-asar.sh` patch needed** to neutralize the gate. The
+  `dogtail`/AT-SPI escape hatch (Decision 1) is also no longer the
+  fallback for L1 — it's only relevant for native dialogs that the
+  inspector pattern can't reach.
 
 ## Notable shifts since the existing roadmap was written
 

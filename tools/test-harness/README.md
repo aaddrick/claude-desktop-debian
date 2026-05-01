@@ -11,17 +11,16 @@ First vertical slice — covers four tests on KDE-W:
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
-| [T01](../../docs/testing/cases/launch.md#t01--app-launch) | An X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop — see CDP auth gate note below) |
+| [T01](../../docs/testing/cases/launch.md#t01--app-launch) | An X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop) |
 | [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid | L2 (DBus) |
-| [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop only — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`) |
-| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | *(skipped)* — pending v2 portal mock under `dbus-run-session` | — |
+| [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop) |
+| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Inspector attaches via SIGUSR1, dialog mock installs, claude.ai webContents reachable, Code tab nav succeeds — folder-picker click chain awaits selector tuning | L1 (inspector + main-process mock) |
 
-These four were *intended* to exercise every distinct shape of TS code in
-the harness — `playwright-electron`, `dbus-next`, shell-out helpers
-(`xprop`), and Electron-main-process intercepts. The CDP auth gate
-finding pushed `playwright-electron` and main-process-intercepts off the
-table for v1; T01 fell back to the same `xprop` shape as T04. The two
-genuinely live shapes today are `dbus-next` (T03) and `xprop` (T01, T04).
+These four exercise three distinct shapes of TS code in the harness:
+`xprop` shell-outs (T01, T04), `dbus-next` (T03), and the Node inspector
+runtime-attach + `webContents.executeJavaScript` (T17). Everything beyond
+them should be recombination — pick the layer that matches the test's
+assertion shape and reuse the existing helper.
 
 ## Prerequisites
 
@@ -100,9 +99,45 @@ tools/test-harness/
     └── sweep.sh                   # row-aware harness invocation
 ```
 
-## Known limitations (v1)
+## How L1 testing works (the SIGUSR1 path)
 
-- **CDP auth gate blocks renderer-level testing.** The shipped `index.pre.js` has `uF(process.argv) && !qL() && process.exit(1)` — if `--remote-debugging-port` is on argv and a valid `CLAUDE_CDP_AUTH` token isn't in env, Electron exits with code 1. Both `_electron.launch()` and `chromium.connectOverCDP()` inject the flag, so both are blocked. Full writeup in [`docs/testing/automation.md`](../../docs/testing/automation.md#the-cdp-auth-gate). Three escape hatches there (token from upstream / app-asar.sh patch / dogtail). Until one lands, L1 tests are limited to external probes — T01 verifies "an X11 window appeared" (not "navigator.userAgent says X11"); deep renderer assertions wait.
+The shipped Electron has a CDP auth gate that exits the app whenever
+`--remote-debugging-port` or `--remote-debugging-pipe` is on argv and a
+valid `CLAUDE_CDP_AUTH` token isn't in env. Both Playwright's
+`_electron.launch()` and `chromium.connectOverCDP()` inject the gated
+flag, so both are blocked.
+
+The gate doesn't check `--inspect` or runtime `SIGUSR1`, which is the
+same code path as the in-app `Developer → Enable Main Process Debugger`
+menu item. So:
+
+1. `launchClaude()` spawns Electron with no debug-port flags (gate
+   asleep) and waits for the X11 window.
+2. `app.attachInspector()` sends `SIGUSR1` to the pid; Node's inspector
+   opens on port 9229.
+3. `lib/inspector.ts` connects via WebSocket and exposes
+   `evalInMain(body)` and `evalInRenderer(urlFilter, js)` for tests.
+
+From the inspector you can:
+- Drive the renderer via `webContents.executeJavaScript()`
+- Install main-process mocks (e.g. `dialog.showOpenDialog` for T17)
+- Inspect any Electron API state
+
+Two gotchas worth knowing:
+
+- `BrowserWindow.getAllWindows()` returns 0 because frame-fix-wrapper
+  substitutes the BrowserWindow class. Use `webContents.getAllWebContents()`
+  instead — works correctly and includes both the shell window and the
+  embedded claude.ai BrowserView.
+- `Runtime.evaluate` with `awaitPromise: true` returns empty objects for
+  awaited Promise resolutions. `inspector.evalInMain<T>()` returns
+  `JSON.stringify(value)` from the IIFE and parses on the caller side
+  to dodge this.
+
+Full writeup with rationale and tradeoffs:
+[`docs/testing/automation.md` "The CDP auth gate"](../../docs/testing/automation.md#the-cdp-auth-gate-and-the-runtime-attach-workaround-that-beats-it).
+
+## Known limitations
 - **T04** uses `xprop` (no `xdotool` dependency — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`). Works on X11 native and KDE Wayland (XWayland), **not** on native-Wayland sessions where the app is running through Ozone-Wayland directly. Per Decision 6, project default is X11; native-Wayland window-state queries are deferred until those tests get added.
 - **T17** is shallow — it intercepts `dialog.showOpenDialog` at the Electron main process level. The integration question "does Claude make the right *portal* call?" is a v2 concern; portal-level mocking via `dbus-next` is sketched in [`docs/testing/automation.md`](../../docs/testing/automation.md) but requires displacing the running portal service or running under `dbus-run-session`.
 - **`render-matrix.sh`** isn't here yet. `sweep.sh` prints a summary; the `matrix.md` regen step from JUnit is the next addition.

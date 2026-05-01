@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { sleep, retryUntil } from './retry.js';
 import { findX11WindowByPid } from './wm.js';
+import { InspectorClient } from './inspector.js';
 
 const exec = promisify(execFile);
 
@@ -18,31 +19,25 @@ export interface ClaudeApp {
 	pid: number;
 	close(): Promise<void>;
 	waitForX11Window(timeoutMs?: number): Promise<string>;
+	attachInspector(timeoutMs?: number): Promise<InspectorClient>;
 }
 
-// IMPORTANT — this Electron build ships an authenticated-CDP gate (in
-// `index.pre.js`):
-//
+// CDP auth gate: index.pre.js has
 //   uF(process.argv) && !qL() && process.exit(1);
+// where uF matches --remote-debugging-port / --remote-debugging-pipe on argv
+// and qL validates a token in CLAUDE_CDP_AUTH against a hardcoded ed25519
+// public key (signed payload `${timestamp_ms}.${base64(userDataDir)}`,
+// 5-minute TTL). Both Playwright's _electron.launch() and
+// chromium.connectOverCDP() inject --remote-debugging-port=0 and trip the
+// gate. Signing key is upstream's; we can't forge tokens.
 //
-// `uF` matches `--remote-debugging-port` / `--remote-debugging-pipe` in argv;
-// `qL` validates a token in CLAUDE_CDP_AUTH against a hardcoded ed25519 public
-// key (signed payload is `${timestamp_ms}.${base64(userDataDir)}`, 5-minute
-// TTL). Without a valid signature the app exits with code 1 immediately after
-// frame-fix-wrapper completes.
-//
-// Consequence: this harness cannot drive Electron via CDP at all today —
-// Playwright's `_electron.launch()` and `chromium.connectOverCDP()` both
-// inject `--remote-debugging-port=0` and trigger the gate. Renderer-level
-// testing is blocked until we either (a) obtain a signing token from
-// upstream, (b) carry an app-asar.sh patch that neutralizes the gate, or
-// (c) drive the renderer via accessibility (dogtail / AT-SPI).
-//
-// What works today: spawn Electron without any debug-port flags and probe
-// the running app externally (xprop for window state, dbus-next for tray
-// and portal calls). T01 verifies "an X11 window appeared with our pid";
-// T03/T04 are external probes already. T17 stays skipped pending the v2
-// portal mock under dbus-run-session.
+// Workaround: the gate doesn't check --inspect or runtime SIGUSR1 (the
+// "Developer → Enable Main Process Debugger" menu's code path). So we
+// spawn without any debug-port flags (gate stays asleep), wait for the
+// X11 window to appear, then send SIGUSR1 to attach the Node inspector at
+// runtime. From there lib/inspector.ts gives us main-process JS eval,
+// which reaches the renderer via webContents.executeJavaScript() and
+// supports main-process mocks (e.g. dialog.showOpenDialog for T17).
 
 const LAUNCHER_INJECTED_FLAGS = [
 	'--disable-features=CustomTitlebar',
@@ -170,6 +165,27 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 				);
 			}
 			return wid;
+		},
+		async attachInspector(timeoutMs = 15_000) {
+			// Send SIGUSR1 to open the Node inspector at runtime — same code
+			// path as Developer → Enable Main Process Debugger menu item.
+			// Then poll http://127.0.0.1:9229/json/list until it answers.
+			process.kill(proc.pid!, 'SIGUSR1');
+			const start = Date.now();
+			let lastErr: unknown = null;
+			while (Date.now() - start < timeoutMs) {
+				try {
+					return await InspectorClient.connect(9229);
+				} catch (err) {
+					lastErr = err;
+					await sleep(250);
+				}
+			}
+			throw new Error(
+				`Inspector did not become ready on port 9229 within ${timeoutMs}ms: ${
+					lastErr instanceof Error ? lastErr.message : String(lastErr)
+				}`,
+			);
 		},
 	};
 }
