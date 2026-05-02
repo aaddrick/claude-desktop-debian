@@ -59,8 +59,10 @@ assert_command_succeeds() {
 
 # Validate app contents inside an Electron resources directory.
 # $1 = path to the resources/ dir containing app.asar
+# $2 = expected desktopName in app/package.json
 validate_app_contents() {
 	local resources_dir="$1"
+	local expected_desktop_name="${2:-claude-desktop.desktop}"
 
 	assert_file_exists "$resources_dir/app.asar"
 	assert_dir_exists "$resources_dir/app.asar.unpacked"
@@ -94,6 +96,11 @@ validate_app_contents() {
 		assert_contains "$extract_dir/app/package.json" \
 			'frame-fix-entry.js' \
 			"package.json main field references frame-fix-entry.js"
+
+		# package.json desktopName matches the installed desktop file
+		assert_contains "$extract_dir/app/package.json" \
+			"\"desktopName\": \"$expected_desktop_name\"" \
+			"package.json desktopName matches $expected_desktop_name"
 
 		# .vite/build/index.js exists (main process code)
 		assert_file_exists "$extract_dir/app/.vite/build/index.js"

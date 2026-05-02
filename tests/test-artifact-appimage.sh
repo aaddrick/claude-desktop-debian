@@ -94,7 +94,7 @@ assert_contains "$appdir/AppRun" 'build_electron_args' \
 
 # --- App contents (asar) ---
 resources_dir="$appdir/usr/lib/node_modules/electron/dist/resources"
-validate_app_contents "$resources_dir"
+validate_app_contents "$resources_dir" "${component_id}.desktop"
 
 # --- Cleanup ---
 rm -rf "$extract_dir"

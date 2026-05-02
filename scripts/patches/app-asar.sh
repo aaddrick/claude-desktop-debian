@@ -37,16 +37,21 @@ EOFENTRY
 
 	# Update package.json
 	echo 'Modifying package.json to load frame fix and add node-pty...'
+	local desktop_name='claude-desktop.desktop'
+	if [[ ${build_format:-} == 'appimage' ]]; then
+		desktop_name='io.github.aaddrick.claude-desktop-debian.desktop'
+	fi
 	node -e "
 const fs = require('fs');
 const pkg = require('./app.asar.contents/package.json');
 pkg.originalMain = pkg.main;
 pkg.main = 'frame-fix-entry.js';
+pkg.desktopName = process.argv[1];
 pkg.optionalDependencies = pkg.optionalDependencies || {};
 pkg.optionalDependencies['node-pty'] = '^1.0.0';
 fs.writeFileSync('./app.asar.contents/package.json', JSON.stringify(pkg, null, 2));
-console.log('Updated package.json: main entry and node-pty dependency');
-"
+console.log('Updated package.json: main entry, desktopName, and node-pty dependency');
+" "$desktop_name"
 
 	# Create stub native module
 	echo 'Creating stub native module...'
