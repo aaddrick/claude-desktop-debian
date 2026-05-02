@@ -353,10 +353,8 @@ s.close()
 	# a real cowork-vm-service daemon on the developer machine would
 	# trip the function's "daemon alive, leave socket alone" branch.
 	pgrep() { return 1; }
-	export -f pgrep
 
 	setup_logging
-	# socat connection should fail since nothing is listening
 	cleanup_stale_cowork_socket
 	[[ ! -S "$sock" ]]
 }
