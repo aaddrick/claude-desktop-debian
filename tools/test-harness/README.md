@@ -7,15 +7,20 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Sixteen specs wired; ten pass on KDE-W, five skip cleanly per spec
-intent, T17 holds at the same selector-tuning point.
+Twenty specs wired; thirteen pass on KDE-W, six skip cleanly per
+spec intent (S12/S32 row, S36 single-monitor, S37 Linux-unreachable,
+H04 cowork-not-spawned, T17 without `CLAUDE_TEST_USE_HOST_CONFIG=1`).
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
 | [T01](../../docs/testing/cases/launch.md#t01--app-launch) | X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop) |
-| [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid | L2 (DBus) |
+| [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid AND exactly one (no rebuild-race duplicates) | L2 (DBus) |
 | [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop) |
-| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Inspector attach + dialog mock + Code tab nav — selector-tuning pending | L1 |
+| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
+| H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
+| H02 | `frame-fix-wrapper.js` + `frame-fix-entry.js` injected into `app.asar` (Proxy + main-field reference) | file probe |
+| H03 | Build-pipeline patch fingerprints all present in `app.asar` (KDE gate, frame-fix inject, tray, cowork, claude-code) | file probe |
+| H04 | cowork daemon spawns under app and exits with app — soft-skips on rows where it isn't gated to spawn | pgrep delta |
 | [S09](../../docs/testing/cases/shortcuts-and-input.md#s09--quick-window-patch-runs-only-on-kde-post-406-gate) | KDE-gate string present in bundled `index.js` (patch ran at build) | file probe |
 | S12 | `--enable-features=GlobalShortcutsPortal` in Electron argv (GNOME-W only — currently a known-failing regression detector) | argv probe |
 | [S29](../../docs/testing/cases/shortcuts-and-input.md#s29--quick-entry-popup-is-created-lazily-on-first-shortcut-press-closed-to-tray-sanity) | Popup opens when main is hidden-to-tray (lazy-create sanity) | L1 |
@@ -162,6 +167,7 @@ tools/test-harness/
 │   │   ├── argv.ts                # /proc/$pid/cmdline reader + flag check
 │   │   ├── asar.ts                # in-place app.asar reads (no temp extract)
 │   │   ├── quickentry.ts          # Quick Entry domain wrapper (popup, MainWindow, ydotool)
+│   │   ├── claudeai.ts            # claude.ai renderer UI domain (CodeTab, dialog mock, atoms)
 │   │   ├── retry.ts               # poll-until-true with timeout
 │   │   └── diagnostics.ts         # launcher log, --doctor, session env
 │   └── runners/                   # one .spec.ts per test ID
@@ -179,10 +185,20 @@ tools/test-harness/
 │       ├── S34_shortcut_focuses_fullscreen_main.spec.ts
 │       ├── S35_quick_entry_position_persisted_across_restarts.spec.ts
 │       ├── S36_quick_entry_fallback_to_primary_display.spec.ts
-│       └── S37_quick_entry_popup_after_main_destroy.spec.ts
+│       ├── S37_quick_entry_popup_after_main_destroy.spec.ts
+│       ├── H01_cdp_gate_canary.spec.ts
+│       ├── H02_frame_fix_wrapper_present.spec.ts
+│       ├── H03_patch_fingerprints.spec.ts
+│       └── H04_cowork_daemon_lifecycle.spec.ts
+├── probe.ts                       # one-off renderer-DOM probe (debugger on :9229)
 └── orchestrator/
     └── sweep.sh                   # row-aware harness invocation
 ```
+
+H-prefix specs are harness self-tests — they validate the harness's
+preconditions and the build pipeline's invariants (CDP gate alive,
+patches landed, daemon lifecycle clean). Cheap, run in <1s each
+except H04 which launches the app.
 
 ## How L1 testing works (the SIGUSR1 path)
 

@@ -77,6 +77,13 @@ export interface ClaudeApp {
 	process: ChildProcess;
 	pid: number;
 	isolation: Isolation | null;
+	// Populated on close(). When the spawned Electron exits with
+	// non-zero `code` and was NOT killed by us (`signal === null`),
+	// this carries the data so a runner can `testInfo.attach()` the
+	// crash info without us coupling electron.ts to Playwright APIs
+	// or breaking the existing `await app.close()` sites that ignore
+	// the return value. Stays null while the proc is still running.
+	lastExitInfo: { code: number | null; signal: NodeJS.Signals | null } | null;
 	close(): Promise<void>;
 	waitForX11Window(timeoutMs?: number): Promise<string>;
 	attachInspector(timeoutMs?: number): Promise<InspectorClient>;
@@ -134,6 +141,62 @@ const DEFAULT_INSTALL_PATHS = [
 interface AppPaths {
 	electron: string;
 	asar: string;
+}
+
+// Per-launch state needed by the SIGINT/SIGTERM cleanup. Tracks the
+// child proc + isolation root so a Ctrl-C through Playwright doesn't
+// leak Electron processes or the per-launch tmpdir. Stored separately
+// from ClaudeApp so the signal handler doesn't reach into closure
+// internals — `proc` and `root` are everything cleanup needs.
+interface ActiveLaunch {
+	proc: ChildProcess;
+	// Isolation root to remove on signal. null when caller opted out
+	// (`isolation: null`) or supplied a shared handle (`ownsIsolation`
+	// false — that handle's lifetime is the test's, not ours).
+	root: string | null;
+}
+
+const activeLaunches = new Set<ActiveLaunch>();
+let signalHandlersInstalled = false;
+
+// Install once across every launch in the test process. Handler is
+// synchronous: SIGKILL each spawned proc, rmSync each owned isolation
+// root, then re-emit the signal so Playwright's own teardown still
+// runs (and the process actually exits — without re-emit, Node would
+// notice the handler swallowed the signal and stay alive).
+//
+// Only owns processes/dirs from this module, not anything Playwright
+// itself spawned, so the cleanup is safe to run in parallel with
+// Playwright's teardown.
+function ensureSignalHandlers(): void {
+	if (signalHandlersInstalled) return;
+	signalHandlersInstalled = true;
+	const cleanup = (signal: NodeJS.Signals) => {
+		for (const launch of activeLaunches) {
+			try {
+				launch.proc.kill('SIGKILL');
+			} catch {
+				// proc may already be dead
+			}
+			if (launch.root) {
+				try {
+					rmSync(launch.root, { recursive: true, force: true });
+				} catch {
+					// best-effort — tmpdir cleanup is not load-bearing
+				}
+			}
+		}
+		activeLaunches.clear();
+		// Re-emit so default disposition runs. Removing our handler
+		// first prevents an infinite loop.
+		process.removeListener('SIGINT', sigintHandler);
+		process.removeListener('SIGTERM', sigtermHandler);
+		process.kill(process.pid, signal);
+	};
+	const sigintHandler = () => cleanup('SIGINT');
+	const sigtermHandler = () => cleanup('SIGTERM');
+	process.on('SIGINT', sigintHandler);
+	process.on('SIGTERM', sigtermHandler);
 }
 
 function resolveInstall(): AppPaths {
@@ -231,6 +294,26 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 		throw new Error('Failed to spawn Electron — no pid');
 	}
 
+	// Register signal handlers + add this launch to the active set so a
+	// Ctrl-C through Playwright SIGKILLs the Electron child and (if we
+	// own the tmpdir) rmSync's the isolation root. Owned-isolation
+	// signal cleanup uses dirname(configHome) — Isolation doesn't
+	// expose `root`, but createIsolation builds configHome as
+	// `<root>/config`, so the parent dir is the tmpdir to remove.
+	ensureSignalHandlers();
+	const isolationRoot =
+		ownsIsolation && isolation ? dirname(isolation.configHome) : null;
+	const launchEntry: ActiveLaunch = { proc, root: isolationRoot };
+	activeLaunches.add(launchEntry);
+
+	// Single-slot inspector tracking. Only one inspector ever attaches
+	// per launch (SIGUSR1 opens port 9229; reusing the port across
+	// re-attaches isn't supported). Stored so close() can release the
+	// WebSocket even if the runner forgets — previously every runner
+	// did `inspector.close(); finally app.close();` and the WS leaked
+	// when an `expect()` between those threw.
+	let trackedInspector: InspectorClient | null = null;
+
 	const waitForX11Window = async (timeoutMs = 15_000): Promise<string> => {
 		const wid = await retryUntil(
 			async () => findX11WindowByPid(proc.pid!),
@@ -253,7 +336,9 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 		let lastErr: unknown = null;
 		while (Date.now() - start < timeoutMs) {
 			try {
-				return await InspectorClient.connect(9229);
+				const client = await InspectorClient.connect(9229);
+				trackedInspector = client;
+				return client;
 			} catch (err) {
 				lastErr = err;
 				await sleep(250);
@@ -336,11 +421,26 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 		return { wid, inspector, claudeAiUrl, postLoginUrl };
 	};
 
-	return {
+	const app: ClaudeApp = {
 		process: proc,
 		pid: proc.pid,
 		isolation,
+		lastExitInfo: null,
 		async close() {
+			// Drop the inspector first — InspectorClient.close() is now
+			// idempotent (see lib/inspector.ts) so the runner-side
+			// `inspector.close()` calls keep working even when this
+			// fires too. Wrapped in try/catch because a thrown ws.close
+			// shouldn't block the proc/iso cleanup below.
+			if (trackedInspector) {
+				try {
+					trackedInspector.close();
+				} catch {
+					// already closed
+				}
+				trackedInspector = null;
+			}
+
 			if (proc.exitCode === null && proc.signalCode === null) {
 				proc.kill('SIGTERM');
 				await Promise.race([
@@ -351,6 +451,16 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 					proc.kill('SIGKILL');
 				}
 			}
+
+			// Capture exit info BEFORE iso cleanup. Runners can attach
+			// app.lastExitInfo to testInfo when non-null + signal === null
+			// (we didn't kill it, so a non-zero code means a real crash).
+			app.lastExitInfo = {
+				code: proc.exitCode,
+				signal: proc.signalCode,
+			};
+
+			activeLaunches.delete(launchEntry);
 			if (ownsIsolation && isolation) {
 				await isolation.cleanup();
 			}
@@ -363,4 +473,5 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 		// preserves the public contract.
 		waitForReady: waitForReady as ClaudeApp['waitForReady'],
 	};
+	return app;
 }

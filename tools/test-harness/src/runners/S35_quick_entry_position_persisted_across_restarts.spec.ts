@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { launchClaude } from '../lib/electron.js';
 import { skipUnlessRow } from '../lib/row.js';
 import { QuickEntry } from '../lib/quickentry.js';
@@ -18,14 +20,29 @@ import { captureSessionEnv } from '../lib/diagnostics.js';
 // the app with shared XDG_CONFIG_HOME, and verifies the popup
 // reappears at the saved position — not the upstream default.
 //
-// Two-launch test: the same Isolation handle is passed to
-// launchClaude twice so XDG_CONFIG_HOME stays the same across the
-// restart. The first call doesn't own the handle, so close() leaves
-// the dir intact for the second launch. The test owns cleanup.
+// Three-launch test:
+//   1. open → move → dismiss → re-open → verify in-session memory
+//   2. relaunch with same XDG_CONFIG_HOME → verify position persisted
+//   3. wipe quickWindowPosition from on-disk config → relaunch →
+//      verify popup lands at upstream default (NOT the cleared
+//      target), proving the path is read-from-disk-not-just-memory
+//
+// The on-disk round-trip in (2) directly reads
+// ${configDir}/Claude/config.json between launches to confirm the
+// hide handler reached disk — distinct signal from "in-memory
+// position survives restart" (an electron-store memory cache could
+// in principle satisfy that without touching disk).
+//
+// All three launches share the same Isolation handle so
+// XDG_CONFIG_HOME stays consistent across restarts. The first two
+// calls don't own the handle, so close() leaves the dir intact for
+// the next launch. The test owns cleanup.
 
 const useHostConfig = process.env.CLAUDE_TEST_USE_HOST_CONFIG === '1';
 
-test.setTimeout(180_000);
+// Three launches at ~60s each plus settle / waitForReady budget.
+// 180s was tight for two; 240s gives the third a margin.
+test.setTimeout(240_000);
 
 test('S35 — Quick Entry popup position is persisted across invocations and across app restarts', async ({}, testInfo) => {
 	testInfo.annotations.push({ type: 'severity', description: 'Should' });
@@ -155,6 +172,51 @@ test('S35 — Quick Entry popup position is persisted across invocations and acr
 			'popup y matches target after move + re-open',
 		).toBe(TARGET_Y);
 
+		// On-disk round-trip. Read config.json directly between
+		// launches to confirm the hide handler reached disk — distinct
+		// signal from "in-memory position survives restart" (an
+		// electron-store memory cache could in principle satisfy the
+		// post-restart assertion without ever flushing). Skipped under
+		// useHostConfig because we don't know the host's configDir.
+		if (isolation) {
+			const configPath = join(isolation.configDir, 'Claude/config.json');
+			let parsed: { quickWindowPosition?: { x?: number; y?: number } } = {};
+			let rawForAttach = '';
+			try {
+				rawForAttach = readFileSync(configPath, 'utf8');
+				parsed = JSON.parse(rawForAttach);
+			} catch (err) {
+				rawForAttach =
+					'<read error: ' +
+					(err instanceof Error ? err.message : String(err)) +
+					'>';
+			}
+			await testInfo.attach('config-json-after-launch1', {
+				body: JSON.stringify(
+					{
+						configPath,
+						parsed,
+						raw: rawForAttach.slice(0, 4_000),
+					},
+					null,
+					2,
+				),
+				contentType: 'application/json',
+			});
+			expect(
+				parsed.quickWindowPosition,
+				'quickWindowPosition key written to on-disk config.json by hide handler',
+			).toBeTruthy();
+			expect(
+				parsed.quickWindowPosition?.x,
+				'on-disk x matches TARGET_X',
+			).toBe(TARGET_X);
+			expect(
+				parsed.quickWindowPosition?.y,
+				'on-disk y matches TARGET_Y',
+			).toBe(TARGET_Y);
+		}
+
 		// Second launch: same XDG_CONFIG_HOME (or host config). Open
 		// popup; should appear at the saved position from the first
 		// launch's hide handler.
@@ -212,6 +274,95 @@ test('S35 — Quick Entry popup position is persisted across invocations and acr
 			position2!.y,
 			'popup y persisted across restart',
 		).toBe(position1!.y);
+
+		// Third launch: clear-and-default. Wipe the
+		// quickWindowPosition key from on-disk config and confirm
+		// the popup lands somewhere OTHER than TARGET. This proves
+		// the read path actually consults disk — if the popup still
+		// appeared at TARGET after the key was cleared, upstream
+		// would be sourcing position from somewhere we don't know
+		// about (env, hard-coded fallback shape, in-memory leak
+		// across the close/spawn boundary).
+		//
+		// Don't assert exact default coordinates — those depend on
+		// display geometry. Just assert "not the cleared target".
+		// Skipped under useHostConfig (no known configDir to mutate).
+		if (isolation) {
+			const configPath = join(isolation.configDir, 'Claude/config.json');
+			let beforeRaw = '';
+			try {
+				beforeRaw = readFileSync(configPath, 'utf8');
+				const parsed = JSON.parse(beforeRaw) as Record<string, unknown>;
+				delete parsed.quickWindowPosition;
+				writeFileSync(configPath, JSON.stringify(parsed, null, 2), 'utf8');
+			} catch (err) {
+				await testInfo.attach('config-clear-error', {
+					body:
+						'configPath=' + configPath + '\n' +
+						(err instanceof Error ? err.stack ?? err.message : String(err)),
+					contentType: 'text/plain',
+				});
+				throw err;
+			}
+
+			const app3 = await launchClaude({ isolation });
+			let position3: { x: number; y: number } | null = null;
+			try {
+				const { inspector, postLoginUrl } =
+					await app3.waitForReady('userLoaded');
+				if (!postLoginUrl) {
+					testInfo.skip(
+						true,
+						'claude.ai user did not load past /login on third launch',
+					);
+					return;
+				}
+				const qe = new QuickEntry(inspector);
+				await qe.installInterceptor();
+
+				await qe.openAndWaitReady();
+
+				const state3 = await qe.getPopupState();
+				position3 = state3
+					? { x: state3.bounds.x, y: state3.bounds.y }
+					: null;
+
+				await testInfo.attach('position-after-clear', {
+					body: JSON.stringify(
+						{
+							configPath,
+							beforeRawSnippet: beforeRaw.slice(0, 2_000),
+							target: { x: TARGET_X, y: TARGET_Y },
+							position3,
+							note:
+								'position3 should NOT equal target — that would ' +
+								'imply the read path bypassed disk.',
+						},
+						null,
+						2,
+					),
+					contentType: 'application/json',
+				});
+
+				inspector.close();
+			} finally {
+				await app3.close();
+			}
+
+			expect(
+				position3,
+				'popup position observable after third launch',
+			).not.toBeNull();
+			const matchedTarget =
+				!!position3 &&
+				position3.x === TARGET_X &&
+				position3.y === TARGET_Y;
+			expect(
+				matchedTarget,
+				'popup did NOT reappear at the cleared target — confirms ' +
+					'upstream reads position from disk, not an in-memory cache',
+			).toBe(false);
+		}
 	} finally {
 		if (isolation) await isolation.cleanup();
 	}

@@ -63,19 +63,39 @@ fi
 
 printf 'row=%s exit=%d dir=%s\n' "$row" "$rc" "$bundle_dir"
 
-# Quick summary if junit.xml landed
-if [[ -f "${bundle_dir}/junit.xml" ]] \
-		&& command -v grep >/dev/null 2>&1; then
-	tests="$(grep -oP 'tests="\K\d+' "${bundle_dir}/junit.xml" \
-		| head -1 || printf '?')"
-	failures="$(grep -oP 'failures="\K\d+' "${bundle_dir}/junit.xml" \
-		| head -1 || printf '?')"
-	errors="$(grep -oP 'errors="\K\d+' "${bundle_dir}/junit.xml" \
-		| head -1 || printf '?')"
-	skipped="$(grep -oP 'skipped="\K\d+' "${bundle_dir}/junit.xml" \
-		| head -1 || printf '?')"
-	printf 'summary: tests=%s failures=%s errors=%s skipped=%s\n' \
-		"$tests" "$failures" "$errors" "$skipped"
+# Quick summary if junit.xml landed. Prefer Node so we sum across all
+# <testsuite> elements (grep+head only saw the first suite, undercounting
+# multi-suite reports). Fall back to the legacy grep path when node isn't
+# on PATH so the harness stays usable on minimal images.
+if [[ -f "${bundle_dir}/junit.xml" ]]; then
+	if command -v node >/dev/null 2>&1; then
+		read -r tests failures errors skipped \
+			< <(node -e "$(cat <<'EOF'
+const fs = require('fs');
+const xml = fs.readFileSync(process.argv[1], 'utf8');
+const sumAttr = (a) => Array.from(
+	xml.matchAll(new RegExp(`<testsuite[^>]*\\b${a}="(\\d+)"`, 'g'))
+).reduce((s, m) => s + parseInt(m[1], 10), 0);
+console.log([
+	sumAttr('tests'), sumAttr('failures'),
+	sumAttr('errors'), sumAttr('skipped'),
+].join(' '));
+EOF
+)" "${bundle_dir}/junit.xml")
+		printf 'summary: tests=%s failures=%s errors=%s skipped=%s\n' \
+			"$tests" "$failures" "$errors" "$skipped"
+	elif command -v grep >/dev/null 2>&1; then
+		tests="$(grep -oP 'tests="\K\d+' "${bundle_dir}/junit.xml" \
+			| head -1 || printf '?')"
+		failures="$(grep -oP 'failures="\K\d+' "${bundle_dir}/junit.xml" \
+			| head -1 || printf '?')"
+		errors="$(grep -oP 'errors="\K\d+' "${bundle_dir}/junit.xml" \
+			| head -1 || printf '?')"
+		skipped="$(grep -oP 'skipped="\K\d+' "${bundle_dir}/junit.xml" \
+			| head -1 || printf '?')"
+		printf 'summary: tests=%s failures=%s errors=%s skipped=%s\n' \
+			"$tests" "$failures" "$errors" "$skipped"
+	fi
 fi
 
 exit "$rc"

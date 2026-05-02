@@ -26,6 +26,11 @@ export class InspectorClient {
 	private ws: WebSocket;
 	private nextId = 0;
 	private pending = new Map<number, PendingCall>();
+	// Idempotency flag for close(). Runners + electron.ts close() may
+	// both call this on the same instance (intentionally — see
+	// electron.ts launchClaude tracking comment); the flag guarantees
+	// a second call is a true no-op rather than a redundant ws.close().
+	private closed = false;
 
 	private constructor(ws: WebSocket) {
 		this.ws = ws;
@@ -133,6 +138,8 @@ export class InspectorClient {
 	}
 
 	close(): void {
+		if (this.closed) return;
+		this.closed = true;
 		try {
 			this.ws.close();
 		} catch {

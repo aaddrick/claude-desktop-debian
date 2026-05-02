@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { launchClaude } from '../lib/electron.js';
-import { skipUnlessRow } from '../lib/row.js';
+import { skipUnlessRow, currentRow } from '../lib/row.js';
 import { QuickEntry, MainWindow } from '../lib/quickentry.js';
 import { retryUntil, sleep } from '../lib/retry.js';
 import { captureSessionEnv } from '../lib/diagnostics.js';
@@ -16,10 +16,19 @@ import { captureSessionEnv } from '../lib/diagnostics.js';
 // wants to interact with the existing fullscreen Claude rather than
 // overlay a popup on it.
 //
-// This is the inverse-shape test: assert popup does NOT become
-// visible within a generous window after the shortcut. If the
-// popup appears, the upstream fullscreen-special-case has been
-// regressed (or never reached).
+// Two-sided assertion: (1) popup does NOT become visible (the
+// suppression half), and (2) main is focused + still fullscreen
+// after the shortcut (the focus half). The original test only
+// asserted (1); upstream's contract is `ut.focus(); ide()` not
+// just "skip showPopup", so an asserts-suppression-only test
+// could pass even if the focus() call regressed silently.
+//
+// Compositor honor of focus() on fullscreen windows is uneven:
+// KDE-W / KDE-X are reliable, GNOME-W / Ubu-W routinely no-op
+// focus requests on fullscreen surfaces (mutter "focus stealing
+// prevention"). The focus assertion is hard on KDE rows and
+// soft-fixme'd elsewhere — the suppression half still runs
+// everywhere.
 
 test.setTimeout(45_000);
 
@@ -96,12 +105,48 @@ test('S34 — Quick Entry shortcut focuses fullscreen main window instead of sho
 			).toBe(false);
 		}
 
-		// Sanity: main is still fullscreen + focused after the shortcut.
+		// Focus half: upstream's contract is `ut.focus(); ide()` —
+		// not just "skip showPopup". Assert the focus side too.
 		const mainAfter = await mainWin.getState();
 		await testInfo.attach('main-state-after-shortcut', {
 			body: JSON.stringify(mainAfter, null, 2),
 			contentType: 'application/json',
 		});
+
+		// fullScreen is unconditional — the shortcut should never
+		// drop fullscreen state. (If main lost fullscreen, the
+		// shortcut went through the showPopup branch instead of
+		// the focus-and-ide branch — i.e. a different regression
+		// shape than "popup visible".)
+		expect(
+			mainAfter && mainAfter.fullScreen,
+			'main remains fullscreen after shortcut press (focus branch, not showPopup branch)',
+		).toBe(true);
+
+		// Focused is hard-asserted on KDE rows where focus() is
+		// reliable; soft-fixme on GNOME-derived rows where mutter
+		// routinely no-ops focus on fullscreen surfaces. The
+		// distinction is the compositor, not the upstream contract
+		// — upstream calls focus() either way.
+		const row = currentRow();
+		const hardFocusRows = ['KDE-W', 'KDE-X'];
+		const focusOk = !!(mainAfter && mainAfter.focused);
+		if (!focusOk) {
+			if (hardFocusRows.includes(row)) {
+				expect(
+					focusOk,
+					`main is focused after shortcut press on ${row} (focus() honored by KDE compositors)`,
+				).toBe(true);
+			} else {
+				testInfo.fixme(
+					true,
+					`main not focused after shortcut on ${row}; upstream contract ` +
+						`requires focus() but compositor honor on fullscreen ` +
+						`surfaces is best-effort outside KDE. mainAfter=` +
+						JSON.stringify(mainAfter),
+				);
+			}
+		}
 
 		// Restore before close so we don't leave the app in fullscreen
 		// state if the user is sharing config (CLAUDE_TEST_USE_HOST_CONFIG).

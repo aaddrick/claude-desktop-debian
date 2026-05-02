@@ -27,6 +27,9 @@
 // the grab path; everything else assumes it.
 
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { InspectorClient } from './inspector.js';
 import { retryUntil, sleep } from './retry.js';
@@ -241,9 +244,14 @@ export class QuickEntry {
 		frameless: boolean;
 		transparent: boolean;
 		alwaysOnTop: boolean;
-		skipTaskbar: boolean;
 		backgroundColor: string;
 	} | null> {
+		// `skipTaskbar` was previously reported here but BrowserWindow
+		// has no isSkipTaskbar() getter; the field hardcoded `false`
+		// regardless of how the popup was constructed, which is
+		// misleading. Dropped — no current spec consumes it. If a
+		// future test needs it, capture via a setSkipTaskbar wrap in
+		// installInterceptor() rather than faking a getter.
 		return await this.inspector.evalInMain(`
 			const wins = globalThis.__qeWindows || [];
 			const isPopup = ${this.popupSelector()};
@@ -257,7 +265,6 @@ export class QuickEntry {
 				frameless: bounds.width === content.width && bounds.height === content.height,
 				transparent: bg === '#00000000' || bg === '#0000',
 				alwaysOnTop: w.isAlwaysOnTop(),
-				skipTaskbar: typeof w.isMenuBarVisible === 'function' ? false : false, // skipTaskbar has no getter; record via interceptor if needed
 				backgroundColor: bg,
 			};
 		`);
@@ -355,27 +362,31 @@ export class QuickEntry {
 		`);
 	}
 
-	// Read the persisted popup position (S35). Returns null if never
-	// saved or if the settings store isn't reachable.
-	async getStoredPosition(): Promise<unknown | null> {
-		return await this.inspector.evalInMain(`
-			// Walk likely paths to electron-store. The variable name is
-			// minified and changes per release — probe by shape rather
-			// than name. The store's get(key) accepts string keys; we
-			// look for any object with .get and .set that returns a
-			// quickWindowPosition value.
-			const candidates = [];
-			for (const k of Object.getOwnPropertyNames(globalThis)) {
-				const v = globalThis[k];
-				if (v && typeof v === 'object' && typeof v.get === 'function' && typeof v.set === 'function') {
-					try {
-						const pos = v.get('quickWindowPosition');
-						if (pos !== undefined) candidates.push(pos);
-					} catch {}
-				}
-			}
-			return candidates[0] ?? null;
-		`);
+	// Read the persisted popup position (S35) directly from the
+	// on-disk store. electron-store defaults to `config.json` under the
+	// app's userData dir; for claude-desktop that's
+	// `${configDir}/Claude/config.json` (or `~/.config/Claude/...`
+	// when no isolation is in play). Reading the file beats the
+	// previous globalThis-walk: that probe matched any object with
+	// .get/.set returning a `quickWindowPosition` value, which is
+	// fragile against unrelated minified objects coincidentally
+	// matching the shape.
+	//
+	// Optional `configDir` keeps the call backward-compatible — pass
+	// `app.isolation?.configDir` from runners under per-test isolation,
+	// omit it to fall back to the host's `~/.config/Claude`.
+	async getStoredPosition(configDir?: string): Promise<unknown | null> {
+		const storePath = configDir
+			? join(configDir, 'config.json')
+			: join(homedir(), '.config/Claude/config.json');
+		try {
+			const raw = await readFile(storePath, 'utf8');
+			const parsed = JSON.parse(raw) as { quickWindowPosition?: unknown };
+			return parsed.quickWindowPosition ?? null;
+		} catch {
+			// File missing (never saved) or unreadable — both null.
+			return null;
+		}
 	}
 }
 
@@ -490,7 +501,14 @@ export class MainWindow {
 //
 // Returns the post-login URL on success. Returns null on timeout —
 // caller can decide to skip vs fail.
-const LOGIN_URL_RE = /\/(login|auth|sign[-_]?in)/i;
+//
+// Anchored at the host root and bounded with a path-terminator class so
+// only `/login`, `/auth`, `/sign-in` etc. as the *first* path segment
+// match. The previous unanchored `/\/(login|auth|sign[-_]?in)/i` also
+// caught substrings like `/oauth/callback` (auth) and any URL containing
+// `/login` further down the path.
+const LOGIN_URL_RE =
+	/^https?:\/\/[^/]+\/(login|auth|sign[-_]?in)(?:[/?#]|$)/i;
 
 export async function waitForUserLoaded(
 	inspector: InspectorClient,

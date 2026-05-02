@@ -22,10 +22,14 @@ import { captureSessionEnv } from '../lib/diagnostics.js';
 // Differs from S31 in TWO ways:
 //   1. Row-gated to GNOME Wayland (KDE-W is excluded; the post-#406
 //      patch handles KDE specifically).
-//   2. Adds an assertion that main becomes visible after submit.
-//      S31 explicitly does NOT require this (it's compositor-
-//      dependent for the cross-row case); S32 requires it because
-//      the bug is "main DIDN'T become visible."
+//   2. Adds two regression-detector assertions independent of S31:
+//      (a) the popup is not still visible after submit (the bug
+//          can also leave Ko on screen because the close-on-dismiss
+//          handler is downstream of the show() that short-circuits),
+//      (b) the main window becomes visible (the original symptom
+//          Andrej730 reported).
+//      Each assertion is a separate failure shape — popup-stuck and
+//      main-stuck can occur together or independently.
 //
 // Expected to FAIL on GNOME-W today until the fix lands (either
 // widening the patch beyond KDE, or upstream Electron fixing
@@ -93,7 +97,45 @@ test('S32 — Quick Entry submit on GNOME mutter does not trip Electron stale-is
 		const prompt = `s32-${Date.now()}`;
 		await qe.openAndWaitReady();
 		await qe.typeAndSubmit(prompt);
-		await qe.waitForPopupClosed(8_000).catch(() => {});
+
+		// Capture popup-close outcome instead of swallowing it. The
+		// pre-fix S31 pattern catches-and-discards because S31 uses
+		// popupClosed as its Critical assertion already; here we
+		// want the boolean for an independent assertion below.
+		let popupClosed = false;
+		try {
+			await qe.waitForPopupClosed(8_000);
+			popupClosed = true;
+		} catch {
+			// timeout — leave popupClosed=false; the explicit popup-
+			// state assertion below will surface the regression shape.
+		}
+
+		// Popup-stuck assertion. The same short-circuit that skips
+		// `show()` for main can leave the popup on screen because
+		// the close-on-dismiss path (popup.hide()) sits downstream
+		// of the show() call that returned early. Treat either
+		// destroyed (state === null) or hidden (visible === false)
+		// as "popup not stuck."
+		const popupStateAfterSubmit = await qe.getPopupState();
+		await testInfo.attach('popup-state-after-submit', {
+			body: JSON.stringify(
+				{
+					popupClosed,
+					popupState: popupStateAfterSubmit,
+				},
+				null,
+				2,
+			),
+			contentType: 'application/json',
+		});
+		const popupNotVisible =
+			popupStateAfterSubmit === null || !popupStateAfterSubmit.visible;
+		expect(
+			popupNotVisible,
+			'popup is not visible after submit (regression detector ' +
+				'for the stale-isFocused short-circuit leaving Ko on screen)',
+		).toBe(true);
 
 		// Should signal — chat created (network).
 		const navUrl = await waitForNewChat(inspector, 15_000);
@@ -113,6 +155,8 @@ test('S32 — Quick Entry submit on GNOME mutter does not trip Electron stale-is
 			body: JSON.stringify(
 				{
 					navUrl,
+					popupClosed,
+					popupStateAfterSubmit,
 					mainBecameVisible: !!mainBecameVisible,
 					mainStateAfterSubmit: mainBecameVisible,
 					note: 'GNOME-W today is expected to show navUrl=set ' +
