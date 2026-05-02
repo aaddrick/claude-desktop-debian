@@ -8,7 +8,7 @@ Test specifications grouped by feature surface. For live status, see [`../matrix
 |------|------------------|-------|
 | [`launch.md`](./launch.md) | App startup, doctor, package detection, multi-instance | T01, T02, T13, T14 |
 | [`tray-and-window-chrome.md`](./tray-and-window-chrome.md) | Tray icon, window decorations, hybrid topbar, hide-to-tray | T03, T04, T07, T08, S08, S13 |
-| [`shortcuts-and-input.md`](./shortcuts-and-input.md) | URL handler, Quick Entry, global shortcuts | T05, T06, S06, S07, S09, S10, S11, S12, S14 |
+| [`shortcuts-and-input.md`](./shortcuts-and-input.md) | URL handler, Quick Entry, global shortcuts | T05, T06, S06, S07, S09, S10, S11, S12, S14, S29, S30, S31, S32, S33, S34, S35, S36, S37 |
 | [`code-tab-foundations.md`](./code-tab-foundations.md) | Sign-in, Code tab load, folder picker, drag-drop, terminal, file pane | T15, T16, T17, T18, T19, T20 |
 | [`code-tab-workflow.md`](./code-tab-workflow.md) | Preview, PR monitor, worktrees, auto-archive, side chat, slash menu | T21, T22, T29, T30, T31, T32 |
 | [`code-tab-handoff.md`](./code-tab-handoff.md) | Notifications, external editor, file manager, connector OAuth, IDE handoff | T23, T24, T25, T34, T38, T39 |
