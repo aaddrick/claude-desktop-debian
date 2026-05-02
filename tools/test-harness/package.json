@@ -19,6 +19,7 @@
 		"typescript": "^5.6.0"
 	},
 	"dependencies": {
+		"@electron/asar": "^3.2.10",
 		"dbus-next": "^0.10.2"
 	}
 }

@@ -29,6 +29,25 @@ mkdir -p "$bundle_dir"
 
 cd "$harness_dir" || exit 1
 
+# Fast-fail prereq checks — only matter when the sweep includes
+# Quick Entry runners (S31, future S29/S30/S32/S34/S35/S37 +
+# T06 / QE-* additions). Skip with QE_PREREQ_CHECK=0 if running
+# a sweep that excludes those.
+if [[ "${QE_PREREQ_CHECK:-1}" == "1" ]]; then
+	if ! command -v ydotool >/dev/null 2>&1; then
+		printf 'sweep: ydotool not on PATH — Quick Entry runners will skip.\n' >&2
+		printf '  install: dnf install ydotool / apt install ydotool\n' >&2
+		printf '  to suppress this check: QE_PREREQ_CHECK=0\n' >&2
+	fi
+	socket="${YDOTOOL_SOCKET:-/tmp/.ydotool_socket}"
+	if [[ ! -S "$socket" ]]; then
+		printf 'sweep: ydotoold socket missing at %s — daemon not running.\n' \
+			"$socket" >&2
+		printf '  start: sudo systemctl start ydotool.service\n' >&2
+		printf '  see tools/test-harness/README.md "Quick Entry runners" for one-time setup\n' >&2
+	fi
+fi
+
 ROW="$row" \
 RESULTS_DIR="$bundle_dir" \
 	npx playwright test

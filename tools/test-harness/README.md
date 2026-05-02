@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-First vertical slice — covers four tests on KDE-W:
+Five tests wired up; passing on KDE-W:
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
@@ -15,12 +15,15 @@ First vertical slice — covers four tests on KDE-W:
 | [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid | L2 (DBus) |
 | [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop) |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Inspector attaches via SIGUSR1, dialog mock installs, claude.ai webContents reachable, Code tab nav succeeds — folder-picker click chain awaits selector tuning | L1 (inspector + main-process mock) |
+| [S31](../../docs/testing/cases/shortcuts-and-input.md#s31--quick-entry-submit-makes-the-new-chat-reachable-from-any-main-window-state) | Quick Entry submit reaches new chat from visible / minimized / hidden-to-tray main-window states (covers QE-7/8/9) — layered local (popup-closed) + network (`/chat/<uuid>`) assertion | L1 (inspector + ydotool + popup webContents probe) |
 
-These four exercise three distinct shapes of TS code in the harness:
-`xprop` shell-outs (T01, T04), `dbus-next` (T03), and the Node inspector
-runtime-attach + `webContents.executeJavaScript` (T17). Everything beyond
-them should be recombination — pick the layer that matches the test's
-assertion shape and reuse the existing helper.
+These five exercise four distinct shapes of TS code in the harness:
+`xprop` shell-outs (T01, T04), `dbus-next` (T03), Node inspector
+runtime-attach + `webContents.executeJavaScript` (T17), and the
+prototype-method hook + ydotool injection pattern that backs the
+Quick Entry runners (S31, and the QE-* sweep generally — see
+[`docs/testing/quick-entry-closeout.md`](../../docs/testing/quick-entry-closeout.md)).
+Everything beyond them is recombination.
 
 ## Prerequisites
 
@@ -30,6 +33,34 @@ On the host or VM running the sweep:
 - `claude-desktop` installed (deb / rpm / AppImage), reachable via `claude-desktop` on `PATH` or `CLAUDE_DESKTOP_LAUNCHER` env var
 - `xprop` (for L2 window queries — `dnf install xorg-x11-utils` on Fedora; `apt install x11-utils` on Debian/Ubuntu)
 - `zstd` (optional — used to bundle results)
+
+### Quick Entry runners (S29–S37, future QE-*)
+
+Quick Entry tests inject the OS-level shortcut via `ydotool` /
+`/dev/uinput`. One-time setup per host or VM:
+
+```sh
+# Install the binary + daemon
+sudo dnf install -y ydotool   # or: sudo apt install ydotool
+
+# Make ydotoold's socket world-writable so the test runner reaches it
+sudo mkdir -p /etc/systemd/system/ydotool.service.d
+sudo tee /etc/systemd/system/ydotool.service.d/override.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/ydotoold --socket-perm=0666
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now ydotool.service
+```
+
+After this, `ydotool key 29:1 29:0` (Ctrl tap) should exit 0. The
+runner sets `YDOTOOL_SOCKET=/tmp/.ydotool_socket` automatically;
+override the env var if your daemon binds elsewhere.
+
+ydotool **cannot** drive portal-grabbed shortcuts (kernel uinput
+events vs compositor portal grabs) — those tests stay manual until
+libei adoption broadens. See [`docs/testing/automation.md`](../../docs/testing/automation.md#input-injection--ydotool-now-libei-next).
 
 ## Install
 
@@ -69,10 +100,31 @@ is installed.
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `ROW` | `KDE-W` | Matrix row label, propagated into the bundle name and per-test annotations |
+| `ROW` | `KDE-W` | Matrix row label, propagated into the bundle name and per-test annotations. Drives `skipUnlessRow()` in spec files |
 | `CLAUDE_DESKTOP_LAUNCHER` | `claude-desktop` (PATH lookup) | Path to the launcher / Electron binary Playwright spawns |
+| `CLAUDE_DESKTOP_ELECTRON` | probed | Override the resolved Electron binary path (skips deb/rpm install probing) |
+| `CLAUDE_DESKTOP_APP_ASAR` | probed | Override the resolved `app.asar` path |
+| `CLAUDE_TEST_USE_HOST_CONFIG` | unset | When `1`, opt out of per-test isolation and use the host's real `~/.config/Claude`. Required for tests that need a signed-in claude.ai (S31, future submit-side QE runners). **Side effect:** these tests write to your real account — chats / settings persist |
+| `YDOTOOL_SOCKET` | `/tmp/.ydotool_socket` | Path to the `ydotoold` socket. Override only if the daemon binds elsewhere |
 | `OUTPUT_DIR` | `./results` | Where bundles land |
 | `RESULTS_DIR` | per-run derived | Single-run output dir (set by `sweep.sh`; usually you don't set this manually) |
+
+### Per-test isolation default
+
+`launchClaude()` creates a fresh `XDG_CONFIG_HOME` / `CLAUDE_CONFIG_DIR`
+under `$TMPDIR/claude-test-*` for every launch and removes it on
+`close()`. This is the default to prevent state leaks between tests
+(SingletonLock collisions, persisted Quick Entry positions, etc. —
+see Decision 1 in [`docs/testing/automation.md`](../../docs/testing/automation.md)).
+Three escape hatches:
+
+- **`launchClaude()`** — default, fresh per-launch isolation.
+- **`launchClaude({ isolation })`** — pass a shared `Isolation` handle
+  to launch the same app twice with persistent state (e.g. S35
+  position-memory across restart).
+- **`launchClaude({ isolation: null })`** — opt out entirely; share
+  the host's `~/.config/Claude`. Used by tests gated on
+  `CLAUDE_TEST_USE_HOST_CONFIG` for signed-in claude.ai access.
 
 ## Layout
 
@@ -83,18 +135,25 @@ tools/test-harness/
 ├── playwright.config.ts
 ├── src/
 │   ├── lib/                       # shared helpers
-│   │   ├── electron.ts            # _electron.launch wrapper
+│   │   ├── electron.ts            # spawn + isolation + inspector attach
+│   │   ├── inspector.ts           # Node-inspector RPC client (SIGUSR1 path)
 │   │   ├── dbus.ts                # dbus-next session-bus + helpers
 │   │   ├── sni.ts                 # StatusNotifierWatcher / Item
 │   │   ├── wm.ts                  # xprop wrappers (X11 + XWayland)
 │   │   ├── env.ts                 # XDG_CURRENT_DESKTOP / SESSION_TYPE branching
+│   │   ├── row.ts                 # skipUnlessRow / skipOnRow primitives
+│   │   ├── isolation.ts           # per-test XDG_CONFIG_HOME sandbox
+│   │   ├── argv.ts                # /proc/$pid/cmdline reader + flag check
+│   │   ├── asar.ts                # in-place app.asar reads (no temp extract)
+│   │   ├── quickentry.ts          # Quick Entry domain wrapper (popup, MainWindow, ydotool)
 │   │   ├── retry.ts               # poll-until-true with timeout
 │   │   └── diagnostics.ts         # launcher log, --doctor, session env
 │   └── runners/                   # one .spec.ts per test ID
 │       ├── T01_app_launch.spec.ts
 │       ├── T03_tray_icon_present.spec.ts
 │       ├── T04_window_decorations.spec.ts
-│       └── T17_folder_picker.spec.ts
+│       ├── T17_folder_picker.spec.ts
+│       └── S31_quick_entry_submit_reaches_new_chat.spec.ts
 └── orchestrator/
     └── sweep.sh                   # row-aware harness invocation
 ```
@@ -146,7 +205,35 @@ Full writeup with rationale and tradeoffs:
 ## Adding a test
 
 1. Pick the `T##` / `S##` from [`docs/testing/cases/`](../../docs/testing/cases/).
-2. Drop `src/runners/T##_short_name.spec.ts`. Use the existing four as templates.
-3. Tag the test with `severity` and `surface` annotations so the JUnit output carries them.
-4. Capture diagnostics via `testInfo.attach()` — these become Decision 7 "always-on" captures regardless of pass/fail.
-5. No fixed `sleep`s. Use `retryUntil` or Playwright's auto-wait.
+2. Drop `src/runners/T##_short_name.spec.ts`. Use the existing five as templates — match the layer (L1 / L2) to the test's assertion shape.
+3. First line of the test body: `skipUnlessRow(testInfo, ['KDE-W', ...])`. JUnit `<skipped>` → matrix `-`, never `✗` for a row that doesn't apply.
+4. Tag the test with `severity` and `surface` annotations so the JUnit output carries them.
+5. Capture diagnostics via `testInfo.attach()` — these become Decision 7 "always-on" captures regardless of pass/fail. For tests that need richer state on failure, wrap your scenarios in a results-collector and attach a single JSON dump (S31's pattern).
+6. No fixed `sleep`s. Use `retryUntil` or Playwright's auto-wait.
+
+### Hooking Electron — read this before reaching for `BrowserWindow`
+
+`scripts/frame-fix-wrapper.js` returns the `electron` module wrapped
+in a `Proxy` whose `get` trap returns a closure-captured
+`PatchedBrowserWindow`. **Constructor-level wraps don't work** — your
+`electron.BrowserWindow = WrappedCtor` write lands on the underlying
+module but the Proxy keeps returning `PatchedBrowserWindow` on
+read, so the wrap is bypassed. The reliable hook is at the
+**prototype-method level**:
+
+```ts
+// in inspector.evalInMain(...)
+const proto = electron.BrowserWindow.prototype;
+const orig = proto.loadFile;
+proto.loadFile = function(filePath, ...rest) {
+  // record `this` + filePath; identify popups by filePath suffix
+  return orig.call(this, filePath, ...rest);
+};
+```
+
+This captures every instance regardless of subclass identity.
+Construction-time options (`transparent: true`, `frame: false`,
+etc.) aren't observable through this hook — use runtime
+equivalents instead (`getBackgroundColor()`, `getContentBounds()
+vs getBounds()`, `isAlwaysOnTop()`). `lib/quickentry.ts` is the
+worked example.

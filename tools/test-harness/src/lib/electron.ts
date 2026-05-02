@@ -6,17 +6,25 @@ import { promisify } from 'node:util';
 import { sleep, retryUntil } from './retry.js';
 import { findX11WindowByPid } from './wm.js';
 import { InspectorClient } from './inspector.js';
+import { createIsolation, type Isolation } from './isolation.js';
 
 const exec = promisify(execFile);
 
 export interface LaunchOptions {
 	extraEnv?: Record<string, string>;
 	args?: string[];
+	// Pass an existing Isolation to share config across multiple
+	// launches in one test (e.g. S35 position-memory across restart).
+	// Pass `null` to opt out of isolation entirely (legacy: shares
+	// ~/.config/Claude with the host). Default: a fresh isolation per
+	// launch, cleaned up on close().
+	isolation?: Isolation | null;
 }
 
 export interface ClaudeApp {
 	process: ChildProcess;
 	pid: number;
+	isolation: Isolation | null;
 	close(): Promise<void>;
 	waitForX11Window(timeoutMs?: number): Promise<string>;
 	attachInspector(timeoutMs?: number): Promise<InspectorClient>;
@@ -83,14 +91,20 @@ function resolveInstall(): AppPaths {
 
 // Mirrors the pre-launch cleanup in launcher-common.sh (cleanup_orphaned_
 // cowork_daemon + cleanup_stale_lock + cleanup_stale_cowork_socket).
-export async function cleanupPreLaunch(): Promise<void> {
+//
+// When `configDir` is provided (isolated test mode), the SingletonLock
+// path is relative to that dir rather than ~/.config/Claude — the host
+// config is left untouched.
+export async function cleanupPreLaunch(configDir?: string): Promise<void> {
 	try {
 		await exec('pkill', ['-f', 'cowork-vm-service\\.js']);
 	} catch {
 		// pkill returns non-zero when no matches; that's fine.
 	}
 
-	const lockPath = join(homedir(), '.config/Claude/SingletonLock');
+	const lockPath = configDir
+		? join(configDir, 'SingletonLock')
+		: join(homedir(), '.config/Claude/SingletonLock');
 	try {
 		const target = readlinkSync(lockPath);
 		const pidMatch = target.match(/-(\d+)$/);
@@ -115,7 +129,21 @@ export async function cleanupPreLaunch(): Promise<void> {
 }
 
 export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp> {
-	await cleanupPreLaunch();
+	// Isolation default: create a fresh per-launch sandbox unless the
+	// caller passed `null` (legacy ~/.config/Claude) or supplied a
+	// pre-existing handle (shared across multiple launches in one test).
+	let isolation: Isolation | null;
+	let ownsIsolation = false;
+	if (opts.isolation === null) {
+		isolation = null;
+	} else if (opts.isolation) {
+		isolation = opts.isolation;
+	} else {
+		isolation = await createIsolation();
+		ownsIsolation = true;
+	}
+
+	await cleanupPreLaunch(isolation?.configDir);
 	const { electron: electronBin, asar } = resolveInstall();
 	const appDir = dirname(dirname(dirname(dirname(electronBin))));
 
@@ -127,6 +155,7 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 			env: {
 				...process.env,
 				...LAUNCHER_INJECTED_ENV,
+				...(isolation?.env ?? {}),
 				...opts.extraEnv,
 				CI: '1',
 			} as Record<string, string>,
@@ -136,12 +165,14 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 	);
 
 	if (!proc.pid) {
+		if (ownsIsolation && isolation) await isolation.cleanup();
 		throw new Error('Failed to spawn Electron — no pid');
 	}
 
 	return {
 		process: proc,
 		pid: proc.pid,
+		isolation,
 		async close() {
 			if (proc.exitCode === null && proc.signalCode === null) {
 				proc.kill('SIGTERM');
@@ -152,6 +183,9 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 				if (proc.exitCode === null && proc.signalCode === null) {
 					proc.kill('SIGKILL');
 				}
+			}
+			if (ownsIsolation && isolation) {
+				await isolation.cleanup();
 			}
 		},
 		async waitForX11Window(timeoutMs = 15_000) {
