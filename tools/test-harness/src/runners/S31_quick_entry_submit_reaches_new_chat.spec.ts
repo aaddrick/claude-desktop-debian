@@ -135,8 +135,7 @@ test('S31 — Quick Entry submit reaches new chat from any main-window state', a
 			// path).
 			let popupOpened = false;
 			try {
-				await qe.openViaShortcut();
-				await qe.waitForPopupReady(8_000);
+				await qe.openAndWaitReady();
 				popupOpened = true;
 			} catch (err) {
 				console.log(

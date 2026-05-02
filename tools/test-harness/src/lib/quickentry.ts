@@ -160,6 +160,40 @@ export class QuickEntry {
 		});
 	}
 
+	// openViaShortcut + waitForPopupReady, with retry for the
+	// upstream-only-shows-when-logged-in race (build-reference
+	// index.js:515604: `function lHn() { return !user.isLoggedOut; }`).
+	// On a fresh launch, the renderer URL flips past /login before
+	// the main-process user object is populated; the first shortcut
+	// constructs the popup but skips show(). A second shortcut after
+	// a brief settle hits the populated-user path. Total budget is
+	// `attempts * (perAttemptMs + retryDelayMs)`.
+	async openAndWaitReady(opts: {
+		attempts?: number;
+		perAttemptMs?: number;
+		retryDelayMs?: number;
+	} = {}): Promise<void> {
+		const attempts = opts.attempts ?? 3;
+		const perAttemptMs = opts.perAttemptMs ?? 8_000;
+		const retryDelayMs = opts.retryDelayMs ?? 1_500;
+		let lastErr: unknown = null;
+		for (let i = 0; i < attempts; i++) {
+			await this.openViaShortcut();
+			try {
+				await this.waitForPopupReady(perAttemptMs);
+				return;
+			} catch (err) {
+				lastErr = err;
+				if (i < attempts - 1) await sleep(retryDelayMs);
+			}
+		}
+		throw new Error(
+			`openAndWaitReady: popup never became ready after ${attempts} ` +
+				`shortcut presses. Last error: ` +
+				(lastErr instanceof Error ? lastErr.message : String(lastErr)),
+		);
+	}
+
 	// Wait for the popup webContents to appear after openViaShortcut().
 	async waitForPopup(timeoutMs = 5000): Promise<WebContentsInfo> {
 		const wc = await retryUntil(
@@ -443,6 +477,40 @@ export class MainWindow {
 			};
 		`);
 	}
+}
+
+// Wait for the claude.ai user object to be loaded — the precondition
+// for upstream's lHn() (`!user.isLoggedOut`) returning true. The
+// shortcut handler calls Ko.show() only when lHn() is true; if the
+// renderer hasn't finished loading the user yet, the popup gets
+// constructed and ready-to-show fires, but show() is silently
+// skipped (build-reference index.js:515604). The user object is
+// available once the renderer has navigated past the login page —
+// e.g. /new, /chat/<uuid>, /code, /projects.
+//
+// Returns the post-login URL on success. Returns null on timeout —
+// caller can decide to skip vs fail.
+const LOGIN_URL_RE = /\/(login|auth|sign[-_]?in)/i;
+
+export async function waitForUserLoaded(
+	inspector: InspectorClient,
+	timeoutMs = 30_000,
+): Promise<string | null> {
+	return await retryUntil(
+		async () => {
+			const urls = await inspector.evalInMain<string[]>(`
+				const { webContents } = process.mainModule.require('electron');
+				return webContents.getAllWebContents()
+					.filter(w => w.getURL().includes('claude.ai'))
+					.map(w => w.getURL());
+			`);
+			const postLogin = urls.find(
+				(u) => !LOGIN_URL_RE.test(u) && u.includes('claude.ai'),
+			);
+			return postLogin ?? null;
+		},
+		{ timeout: timeoutMs, interval: 250 },
+	);
 }
 
 // Wait for a new chat session to load in the claude.ai webContents.

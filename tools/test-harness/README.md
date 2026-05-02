@@ -7,23 +7,39 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Five tests wired up; passing on KDE-W:
+Sixteen specs wired; ten pass on KDE-W, five skip cleanly per spec
+intent, T17 holds at the same selector-tuning point.
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
-| [T01](../../docs/testing/cases/launch.md#t01--app-launch) | An X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop) |
+| [T01](../../docs/testing/cases/launch.md#t01--app-launch) | X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop) |
 | [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid | L2 (DBus) |
 | [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop) |
-| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Inspector attaches via SIGUSR1, dialog mock installs, claude.ai webContents reachable, Code tab nav succeeds — folder-picker click chain awaits selector tuning | L1 (inspector + main-process mock) |
-| [S31](../../docs/testing/cases/shortcuts-and-input.md#s31--quick-entry-submit-makes-the-new-chat-reachable-from-any-main-window-state) | Quick Entry submit reaches new chat from visible / minimized / hidden-to-tray main-window states (covers QE-7/8/9) — layered local (popup-closed) + network (`/chat/<uuid>`) assertion | L1 (inspector + ydotool + popup webContents probe) |
+| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Inspector attach + dialog mock + Code tab nav — selector-tuning pending | L1 |
+| [S09](../../docs/testing/cases/shortcuts-and-input.md#s09--quick-window-patch-runs-only-on-kde-post-406-gate) | KDE-gate string present in bundled `index.js` (patch ran at build) | file probe |
+| S12 | `--enable-features=GlobalShortcutsPortal` in Electron argv (GNOME-W only — currently a known-failing regression detector) | argv probe |
+| [S29](../../docs/testing/cases/shortcuts-and-input.md#s29--quick-entry-popup-is-created-lazily-on-first-shortcut-press-closed-to-tray-sanity) | Popup opens when main is hidden-to-tray (lazy-create sanity) | L1 |
+| [S30](../../docs/testing/cases/shortcuts-and-input.md#s30--quick-entry-shortcut-becomes-a-no-op-after-full-app-exit) | No new claude-desktop pid spawns after post-exit shortcut press | pgrep delta + ydotool |
+| [S31](../../docs/testing/cases/shortcuts-and-input.md#s31--quick-entry-submit-makes-the-new-chat-reachable-from-any-main-window-state) | Submit reaches new chat from visible / minimized / hidden-to-tray (QE-7/8/9) | L1 + ydotool |
+| S32 | GNOME mutter stale-`isFocused()` regression (GNOME-W/Ubu-W only — known-failing today) | L1 + ydotool |
+| [S33](../../docs/testing/cases/shortcuts-and-input.md#s33--quick-entry-transparent-rendering-tracked-against-bundled-electron-version) | Captures bundled Electron version against the #370 / electron#50213 bisect threshold | file read |
+| [S34](../../docs/testing/cases/shortcuts-and-input.md#s34--quick-entry-shortcut-focuses-fullscreen-main-window-instead-of-showing-popup) | Popup does **not** appear when main is fullscreen (upstream contract) | L1 + ydotool |
+| [S35](../../docs/testing/cases/shortcuts-and-input.md#s35--quick-entry-popup-position-is-persisted-across-invocations-and-across-app-restarts) | Popup position persists across invocations *and* across app restart (two-launch test) | L1 + shared isolation handle + ydotool |
+| S36 | Multi-monitor fallback — skip-on-single-monitor with documented `fixme` for the disconnect orchestration | display probe |
+| S37 | Main-window destroy unreachable on Linux per close-to-tray override — documented skip | — |
 
-These five exercise four distinct shapes of TS code in the harness:
-`xprop` shell-outs (T01, T04), `dbus-next` (T03), Node inspector
-runtime-attach + `webContents.executeJavaScript` (T17), and the
-prototype-method hook + ydotool injection pattern that backs the
-Quick Entry runners (S31, and the QE-* sweep generally — see
-[`docs/testing/quick-entry-closeout.md`](../../docs/testing/quick-entry-closeout.md)).
-Everything beyond them is recombination.
+These specs exercise five distinct shapes of TS code: `xprop`
+shell-outs (T01, T04), `dbus-next` (T03), Node-inspector runtime-
+attach (T17, S29-S35), `app.asar` content reads (S09, S33),
+`/proc/$pid/cmdline` reads (S12), and pgrep-based pid deltas (S30).
+The Quick Entry runners (S29-S35) all share the same primitive set:
+`installInterceptor()` + `openAndWaitReady()` + scenario-specific
+state setup. New QE variants are mostly recombinations of those.
+
+The full sweep on KDE-W runs in ~2.2 minutes against the locally
+installed claude-desktop with `CLAUDE_TEST_USE_HOST_CONFIG=1`
+(signed-in claude.ai required for the submit-side Critical
+assertions; default isolation skips those tests).
 
 ## Prerequisites
 
@@ -153,7 +169,17 @@ tools/test-harness/
 │       ├── T03_tray_icon_present.spec.ts
 │       ├── T04_window_decorations.spec.ts
 │       ├── T17_folder_picker.spec.ts
-│       └── S31_quick_entry_submit_reaches_new_chat.spec.ts
+│       ├── S09_quick_window_patch_only_kde.spec.ts
+│       ├── S12_global_shortcuts_portal_flag.spec.ts
+│       ├── S29_quick_entry_lazy_create_closed_to_tray.spec.ts
+│       ├── S30_quick_entry_noop_after_app_exit.spec.ts
+│       ├── S31_quick_entry_submit_reaches_new_chat.spec.ts
+│       ├── S32_quick_entry_submit_gnome_stale_isfocused.spec.ts
+│       ├── S33_electron_version_capture.spec.ts
+│       ├── S34_shortcut_focuses_fullscreen_main.spec.ts
+│       ├── S35_quick_entry_position_persisted_across_restarts.spec.ts
+│       ├── S36_quick_entry_fallback_to_primary_display.spec.ts
+│       └── S37_quick_entry_popup_after_main_destroy.spec.ts
 └── orchestrator/
     └── sweep.sh                   # row-aware harness invocation
 ```
