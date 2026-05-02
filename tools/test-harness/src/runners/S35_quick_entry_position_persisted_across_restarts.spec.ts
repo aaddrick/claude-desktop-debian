@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { launchClaude } from '../lib/electron.js';
 import { skipUnlessRow } from '../lib/row.js';
-import { QuickEntry, MainWindow, waitForUserLoaded } from '../lib/quickentry.js';
+import { QuickEntry } from '../lib/quickentry.js';
 import { createIsolation, type Isolation } from '../lib/isolation.js';
-import { retryUntil, sleep } from '../lib/retry.js';
+import { sleep } from '../lib/retry.js';
 import { captureSessionEnv } from '../lib/diagnostics.js';
 
 // S35 — Quick Entry popup position is persisted across invocations
@@ -62,25 +62,11 @@ test('S35 — Quick Entry popup position is persisted across invocations and acr
 		const app1 = await launchClaude({ isolation });
 		let position1: { x: number; y: number } | null = null;
 		try {
-			await app1.waitForX11Window(15_000);
-			const inspector = await app1.attachInspector(15_000);
-			const qe = new QuickEntry(inspector);
-			const mainWin = new MainWindow(inspector);
-			await qe.installInterceptor();
-
-			// Wait for main visible AND user-loaded. Upstream's
-			// shortcut handler calls Ko.show() only when lHn() is
-			// true (`!user.isLoggedOut`); if the renderer hasn't
-			// loaded the user yet, the popup gets constructed but
-			// not shown.
-			await retryUntil(
-				async () => {
-					const s = await mainWin.getState();
-					return s && s.visible ? s : null;
-				},
-				{ timeout: 15_000, interval: 250 },
-			);
-			const postLoginUrl = await waitForUserLoaded(inspector, 30_000);
+			// userLoaded — Upstream's shortcut handler calls Ko.show()
+			// only when lHn() is true (`!user.isLoggedOut`); if the
+			// renderer hasn't loaded the user yet, the popup gets
+			// constructed but not shown.
+			const { inspector, postLoginUrl } = await app1.waitForReady('userLoaded');
 			if (!postLoginUrl) {
 				testInfo.skip(
 					true,
@@ -89,11 +75,16 @@ test('S35 — Quick Entry popup position is persisted across invocations and acr
 				);
 				return;
 			}
+			const qe = new QuickEntry(inspector);
+			await qe.installInterceptor();
+
 			// URL change is renderer-driven; the main-process user
 			// object that lHn() reads loads on a separate timeline.
 			// 3s margin is empirical — without it, the first shortcut
 			// hits before the auth state propagates and Ko.show() is
-			// silently skipped.
+			// silently skipped. openAndWaitReady's retry would catch
+			// this too, but eating one full attempt + retryDelayMs is
+			// slower than the upfront sleep.
 			await sleep(3_000);
 
 			await qe.openAndWaitReady();
@@ -170,24 +161,11 @@ test('S35 — Quick Entry popup position is persisted across invocations and acr
 		const app2 = await launchClaude({ isolation });
 		let position2: { x: number; y: number } | null = null;
 		try {
-			await app2.waitForX11Window(15_000);
-			const inspector = await app2.attachInspector(15_000);
-			const qe = new QuickEntry(inspector);
-			const mainWin = new MainWindow(inspector);
-			await qe.installInterceptor();
-
-			// Wait for main visible AND user-loaded — same race as
-			// the first launch. Settings load is part of main's
-			// startup, so by the time the user has loaded,
-			// `an.get("quickWindowPosition")` returns the saved value.
-			await retryUntil(
-				async () => {
-					const s = await mainWin.getState();
-					return s && s.visible ? s : null;
-				},
-				{ timeout: 15_000, interval: 250 },
-			);
-			const postLoginUrl = await waitForUserLoaded(inspector, 30_000);
+			// userLoaded — same race as the first launch. Settings
+			// load is part of main's startup, so by the time the user
+			// has loaded, `an.get("quickWindowPosition")` returns the
+			// saved value.
+			const { inspector, postLoginUrl } = await app2.waitForReady('userLoaded');
 			if (!postLoginUrl) {
 				testInfo.skip(
 					true,
@@ -195,6 +173,8 @@ test('S35 — Quick Entry popup position is persisted across invocations and acr
 				);
 				return;
 			}
+			const qe = new QuickEntry(inspector);
+			await qe.installInterceptor();
 
 			await qe.openAndWaitReady();
 

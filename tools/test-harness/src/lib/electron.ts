@@ -7,6 +7,7 @@ import { sleep, retryUntil } from './retry.js';
 import { findX11WindowByPid } from './wm.js';
 import { InspectorClient } from './inspector.js';
 import { createIsolation, type Isolation } from './isolation.js';
+import { MainWindow, waitForUserLoaded } from './quickentry.js';
 
 const exec = promisify(execFile);
 
@@ -21,6 +22,57 @@ export interface LaunchOptions {
 	isolation?: Isolation | null;
 }
 
+// Tiered readiness levels for waitForReady(). Higher levels include
+// every check from lower levels. Pick the lowest level a test
+// actually needs:
+//   - 'window'      X11 window mapped (no inspector, no renderer state)
+//   - 'mainVisible' main shell BrowserWindow.isVisible() === true
+//   - 'claudeAi'    any claude.ai webContents reachable (may be /login)
+//   - 'userLoaded'  claude.ai URL past /login (lHn() precondition; the
+//                   tightest gate before exercising QE submit paths)
+export type ReadyLevel = 'window' | 'mainVisible' | 'claudeAi' | 'userLoaded';
+
+export interface WaitForReadyOptions {
+	// Overall budget across all levels. Each step consumes from the
+	// remaining budget. Default 90_000ms covers the userLoaded path
+	// (~5-10s startup + main visible + 30s claude.ai load + login
+	// nav) with margin. Override down for cheaper levels.
+	timeout?: number;
+}
+
+export interface WindowReady {
+	wid: string;
+}
+
+export interface MainVisibleReady extends WindowReady {
+	inspector: InspectorClient;
+}
+
+export interface ClaudeAiReady extends MainVisibleReady {
+	// First claude.ai webContents URL observed. Absent if claude.ai
+	// never loaded within the budget — caller can treat as a skip
+	// (host likely not signed in).
+	claudeAiUrl?: string;
+}
+
+export interface UserLoadedReady extends ClaudeAiReady {
+	// claude.ai URL past /login. Absent if the renderer never
+	// navigated past the login page within the budget.
+	postLoginUrl?: string;
+}
+
+// Maps each level to the precise return shape its callers see.
+// Conditional type rather than overloads because the implementation
+// is a single closure with a union return — overloads would require
+// either an unsafe cast or function-declaration overloads, both
+// noisier than this.
+export type ReadyResultFor<L extends ReadyLevel> =
+	L extends 'window' ? WindowReady :
+	L extends 'mainVisible' ? MainVisibleReady :
+	L extends 'claudeAi' ? ClaudeAiReady :
+	L extends 'userLoaded' ? UserLoadedReady :
+	never;
+
 export interface ClaudeApp {
 	process: ChildProcess;
 	pid: number;
@@ -28,6 +80,16 @@ export interface ClaudeApp {
 	close(): Promise<void>;
 	waitForX11Window(timeoutMs?: number): Promise<string>;
 	attachInspector(timeoutMs?: number): Promise<InspectorClient>;
+	// Tiered "is the app ready for the kind of work this test does"
+	// helper. See ReadyLevel for what each level checks. Throws on
+	// timeout for 'window' / 'mainVisible' (hard-fail levels). For
+	// 'claudeAi' / 'userLoaded', returns with the corresponding field
+	// (claudeAiUrl, postLoginUrl) absent on timeout so callers can
+	// `testInfo.skip()` rather than fail when the host isn't signed in.
+	waitForReady<L extends ReadyLevel>(
+		level: L,
+		opts?: WaitForReadyOptions,
+	): Promise<ReadyResultFor<L>>;
 }
 
 // CDP auth gate: index.pre.js has
@@ -169,6 +231,111 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 		throw new Error('Failed to spawn Electron — no pid');
 	}
 
+	const waitForX11Window = async (timeoutMs = 15_000): Promise<string> => {
+		const wid = await retryUntil(
+			async () => findX11WindowByPid(proc.pid!),
+			{ timeout: timeoutMs, interval: 250 },
+		);
+		if (!wid) {
+			throw new Error(
+				`X11 window for pid ${proc.pid} did not appear within ${timeoutMs}ms`,
+			);
+		}
+		return wid;
+	};
+
+	const attachInspector = async (timeoutMs = 15_000): Promise<InspectorClient> => {
+		// Send SIGUSR1 to open the Node inspector at runtime — same code
+		// path as Developer → Enable Main Process Debugger menu item.
+		// Then poll http://127.0.0.1:9229/json/list until it answers.
+		process.kill(proc.pid!, 'SIGUSR1');
+		const start = Date.now();
+		let lastErr: unknown = null;
+		while (Date.now() - start < timeoutMs) {
+			try {
+				return await InspectorClient.connect(9229);
+			} catch (err) {
+				lastErr = err;
+				await sleep(250);
+			}
+		}
+		throw new Error(
+			`Inspector did not become ready on port 9229 within ${timeoutMs}ms: ${
+				lastErr instanceof Error ? lastErr.message : String(lastErr)
+			}`,
+		);
+	};
+
+	const waitForReady = async (
+		level: ReadyLevel,
+		opts: WaitForReadyOptions = {},
+	): Promise<WindowReady | MainVisibleReady | ClaudeAiReady | UserLoadedReady> => {
+		const overall = opts.timeout ?? 90_000;
+		const start = Date.now();
+		// Each step uses the remaining overall budget rather than
+		// a fixed per-step timeout. If startup is slow, downstream
+		// steps still get whatever's left; if startup is fast, the
+		// later steps inherit the unused margin.
+		const remaining = () => Math.max(0, overall - (Date.now() - start));
+
+		const wid = await waitForX11Window(remaining());
+		if (level === 'window') return { wid };
+
+		const inspector = await attachInspector(remaining());
+
+		// 'mainVisible' — the main shell BrowserWindow has been
+		// shown. MainWindow.getState() resolves the window via
+		// claude.ai webContents, so this poll implicitly also
+		// requires that webContents to exist; the explicit
+		// 'claudeAi' step below is for the URL-list signal that
+		// some tests want even when window visibility is incidental.
+		const mainWin = new MainWindow(inspector);
+		const visibleState = await retryUntil(
+			async () => {
+				const s = await mainWin.getState();
+				return s && s.visible ? s : null;
+			},
+			{ timeout: remaining(), interval: 250 },
+		);
+		if (!visibleState) {
+			throw new Error(
+				`waitForReady('${level}'): main window did not become ` +
+					`visible within ${overall}ms`,
+			);
+		}
+		if (level === 'mainVisible') return { wid, inspector };
+
+		// 'claudeAi' — a claude.ai-domain webContents exists in
+		// the registry. May still be on /login. Soft-fails on
+		// timeout: returns without claudeAiUrl so the caller
+		// can skip (host likely not signed in).
+		const claudeAiUrl = await retryUntil(
+			async () => {
+				const all = await inspector.evalInMain<{ url: string }[]>(`
+					const { webContents } = process.mainModule.require('electron');
+					return webContents.getAllWebContents().map(w => ({ url: w.getURL() }));
+				`);
+				return all.find((w) => w.url.includes('claude.ai'))?.url ?? null;
+			},
+			{ timeout: remaining(), interval: 500 },
+		);
+		if (!claudeAiUrl) {
+			return { wid, inspector };
+		}
+		if (level === 'claudeAi') return { wid, inspector, claudeAiUrl };
+
+		// 'userLoaded' — URL past /login. Necessary precondition
+		// for upstream's lHn() (`!user.isLoggedOut`) returning
+		// true, which gates Ko.show() in the shortcut handler.
+		// NOT sufficient on its own — main-process user state
+		// loads on a separate timeline from the renderer URL,
+		// so QE submit paths still need openAndWaitReady's
+		// retry loop on top of this.
+		const postLoginUrl =
+			(await waitForUserLoaded(inspector, remaining())) ?? undefined;
+		return { wid, inspector, claudeAiUrl, postLoginUrl };
+	};
+
 	return {
 		process: proc,
 		pid: proc.pid,
@@ -188,38 +355,12 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 				await isolation.cleanup();
 			}
 		},
-		async waitForX11Window(timeoutMs = 15_000) {
-			const wid = await retryUntil(
-				async () => findX11WindowByPid(proc.pid!),
-				{ timeout: timeoutMs, interval: 250 },
-			);
-			if (!wid) {
-				throw new Error(
-					`X11 window for pid ${proc.pid} did not appear within ${timeoutMs}ms`,
-				);
-			}
-			return wid;
-		},
-		async attachInspector(timeoutMs = 15_000) {
-			// Send SIGUSR1 to open the Node inspector at runtime — same code
-			// path as Developer → Enable Main Process Debugger menu item.
-			// Then poll http://127.0.0.1:9229/json/list until it answers.
-			process.kill(proc.pid!, 'SIGUSR1');
-			const start = Date.now();
-			let lastErr: unknown = null;
-			while (Date.now() - start < timeoutMs) {
-				try {
-					return await InspectorClient.connect(9229);
-				} catch (err) {
-					lastErr = err;
-					await sleep(250);
-				}
-			}
-			throw new Error(
-				`Inspector did not become ready on port 9229 within ${timeoutMs}ms: ${
-					lastErr instanceof Error ? lastErr.message : String(lastErr)
-				}`,
-			);
-		},
+		waitForX11Window,
+		attachInspector,
+		// TS can't verify a closure with a union return matches the
+		// generic conditional signature, even though the runtime
+		// branches do produce the right shape per level. The cast
+		// preserves the public contract.
+		waitForReady: waitForReady as ClaudeApp['waitForReady'],
 	};
 }

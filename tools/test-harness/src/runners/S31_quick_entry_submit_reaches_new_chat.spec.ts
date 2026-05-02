@@ -6,7 +6,7 @@ import {
 	MainWindow,
 	waitForNewChat,
 } from '../lib/quickentry.js';
-import { retryUntil, sleep } from '../lib/retry.js';
+import { sleep } from '../lib/retry.js';
 import { captureSessionEnv } from '../lib/diagnostics.js';
 
 // S31 — Quick Entry submit makes the new chat reachable from any
@@ -56,26 +56,11 @@ test('S31 — Quick Entry submit reaches new chat from any main-window state', a
 	const app = await launchClaude({ isolation: useHostConfig ? null : undefined });
 
 	try {
-		await app.waitForX11Window(15_000);
-		const inspector = await app.attachInspector(15_000);
-
-		const qe = new QuickEntry(inspector);
-		const mainWin = new MainWindow(inspector);
-		await qe.installInterceptor();
-
-		// Wait for claude.ai to load — submit makes no sense before then.
-		const claudeUp = await retryUntil(
-			async () => {
-				const all = await inspector.evalInMain<{ url: string }[]>(`
-					const { webContents } = process.mainModule.require('electron');
-					return webContents.getAllWebContents().map(w => ({ url: w.getURL() }));
-				`);
-				return all.find((w) => w.url.includes('claude.ai')) ?? null;
-			},
-			{ timeout: 30_000, interval: 500 },
-		);
-
-		if (!claudeUp) {
+		// claudeAi level: main visible AND a claude.ai webContents
+		// exists. Soft-fails (claudeAiUrl absent) when claude.ai
+		// never loads — typically the not-signed-in case.
+		const { inspector, claudeAiUrl } = await app.waitForReady('claudeAi');
+		if (!claudeAiUrl) {
 			testInfo.skip(
 				true,
 				'claude.ai webContents never loaded — likely not signed in. ' +
@@ -83,6 +68,10 @@ test('S31 — Quick Entry submit reaches new chat from any main-window state', a
 			);
 			return;
 		}
+
+		const qe = new QuickEntry(inspector);
+		const mainWin = new MainWindow(inspector);
+		await qe.installInterceptor();
 
 		// Each scenario sets a precondition, then submits a prompt.
 		// Run them in sequence on the same app instance — the sweep

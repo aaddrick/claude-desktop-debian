@@ -53,24 +53,10 @@ test('S32 — Quick Entry submit on GNOME mutter does not trip Electron stale-is
 	});
 
 	try {
-		await app.waitForX11Window(15_000);
-		const inspector = await app.attachInspector(15_000);
-		const qe = new QuickEntry(inspector);
-		const mainWin = new MainWindow(inspector);
-		await qe.installInterceptor();
-
-		// Wait for claude.ai to load before exercising submit.
-		const claudeUp = await retryUntil(
-			async () => {
-				const all = await inspector.evalInMain<{ url: string }[]>(`
-					const { webContents } = process.mainModule.require('electron');
-					return webContents.getAllWebContents().map(w => ({ url: w.getURL() }));
-				`);
-				return all.find((w) => w.url.includes('claude.ai')) ?? null;
-			},
-			{ timeout: 30_000, interval: 500 },
-		);
-		if (!claudeUp) {
+		// claudeAi level — submit makes no sense before claude.ai
+		// loads. Soft-fails to skip when not signed in.
+		const { inspector, claudeAiUrl } = await app.waitForReady('claudeAi');
+		if (!claudeAiUrl) {
 			testInfo.skip(
 				true,
 				'claude.ai webContents never loaded — likely not signed in. ' +
@@ -78,6 +64,10 @@ test('S32 — Quick Entry submit on GNOME mutter does not trip Electron stale-is
 			);
 			return;
 		}
+
+		const qe = new QuickEntry(inspector);
+		const mainWin = new MainWindow(inspector);
+		await qe.installInterceptor();
 
 		// Reproduce the tray-only state Andrej730 traced.
 		await mainWin.setState('show');

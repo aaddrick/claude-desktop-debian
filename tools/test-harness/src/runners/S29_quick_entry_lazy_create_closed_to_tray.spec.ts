@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { launchClaude } from '../lib/electron.js';
 import { skipUnlessRow } from '../lib/row.js';
 import { QuickEntry, MainWindow } from '../lib/quickentry.js';
-import { retryUntil } from '../lib/retry.js';
 import { captureSessionEnv } from '../lib/diagnostics.js';
 
 // S29 — Quick Entry popup is created lazily on first shortcut press
@@ -41,22 +40,13 @@ test('S29 — Quick Entry popup is created lazily on first shortcut press (close
 	});
 
 	try {
-		await app.waitForX11Window(15_000);
-		const inspector = await app.attachInspector(15_000);
+		// Wait for main to fully load before hiding it. Without this,
+		// the inspector probe races the initial `show()` and the
+		// state we capture isn't representative.
+		const { inspector } = await app.waitForReady('mainVisible');
 		const qe = new QuickEntry(inspector);
 		const mainWin = new MainWindow(inspector);
 		await qe.installInterceptor();
-
-		// Wait for main to fully load before hiding it. Without this,
-		// the inspector probe might race the initial `show()` and the
-		// state we capture isn't representative.
-		await retryUntil(
-			async () => {
-				const state = await mainWin.getState();
-				return state && state.visible ? state : null;
-			},
-			{ timeout: 15_000, interval: 250 },
-		);
 
 		// Hide-to-tray. Project's frame-fix-wrapper turns the X-button
 		// close into hide(); we replicate that explicitly so the test

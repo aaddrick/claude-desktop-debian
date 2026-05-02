@@ -42,21 +42,13 @@ test('S34 — Quick Entry shortcut focuses fullscreen main window instead of sho
 	});
 
 	try {
-		await app.waitForX11Window(15_000);
-		const inspector = await app.attachInspector(15_000);
+		// mainVisible — some compositors no-op setFullScreen on
+		// un-mapped windows, so wait for the main shell to be shown
+		// before driving fullscreen state.
+		const { inspector } = await app.waitForReady('mainVisible');
 		const qe = new QuickEntry(inspector);
 		const mainWin = new MainWindow(inspector);
 		await qe.installInterceptor();
-
-		// Wait for main to be visible before going fullscreen — some
-		// compositors no-op setFullScreen on un-mapped windows.
-		await retryUntil(
-			async () => {
-				const state = await mainWin.getState();
-				return state && state.visible ? state : null;
-			},
-			{ timeout: 15_000, interval: 250 },
-		);
 
 		await mainWin.setState('show');
 		await mainWin.setState('fullScreen');

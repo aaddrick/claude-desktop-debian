@@ -3,8 +3,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { launchClaude } from '../lib/electron.js';
 import { skipUnlessRow } from '../lib/row.js';
-import { QuickEntry, MainWindow } from '../lib/quickentry.js';
-import { retryUntil, sleep } from '../lib/retry.js';
+import { QuickEntry } from '../lib/quickentry.js';
+import { sleep } from '../lib/retry.js';
 import { captureSessionEnv } from '../lib/diagnostics.js';
 
 
@@ -75,22 +75,13 @@ test('S30 — Quick Entry shortcut becomes a no-op after full app exit', async (
 	// shortcut registration. We use it to verify the popup CAN open
 	// before exit, so the post-exit no-op result is meaningful.
 	try {
-		await app.waitForX11Window(15_000);
-		const inspector = await app.attachInspector(15_000);
+		// mainVisible covers main-shell readiness — triggering the
+		// shortcut before show() races the popup-show flow (loadFile
+		// + ready-to-show + show()) and the popup never becomes
+		// visible.
+		const { inspector } = await app.waitForReady('mainVisible');
 		const qe = new QuickEntry(inspector);
-		const mainWin = new MainWindow(inspector);
 		await qe.installInterceptor();
-		// Wait for main to be fully ready before triggering the
-		// shortcut. Triggering too early races the popup-show flow
-		// (loadFile + ready-to-show + show()) and the popup never
-		// becomes visible.
-		await retryUntil(
-			async () => {
-				const s = await mainWin.getState();
-				return s && s.visible ? s : null;
-			},
-			{ timeout: 15_000, interval: 250 },
-		);
 		// Confirm shortcut is wired by invoking it and waiting for
 		// the popup to appear. openAndWaitReady retries through the
 		// upstream lHn() race (build-reference index.js:515604) where
