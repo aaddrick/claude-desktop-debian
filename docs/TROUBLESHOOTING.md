@@ -80,6 +80,48 @@ If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in
 
 See [CONFIGURATION.md](CONFIGURATION.md) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
 
+### Keyboard Input Doesn't Work (IBus / GTK Input Method)
+
+If typing into the chat does nothing, characters get swallowed, or
+dead-key sequences (e.g. ``` `e ``` → `è`) don't compose, your GTK
+input module integration with the Electron-bundled GTK is broken.
+Common symptoms:
+
+- No characters appear when typing into any text field
+- The first keystroke after focus is dropped, subsequent ones work
+- CJK input methods (IBus, Fcitx) not engaging
+- Compose key / dead-key sequences silently drop
+
+The fastest workaround is to switch the launcher to a different GTK
+input module. Set `CLAUDE_GTK_IM_MODULE` and Claude Desktop will
+propagate it as `GTK_IM_MODULE` to Electron at startup:
+
+```bash
+# Bypass IBus entirely — uses the X Input Method (XIM) protocol
+CLAUDE_GTK_IM_MODULE=xim claude-desktop
+
+# To make it persistent, export it from your shell profile:
+# echo 'export CLAUDE_GTK_IM_MODULE=xim' >> ~/.profile
+```
+
+Valid values: anything your GTK installation supports (`xim`, `ibus`,
+`fcitx`, `simple`, etc.). When the override is active, the launcher
+logs a line to `~/.cache/claude-desktop-debian/launcher.log`:
+
+```
+GTK_IM_MODULE override: ibus -> xim (via CLAUDE_GTK_IM_MODULE)
+```
+
+**Trade-off:** `xim` is the lowest-common-denominator input module
+and does not support advanced IME features like CJK candidate
+windows or rich compose-key sequences. Only use it if your real
+input method (IBus/Fcitx) is broken — for users who don't need
+CJK/compose, `xim` is fine; for users who do, prefer fixing the
+IBus/Fcitx integration over forcing `xim`.
+
+If unset or empty, `GTK_IM_MODULE` is not modified and existing
+behavior is preserved.
+
 ### AppImage Sandbox Warning
 
 AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.

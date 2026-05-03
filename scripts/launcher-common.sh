@@ -315,6 +315,17 @@ setup_electron_env() {
 	if [[ $(_resolve_titlebar_style) != 'hidden' ]]; then
 		export ELECTRON_USE_SYSTEM_TITLE_BAR=1
 	fi
+	# CLAUDE_GTK_IM_MODULE: opt-in override for users hit by broken
+	# IBus integration on Linux (#549). When set non-empty, propagate
+	# the value to GTK_IM_MODULE so users can persist e.g. xim without
+	# editing .desktop Exec lines or wrapping the launcher. Unset/empty
+	# leaves GTK_IM_MODULE alone (no behavior change for everyone else).
+	if [[ -n ${CLAUDE_GTK_IM_MODULE:-} ]]; then
+		local _prev="${GTK_IM_MODULE:-<unset>}"
+		export GTK_IM_MODULE="$CLAUDE_GTK_IM_MODULE"
+		log_message \
+			"GTK_IM_MODULE override: $_prev -> $GTK_IM_MODULE (via CLAUDE_GTK_IM_MODULE)"
+	fi
 }
 
 #===============================================================================

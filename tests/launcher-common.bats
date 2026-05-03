@@ -355,6 +355,48 @@ teardown() {
 	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
 }
 
+@test "setup_electron_env: CLAUDE_GTK_IM_MODULE set propagates to GTK_IM_MODULE" {
+	setup_logging
+	GTK_IM_MODULE='ibus'
+	CLAUDE_GTK_IM_MODULE='xim'
+	setup_electron_env
+	[[ $GTK_IM_MODULE == 'xim' ]]
+	# Override is logged so users can verify it took effect
+	run cat "$log_file"
+	[[ $output == *'GTK_IM_MODULE override: ibus -> xim (via CLAUDE_GTK_IM_MODULE)'* ]]
+}
+
+@test "setup_electron_env: CLAUDE_GTK_IM_MODULE set logs <unset> when GTK_IM_MODULE was unset" {
+	setup_logging
+	# GTK_IM_MODULE unset by setup()
+	CLAUDE_GTK_IM_MODULE='xim'
+	setup_electron_env
+	[[ $GTK_IM_MODULE == 'xim' ]]
+	run cat "$log_file"
+	[[ $output == *'GTK_IM_MODULE override: <unset> -> xim (via CLAUDE_GTK_IM_MODULE)'* ]]
+}
+
+@test "setup_electron_env: CLAUDE_GTK_IM_MODULE unset leaves GTK_IM_MODULE alone" {
+	setup_logging
+	GTK_IM_MODULE='ibus'
+	# CLAUDE_GTK_IM_MODULE unset by setup()
+	setup_electron_env
+	[[ $GTK_IM_MODULE == 'ibus' ]]
+	# No override line should appear in the log
+	run cat "$log_file"
+	[[ $output != *'GTK_IM_MODULE override'* ]]
+}
+
+@test "setup_electron_env: CLAUDE_GTK_IM_MODULE empty leaves GTK_IM_MODULE alone" {
+	setup_logging
+	GTK_IM_MODULE='ibus'
+	CLAUDE_GTK_IM_MODULE=''
+	setup_electron_env
+	[[ $GTK_IM_MODULE == 'ibus' ]]
+	run cat "$log_file"
+	[[ $output != *'GTK_IM_MODULE override'* ]]
+}
+
 # =============================================================================
 # _resolve_titlebar_style
 # =============================================================================
