@@ -1,0 +1,486 @@
+name: Post-Merge Attribution
+run-name: |
+  Post-merge: PR #${{ github.event.pull_request.number || inputs.pr_number }}
+
+# Fires on PR merge to main. Reads the PR body, comments, linked
+# issues + their comments, and the PR diff; calls Claude Sonnet to
+# decide whether anyone external warrants a credit in README.md's
+# Acknowledgments section; applies the credit operations via
+# apply-credits.py; bumps the REPO_VERSION repo variable by 0.0.1;
+# commits the README change to main with [skip ci]. The version bump
+# runs unconditionally on every merged PR; the README LLM step is
+# skipped for bot-authored PRs and for suspicious-input matches. See
+# .claude/scripts/post-merge/{prompts,schemas}/ for the LLM contract.
+
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to process"
+        required: true
+        type: number
+      dry_run:
+        description: "Skip commits and version bump (logs only)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: post-merge-attribution-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  process:
+    name: Update credits and bump version
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'main')
+
+    steps:
+      - name: Resolve inputs
+        id: inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            pr_number="${DISPATCH_PR_NUMBER}"
+            dry_run="${DISPATCH_DRY_RUN}"
+          else
+            pr_number="${EVENT_PR_NUMBER}"
+            dry_run="false"
+          fi
+
+          if [[ -z "${pr_number}" || "${pr_number}" == "null" ]]; then
+            echo "::error::Could not resolve PR number"
+            exit 1
+          fi
+
+          author=$(gh pr view "${pr_number}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json author --jq '.author.login')
+          author_type=$(gh pr view "${pr_number}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json author --jq '.author.is_bot // false')
+
+          # `is_bot` is gh's signal for app/bot users (dependabot,
+          # renovate, github-actions). Skip the LLM call for them —
+          # bot PRs don't earn external-contributor credits.
+          if [[ "${author_type}" == "true" ]]; then
+            is_bot="true"
+          else
+            is_bot="false"
+          fi
+
+          {
+            echo "pr_number=${pr_number}"
+            echo "dry_run=${dry_run}"
+            echo "author=${author}"
+            echo "is_bot=${is_bot}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "PR #${pr_number} by @${author} (bot=${is_bot}, dry_run=${dry_run})"
+
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Claude CLI
+        if: steps.inputs.outputs.is_bot != 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Capture PR snapshot
+        id: pr_snapshot
+        if: steps.inputs.outputs.is_bot != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+        run: |
+          mkdir -p /tmp/post-merge
+
+          gh pr view "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json number,title,body,author,mergedAt,mergeCommit,files,additions,deletions \
+            > /tmp/post-merge/pr.json
+
+          # Issue / PR conversation comments.
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            > /tmp/post-merge/pr-comments.json
+
+          # Inline review comments on the diff.
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
+            --paginate \
+            > /tmp/post-merge/pr-review-comments.json
+
+          # Diff of the merged PR. Capped at 100 KB to keep prompt
+          # size bounded — for attribution we mostly need the
+          # discussion, not every line of code.
+          gh pr diff "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --patch 2>/dev/null \
+            | head -c 100000 \
+            > /tmp/post-merge/pr.diff || true
+
+      - name: Capture linked issues
+        id: linked_issues
+        if: steps.inputs.outputs.is_bot != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+        run: |
+          owner=$(echo "${GITHUB_REPOSITORY}" | cut -d/ -f1)
+          repo=$(echo "${GITHUB_REPOSITORY}" | cut -d/ -f2)
+
+          # GitHub's closingIssuesReferences is the authoritative
+          # source for "this PR fixes #N" links — covers Closes/Fixes/
+          # Resolves keywords and the Development sidebar linkage.
+          # Falls back to an empty list when nothing is linked.
+          # shellcheck disable=SC2016 # $owner/$repo/$number are
+          # GraphQL variables filled by -f/-F flags, not shell vars.
+          gh api graphql \
+            -f query='
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 10) {
+                      nodes { number }
+                    }
+                  }
+                }
+              }
+            ' \
+            -f owner="${owner}" \
+            -f repo="${repo}" \
+            -F number="${PR_NUMBER}" \
+            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number' \
+            > /tmp/post-merge/linked-issue-numbers.txt || true
+
+          : > /tmp/post-merge/issues.json
+          echo '[]' > /tmp/post-merge/issues.json
+
+          while IFS= read -r issue_num; do
+            [[ -z "${issue_num}" ]] && continue
+            echo "fetching linked issue #${issue_num}"
+            gh issue view "${issue_num}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json number,title,body,author \
+              > "/tmp/post-merge/issue-${issue_num}.json"
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_num}/comments" \
+              --paginate \
+              > "/tmp/post-merge/issue-${issue_num}-comments.json"
+          done < /tmp/post-merge/linked-issue-numbers.txt
+
+          count=$(wc -l < /tmp/post-merge/linked-issue-numbers.txt)
+          echo "linked_count=${count}" >> "${GITHUB_OUTPUT}"
+          echo "Linked issues: ${count}"
+
+      - name: Suspicious-input scan
+        id: suspicious
+        if: steps.inputs.outputs.is_bot != 'true'
+        run: |
+          # Reuse the triage v2 PCRE-tripwire over PR body/title and
+          # each linked issue body/title. Any match short-circuits
+          # the LLM step so untrusted text never reaches the model.
+          tells=.claude/scripts/taxonomies/suspicious-input-tells.json
+          hit=false
+
+          bash .claude/scripts/triage/suspicious-input-scan.sh \
+            /tmp/post-merge/pr.json \
+            "${tells}" \
+            /tmp/post-merge/suspicious-pr.json
+          if [[ "$(jq -r '.suspicious' /tmp/post-merge/suspicious-pr.json)" == "true" ]]; then
+            hit=true
+            echo "::warning::PR body matched suspicious-input tells"
+          fi
+
+          for f in /tmp/post-merge/issue-*.json; do
+            [[ -f "${f}" ]] || continue
+            [[ "${f}" == *-comments.json ]] && continue
+            out="${f%.json}-suspicious.json"
+            bash .claude/scripts/triage/suspicious-input-scan.sh \
+              "${f}" "${tells}" "${out}"
+            if [[ "$(jq -r '.suspicious' "${out}")" == "true" ]]; then
+              hit=true
+              echo "::warning::Linked issue $(basename "${f}") matched suspicious-input tells"
+            fi
+          done
+
+          echo "hit=${hit}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build prompt
+        id: build_prompt
+        if: |
+          steps.inputs.outputs.is_bot != 'true' &&
+          steps.suspicious.outputs.hit != 'true'
+        run: |
+          # Extract the current Acknowledgments section so the model
+          # sees the actual list it's being asked to update.
+          awk '
+            /^## Acknowledgments$/ { flag=1; print; next }
+            /^## / && flag { exit }
+            flag { print }
+          ' README.md > /tmp/post-merge/ack-section.md
+
+          # Substitute the placeholder in the prompt template with
+          # the live section content. Using awk-with-getline handles
+          # all the regex-special characters (backticks, brackets,
+          # dollar signs) that would break sed.
+          awk '
+            /__CURRENT_ACK_SECTION__/ {
+              while ((getline line < "/tmp/post-merge/ack-section.md") > 0) print line
+              next
+            }
+            { print }
+          ' .claude/scripts/post-merge/prompts/credit.txt \
+            > /tmp/post-merge/prompt-base.txt
+
+          # Append the wrapped, untrusted PR + issue context. Each
+          # block is explicitly tagged so the model knows it's data,
+          # not instructions.
+          {
+            cat /tmp/post-merge/prompt-base.txt
+            echo
+            echo "# PR context (untrusted user input)"
+            echo
+
+            title=$(jq -r '.title // ""' /tmp/post-merge/pr.json)
+            author=$(jq -r '.author.login // "unknown"' /tmp/post-merge/pr.json)
+            number=$(jq -r '.number' /tmp/post-merge/pr.json)
+            files=$(jq -r '[.files[].path] | join(", ")' /tmp/post-merge/pr.json)
+            additions=$(jq -r '.additions // 0' /tmp/post-merge/pr.json)
+            deletions=$(jq -r '.deletions // 0' /tmp/post-merge/pr.json)
+
+            echo "<untrusted_pr_metadata>"
+            echo "number: ${number}"
+            echo "title: ${title}"
+            echo "author: ${author}"
+            echo "additions: ${additions}"
+            echo "deletions: ${deletions}"
+            echo "files_changed: ${files}"
+            echo "</untrusted_pr_metadata>"
+            echo
+            echo "<untrusted_pr_body source=\"PR author, untrusted\">"
+            jq -r '.body // ""' /tmp/post-merge/pr.json
+            echo "</untrusted_pr_body>"
+            echo
+            echo "<untrusted_pr_comments source=\"various commenters, untrusted\">"
+            jq -r '.[] | "--- @" + .user.login + " ---\n" + (.body // "")' \
+              /tmp/post-merge/pr-comments.json
+            echo "</untrusted_pr_comments>"
+            echo
+            echo "<untrusted_pr_review_comments source=\"reviewers, untrusted\">"
+            jq -r '.[] | "--- @" + .user.login + " on " + (.path // "?") + " ---\n" + (.body // "")' \
+              /tmp/post-merge/pr-review-comments.json
+            echo "</untrusted_pr_review_comments>"
+            echo
+            echo "<untrusted_pr_diff source=\"merged-code, untrusted\" note=\"capped at ~100KB\">"
+            cat /tmp/post-merge/pr.diff 2>/dev/null || true
+            echo
+            echo "</untrusted_pr_diff>"
+
+            for f in /tmp/post-merge/issue-*.json; do
+              [[ -f "${f}" ]] || continue
+              [[ "${f}" == *-comments.json ]] && continue
+              [[ "${f}" == *-suspicious.json ]] && continue
+
+              issue_num=$(jq -r '.number' "${f}")
+              issue_title=$(jq -r '.title // ""' "${f}")
+              issue_author=$(jq -r '.author.login // "unknown"' "${f}")
+              comments_file="${f%.json}-comments.json"
+
+              echo
+              echo "<untrusted_issue_${issue_num} source=\"reporter and commenters, untrusted\">"
+              echo "title: ${issue_title}"
+              echo "author: ${issue_author}"
+              echo
+              echo "[body]"
+              jq -r '.body // ""' "${f}"
+              echo
+              echo "[comments]"
+              if [[ -f "${comments_file}" ]]; then
+                jq -r '.[] | "--- @" + .user.login + " ---\n" + (.body // "")' \
+                  "${comments_file}"
+              fi
+              echo "</untrusted_issue_${issue_num}>"
+            done
+          } > /tmp/post-merge/prompt.txt
+
+          size=$(wc -c < /tmp/post-merge/prompt.txt)
+          echo "Prompt size: ${size} bytes"
+
+      - name: Call Sonnet
+        id: sonnet
+        if: |
+          steps.inputs.outputs.is_bot != 'true' &&
+          steps.suspicious.outputs.hit != 'true'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          schema=$(cat .claude/scripts/post-merge/schemas/credit.json)
+
+          result=$(claude -p "$(cat /tmp/post-merge/prompt.txt)" \
+            --output-format json \
+            --json-schema "${schema}" \
+            --model claude-sonnet-4-6 \
+            --max-budget-usd 1.00 \
+            2>/tmp/post-merge/claude-stderr.log) || {
+              echo "::warning::Sonnet call failed; see claude-stderr.log artifact"
+              cat /tmp/post-merge/claude-stderr.log >&2 || true
+              exit 1
+            }
+
+          structured=$(printf '%s' "${result}" \
+            | jq -c '.structured_output // empty')
+          if [[ -z "${structured}" ]]; then
+            echo "::warning::No structured_output from Sonnet"
+            printf '%s' "${result}" > /tmp/post-merge/claude-raw.json
+            exit 1
+          fi
+
+          printf '%s' "${structured}" > /tmp/post-merge/decision.json
+
+          should_update=$(jq -r '.should_update' /tmp/post-merge/decision.json)
+          entry_count=$(jq -r '.entries | length' /tmp/post-merge/decision.json)
+          reasoning=$(jq -r '.reasoning' /tmp/post-merge/decision.json)
+
+          echo "should_update=${should_update}"
+          echo "entry_count=${entry_count}"
+          echo "reasoning: ${reasoning}"
+
+          {
+            echo "should_update=${should_update}"
+            echo "entry_count=${entry_count}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Apply credits to README
+        id: apply
+        if: |
+          steps.inputs.outputs.is_bot != 'true' &&
+          steps.suspicious.outputs.hit != 'true' &&
+          steps.sonnet.outcome == 'success' &&
+          steps.sonnet.outputs.should_update == 'true' &&
+          steps.sonnet.outputs.entry_count != '0'
+        run: |
+          python3 .claude/scripts/post-merge/apply-credits.py \
+            --decision /tmp/post-merge/decision.json \
+            --readme README.md
+
+          if git diff --quiet -- README.md; then
+            echo "readme_changed=false" >> "${GITHUB_OUTPUT}"
+            echo "README unchanged after apply (likely idempotent skip)"
+          else
+            echo "readme_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "README changed:"
+            git diff --stat -- README.md
+          fi
+
+      - name: Bump REPO_VERSION
+        id: bump
+        if: steps.inputs.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          current=$(gh variable get REPO_VERSION \
+            --repo "${GITHUB_REPOSITORY}")
+          if [[ -z "${current}" ]]; then
+            echo "::error::REPO_VERSION variable is empty or unset"
+            exit 1
+          fi
+          if [[ ! "${current}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::REPO_VERSION '${current}' is not in X.Y.Z form"
+            exit 1
+          fi
+
+          IFS='.' read -r major minor patch <<<"${current}"
+          new_patch=$((patch + 1))
+          new_version="${major}.${minor}.${new_patch}"
+
+          echo "REPO_VERSION: ${current} -> ${new_version}"
+          gh variable set REPO_VERSION \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "${new_version}"
+
+          {
+            echo "old_version=${current}"
+            echo "new_version=${new_version}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Commit README change
+        if: |
+          steps.inputs.outputs.dry_run != 'true' &&
+          steps.apply.outputs.readme_changed == 'true'
+        env:
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+          OLD_VERSION: ${{ steps.bump.outputs.old_version }}
+          NEW_VERSION: ${{ steps.bump.outputs.new_version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+
+          # [skip ci] keeps this README-only commit from triggering
+          # another CI build on top of the merge commit's CI run.
+          git commit -m "$(cat <<EOF
+          docs(readme): auto-credit contributors from PR #${PR_NUMBER} [skip ci]
+
+          REPO_VERSION ${OLD_VERSION} -> ${NEW_VERSION}
+
+          Co-Authored-By: Claude <claude@anthropic.com>
+          EOF
+          )"
+
+          # Race-safe push: rebase onto whatever landed since
+          # checkout, then push. If a concurrent merge raced us,
+          # one retry should resolve it.
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main \
+                && git push origin HEAD:main; then
+              echo "pushed on attempt ${attempt}"
+              break
+            fi
+            if [[ "${attempt}" == "3" ]]; then
+              echo "::error::push failed after 3 attempts"
+              exit 1
+            fi
+            sleep 5
+          done
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@26f96dfa697d77e81fd5907df203aa23a56210a8 # v4
+        with:
+          name: post-merge-${{ steps.inputs.outputs.pr_number }}
+          path: /tmp/post-merge/
+          retention-days: 14
+          if-no-files-found: ignore
