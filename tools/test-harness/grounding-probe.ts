@@ -13,6 +13,25 @@
 // Mostly read-only; --include-synthetic enables short-lived state
 // changes (powerSaveBlocker start+stop) to close API-only gaps.
 //
+// Captures, keyed by test ID:
+//   T01  app metadata, webContents count
+//   T03  SNI / tray registration via DBus (KDE StatusNotifierWatcher)
+//   T06  globalShortcut.isRegistered() for known accelerators
+//   T09  app.getLoginItemSettings()
+//   T22  AX fingerprint (PR toolbar — open the surface before probing)
+//   T23  Notification.isSupported()
+//   T24  IPC channels matching /external|editor|openIn/i
+//   T26  AX fingerprint (Routines page — open before probing)
+//   T31  AX fingerprint (side chat — open before probing)
+//   T32  AX fingerprint (slash menu — type "/" before probing)
+//   T38  IPC channels matching /external|editor|openIn/i (editor handoff)
+//   S18  safeStorage.isEncryptionAvailable() + backend
+//   S20  powerSaveBlocker (gated by --include-synthetic)
+//   S22  process.platform (Computer Use gate)
+//   S25  safeStorage (cowork trusted-device token)
+//   S26  autoUpdater.getFeedURL() — empirical answer to the structural-
+//        open claim that static analysis couldn't resolve
+//
 // Usage:
 //   cd tools/test-harness
 //   npx tsx grounding-probe.ts                                          # attach :9229
@@ -28,6 +47,9 @@
 import { writeFileSync } from 'node:fs';
 import { InspectorClient } from './src/lib/inspector.js';
 import { launchClaude } from './src/lib/electron.js';
+// dbus-next is loaded lazily inside captureSni() — importing here would
+// pull in a session-bus connection on environments without one (CI
+// containers, sshfs, etc.) and break the probe before it ever runs.
 
 // Accelerators we expect to be registered on Linux. T06 = Quick Entry
 // default. S31/S32 — fullscreen + cmd-K dispatch. Extend per case docs.
@@ -36,6 +58,12 @@ const KNOWN_ACCELERATORS = [
 	'Ctrl+Alt+Space',
 	'CommandOrControl+Shift+L',
 ];
+
+interface AxFingerprintNode {
+	role: string;
+	name: string;
+	hasPopup: boolean;
+}
 
 interface GroundingCapture {
 	capturedAt: string;
@@ -49,9 +77,15 @@ interface GroundingCapture {
 	ipcInvokeChannels: string[];
 	ipcOnChannels: string[];
 	webContents: Array<{ id: number; url: string; type: string }>;
+	// Reduced AX tree of the current claude.ai webContents, shared by
+	// every test entry that names a renderer-side surface. Stored once
+	// at the top level rather than copied per-test — diff stability
+	// matters more than per-test isolation here.
+	axFingerprint: AxFingerprintNode[];
 	// Per-test bag — extend as new probes land. Each entry is the
 	// runtime state the test's load-bearing claim depends on, in a
-	// shape that's easy to diff across captures.
+	// shape that's easy to diff across captures. Renderer-side tests
+	// reference $.axFingerprint via { axFingerprintRef: true }.
 	tests: Record<string, unknown>;
 	// Probe-level diagnostics — what we tried and couldn't capture.
 	// Surfaced so the grounding sweep can flag uncovered surfaces.
@@ -230,17 +264,86 @@ async function capture(
 		);
 	}
 
-	// T22 PR toolbar / T31 side chat / T32 slash menu / T39 /desktop —
-	// these are renderer-side surfaces. Reachable via
-	// `client.evalInRenderer('claude.ai', ...)` once the relevant view
-	// is open. Captured-at-idle inventory misses them, so this probe
-	// would need to either drive the UI to open them (destructive) or
-	// be invoked while the user has the surface open. Flagged.
-	gaps.push(
-		'T22/T31/T32: contextual renderer surfaces (PR toolbar, side chat, ' +
-			'slash menu) require the surface to be open at probe time. ' +
-			'Re-run grounding-probe with the relevant view active to capture.',
-	);
+	// Editor handoff scheme registry — T24/T38. Static case anchor
+	// (`Mtt` at index.js:463902) names the registry; variable is
+	// minified, so we identify by IPC handler name pattern instead.
+	// The case doc claims schemes vscode/cursor/zed/windsurf are wired
+	// up on Linux (xcode is darwin-only). The IPC channel that calls
+	// `shell.openExternal('<scheme>://file/<encoded-path>:<line>')`
+	// will be one of these matches.
+	const editorIpcChannels = [
+		...ipc.invoke.filter((c) => /external|editor|openIn/i.test(c)),
+		...ipc.on.filter((c) => /external|editor|openIn/i.test(c)),
+	];
+
+	// Renderer AX fingerprint — T22/T26/T31/T32. `getAccessibleTree`
+	// snapshots whatever's *currently on screen*. To anchor surfaces
+	// inside modals/popups (preset list, slash menu, side chat, PR
+	// toolbar), open the surface in the running app before probe time.
+	// Reduced form (role+name+hasPopup) keeps the output grep-able and
+	// avoids re-shipping ui-inventory.json's full schema.
+	const claudeAi = webContents.find((w) => w.url.includes('claude.ai'));
+	let axFingerprint: AxFingerprintNode[] = [];
+	if (claudeAi) {
+		try {
+			const tree = await client.getAccessibleTree('claude.ai');
+			axFingerprint = tree
+				.filter((n) => !n.ignored && n.role && n.name)
+				.map((n) => ({
+					role: n.role!.value,
+					name: n.name!.value,
+					hasPopup: !!n.properties?.find((p) => p.name === 'haspopup'),
+				}))
+				.filter((n) => n.name.length > 0);
+		} catch (e) {
+			gaps.push(
+				`renderer-ax: getAccessibleTree threw: ${e instanceof Error ? e.message : String(e)}`,
+			);
+		}
+	} else {
+		gaps.push(
+			'renderer-ax: no claude.ai webContents at probe time. ' +
+				'Sign in to the app before re-running to capture renderer state.',
+		);
+	}
+
+	// Tray / SNI registration — T03. Linux tray icons register against
+	// org.kde.StatusNotifierWatcher (KDE protocol used by GNOME's
+	// AppIndicator extension too). We can attribute an SNI item to the
+	// app's pid via `findItemByPid`. Lazily imported because dbus-next
+	// connects on first call to getSessionBus(), and we want
+	// non-DBus environments to still get a partial probe rather than
+	// hard-fail.
+	const ourPid = await client.evalInMain<number>('return process.pid;');
+	let sni: {
+		ourPid: number;
+		registeredItem: { service: string; objectPath: string } | null;
+		probeError: string | null;
+	} = { ourPid, registeredItem: null, probeError: null };
+	try {
+		const sniLib = await import('./src/lib/sni.js');
+		const dbusLib = await import('./src/lib/dbus.js');
+		try {
+			sni.registeredItem = await sniLib.findItemByPid(ourPid);
+		} finally {
+			await dbusLib.disconnectBus();
+		}
+	} catch (e) {
+		sni.probeError = e instanceof Error ? e.message : String(e);
+	}
+
+	// T22 PR toolbar / T31 side chat / T32 slash menu — these surfaces
+	// are now captured if the user has the relevant view open at probe
+	// time (see `axFingerprint` above). Empty fingerprint at idle is
+	// expected; flag here only if the renderer was reachable but the
+	// captured tree was empty (which would suggest the AX walker hit
+	// a permission gate or was disabled).
+	if (claudeAi && axFingerprint.length === 0) {
+		gaps.push(
+			'renderer-ax: claude.ai webContents present but AX tree empty. ' +
+				'Either Accessibility was not enabled or the page is mid-load.',
+		);
+	}
 	gaps.push(
 		'T39 /desktop: lives in the upstream `claude` CLI binary, not the ' +
 			'Electron asar — not reachable from this probe.',
@@ -255,11 +358,19 @@ async function capture(
 		ipcInvokeChannels: ipc.invoke,
 		ipcOnChannels: ipc.on,
 		webContents,
+		axFingerprint,
 		tests: {
 			T01: { appReady: appMeta.appReady, webContentsCount: webContents.length },
+			T03: sni,
 			T06: { accelerators },
 			T09: loginItems,
+			T22: { axFingerprintRef: true, count: axFingerprint.length },
 			T23: notifications,
+			T24: { editorIpcChannels },
+			T26: { axFingerprintRef: true, count: axFingerprint.length },
+			T31: { axFingerprintRef: true, count: axFingerprint.length },
+			T32: { axFingerprintRef: true, count: axFingerprint.length },
+			T38: { editorIpcChannels },
 			S18: safeStorage,
 			S20: powerSaveBlocker,
 			S22: {
@@ -341,6 +452,7 @@ async function main() {
 			`grounding-probe: wrote ${out} ` +
 				`(${result.ipcInvokeChannels.length} invoke channels, ` +
 				`${result.webContents.length} webContents, ` +
+				`${result.axFingerprint.length} ax nodes, ` +
 				`${result.gaps.length} gaps` +
 				`${launch ? ', --launch' : ''}` +
 				`${includeSynthetic ? ', synthetic' : ''})`,
