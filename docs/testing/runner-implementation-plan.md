@@ -18,6 +18,82 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 6 (1 new spec + 1 new primitive):** S14 (Tier 2 — Niri-
+only, currently known-failing detector). New primitive `lib/input-niri.ts`
+(Wayland-native focus-shifter sibling of `lib/input.ts`:
+`focusOtherWindow` / `spawnMarkerWindow` / `getFocusedWindowId` /
+`isNiriSession` plus `NiriIpcUnavailable` / `FootUnavailable` typed
+errors). Coverage moved from 61/76 (80%) to 62/76 (82%).
+
+Session 6 findings + reclassifications:
+
+- **S14 shipped as Tier 2 known-failing detector.** Near-clone of S11's
+  shape with imports swapped from `lib/input.js` to `lib/input-niri.js`
+  and the row gate flipped from `['GNOME-X', 'Ubu-X']` to `['Niri']`.
+  Same five-phase shape: setup → ready → marker spawn → focus loop with
+  sticky-error short-circuits → press shortcut + assert popup visible.
+  Diagnostic record fields parallel S11's `s11-diagnostics`
+  (`activeWidBeforeFocus` / `activeWidAfterFocus` typed `number | null`
+  for niri u64 IDs vs the X11 hex strings). Currently a known-failing
+  detector per case-doc S14 (`Failed to call BindShortcuts (error code
+  5)`); same shape as S12's GNOME-W `--enable-features=GlobalShortcutsPortal`
+  detector — the spec encodes the contract and will start passing on
+  Niri rows once the upstream / Chromium-side portal issue is resolved
+  without any spec edit.
+- **`lib/input-niri.ts` extracted as the niri-side focus-shifter
+  substrate.** Niri-only by design — strict
+  `XDG_CURRENT_DESKTOP === 'niri'` gate via `isNiriSession()`. Exports:
+  `focusOtherWindow(title)` (`niri msg --json windows` →
+  `app_id !== 'Claude'` filter + title match → `niri msg action
+  focus-window --id <u64>` → honest readback via `getFocusedWindowId()`
+  using `retryUntil`), `spawnMarkerWindow(title)` (backgrounded
+  `foot --title <T> -e sleep 600` with kill-with-grace, mirroring the
+  X11 primitive's xterm pattern), `getFocusedWindowId()` (parses
+  `niri msg --json focused-window` to `number | null`), `isNiriSession()`,
+  `MarkerWindow` interface, `NiriIpcUnavailable` / `FootUnavailable`
+  typed errors. The primitive verifies the focus shift took (niri's
+  `focus-window` action exits 0 even when the compositor refuses
+  activation — only `focused-window` readback is the honest answer).
+  Defensive `unwrapOk` helper handles both the older
+  `{Ok: {FocusedWindow: ...}}` Result-style JSON envelope and newer
+  bare-payload responses; if niri ships a third shape, the parser
+  falls through to `null` rather than crashing.
+- **Cross-compositor dispatcher NOT speculated.** Sway / Hyprland /
+  River each have totally different IPCs (`swaymsg`, `hyprctl`,
+  `riverctl`); the long-term cross-compositor answer is libei but
+  isn't widely deployed. Per-compositor files until a second consumer
+  surfaces — a hypothetical `lib/input-wayland.ts` dispatcher would
+  just switch on `XDG_CURRENT_DESKTOP` and delegate. With only S14
+  consuming `lib/input-niri.ts`, a dispatcher would be ceremony.
+- **Category B (eipc-registry exposer) NOT attempted.** Same reasoning
+  as sessions 4/5: session 3 already established the registry is
+  closure-local, the inspector walk came up empty, and the early-exit
+  cap on retries makes Category B a poor main bet without a new
+  approach. Stays available for a future session that takes the
+  closure-local reverse-engineering as its main work.
+
+Tier 2 → Tier 2 candidates remaining for next session: **T35 Phase 2**
+and **T37 Phase 2** (still need closure-local readback or the
+eipc-registry exposer; unchanged from sessions 4/5). **eipc-registry
+exposer** (closure-local in main; reverse-engineering remains
+unattempted — now the cleanest single-session win available, with all
+the obvious focus-shifter / mock-then-call work already landed). The
+primitive surface itself isn't growing quickly — `lib/electron-mocks.ts`
+(session 3), `lib/input.ts` (session 4), and `lib/input-niri.ts`
+(session 6) are all threshold-driven extractions, not speculative.
+
+Session 6 untested-on-Niri caveats: the `lib/input-niri.ts` primitive
+landed against session 5's recon notes, not a live niri session. First
+real Niri sweep run will confirm: (a) the `Ok`-wrapper unwrap covers
+the niri version on the row; (b) Claude's `app_id` value on niri is
+literal `'Claude'` (the primitive's `app_id !== 'Claude'` guard
+becomes a no-op rather than wrong if the actual value differs — match
+still happens by title; tighten if needed); (c) `foot` is on the
+target row's PATH (skip path is clean if not). Verified on KDE-W: the
+runner skips correctly via the row gate.
+
+---
+
 **Shipped session 5 (1 new spec):** T18 (Tier 1 fingerprint). No new
 primitives. Coverage moved from 60/76 (79%) to 61/76 (80%).
 

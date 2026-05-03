@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Sixty-one specs wired (24 cross-env T-tests, 32 env-specific S-tests,
+Sixty-two specs wired (24 cross-env T-tests, 33 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -62,6 +62,7 @@ behind tier classification.
 | [S10](../../docs/testing/cases/shortcuts-and-input.md#s10--quick-entry-popup-is-transparent-no-opaque-square-frame) | KDE-W only — popup runtime `getBackgroundColor() === '#00000000'` after Quick Entry opens (regression-detector against electron#50213 if bundled Electron in 41.0.4-bisect-window) | L1 + ydotool |
 | [S11](../../docs/testing/cases/shortcuts-and-input.md#s11--quick-entry-shortcut-fires-from-any-focus-on-wayland-mutter-xwayland-key-grab) | GNOME-X / Ubu-X only (X11-side regression detector) — spawn xterm marker, `xdotool windowfocus` to it, verify `_NET_ACTIVE_WINDOW` shifted, fire `Ctrl+Alt+Space` via ydotool, assert popup visible. Wayland-side mutter regression (#404) is a primitive gap — needs Wayland-native focus injection (libei) | L1 + xdotool focus + ydotool shortcut |
 | S12 | `--enable-features=GlobalShortcutsPortal` in Electron argv (GNOME-W only — currently a known-failing regression detector) | argv probe |
+| [S14](../../docs/testing/cases/shortcuts-and-input.md#s14--global-shortcuts-via-xdg-portal-work-on-niri) | Niri only — spawn `foot` marker, `niri msg action focus-window` to it, verify `niri msg --json focused-window` shifted, fire `Ctrl+Alt+Space` via ydotool, assert popup visible. Currently known-failing detector for the Niri portal `BindShortcuts` path (parallels S12's GNOME-W detector) | L1 + niri msg focus + ydotool shortcut |
 | [S15](../../docs/testing/cases/distribution.md#s15--appimage-extraction---appimage-extract-works-as-documented-fallback) | `--appimage-extract` exits 0; `squashfs-root/AppRun --version` runs without FUSE error | spawn + filesystem |
 | [S16](../../docs/testing/cases/distribution.md#s16--appimage-mount-cleans-up-on-app-exit) | `mount(8)` shows new `.mount_claude` while app is up; gone within 10s of close | mount delta |
 | [S17](../../docs/testing/cases/platform-integration.md#s17--app-launched-from-desktop-inherits-shell-path) | Shell-path-worker overlays user's login-shell PATH onto a deliberately-scrubbed env | L1 + utilityProcess |
@@ -96,8 +97,11 @@ isolation env (S19), the `lib/electron-mocks.ts` mock-then-call
 helpers — `installOpenDialogMock` (T17), `installShowItemInFolderMock`
 (T25), `installOpenExternalMock` (T24) — the `lib/input.ts`
 focus-shifter (`focusOtherWindow` + `spawnMarkerWindow` for S11; X11
-only — `WaylandFocusUnavailable` thrown on native Wayland) — and the
-`createIsolation({ seedFromHost: true })` primitive that lets
+only — `WaylandFocusUnavailable` thrown on native Wayland) and its
+Niri-native sibling `lib/input-niri.ts` (`niri msg --json` for the
+focus-injection + readback chain, `foot --title` for the marker
+window; `NiriIpcUnavailable` thrown off-Niri; consumed by S14) — and
+the `createIsolation({ seedFromHost: true })` primitive that lets
 login-required tests run hermetically against a copy of the host's
 signed-in auth state (T07, T16, T26).
 
@@ -250,6 +254,7 @@ tools/test-harness/
 │   │   ├── claudeai.ts            # claude.ai renderer UI domain (CodeTab, dialog mock, atoms)
 │   │   ├── electron-mocks.ts      # mock-then-call helpers (dialog/showItemInFolder/openExternal)
 │   │   ├── input.ts               # focus-shifter primitive (X11 only — xdotool + xprop verify; spawnMarkerWindow xterm)
+│   │   ├── input-niri.ts          # focus-shifter primitive (Niri only — niri msg --json verify; spawnMarkerWindow foot)
 │   │   ├── retry.ts               # poll-until-true with timeout
 │   │   └── diagnostics.ts         # launcher log, --doctor, session env
 │   └── runners/                   # one .spec.ts per test ID
