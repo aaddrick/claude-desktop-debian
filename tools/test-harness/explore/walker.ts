@@ -270,7 +270,7 @@ interface RawAncestor {
 	name: string | null;
 }
 
-interface RawElement {
+export interface RawElement {
 	// Per-element data sourced from Chromium's accessibility tree.
 	// `computedRole` is `AxNode.role.value` — the platform-computed role
 	// rather than the tag-derived one, so `<button role="link">` is a
@@ -306,6 +306,13 @@ interface RawElement {
 	// nodes that don't back a DOM element (which won't reach this list,
 	// since interactive ARIA roles always do).
 	backendDOMNodeId: number | null;
+	// AX `haspopup` token (`<button aria-haspopup="menu">` → `'menu'`).
+	// null when the property is absent or its value is the literal
+	// string `'false'`. The walker itself doesn't filter on this; it's
+	// surfaced for claudeai.ts page-objects, which use it to
+	// discriminate menu triggers from ordinary action buttons that
+	// happen to share an accessible name.
+	hasPopup: string | null;
 }
 
 interface SurfaceSnapshot {
@@ -1639,9 +1646,30 @@ export function axTreeToSnapshot(nodes: AxNode[]): RawElement[] {
 			siblingPosition,
 			siblingTotal,
 			backendDOMNodeId: node.backendDOMNodeId ?? null,
+			hasPopup: readHasPopup(node),
 		});
 	}
 	return out;
+}
+
+// Pull the AX `hasPopup` token out of `node.properties[]`. CDP exposes
+// it as `{ name: 'hasPopup', value: { type: 'token', value: 'menu' } }`
+// on supporting elements (note the camelCase — the underlying ARIA
+// attribute is `aria-haspopup` lowercase, but Chromium's AXProperty
+// name is `hasPopup`). Absent properties array, missing entry, or
+// the literal string `'false'` all collapse to `null` so consumers
+// don't have to special-case those.
+function readHasPopup(node: AxNode): string | null {
+	const props = node.properties;
+	if (!Array.isArray(props)) return null;
+	for (const p of props) {
+		if (p?.name !== 'hasPopup') continue;
+		const v = p.value?.value;
+		if (typeof v !== 'string') return null;
+		if (v === '' || v === 'false') return null;
+		return v;
+	}
+	return null;
 }
 
 async function snapshotSurface(
@@ -1906,6 +1934,7 @@ async function selfTest(): Promise<void> {
 		name?: string;
 		ignored?: boolean;
 		backendDOMNodeId?: number;
+		hasPopup?: string;
 		children?: AxSpec[];
 	};
 	const buildAxTree = (root: AxSpec): AxNode[] => {
@@ -1926,6 +1955,17 @@ async function selfTest(): Promise<void> {
 			}
 			if (s.backendDOMNodeId !== undefined) {
 				node.backendDOMNodeId = s.backendDOMNodeId;
+			}
+			if (s.hasPopup !== undefined) {
+				// Match CDP's actual casing — the property name is
+				// `hasPopup` (camelCase) even though the underlying ARIA
+				// attribute is `aria-haspopup`. Using lowercase here
+				// would let `readHasPopup` regress without the test
+				// noticing (which is exactly how the live-renderer probe
+				// caught the original case mismatch).
+				node.properties = [
+					{ name: 'hasPopup', value: { type: 'token', value: s.hasPopup } },
+				];
 			}
 			nodes.push(node);
 			for (const c of s.children ?? []) {
@@ -2313,6 +2353,42 @@ async function selfTest(): Promise<void> {
 	}
 	if (dQueue.length !== 2) {
 		fail(`prune: expected 2 remaining, got ${dQueue.length}`);
+	}
+
+	// Case 10 — hasPopup parsing through axTreeToSnapshot. Three buttons
+	// in one toolbar: a menu trigger (haspopup=menu), an explicit
+	// "haspopup=false" non-trigger (must collapse to null so callers
+	// can `=== 'menu'` without false-positiving), and one with no
+	// haspopup property at all.
+	const popupSurface = axTreeToSnapshot(
+		buildAxTree({
+			role: 'WebArea',
+			children: [
+				{
+					role: 'toolbar',
+					children: [
+						{ role: 'button', name: 'Open menu', hasPopup: 'menu' },
+						{ role: 'button', name: 'Inert', hasPopup: 'false' },
+						{ role: 'button', name: 'Plain' },
+					],
+				},
+			],
+		}),
+	);
+	if (popupSurface.length !== 3) {
+		fail(`hasPopup: expected 3 raw elements, got ${popupSurface.length}`);
+	}
+	const trigger = popupSurface.find((r) => r.accessibleName === 'Open menu')!;
+	const inert = popupSurface.find((r) => r.accessibleName === 'Inert')!;
+	const plain = popupSurface.find((r) => r.accessibleName === 'Plain')!;
+	if (trigger.hasPopup !== 'menu') {
+		fail(`hasPopup: expected trigger.hasPopup="menu", got ${trigger.hasPopup}`);
+	}
+	if (inert.hasPopup !== null) {
+		fail(`hasPopup: expected inert.hasPopup=null (false→null), got ${inert.hasPopup}`);
+	}
+	if (plain.hasPopup !== null) {
+		fail(`hasPopup: expected plain.hasPopup=null (no property), got ${plain.hasPopup}`);
 	}
 
 	process.stdout.write('selfTest: OK\n');

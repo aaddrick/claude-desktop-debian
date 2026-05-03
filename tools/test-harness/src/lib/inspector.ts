@@ -25,9 +25,17 @@ interface PendingCall {
 
 // CDP accessibility-tree node shape (subset). The full AX tree is a flat
 // array of these with parent/child links carried by id refs. We surface
-// the value-bearing fields the v7 walker actually consumes; the
-// remaining CDP fields (ignored, ignoredReasons, properties[], etc.)
-// are kept as a string-keyed bag for callers that need them.
+// the value-bearing fields the v7 walker + claudeai.ts page-objects
+// actually consume; remaining CDP fields (ignoredReasons,
+// frameId, …) are accessible via the string-keyed bag.
+export interface AxValue {
+	type: string;
+	value?: unknown;
+}
+export interface AxProperty {
+	name: string;
+	value: AxValue;
+}
 export interface AxNode {
 	nodeId: string;
 	parentId?: string;
@@ -35,6 +43,11 @@ export interface AxNode {
 	backendDOMNodeId?: number;
 	role?: { type: string; value: string };
 	name?: { type: string; value: string };
+	// AX state/relation properties (`haspopup`, `expanded`, `modal`,
+	// `checked`, `disabled`, …). claudeai.ts reads `haspopup` to
+	// discriminate menu-trigger buttons from action buttons that
+	// happen to share an accessible name.
+	properties?: AxProperty[];
 	ignored?: boolean;
 	[k: string]: unknown;
 }

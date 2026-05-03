@@ -1,60 +1,112 @@
 // claude.ai renderer-UI domain wrapper — single point of coupling to
-// upstream's React DOM shape for tests that drive the renderer.
+// upstream's accessibility tree for tests that drive the renderer.
 //
 // Why centralize: claude.ai's UI ships from a different release train
-// than the Electron shell, and the tailwind class signatures regenerate
-// on rebuild. If every spec embeds its own `button[aria-haspopup=menu]`
-// + `span.truncate.max-w-[Npx]` walk, every UI tweak is an N-file fix.
-// Confining the discovery here means the rest of the harness can speak
-// in domain verbs (`activate('Code')`, `openEnvPill()`, …) and we only
-// retune one file when upstream drifts.
+// than the Electron shell, so any cross-spec drift would be an N-file
+// fix. Confining the discovery here means the rest of the harness can
+// speak in domain verbs (`activate('Code')`, `openEnvPill()`, …) and
+// we only retune one file when upstream drifts.
 //
-// Discovery is by *shape*, not by minified class names:
-//   - Top-level tabs are `button.df-pill` with `aria-label` set to the
-//     visible label. Live probe (2026-05-02): exactly 3 — Chat, Cowork,
-//     Code. Anchor on aria-label, not class.
+// Discovery substrate is Chromium's accessibility tree
+// (`Accessibility.getFullAXTree` over CDP), shared with the v7 walker.
+// Reading from AX rather than the DOM means the page-objects survive
+// tailwind class regeneration and React-tree restructuring as long as
+// the platform-computed role + accessible name + ancestor landmarks
+// stay stable. See docs/learnings/test-harness-ax-tree-walker.md for
+// the gotchas (AX-enable async lag, post-click stability gating, list
+// virtualization).
+//
+// Discrimination shapes used:
+//   - Top-level tabs: `role: 'button'` whose accessibleName matches
+//     the literal tab label ('Chat' | 'Cowork' | 'Code'). The
+//     `df-pill` tailwind anchor and `aria-label` selector are gone —
+//     the AX-computed name is the durable contract.
 //   - Compact pills (the env pill on Code, the "Select folder…" pill
-//     after Local is chosen) share a single React component: a
-//     `button[aria-haspopup="menu"]` containing a `span.truncate` with
-//     a tailwind `max-w-[Npx]` class. Live probe found 2 (env=200px,
-//     Select-folder=160px). The width differs but the structure
-//     matches; we anchor on the structure and read the inner truncate
-//     text to identify which pill.
-//   - Other `button[aria-haspopup="menu"]` instances on the page are
-//     sidebar conversation row "more" buttons (~80 of them). The
-//     `span.truncate.max-w-[…]` fingerprint filters those out — they
-//     don't carry the truncate child.
+//     after Local is chosen): `role: 'button'` with
+//     `hasPopup === 'menu'`, scoped away from the cowork sidebar by
+//     filtering out per-row `^More options for ` triggers. The visible
+//     label is the button's accessibleName.
+//   - Menu items: any of `menuitem` / `menuitemradio` /
+//     `menuitemcheckbox` (collected as MENU_ITEM_ROLES below).
+
+import type { AxNode, InspectorClient } from './inspector.js';
+import {
+	type RawElement,
+	axTreeToSnapshot,
+	waitForAxTreeStable,
+} from '../../explore/walker.js';
+import { retryUntil, sleep } from './retry.js';
+
+// All three CDP-exposed menu-item variants. Caller code wants to treat
+// them uniformly — radios and checkboxes are still "items in an open
+// menu the user can pick".
+const MENU_ITEM_ROLES = new Set<string>([
+	'menuitem',
+	'menuitemradio',
+	'menuitemcheckbox',
+]);
+
+// AccessibleName patterns that indicate a per-row trigger button on
+// the cowork sidebar (~70+ of them on a busy account). They share the
+// same `hasPopup: 'menu'` signal as the compact pills we actually
+// want, so excluding them by name is the load-bearing discriminator.
+const ROW_MORE_OPTIONS_RE = /^More options for /;
+
+interface SnapshotOpts {
+	// Skip the AX-tree stability gate. Default false — i.e. callers
+	// gate by default. Pass true inside polling loops where the gate
+	// fights the loop (each iteration would block waiting for stability
+	// even when the change we're polling for is the AX tree updating).
+	fast?: boolean;
+}
+
+// Fetch the live AX tree and convert into the walker's RawElement[]
+// snapshot shape. By default gates on `waitForAxTreeStable` first —
+// without it, the first read after a fresh page-load can return only
+// the RootWebArea + shell (~4 nodes) even when the DOM has hundreds
+// of interactive elements (Chromium populates AX async; see
+// docs/learnings/test-harness-ax-tree-walker.md §1). Cost is ~800ms
+// when already stable.
 //
-// Eval-string regex escaping: bodies passed to `evalInRenderer` traverse
-// two encodings (TS string → JS string → regex). A word boundary needs
-// `\\b` in this source. Bracket literals in class names (`max-w-[`)
-// need `\\[`. Test patterns by reading them off the wire if changing.
+// Pass `{ fast: true }` inside polling loops — `openPill`'s
+// post-click menuitem search and `clickMenuItem`'s click-when-it-
+// arrives loop both want fast iterations after one upfront stability
+// gate, not stability re-checked on every poll.
+async function snapshotAx(
+	inspector: InspectorClient,
+	opts: SnapshotOpts = {},
+): Promise<RawElement[]> {
+	if (!opts.fast) {
+		await waitForAxTreeStable(inspector, { minNodes: 1, timeoutMs: 10_000 });
+	}
+	const nodes: AxNode[] = await inspector.getAccessibleTree('claude.ai');
+	return axTreeToSnapshot(nodes);
+}
 
-import type { InspectorClient } from './inspector.js';
-import { retryUntil } from './retry.js';
-
-// One of the three top-level df-pills. Click is fire-and-forget — the
+// One of the three top-level pills. Click is fire-and-forget — the
 // router rerenders the tab body inline (no URL change on Code), so
 // callers must poll for whatever signal indicates *their* next step is
 // ready (e.g. CodeTab.activate polls for the env pill).
 //
-// Anchor on aria-label rather than text content because the visible
-// text and aria-label happen to match today, but the aria attribute is
-// the more durable contract.
+// AX-tree match: `role: 'button'` with the literal tab name as the
+// accessible name. The visible label and aria-label happen to coincide
+// today, and the AX-computed name follows the same cascade — pinning
+// to the name keeps the page-object durable across the tailwind
+// regenerations that motivated the migration.
 export async function activateTab(
 	inspector: InspectorClient,
 	name: 'Chat' | 'Cowork' | 'Code',
 ): Promise<{ clicked: boolean }> {
-	const selector = `button[aria-label=${JSON.stringify(name)}][class*="df-pill"]`;
-	return await inspector.evalInRenderer<{ clicked: boolean }>(
-		'claude.ai',
-		`(() => {
-			const btn = document.querySelector(${JSON.stringify(selector)});
-			if (!btn) return { clicked: false };
-			btn.click();
-			return { clicked: true };
-		})()`,
+	const elements = await snapshotAx(inspector);
+	const target = elements.find(
+		(el) =>
+			el.computedRole === 'button' && el.accessibleName === name,
 	);
+	if (!target || target.backendDOMNodeId === null) {
+		return { clicked: false };
+	}
+	await inspector.clickByBackendNodeId('claude.ai', target.backendDOMNodeId);
+	return { clicked: true };
 }
 
 // Replace dialog.showOpenDialog with a mock that records every call and
@@ -119,134 +171,123 @@ export async function getOpenDialogCalls(
 }
 
 // A "compact pill" — the React component used by both the env pill and
-// the "Select folder…" pill. See the discovery comment at the top of
-// the file for why we shape-match instead of class-match.
+// the "Select folder…" pill. AX shape: `role: 'button'` with
+// `hasPopup === 'menu'`, scoped away from cowork sidebar row triggers
+// (`/^More options for /`). The tailwind `max-w-[Npx]` field used to
+// be carried as a diagnostic in v6; that signal isn't in the AX tree
+// (and it was tailwind-specific, exactly the kind of thing the
+// migration was meant to drop), so it's gone — callers only used it
+// in error messages.
 export interface CompactPill {
 	text: string;
-	maxW: string; // e.g., "max-w-[200px]"
-	expanded: boolean;
 }
 
 export async function findCompactPills(
 	inspector: InspectorClient,
 ): Promise<CompactPill[]> {
-	return await inspector.evalInRenderer<CompactPill[]>(
-		'claude.ai',
-		`(() => {
-			const buttons = Array.from(
-				document.querySelectorAll('button[aria-haspopup="menu"]')
-			);
-			return buttons.flatMap(btn => {
-				const span = btn.querySelector('span.truncate');
-				if (!span) return [];
-				const m = span.className.match(/max-w-\\[[^\\]]+\\]/);
-				if (!m) return [];
-				return [{
-					text: (span.textContent || '').trim(),
-					maxW: m[0],
-					expanded: btn.getAttribute('aria-expanded') === 'true',
-				}];
-			});
-		})()`,
-	);
+	const elements = await snapshotAx(inspector);
+	return elements
+		.filter(
+			(el) =>
+				el.computedRole === 'button' &&
+				el.hasPopup === 'menu' &&
+				el.accessibleName !== null &&
+				el.accessibleName.length > 0 &&
+				!ROW_MORE_OPTIONS_RE.test(el.accessibleName),
+		)
+		.map((el) => ({ text: el.accessibleName as string }));
 }
 
-// Open a compact pill whose label matches `labelPattern`. Polls for the
-// menu to render (any role=menuitem*) before resolving. Returns the
-// rendered menu items so the caller can do its own validation.
+// Open a compact pill whose accessibleName matches `labelPattern`.
+// Discrimination: `role: 'button'` AND `hasPopup === 'menu'` AND the
+// AX-computed name passes the regex. The hasPopup gate is what stops
+// us trial-clicking action buttons that happen to share text with a
+// pill — the pill always carries an aria-haspopup contract (it opens
+// a popover) while a same-named action button does not.
 //
-// Discovery is anchored on the inner `span.truncate` text — that's
-// what the user sees and what the probe captured. The label pattern's
-// source is embedded into the renderer eval body verbatim; bring your
-// own anchors (`^Local\\b`).
+// Polls the AX tree post-click for the menu to render (any role in
+// MENU_ITEM_ROLES). Returns the rendered menu item names so the caller
+// can validate without a second snapshot round-trip.
 export async function openPill(
 	inspector: InspectorClient,
 	labelPattern: RegExp,
 	opts: { timeout?: number } = {},
 ): Promise<{ opened: boolean; items: string[] }> {
 	const timeout = opts.timeout ?? 5000;
-	const reSrc = JSON.stringify(labelPattern.source);
-	const reFlags = JSON.stringify(labelPattern.flags);
-	return await inspector.evalInRenderer<{ opened: boolean; items: string[] }>(
-		'claude.ai',
-		`(async () => {
-			const wait = (ms) => new Promise(r => setTimeout(r, ms));
-			const re = new RegExp(${reSrc}, ${reFlags});
-			const buttons = Array.from(
-				document.querySelectorAll('button[aria-haspopup="menu"]')
-			);
-			const target = buttons.find(btn => {
-				const span = btn.querySelector('span.truncate');
-				if (!span) return false;
-				if (!/max-w-\\[/.test(span.className)) return false;
-				return re.test((span.textContent || '').trim());
-			});
-			if (!target) return { opened: false, items: [] };
-			target.click();
-			const deadline = Date.now() + ${timeout};
-			while (Date.now() < deadline) {
-				const items = Array.from(document.querySelectorAll(
-					'[role=menuitem], [role=menuitemradio], [role=menuitemcheckbox]'
-				));
-				if (items.length > 0) {
-					return {
-						opened: true,
-						items: items.map(it => (it.textContent || '').trim().slice(0, 80)),
-					};
-				}
-				await wait(50);
-			}
-			return { opened: false, items: [] };
-		})()`,
+	const elements = await snapshotAx(inspector);
+	const target = elements.find(
+		(el) =>
+			el.computedRole === 'button' &&
+			el.hasPopup === 'menu' &&
+			el.accessibleName !== null &&
+			labelPattern.test(el.accessibleName),
 	);
+	if (!target || target.backendDOMNodeId === null) {
+		return { opened: false, items: [] };
+	}
+	await inspector.clickByBackendNodeId('claude.ai', target.backendDOMNodeId);
+	// Menu render is async and the AX tree lags DOM by hundreds of ms
+	// (see docs/learnings/test-harness-ax-tree-walker.md §1). Gate
+	// once on stability post-click, then poll fast — re-gating on every
+	// iteration would burn 800ms+ each cycle waiting for "no change"
+	// when what we want is "menuitems appear".
+	await waitForAxTreeStable(inspector, { minNodes: 1, timeoutMs: 5_000 });
+	const deadline = Date.now() + timeout;
+	while (Date.now() < deadline) {
+		const post = await snapshotAx(inspector, { fast: true });
+		const items = post.filter((el) => MENU_ITEM_ROLES.has(el.computedRole));
+		if (items.length > 0) {
+			return {
+				opened: true,
+				items: items.map((el) => (el.accessibleName ?? '').slice(0, 80)),
+			};
+		}
+		await sleep(100);
+	}
+	return { opened: false, items: [] };
 }
 
-// Click any menuitem (any role=menuitem* variant) whose textContent
-// matches `textPattern`. The caller is responsible for opening a menu
-// first. Polls briefly because menu render is async (popover transition).
+// Click any menuitem (any of MENU_ITEM_ROLES) whose accessibleName
+// matches `textPattern`. Caller opens the menu first. Polls the AX
+// snapshot — menu render is async and the AX tree lags DOM by
+// hundreds of ms.
 //
-// Returns the matched item's text and the full item list at the time of
-// the match — the second is useful for diagnostics when `clicked` is null.
+// Returns the matched item's text and the full item list at the time
+// of the match — the second is useful for diagnostics when `clicked`
+// is null.
 export async function clickMenuItem(
 	inspector: InspectorClient,
 	textPattern: RegExp,
 	opts: { timeout?: number } = {},
 ): Promise<{ clicked: string | null; items: string[] }> {
 	const timeout = opts.timeout ?? 1500;
-	const reSrc = JSON.stringify(textPattern.source);
-	const reFlags = JSON.stringify(textPattern.flags);
-	return await inspector.evalInRenderer<{ clicked: string | null; items: string[] }>(
-		'claude.ai',
-		`(async () => {
-			const wait = (ms) => new Promise(r => setTimeout(r, ms));
-			const re = new RegExp(${reSrc}, ${reFlags});
-			const deadline = Date.now() + ${timeout};
-			while (Date.now() < deadline) {
-				const items = Array.from(document.querySelectorAll(
-					'[role=menuitem], [role=menuitemradio], [role=menuitemcheckbox]'
-				));
-				const match = items.find(el =>
-					re.test((el.textContent || '').trim())
-				);
-				if (match) {
-					const text = (match.textContent || '').trim().slice(0, 80);
-					match.click();
-					return {
-						clicked: text,
-						items: items.map(it => (it.textContent || '').trim().slice(0, 80)),
-					};
-				}
-				await wait(50);
-			}
-			const items = Array.from(document.querySelectorAll(
-				'[role=menuitem], [role=menuitemradio], [role=menuitemcheckbox]'
-			));
-			return {
-				clicked: null,
-				items: items.map(it => (it.textContent || '').trim().slice(0, 80)),
-			};
-		})()`,
-	);
+	// Caller has just opened a menu — gate once on stability so the
+	// first iteration sees the populated tree, then poll fast for the
+	// match. Same shape as openPill's post-click handling.
+	await waitForAxTreeStable(inspector, { minNodes: 1, timeoutMs: 5_000 });
+	const deadline = Date.now() + timeout;
+	let lastItemNames: string[] = [];
+	while (Date.now() < deadline) {
+		const elements = await snapshotAx(inspector, { fast: true });
+		const items = elements.filter((el) =>
+			MENU_ITEM_ROLES.has(el.computedRole),
+		);
+		lastItemNames = items.map((el) => (el.accessibleName ?? '').slice(0, 80));
+		const match = items.find(
+			(el) =>
+				el.accessibleName !== null && textPattern.test(el.accessibleName),
+		);
+		if (match && match.backendDOMNodeId !== null) {
+			const text = (match.accessibleName ?? '').slice(0, 80);
+			await inspector.clickByBackendNodeId(
+				'claude.ai',
+				match.backendDOMNodeId,
+			);
+			return { clicked: text, items: lastItemNames };
+		}
+		await sleep(100);
+	}
+	return { clicked: null, items: lastItemNames };
 }
 
 // Dispatch an Escape keydown to the document. Used by openEnvPill's
@@ -272,11 +313,11 @@ export async function pressEscape(inspector: InspectorClient): Promise<void> {
 // Only valid after the renderer has loaded a logged-in claude.ai page;
 // callers should `app.waitForReady('userLoaded')` first. activate()
 // itself doesn't repeat that check — it would just fail to find the
-// df-pill on /login, which surfaces as a clear error.
+// Code button on /login, which surfaces as a clear error.
 export class CodeTab {
 	constructor(private readonly inspector: InspectorClient) {}
 
-	// Click the Code df-pill, then poll up to `timeout` for at least one
+	// Click the Code tab, then poll up to `timeout` for at least one
 	// compact pill to render. The env pill rendering is the cheapest
 	// signal that the Code-tab body has mounted and is interactive —
 	// the URL doesn't change (route stays `/new` etc.), so we can't
@@ -287,7 +328,7 @@ export class CodeTab {
 		const result = await activateTab(this.inspector, 'Code');
 		if (!result.clicked) {
 			throw new Error(
-				'CodeTab.activate: Code df-pill (button[aria-label="Code"][class*="df-pill"]) not found',
+				'CodeTab.activate: no AX-tree button with accessibleName="Code" found',
 			);
 		}
 		const ready = await retryUntil(
@@ -336,7 +377,7 @@ export class CodeTab {
 			await pressEscape(this.inspector);
 			// Brief settle so the next openPill doesn't race the popover
 			// teardown. 150ms matches the original T17 implementation.
-			await sleepMs(150);
+			await sleep(150);
 		}
 		throw new Error(
 			`CodeTab.openEnvPill: probed ${pills.length} compact pill(s), ` +
@@ -401,13 +442,6 @@ export class CodeTab {
 			);
 		}
 	}
-}
-
-// Local because retry.ts's `sleep` is fine to import elsewhere but the
-// 150ms post-Escape settle is internal-only — keeping the helper
-// adjacent makes the intent clear at the call site.
-function sleepMs(ms: number): Promise<void> {
-	return new Promise((r) => setTimeout(r, ms));
 }
 
 // Standard "escape regex special chars in a literal string" helper.
