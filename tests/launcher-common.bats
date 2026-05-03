@@ -110,57 +110,42 @@ teardown() {
 	log_session_env
 
 	run cat "$log_file"
-	[[ $output == *'env={'* ]]
-	[[ $output == *'XDG_SESSION_TYPE=wayland'* ]]
-	[[ $output == *'WAYLAND_DISPLAY=wayland-0'* ]]
-	[[ $output == *'DISPLAY=:0'* ]]
-	[[ $output == *'XDG_CURRENT_DESKTOP=KDE'* ]]
-	[[ $output == *'GTK_IM_MODULE=ibus'* ]]
-	[[ $output == *'XMODIFIERS=@im=ibus'* ]]
-	[[ $output == *'QT_IM_MODULE=ibus'* ]]
-	[[ $output == *'CLAUDE_USE_WAYLAND=1'* ]]
-	[[ $output == *'CLAUDE_TITLEBAR_STYLE=hybrid'* ]]
-	[[ $output == *'CLAUDE_GTK_IM_MODULE=xim'* ]]
+	# Exact-line match locks block structure (open/close braces on
+	# their own lines) and per-key formatting in one pass.
+	[[ "${lines[0]}"  == 'env={' ]]
+	[[ "${lines[1]}"  == '  XDG_SESSION_TYPE=wayland' ]]
+	[[ "${lines[2]}"  == '  WAYLAND_DISPLAY=wayland-0' ]]
+	[[ "${lines[3]}"  == '  DISPLAY=:0' ]]
+	[[ "${lines[4]}"  == '  XDG_CURRENT_DESKTOP=KDE' ]]
+	[[ "${lines[5]}"  == '  GTK_IM_MODULE=ibus' ]]
+	[[ "${lines[6]}"  == '  XMODIFIERS=@im=ibus' ]]
+	[[ "${lines[7]}"  == '  QT_IM_MODULE=ibus' ]]
+	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=1' ]]
+	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=hybrid' ]]
+	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
+	[[ "${lines[11]}" == '}' ]]
 }
 
-@test "log_session_env: unset values are emitted as KEY= (not omitted)" {
+@test "log_session_env: unset/empty values render as 'KEY=' (no value)" {
 	setup_logging
-	# All env vars left unset by the test setup
-	log_session_env
-
-	run cat "$log_file"
-	# Each required key must appear with an empty value, not be missing
-	[[ $output == *'XDG_SESSION_TYPE='* ]]
-	[[ $output == *'WAYLAND_DISPLAY='* ]]
-	[[ $output == *'DISPLAY='* ]]
-	[[ $output == *'XDG_CURRENT_DESKTOP='* ]]
-	[[ $output == *'GTK_IM_MODULE='* ]]
-	[[ $output == *'XMODIFIERS='* ]]
-	[[ $output == *'QT_IM_MODULE='* ]]
-	[[ $output == *'CLAUDE_USE_WAYLAND='* ]]
-	[[ $output == *'CLAUDE_TITLEBAR_STYLE='* ]]
-	[[ $output == *'CLAUDE_GTK_IM_MODULE='* ]]
-}
-
-@test "log_session_env: empty value is emitted as KEY= (same as unset)" {
-	setup_logging
+	# All vars unset by setup() except this one, which exercises the
+	# empty-string branch (must be indistinguishable from unset).
 	GTK_IM_MODULE=''
 	log_session_env
 
 	run cat "$log_file"
-	# `KEY=` line must be present with no value after the equals sign
-	[[ $output =~ GTK_IM_MODULE=$'\n' || $output =~ GTK_IM_MODULE=$ ]]
-}
-
-@test "log_session_env: emits opening and closing braces on their own lines" {
-	setup_logging
-	log_session_env
-
-	run cat "$log_file"
-	# Opening brace
-	[[ "${lines[0]}" == 'env={' ]]
-	# Closing brace as final line
-	[[ "${lines[${#lines[@]}-1]}" == '}' ]]
+	# Exact-line match proves the line ends right after '=' — a
+	# substring like *'KEY='* would also match 'KEY=value'.
+	[[ "${lines[1]}"  == '  XDG_SESSION_TYPE=' ]]
+	[[ "${lines[2]}"  == '  WAYLAND_DISPLAY=' ]]
+	[[ "${lines[3]}"  == '  DISPLAY=' ]]
+	[[ "${lines[4]}"  == '  XDG_CURRENT_DESKTOP=' ]]
+	[[ "${lines[5]}"  == '  GTK_IM_MODULE=' ]]
+	[[ "${lines[6]}"  == '  XMODIFIERS=' ]]
+	[[ "${lines[7]}"  == '  QT_IM_MODULE=' ]]
+	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=' ]]
+	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=' ]]
+	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=' ]]
 }
 
 # =============================================================================
