@@ -50,6 +50,14 @@ Status legend: `✓` pass · `✗` fail · `🔧` mitigated · `?` untested · `
 | [T38](./cases/code-tab-handoff.md#t38--continue-in-ide) | ? | ? | ? | ? | ? | ? | ? | ? | ? |
 | [T39](./cases/code-tab-handoff.md#t39--desktop-cli-handoff-graceful-na) | ? | ? | ? | ? | ? | ? | ? | ? | ? |
 
+## UI visibility (U-series)
+
+Auto-generated render attestation: each entry in [`ui-inventory.json`](./ui-inventory.json) is asserted to mount with its recorded fingerprint on each platform. The single matrix cell aggregates every inventory entry — pass means every entry rendered, fail means at least one didn't (per-entry diagnostics in the JUnit attachments). Regenerate the spec with `npm run gen:render-specs` after re-walking. See [`claudeai-ui-mapping-plan.md`](./claudeai-ui-mapping-plan.md) for the discovery + walker design.
+
+| Test | KDE-W | KDE-X | GNOME | Ubu | Sway | i3 | Niri | Hypr-O | Hypr-N |
+|------|-------|-------|-------|-----|------|----|------|--------|--------|
+| [U01](../tools/test-harness/src/runners/U01_ui_visibility.spec.ts) — UI visibility | ? | ? | ? | ? | ? | ? | ? | ? | ? |
+
 ## Environment-specific status
 
 ### Ubuntu / DEB

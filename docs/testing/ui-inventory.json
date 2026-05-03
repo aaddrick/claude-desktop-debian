@@ -1,0 +1,3761 @@
+{
+  "capturedAt": "2026-05-03T07:13:20.024Z",
+  "appVersion": "1.5354.0",
+  "walkerVersion": "7",
+  "startUrl": "https://claude.ai/epitaxy",
+  "totalElements": 90,
+  "deniedActions": 6,
+  "entries": [
+    {
+      "id": "root.button-by-name.menu",
+      "label": "Menu",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Menu"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.customize",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.button-by-name.back",
+      "label": "Back",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Back"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.customize",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.button-by-name.forward",
+      "label": "Forward",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Forward"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.customize",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.link",
+      "label": "Skip to content",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.button-by-name.expand-sidebar",
+      "label": "Expand sidebar",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Expand sidebar"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search",
+      "label": "Search",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Search"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.customize",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.new-session-n",
+      "label": "New session ⌘N",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "New session ⌘N"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.routines",
+      "label": "Routines",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Routines"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.customize",
+      "label": "Customize",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Customize"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.more-navigation-items",
+      "label": "More navigation items",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "More navigation items"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.aaddrick-max",
+      "label": "Aaddrick Max",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Aaddrick Max"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.appearance",
+      "label": "Appearance",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Appearance"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.group.button-instance+3",
+      "label": "Chat",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          },
+          {
+            "role": "group",
+            "name": {
+              "kind": "literal",
+              "value": "Mode"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 3,
+      "instanceLabelPattern": "complementary.group.button-instance",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.pinned",
+      "label": "Pinned",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Pinned"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.recents",
+      "label": "Recents",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Recents"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-by-name.filter",
+      "label": "Filter",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Filter"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.button-instance+72",
+      "label": "Idle Review PR 555 for issue 558 fix",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 72,
+      "instanceLabelPattern": "complementary.button-instance",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.local",
+      "label": "Local",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Local"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.select-folder",
+      "label": "Select folder…",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Select folder…"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.accept-edits",
+      "label": "Accept edits",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Accept edits"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.transcript-view-mode",
+      "label": "Transcript view mode",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Transcript view mode"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.add",
+      "label": "Add",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Add"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-shape.opus-version",
+      "label": "Opus 4.7 1M · Extra high",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "pattern",
+            "regex": "^Opus \\d"
+          },
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-shape.percentage",
+      "label": "Usage: plan 13%",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "pattern",
+            "regex": "\\d{1,3}%"
+          },
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.group.button-instance",
+      "label": "Press and hold to record",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "group",
+            "name": {
+              "kind": "literal",
+              "value": "Dictation"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.show-5-more",
+      "label": "Show 5 more",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Show 5 more"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.button-by-name.send",
+      "label": "Send",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Send"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": true,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.main.region.list.button-instance+5",
+      "label": "Open session Find contact method for Claude Desktop issue",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "list",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [],
+      "surface": "root",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:17.893Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 5,
+      "instanceLabelPattern": "main.region.list.button-instance",
+      "surfaces": [
+        "root",
+        "root.button-by-name.expand-sidebar",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.link"
+      ]
+    },
+    {
+      "id": "root.complementary.link.button-by-name.expand-sidebar",
+      "label": "Expand sidebar",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Expand sidebar"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.link"
+        }
+      ],
+      "surface": "root.complementary.link",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:51.202Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.expand-sidebar.button-by-name.collapse-sidebar",
+      "label": "Collapse sidebar",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Collapse sidebar"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.expand-sidebar"
+        }
+      ],
+      "surface": "root.button-by-name.expand-sidebar",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:09:58.876Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.expand-sidebar",
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+        "root.complementary.button-by-name.customize",
+        "root.complementary.button-by-name.new-session-n",
+        "root.complementary.button-by-name.routines"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.button",
+      "label": "Close",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Dialog"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        }
+      ],
+      "surface": "root.button-by-name.search",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:07.123Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "label": "Claude Desktop Debian Enter",
+      "role": "option",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Dialog"
+            }
+          },
+          {
+            "role": "listbox",
+            "name": {
+              "kind": "literal",
+              "value": "Search results"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "option",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        }
+      ],
+      "surface": "root.button-by-name.search",
+      "kind": "instance",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:07.123Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 25,
+      "instanceLabelPattern": "dialog.listbox.option-instance"
+    },
+    {
+      "id": "root.complementary.button-by-name.routines.main.region.button-by-name.new-routine",
+      "label": "New routine",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "New routine"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.routines"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.routines",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:22.997Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.routines.main.region.button-by-name.all",
+      "label": "All",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "All"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.routines"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.routines",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:22.997Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.routines.main.region.button-by-name.calendar",
+      "label": "Calendar",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Calendar"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.routines"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.routines",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:22.997Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "label": "Connect your apps Let Claude read and write to the tools you already use.",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Connect your apps Let Claude read and write to the tools you already use."
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.link",
+      "label": "Create new skills Teach Claude your processes, team norms, and expertise.",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.browse-plugins-add-pre-built-knowledge-for-your-field",
+      "label": "Browse plugins Add pre-built knowledge for your field.",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Browse plugins Add pre-built knowledge for your field."
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.back-to-claude",
+      "label": "Back to Claude",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Back to Claude"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.navigation.link-by-name.skills",
+      "label": "Skills",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": {
+            "kind": "literal",
+            "value": "Skills"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.navigation.link-by-name.connectors",
+      "label": "Connectors",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": {
+            "kind": "literal",
+            "value": "Connectors"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.navigation.button-by-name.browse-plugins",
+      "label": "Browse plugins",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Browse plugins"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.navigation.button-by-name.select-a-folder",
+      "label": "Select a folder",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Select a folder"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.navigation.button-by-name.add-plugin",
+      "label": "Add plugin",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Add plugin"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:10:29.597Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "label": "New chat ⌘N",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "New chat ⌘N"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+      "label": "Projects",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Projects"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+      "label": "Artifacts",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Artifacts"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "label": "Get apps and extensions",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Get apps and extensions"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.view-all",
+      "label": "View all",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "View all"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.star-charts-in-github-readme-files",
+      "label": "Star charts in GitHub readme files",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Star charts in GitHub readme files"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.elko-hrn-33-and-hrn-31-manuals",
+      "label": "ELKO HRN-33 and HRN-31 manuals",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "ELKO HRN-33 and HRN-31 manuals"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.feedback-submission",
+      "label": "Feedback submission",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Feedback submission"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.draft-pr-visibility-on-github",
+      "label": "Draft PR visibility on GitHub",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "complementary",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Draft PR visibility on GitHub"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "persistent",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "surfaces": [
+        "root.button-by-name.search.dialog.listbox.option-instance+25",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+        "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+      ]
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.link",
+      "label": "All projects",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.main.button-by-shape.row-more-options",
+      "label": "More options for Claude Desktop Debian",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "pattern",
+            "regex": "^More options for "
+          },
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.main.button-by-name.start-a-task-in-cowork",
+      "label": "Start a task in Cowork",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Start a task in Cowork"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.main.button-by-name.pin-project",
+      "label": "Pin project",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Pin project"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.main.button-by-name.edit-instructions",
+      "label": "Edit Instructions",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Edit Instructions"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.main.button-by-name.add-files",
+      "label": "Add files",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Add files"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.main.region.main.group.button-instance+4",
+      "label": "Press and hold to record",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "group",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25",
+      "kind": "instance",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:08.559Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 4,
+      "instanceLabelPattern": "main.region.main.group.button-instance"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.button-by-name.close",
+      "label": "Close",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Close"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.button-by-name.anthropic-partners",
+      "label": "Anthropic & Partners",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Anthropic & Partners"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.button-by-name.filter-by",
+      "label": "Filter by",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Filter by"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.button-by-name.sort-by",
+      "label": "Sort by",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Sort by"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.button-instance+704",
+      "label": "Google Drive Most popular Install Search, read, and upload files instantly",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "instance",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 704,
+      "instanceLabelPattern": "dialog.button-instance"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.complementary.navigation.button-by-name.skills",
+      "label": "Skills",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          },
+          {
+            "role": "complementary",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": {
+              "kind": "literal",
+              "value": "Directory sections"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Skills"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.complementary.navigation.button-by-name.connectors",
+      "label": "Connectors",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          },
+          {
+            "role": "complementary",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": {
+              "kind": "literal",
+              "value": "Directory sections"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Connectors"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you.dialog.complementary.navigation.button-by-name.plugins",
+      "label": "Plugins",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "dialog",
+            "name": {
+              "kind": "literal",
+              "value": "Directory"
+            }
+          },
+          {
+            "role": "complementary",
+            "name": null
+          },
+          {
+            "role": "navigation",
+            "name": {
+              "kind": "literal",
+              "value": "Directory sections"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Plugins"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize"
+        },
+        {
+          "action": "click",
+          "id": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you"
+        }
+      ],
+      "surface": "root.complementary.button-by-name.customize.main.button-by-name.connect-your-apps-let-claude-read-and-write-to-the-tools-you",
+      "kind": "dialog",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:27.946Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n.main.region.main.tablist.tab-by-name.write",
+      "label": "Write",
+      "role": "tab",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "tablist",
+            "name": {
+              "kind": "literal",
+              "value": "Prompt categories"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "tab",
+          "name": {
+            "kind": "literal",
+            "value": "Write"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:43.243Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n.main.region.main.tablist.tab-by-name.learn",
+      "label": "Learn",
+      "role": "tab",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "tablist",
+            "name": {
+              "kind": "literal",
+              "value": "Prompt categories"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "tab",
+          "name": {
+            "kind": "literal",
+            "value": "Learn"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:43.243Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n.main.region.main.tablist.tab-by-name.code",
+      "label": "Code",
+      "role": "tab",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "tablist",
+            "name": {
+              "kind": "literal",
+              "value": "Prompt categories"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "tab",
+          "name": {
+            "kind": "literal",
+            "value": "Code"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:43.243Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n.main.region.main.tablist.tab-by-name.from-calendar",
+      "label": "From Calendar",
+      "role": "tab",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "tablist",
+            "name": {
+              "kind": "literal",
+              "value": "Prompt categories"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "tab",
+          "name": {
+            "kind": "literal",
+            "value": "From Calendar"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:43.243Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n.main.region.main.tablist.tab-by-name.from-gmail",
+      "label": "From Gmail",
+      "role": "tab",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "tablist",
+            "name": {
+              "kind": "literal",
+              "value": "Prompt categories"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "tab",
+          "name": {
+            "kind": "literal",
+            "value": "From Gmail"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:43.243Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n.main.region.main.group.button-instance+4",
+      "label": "Press and hold to record",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "group",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.new-chat-n",
+      "kind": "instance",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:43.243Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 4,
+      "instanceLabelPattern": "main.region.main.group.button-instance"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects.main.region.button-by-name.search-projects",
+      "label": "Search projects",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Search projects"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:54.282Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects.main.region.button-by-name.new-project",
+      "label": "New project",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "New project"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:54.282Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects.main.region.link-instance+3",
+      "label": "Claude Desktop Debian 1 year ago",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+      "kind": "instance",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:54.282Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 3,
+      "instanceLabelPattern": "main.region.link-instance"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects.main.region.button-by-name.sort-by",
+      "label": "Sort by",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Sort by"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:54.282Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects.main.region.button-instance+3",
+      "label": "Project actions",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.projects",
+      "kind": "instance",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:12:54.282Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 3,
+      "instanceLabelPattern": "main.region.button-instance"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts.main.region.button",
+      "label": "New artifact",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:05.215Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts.main.region.main.link",
+      "label": "Your artifacts",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:05.215Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts.main.region.main.list.link",
+      "label": "Electron apps Linux users desperately want but can't have Despite Electron's cross-platform promise, several high-profile applications deliberately skip Linux even though the framework makes it technically trivial to support. The most glaring Electron Apps Linux Users Want But Cannot Have: The Cross-Platform Promise Gap Last edited 3 months ago",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "region",
+            "name": {
+              "kind": "literal",
+              "value": "Primary pane"
+            }
+          },
+          {
+            "role": "main",
+            "name": null
+          },
+          {
+            "role": "list",
+            "name": {
+              "kind": "literal",
+              "value": "Artifacts"
+            }
+          }
+        ],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.artifacts",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:05.215Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.banner.button-by-name.menu",
+      "label": "Menu",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "banner",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Menu"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.banner.button-by-name.back-to-claude",
+      "label": "Back to Claude",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [
+          {
+            "role": "banner",
+            "name": null
+          }
+        ],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Back to Claude"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.button-instance+5",
+      "label": "Install",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "instance",
+      "denylisted": true,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 5,
+      "instanceLabelPattern": "button-instance"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.link-instance+7",
+      "label": "Install",
+      "role": "link",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "link",
+          "name": null,
+          "siblingIndex": null
+        },
+        "classification": "instance"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "instance",
+      "denylisted": true,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0",
+      "instanceCount": 7,
+      "instanceLabelPattern": "link-instance"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.button-by-name.read-health-data",
+      "label": "Read health data",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Read health data"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.button-by-name.my-downloads-folder-is-a-mess-can-you-clean-it-up",
+      "label": "My downloads folder is a mess! Can you clean it up?",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "My downloads folder is a mess! Can you clean it up?"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.button-by-name.turn-these-receipts-into-an-expense-report",
+      "label": "Turn these receipts into an expense report",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Turn these receipts into an expense report"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0"
+    },
+    {
+      "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions.button-by-name.illustration-of-claude-placing-a-grocery-order-in-chrome-cla",
+      "label": "Illustration of Claude placing a grocery order in Chrome Claude Create a shopping list, go on Chrome, and make an order",
+      "role": "button",
+      "fingerprint": {
+        "ariaPath": [],
+        "leaf": {
+          "role": "button",
+          "name": {
+            "kind": "literal",
+            "value": "Illustration of Claude placing a grocery order in Chrome Claude Create a shopping list, go on Chrome, and make an order"
+          },
+          "siblingIndex": null
+        },
+        "classification": "stable"
+      },
+      "navigationPath": [
+        {
+          "action": "click",
+          "id": "root.button-by-name.search"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25"
+        },
+        {
+          "action": "click",
+          "id": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions"
+        }
+      ],
+      "surface": "root.button-by-name.search.dialog.listbox.option-instance+25.complementary.button-by-name.get-apps-and-extensions",
+      "kind": "structural",
+      "denylisted": false,
+      "discoveredAt": "2026-05-03T07:13:15.693Z",
+      "appVersion": "1.5354.0"
+    }
+  ]
+}

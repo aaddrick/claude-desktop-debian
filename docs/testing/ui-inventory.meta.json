@@ -1,0 +1,12 @@
+{
+  "capturedAt": "2026-05-03T07:13:20.024Z",
+  "appVersion": "1.5354.0",
+  "walkerVersion": "7",
+  "startUrl": "https://claude.ai/epitaxy",
+  "totalElements": 90,
+  "deniedActions": 6,
+  "partial": false,
+  "isolation": "launchClaude (test-harness path)",
+  "seededFromHost": true,
+  "allowlistEntries": []
+}
