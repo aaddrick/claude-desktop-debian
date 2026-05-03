@@ -12,6 +12,7 @@
 		"sweep": "bash orchestrator/sweep.sh",
 		"typecheck": "tsc --noEmit",
 		"explore": "npx tsx explore/explore.ts",
+		"grounding-probe": "npx tsx grounding-probe.ts",
 		"explore:snapshot": "npx tsx explore/explore.ts snapshot",
 		"explore:diff": "npx tsx explore/explore.ts diff",
 		"explore:walk": "npx tsx explore/explore.ts walk",
