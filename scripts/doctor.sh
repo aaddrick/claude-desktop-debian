@@ -112,33 +112,24 @@ _pkg_installed() {
 
 # Diagnose IBus / GTK input-method misconfigurations that break
 # keyboard input in the chat (#550). Surfaces:
-#   - CLAUDE_GTK_IM_MODULE override visibility
-#   - XWayland-with-IBus routing note (XIM bridge in use)
+#   - CLAUDE_GTK_IM_MODULE override visibility (informational)
+#   - XWayland-with-IBus routing note: on a Wayland session Electron
+#     defaults to XWayland (preserves global hotkeys), which forces
+#     the IBus path through XIM — a known weak link for some IMEs.
 #   - ibus-gtk3 package missing when GTK_IM_MODULE=ibus
-#   - GTK immodules cache stale (gtk-query-immodules-3.0 doesn't list
-#     the active module)
-#
-# Each check is gated so it only fires when relevant — e.g. the
-# immodules check is skipped when gtk-query-immodules-3.0 isn't
-# installed (no GTK 3 in use).
+#   - GTK immodules cache stale: active module not listed by
+#     gtk-query-immodules-3.0 (--update-cache fixes it)
 #
 # Usage: _doctor_check_im_modules <distro_id>
 _doctor_check_im_modules() {
 	local distro="$1"
 	local active_im="${CLAUDE_GTK_IM_MODULE:-${GTK_IM_MODULE:-}}"
 
-	# CLAUDE_GTK_IM_MODULE override visibility — informational, so
-	# users can see at a glance which module Electron will get.
 	if [[ -n ${CLAUDE_GTK_IM_MODULE:-} ]]; then
 		_info "CLAUDE_GTK_IM_MODULE=$CLAUDE_GTK_IM_MODULE" \
 			"(overrides GTK_IM_MODULE for Electron)"
 	fi
 
-	# XWayland + IBus routing note. When Wayland session is in use
-	# but Electron is routed through XWayland (the default, for
-	# global-hotkey support), the IBus integration goes via XIM —
-	# which is a known weak link. Surface this so users hitting
-	# input issues understand the routing before they file.
 	if [[ ${XDG_SESSION_TYPE:-} == 'wayland' \
 		&& -z ${CLAUDE_USE_WAYLAND:-} ]]; then
 		_info \
@@ -149,29 +140,29 @@ _doctor_check_im_modules() {
 			'(loses global hotkeys).'
 	fi
 
-	# If no IM module is selected at all, nothing further to check.
+	# Nothing further to check without an active IM module.
 	[[ -n $active_im ]] || return 0
 
 	# ibus-gtk3 package check — only when the active module is ibus.
-	# Use the package manager as the canonical source of truth; fall
-	# through silently on unsupported distros (rc=2) to avoid false
-	# negatives.
-	local _pkg_rc=0
+	# rc=1 means definitely missing (warn); rc=2 means unsupported
+	# distro / no package manager (skip silently to avoid false
+	# negatives). On warn, return early — `apt install` refreshes
+	# the immodules cache, so the cache check below would be noise.
 	if [[ $active_im == 'ibus' ]]; then
-		_pkg_installed "$distro" ibus-gtk3 || _pkg_rc=$?
-		if ((_pkg_rc == 1)); then
-			_warn \
-				"GTK_IM_MODULE=ibus but ibus-gtk3 is not installed"
-			_info "Fix: $(_cowork_pkg_hint "$distro" ibus-gtk3)"
-			# Skip the cache check below: install will refresh it.
-			return 0
-		fi
+		_pkg_installed "$distro" ibus-gtk3
+		case $? in
+			1)
+				_warn \
+					"GTK_IM_MODULE=ibus but ibus-gtk3 is not installed"
+				_info "Fix: $(_cowork_pkg_hint "$distro" ibus-gtk3)"
+				return 0
+				;;
+		esac
 	fi
 
 	# GTK immodules cache check. gtk-query-immodules-3.0 ships with
-	# libgtk-3-bin (Debian/Ubuntu) / gtk3 (Fedora/Arch). If it's not
-	# on PATH, GTK 3 isn't really in use — skip silently rather than
-	# warning.
+	# libgtk-3-bin (Debian/Ubuntu) / gtk3 (Fedora/Arch); absence
+	# means GTK 3 isn't in use — skip silently rather than warn.
 	command -v gtk-query-immodules-3.0 &>/dev/null || return 0
 
 	if ! gtk-query-immodules-3.0 2>/dev/null \
