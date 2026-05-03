@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { launchClaude } from '../lib/electron.js';
 import { retryUntil } from '../lib/retry.js';
+import { CodeTab } from '../lib/claudeai.js';
 import {
 	installOpenDialogMock,
 	getOpenDialogCalls,
-	CodeTab,
-} from '../lib/claudeai.js';
+} from '../lib/electron-mocks.js';
 
 // T17 — Folder picker opens.
 //

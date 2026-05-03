@@ -4,7 +4,7 @@ import { captureSessionEnv } from '../lib/diagnostics.js';
 import {
 	installShowItemInFolderMock,
 	getShowItemInFolderCalls,
-} from '../lib/claudeai.js';
+} from '../lib/electron-mocks.js';
 
 // T25 — `shell.showItemInFolder` is reachable from main, accepts a
 // path arg, and the IPC layer terminates at it without throwing.
