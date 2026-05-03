@@ -38,6 +38,57 @@ Every test in this directory follows this structure:
 **Diagnostics on failure:** which captures to attach when filing. See [`../runbook.md#diagnostic-capture`](../runbook.md#diagnostic-capture).
 
 **References:** docs links, learnings, related issues.
+
+**Code anchors:** `<file>:<line>` pointers to the upstream code or
+wrapper script that backs the load-bearing claim above. Added during
+the grounding sweep — see "Anchor scope" for guidance on where
+anchors can and can't land.
+
+**Inventory anchor:** (optional) `<element-id>` from
+[`../ui-inventory.json`](../ui-inventory.json) — only if the surface
+shows up in the v7 walker's idle capture. For surfaces inside modals
+or popups, append a sentence noting which click-chain opens them so
+the next inventory regeneration can grab them.
 ```
 
-The Steps and Diagnostics fields are written so they can later become script entry points without a rewrite.
+The Steps and Diagnostics fields are written so they can later become
+script entry points without a rewrite.
+
+### Anchor scope
+
+Where the load-bearing claim lives determines where the anchor goes:
+
+- **Upstream code** — any file under
+  `build-reference/app-extracted/.vite/build/` (most often `index.js`,
+  the main process). Use `index.js:N` style anchors.
+- **Our wrapper code** — `scripts/launcher-common.sh`, `scripts/doctor.sh`,
+  `scripts/patches/*.sh`, `scripts/frame-fix-wrapper.js`,
+  `scripts/wco-shim.js`. Use `<repo-relative-path>:N` style anchors.
+- **Server-rendered (claude.ai SPA)** — anchorable only via the v7
+  walker inventory (`docs/testing/ui-inventory.json`) or a runtime
+  capture from `tools/test-harness/grounding-probe.ts`. Idle-state
+  inventory misses contextual surfaces (modals, popups, slash menus,
+  context menus, side panels) — note that explicitly.
+- **Upstream `claude` CLI binary** — out of scope for this matrix
+  (e.g. T39 `/desktop` is a CLI slash-command, not in the Electron
+  asar). Mark as Ambiguous and link to a separate CLI matrix if one
+  exists.
+
+If a claim spans multiple scopes (a wrapper script triggering
+upstream behavior, e.g. T01's launcher-log + main-window-opens),
+list all the anchors. The whole point is making the next sweep
+faster — over-anchoring is fine, missing anchors is not.
+
+### Drift markers
+
+When a sweep finds upstream behavior no longer matches the case:
+
+- **Edited Steps/Expected** — fix the case in place, mention what
+  changed in the commit message. The case is the spec.
+- **Missing in build X.Y.Z** — prepend a blockquote under the test
+  heading: `> **⚠ Missing in build 1.5354.0** — <one-line note>.
+  Re-verify after next upstream bump.` Use when the feature isn't
+  in the build at all (deprecated, behind unset flag, never shipped).
+- **Ambiguous** — don't edit; flag in the sweep report. Use when
+  the load-bearing claim could be one of several candidate code
+  paths and static analysis can't disambiguate.
