@@ -103,7 +103,7 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 
 **References:** [T13](./launch.md#t13--doctor-reports-correct-package-format)
 
-**Code anchors:** `scripts/doctor.sh:289-299` — install-method check is gated on `command -v dpkg-query`; only runs on Debian-family hosts. Falls through to `_warn 'claude-desktop not found via dpkg (AppImage?)'` only if `dpkg-query` is present but returns empty. On Fedora/RPM hosts (`dpkg-query` absent), the entire block is skipped and **no install-method line is printed at all** — neither the misleading WARN nor a correct `rpm -qf` PASS. The drift is "no detection" rather than "false-flag as AppImage" on dpkg-less systems.
+**Code anchors:** `scripts/doctor.sh:353-362` — install-method check is gated on `command -v dpkg-query`; only runs on Debian-family hosts. Falls through to `_warn 'claude-desktop not found via dpkg (AppImage?)'` only if `dpkg-query` is present but returns empty. On Fedora/RPM hosts (`dpkg-query` absent), the entire block is skipped and **no install-method line is printed at all** — neither the misleading WARN nor a correct `rpm -qf` PASS. The drift is "no detection" rather than "false-flag as AppImage" on dpkg-less systems.
 
 ## S15 — AppImage extraction (`--appimage-extract`) works as documented fallback
 

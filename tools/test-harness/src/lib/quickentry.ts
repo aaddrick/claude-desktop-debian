@@ -450,7 +450,7 @@ function typeAndSubmitJs(text: string): string {
 export class MainWindow {
 	constructor(private readonly inspector: InspectorClient) {}
 
-	async setState(action: 'minimize' | 'hide' | 'show' | 'restore' | 'fullScreen' | 'unFullScreen' | 'focus'): Promise<void> {
+	async setState(action: 'minimize' | 'hide' | 'show' | 'restore' | 'fullScreen' | 'unFullScreen' | 'focus' | 'close'): Promise<void> {
 		await this.inspector.evalInMain<null>(`
 			const { webContents, BrowserWindow } = process.mainModule.require('electron');
 			const main = webContents.getAllWebContents().find(w => w.getURL().includes('claude.ai'));
@@ -465,6 +465,13 @@ export class MainWindow {
 				case 'fullScreen':  win.setFullScreen(true); break;
 				case 'unFullScreen':win.setFullScreen(false); break;
 				case 'focus':       win.focus(); break;
+				// 'close' fires the BrowserWindow 'close' event so
+				// frame-fix-wrapper.js:178-185 (the close-to-tray
+				// interceptor) and the upstream before-quit flow
+				// run as they would on a real X-button click. NOT
+				// the same as 'hide' — that bypasses the wrapper.
+				// T08 asserts on this distinction.
+				case 'close':       win.close(); break;
 			}
 			return null;
 		`);

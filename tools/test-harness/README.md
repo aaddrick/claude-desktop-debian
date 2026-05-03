@@ -7,22 +7,50 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Twenty specs wired; thirteen pass on KDE-W, six skip cleanly per
-spec intent (S12/S32 row, S36 single-monitor, S37 Linux-unreachable,
-H04 cowork-not-spawned, T17 without `CLAUDE_TEST_USE_HOST_CONFIG=1`).
+Forty specs wired (8 cross-env T-tests, 27 env-specific S-tests, 5
+H-prefix harness self-tests). See
+[`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
+for the tiered triage of remaining tests and the per-spec rationale
+behind tier classification.
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
 | [T01](../../docs/testing/cases/launch.md#t01--app-launch) | X11 window with our pid appears within 15s; title matches `/claude/i` | L2 (xprop) |
+| [T02](../../docs/testing/cases/launch.md#t02--doctor-health-check) | `claude-desktop --doctor` exits 0 | spawn probe |
 | [T03](../../docs/testing/cases/tray-and-window-chrome.md#t03--tray-icon-present) | A `StatusNotifierItem` is registered by the claude-desktop pid AND exactly one (no rebuild-race duplicates) | L2 (DBus) |
 | [T04](../../docs/testing/cases/tray-and-window-chrome.md#t04--window-decorations-draw) | Window has `_NET_FRAME_EXTENTS` (sum > 0) and a "Claude" title | L2 (xprop) |
+| [T05](../../docs/testing/cases/shortcuts-and-input.md#t05--claude-url-handler) | `xdg-open 'claude://...'` delivers via `app.on('second-instance')` to the running app | spawn + L1 hook |
+| [T06](../../docs/testing/cases/shortcuts-and-input.md#t06--quick-entry-global-shortcut-unfocused) | `globalShortcut.isRegistered('Ctrl+Alt+Space')` returns true after `mainVisible` | L1 |
+| [T07](../../docs/testing/cases/tray-and-window-chrome.md#t07--in-app-topbar) | Five topbar buttons render with non-zero rects (uses `seedFromHost` for hermetic auth) | L1 + DOM |
+| [T08](../../docs/testing/cases/tray-and-window-chrome.md#t08--close-x-hides-to-tray) | `win.close()` fires the wrapper interceptor; window hidden, proc alive | L1 |
+| [T09](../../docs/testing/cases/platform-integration.md#t09--autostart-via-xdg) | `setLoginItemSettings({ openAtLogin })` writes/removes `$XDG_CONFIG_HOME/autostart/claude-desktop.desktop` | L1 + filesystem |
+| [T11](../../docs/testing/cases/extensibility.md#t11--plugin-install) | Plugin-install code path fingerprints present in bundled `index.js` | file probe |
+| [T12](../../docs/testing/cases/platform-integration.md#t12--webgl-warn-only) | `app.getGPUFeatureStatus()` returns a populated object; renderer reached visible | L1 |
+| [T13](../../docs/testing/cases/launch.md#t13--doctor-reports-correct-package-format) | `--doctor` does not false-flag rpm/deb installs as missing-dpkg AppImage | spawn + stdout grep |
+| [T14a](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | `requestSingleInstanceLock` + `'second-instance'` strings in bundled `index.js` (file probe) | file probe |
+| [T14b](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | Second invocation under same isolation exits cleanly; primary pid stays alive (runtime probe) | spawn delta + pgrep |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
 | H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
 | H02 | `frame-fix-wrapper.js` + `frame-fix-entry.js` injected into `app.asar` (Proxy + main-field reference) | file probe |
 | H03 | Build-pipeline patch fingerprints all present in `app.asar` (KDE gate, frame-fix inject, tray, cowork, claude-code) | file probe |
 | H04 | cowork daemon spawns under app and exits with app — soft-skips on rows where it isn't gated to spawn | pgrep delta |
+| H05 | UI-drift canary against the AX-tree fingerprint walker (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 (AX) |
+| [S01](../../docs/testing/cases/distribution.md#s01--appimage-launches-without-manual-libfuse2t64) | AppImage launches without `libfuse.so.2` complaint (skips on non-AppImage rows) | spawn + stderr grep |
+| [S02](../../docs/testing/cases/distribution.md#s02--xdg_current_desktopubuntugnome-prefix-form-doesnt-break-de-detection) | No strict `==` equality against `XDG_CURRENT_DESKTOP` in launcher / patches (regression detector) | source-tree probe |
+| [S03](../../docs/testing/cases/distribution.md#s03--deb-install-pulls-runtime-deps) | `dpkg-query Depends:` field non-empty (currently fails as upstream-contract regression detector) | dpkg-query |
+| [S04](../../docs/testing/cases/distribution.md#s04--rpm-install-pulls-runtime-deps) | `rpm -qR` has at least one non-`rpmlib(...)` requirement (currently fails per #autoreqprov off) | rpm -qR |
+| [S05](../../docs/testing/cases/distribution.md#s05--doctor-recognises-dnf-installed-package-doesnt-false-flag-as-appimage) | Doctor does not false-flag rpm-installed package (skips when `rpm -qf` doesn't claim the binary) | spawn + stdout grep |
+| [S07](../../docs/testing/cases/shortcuts-and-input.md#s07--claude_use_waylandvar) | Under `CLAUDE_HARNESS_USE_WAYLAND=1`, spawned Electron has `--ozone-platform=wayland` on argv | argv probe |
+| [S08](../../docs/testing/cases/tray-and-window-chrome.md#s08--tray-icon-doesnt-duplicate-after-nativetheme-update) | `setImage`-based in-place fast-path injected by `tray.sh` (KDE-only, file probe) | file probe |
 | [S09](../../docs/testing/cases/shortcuts-and-input.md#s09--quick-window-patch-runs-only-on-kde-post-406-gate) | KDE-gate string present in bundled `index.js` (patch ran at build) | file probe |
 | S12 | `--enable-features=GlobalShortcutsPortal` in Electron argv (GNOME-W only — currently a known-failing regression detector) | argv probe |
+| [S15](../../docs/testing/cases/distribution.md#s15--appimage-extraction---appimage-extract-works-as-documented-fallback) | `--appimage-extract` exits 0; `squashfs-root/AppRun --version` runs without FUSE error | spawn + filesystem |
+| [S16](../../docs/testing/cases/distribution.md#s16--appimage-mount-cleans-up-on-app-exit) | `mount(8)` shows new `.mount_claude` while app is up; gone within 10s of close | mount delta |
+| [S17](../../docs/testing/cases/platform-integration.md#s17--app-launched-from-desktop-inherits-shell-path) | Shell-path-worker overlays user's login-shell PATH onto a deliberately-scrubbed env | L1 + utilityProcess |
+| [S21](../../docs/testing/cases/routines.md#s21--lid-close-still-suspends-per-os-policy) | No `handle-lid-switch` / `HandleLidSwitch` strings in bundle (lid policy deferred to OS) | asar absence probe |
+| [S22](../../docs/testing/cases/platform-integration.md#s22--computer-use-toggle-absent-or-visibly-disabled-on-linux) | `new Set(["darwin","win32"])` platform gate present; no 2-element Set pairing linux (file-probe form) | asar regex |
+| [S26](../../docs/testing/cases/distribution.md#s26--auto-update-is-disabled-when-installed-via-aptdnf) | `setFeedURL` present + project suppression marker present (currently fails — gated on #567) | asar fingerprint |
+| [S27](../../docs/testing/cases/extensibility.md#s27--plugins-install-per-user) | `installed_plugins.json` + homedir resolver present; no `*/plugins` system paths in bundle | asar fingerprint |
 | [S29](../../docs/testing/cases/shortcuts-and-input.md#s29--quick-entry-popup-is-created-lazily-on-first-shortcut-press-closed-to-tray-sanity) | Popup opens when main is hidden-to-tray (lazy-create sanity) | L1 |
 | [S30](../../docs/testing/cases/shortcuts-and-input.md#s30--quick-entry-shortcut-becomes-a-no-op-after-full-app-exit) | No new claude-desktop pid spawns after post-exit shortcut press | pgrep delta + ydotool |
 | [S31](../../docs/testing/cases/shortcuts-and-input.md#s31--quick-entry-submit-makes-the-new-chat-reachable-from-any-main-window-state) | Submit reaches new chat from visible / minimized / hidden-to-tray (QE-7/8/9) | L1 + ydotool |
@@ -33,18 +61,22 @@ H04 cowork-not-spawned, T17 without `CLAUDE_TEST_USE_HOST_CONFIG=1`).
 | S36 | Multi-monitor fallback — skip-on-single-monitor with documented `fixme` for the disconnect orchestration | display probe |
 | S37 | Main-window destroy unreachable on Linux per close-to-tray override — documented skip | — |
 
-These specs exercise five distinct shapes of TS code: `xprop`
-shell-outs (T01, T04), `dbus-next` (T03), Node-inspector runtime-
-attach (T17, S29-S35), `app.asar` content reads (S09, S33),
-`/proc/$pid/cmdline` reads (S12), and pgrep-based pid deltas (S30).
-The Quick Entry runners (S29-S35) all share the same primitive set:
-`installInterceptor()` + `openAndWaitReady()` + scenario-specific
-state setup. New QE variants are mostly recombinations of those.
+These specs exercise the substrate primitives in `lib/`: `xprop`
+shell-outs (T01, T04), `dbus-next` (T03), Node-inspector runtime-attach
+(T07/T17/S29-S35/T05-T14b L1 specs), `app.asar` content reads
+(S08/S09/S21/S22/S26/S27/T11/T14a/H02/H03/S33), `/proc/$pid/cmdline`
+reads (S07/S12), pgrep-based pid deltas (T14b/H04/S16/S30), `mount(8)`
+parsing (S16), source-tree probes against `scripts/launcher-common.sh`
+(S02), `dpkg-query` / `rpm -qR` / `rpm -qf` calls (S03/S04/S05/T13),
+and the new `createIsolation({ seedFromHost: true })` primitive that
+lets login-required tests run hermetically against a copy of the
+host's signed-in auth state (T07).
 
-The full sweep on KDE-W runs in ~2.2 minutes against the locally
-installed claude-desktop with `CLAUDE_TEST_USE_HOST_CONFIG=1`
-(signed-in claude.ai required for the submit-side Critical
-assertions; default isolation skips those tests).
+Per-row pass/skip counts depend on which sweep runs against the row;
+see `runner-implementation-plan.md` for tier classification and
+matrix-regen for the most-recent per-row outcomes. The Quick Entry
+runners (S29-S35) all share the same primitive set (`installInterceptor()`
++ `openAndWaitReady()` + scenario-specific state setup).
 
 ## Prerequisites
 

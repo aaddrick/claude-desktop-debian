@@ -55,7 +55,7 @@ Tests covering app startup, the `--doctor` health check, package-format detectio
 **Diagnostics on failure:** `dpkg -S $(which claude-desktop)`, `rpm -qf $(which claude-desktop)`, full `--doctor` output, the line of doctor source that decides the format.
 
 **References:** [S05](./distribution.md#s05--doctor-recognises-dnf-installed-package-doesnt-false-flag-as-appimage)
-**Code anchors:** `scripts/doctor.sh:290-299` — version probe is dpkg-only (`dpkg-query -W -f='${Version}' claude-desktop`); on RPM/AppImage hosts that lack `dpkg-query` the block is skipped, but on a Fedora host that *does* have `dpkg-query` installed (e.g. for cross-distro tooling) the `_warn 'claude-desktop not found via dpkg (AppImage?)'` branch fires for any dnf-installed copy. There is no corresponding `rpm -qf` / `rpm -q claude-desktop` branch.
+**Code anchors:** `scripts/doctor.sh:353-362` — version probe is dpkg-only (`dpkg-query -W -f='${Version}' claude-desktop`); on RPM/AppImage hosts that lack `dpkg-query` the block is skipped, but on a Fedora host that *does* have `dpkg-query` installed (e.g. for cross-distro tooling) the `_warn 'claude-desktop not found via dpkg (AppImage?)'` branch fires for any dnf-installed copy. There is no corresponding `rpm -qf` / `rpm -q claude-desktop` branch.
 
 ## T14 — Multi-instance behavior
 

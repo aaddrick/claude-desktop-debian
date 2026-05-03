@@ -19,16 +19,28 @@ export async function readLauncherLog(): Promise<string | null> {
 	}
 }
 
-export async function runDoctor(launcher?: string): Promise<string | null> {
+export interface DoctorResult {
+	output: string;
+	exitCode: number | null;
+}
+
+export async function runDoctor(launcher?: string): Promise<DoctorResult> {
 	const bin = launcher ?? process.env.CLAUDE_DESKTOP_LAUNCHER ?? 'claude-desktop';
 	try {
 		const { stdout, stderr } = await exec(bin, ['--doctor'], { timeout: 15_000 });
-		return `${stdout}\n${stderr}`.trim();
+		return {
+			output: `${stdout}\n${stderr}`.trim(),
+			exitCode: 0,
+		};
 	} catch (err) {
 		// --doctor may exit non-zero if checks fail; still return the output
-		const e = err as { stdout?: string; stderr?: string };
+		// and the actual exit code so T02/T13/S05 can assert against it.
+		const e = err as { stdout?: string; stderr?: string; code?: number };
 		const combined = `${e.stdout ?? ''}\n${e.stderr ?? ''}`.trim();
-		return combined || null;
+		return {
+			output: combined,
+			exitCode: typeof e.code === 'number' ? e.code : null,
+		};
 	}
 }
 
