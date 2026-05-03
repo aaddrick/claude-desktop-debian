@@ -18,6 +18,127 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 5 (1 new spec):** T18 (Tier 1 fingerprint). No new
+primitives. Coverage moved from 60/76 (79%) to 61/76 (80%).
+
+Session 5 findings + reclassifications:
+
+- **T18 shipped as Tier 1 fingerprint, OS-level form deferred.**
+  Four-needle pin against bundled `mainView.js` for the
+  preload-bridged path-resolution wiring: `getPathForFile` (2× —
+  property key + the underlying `webUtils.getPathForFile(` call,
+  both at case-doc :9267), `webUtils` (1×, :9267), `filePickers`
+  (1×, :9267), `claudeAppSettings` (1×, :9552 — the
+  `contextBridge.exposeInMainWorld` namespace). Bundle form
+  matches case-doc form verbatim — no minified-vs-beautified
+  gotcha (unlike T35's `~/.claude.json` → `.claude.json`). The
+  Tier 2/3 OS-level form (real drag-drop into Chromium with file
+  payload) stays a primitive gap on **both** backends: X11
+  xdotool can simulate mouse motion but cannot put file URIs on
+  the XDND selection (the bridge would never see a file payload),
+  and Wayland needs per-compositor IPC + libei input injection.
+  A real test needs a custom XDND source app (X11) or a libei
+  emitter (Wayland); deferred. T18 follows the same shape as
+  T35/T36 from session 4 — when Tier 2 readback isn't reachable,
+  ship the Tier 1 fingerprint against the load-bearing strings.
+- **T36 Phase 2 reclassified Tier 2 → Tier 3/4 (real-account
+  write).** Session 4's plan-doc framed T36 Phase 2 as needing "a
+  Code-tab session opener the AX-tree walker hasn't been taught"
+  — implying the AX tree was the only blocker. Session 5 traced
+  the SessionStart-hook fire path through the bundled `index.js`
+  and found a deeper blocker: the `SessionStart` hook fires
+  inside the agent SDK process once it boots, and the agent
+  process is spawned only when there's a prompt to bind to. Call
+  chain: `Ys.startSession` (`:454743` general, `:489371` CCD)
+  requires `A.message`; the session record stores it as
+  `initialMessage` (:489270); the agent is spawned via
+  `DN({ prompt: k, options: v })` (`:489514`) — only when there's
+  a prompt stream to bind to. `createOrResumeSession` (`:489208`)
+  creates the session record but doesn't spawn the agent.
+  Conclusion: clicking "New session" alone navigates to a fresh
+  composer but doesn't boot the agent. The hook fires only after
+  first prompt submission, which writes to the user's real
+  claude.ai account. T36 Phase 2 is therefore unmockable without
+  deep agent-SDK reverse-engineering and stays Tier 3/4 (real
+  account write) rather than Tier 2.
+- **Code-tab session-opener AX surface verified — primitive
+  build deferred.** The user's debugger-enabled running Claude
+  let the session do a one-shot AX-tree probe (deleted after
+  use). Concrete anchors confirmed for a future
+  `CodeTab.activateTopTab()` / `startNewSession()` /
+  `openExistingSession()` primitive set:
+  - **Top-tab Code button**: `button[name="Code"]` under
+    `group[Mode]` under `complementary`. Disambiguator from the
+    prompt-mode `tab[name="Code"]` in
+    `tablist[name="Prompt categories"]` (which is what T16's
+    existing `CodeTab.activate()` clicks).
+  - **Sidebar entries (Code mode active)**:
+    `button[name="New session ⌘N"]`, `button[name="Routines"]`,
+    `button[name="Customize"]`, `button[name="More navigation items"]`,
+    plus `button[name="Pinned"]` / `button[name="Recents"]`
+    section headings.
+  - **Recents items**: `button[name="<status> <title>"]` where
+    status ∈ {Idle, Ready, Needs input, Awaiting input}. The
+    main-pane Welcome surface uses a different naming —
+    `button[name="Open session <title>"]` — for the same
+    sessions; either anchor would work for an
+    `openExistingSession(re)` consumer.
+  - **URL of Code-tab landing**: `/epitaxy`.
+  Primitive deferred per the T36 Phase 2 finding: no consumer
+  needs the click chain right now — it would only navigate to a
+  fresh composer without firing any hook. If a future session
+  identifies a consumer that benefits from "Code-tab session
+  opened" alone (e.g. a Tier 2 reframe of T19/T20 that probes
+  surfaces visible *before* prompt submission), the AX anchors
+  above are pre-verified.
+- **S14 niri msg recon — TRACTABLE; build deferred to next
+  session.** Niri's IPC exposes everything the X11 primitive
+  needs honest equivalents of: `niri msg --json windows` returns
+  `Vec<Window>` with `{id, title, app_id, pid, workspace_id,
+  is_focused, ...}`; `niri msg action focus-window --id <u64>`
+  injects focus; `niri msg --json focused-window` is the honest
+  post-hoc readback (the equivalent of `xprop _NET_ACTIVE_WINDOW`
+  for the X11 primitive). The wiki explicitly contracts that
+  `--json` output is stable; plain text is not. A
+  `lib/input-niri.ts` sibling can mirror `lib/input.ts`'s shape:
+  `spawnMarkerWindow(title)` via `foot --title <T> -e sleep 600`
+  (Wayland-native marker; takes `--title` cleanly and ships in
+  most niri setups), `focusOtherWindow(title)` via the
+  windows-list match + focus-window action + focused-window
+  readback chain, `getFocusedWindowId()` via
+  focused-window. Niri 25.08+ ships `xwayland-satellite`
+  integration so the existing X11 primitive *might* work on niri
+  rows where it's running — but it's opt-in/runtime, can't
+  assume. Cross-compositor: Sway / Hyprland / River each have
+  completely different IPCs; per-compositor files are cleaner
+  than a unified abstraction (a 10-line dispatcher in
+  `lib/input-wayland.ts` switching on `XDG_CURRENT_DESKTOP`
+  delegates to the per-IPC files; libei is the long-term answer
+  but isn't widely deployed). Build deferred — single S14
+  consumer didn't justify the new-primitive build this session
+  on top of T18 + the runtime-probe + plan-doc work.
+- **Category A (eipc-registry exposer) NOT attempted.** Same
+  reasoning as session 4: session 3 already established the
+  registry is closure-local, the inspector walk came up empty,
+  and the early-exit cap on retries makes Category A a poor main
+  bet without a new approach. Stays available for a future
+  session.
+
+Tier 2 → Tier 2 candidates remaining for next session: **S14**
+(build `lib/input-niri.ts` per the session 5 recon sketch +
+ship S14 runner — clearest single-session win available).
+**T35 Phase 2** and **T37 Phase 2** (still need closure-local
+readback or the eipc-registry exposer; unchanged from session 4).
+**eipc-registry exposer** (closure-local in main; reverse-
+engineering remains unattempted). **T36 Phase 2 is no longer a
+Tier 2 candidate** — moved to Tier 3/4 per the SessionStart-fires-
+on-prompt-submit finding. The primitive surface isn't growing —
+session 5 added zero new primitives, and the Code-tab AX anchors
+captured during the runtime probe live in the plan-doc rather
+than in `claudeai.ts` until a consumer needs them.
+
+---
+
 **Shipped session 4 (3 new specs + 1 new primitive):** T35 (Phase 1
 fingerprint), T36 (Phase 1 fingerprint), S11 (X11-only). New primitive
 `lib/input.ts` (focus-shifter: `focusOtherWindow` /
