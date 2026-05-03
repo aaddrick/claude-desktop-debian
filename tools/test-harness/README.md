@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Sixty specs wired (23 cross-env T-tests, 32 env-specific S-tests,
+Sixty-one specs wired (24 cross-env T-tests, 32 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -32,6 +32,7 @@ behind tier classification.
 | [T14b](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | Second invocation under same isolation exits cleanly; primary pid stays alive (runtime probe) | spawn delta + pgrep |
 | [T16](../../docs/testing/cases/code-tab-foundations.md#t16--code-tab-loads) | After `seedFromHost` + `userLoaded`, `CodeTab.activate()` resolves and ≥1 compact pill renders (env pill = Code-body mounted) | L1 + AX-tree |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
+| [T18](../../docs/testing/cases/code-tab-foundations.md#t18--drag-and-drop-files-into-prompt) | Bundled `mainView.js` preload contains the path-resolution bridge fingerprints: `getPathForFile` (2× — property key + the `webUtils.getPathForFile(` call, both at case-doc :9267), `webUtils`, `filePickers`, and the `claudeAppSettings` `contextBridge.exposeInMainWorld` namespace (case-doc :9552) — pins the load-bearing wiring without faking OS-level XDND drag (xdotool can't put file URIs on the X11 selection; Wayland needs per-compositor IPC + libei) | file probe |
 | [T22](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | Bundled `index.js` contains `LocalSessions_$_getPrChecks` eipc channel name *and* `gh CLI not found in PATH` Linux-fallthrough throw site (Tier 1 fingerprint — eipc registry not introspectable from main) | file probe |
 | [T23](../../docs/testing/cases/code-tab-handoff.md#t23--desktop-notifications-fire) | Firing `new Notification({title})` from main reaches the session bus's `org.freedesktop.Notifications.Notify` (observed via `dbus-monitor`) | L1 + DBus subprocess |
 | [T24](../../docs/testing/cases/code-tab-handoff.md#t24--open-in-external-editor) | After `installOpenExternalMock` mirroring T25's pattern, `evalInMain` calls `shell.openExternal('vscode://file/...')`; mock records the URL verbatim, no real editor launch | L1 (mocked egress) |
@@ -85,7 +86,7 @@ These specs exercise the substrate primitives in `lib/`: `xprop`
 shell-outs (T01, T04), `dbus-next` (T03), `dbus-monitor` subprocess
 eavesdrop (T23), Node-inspector runtime-attach
 (T07/T16/T17/T26/S10/S29-S35/T05-T14b L1 specs), `app.asar` content reads
-(S08/S09/S21/S22/S26/S27/S28/T11/T14a/T22/T30/T31/T32/T33/T35/T36/T37/T38/H02/H03/S33),
+(S08/S09/S21/S22/S26/S27/S28/T11/T14a/T18/T22/T30/T31/T32/T33/T35/T36/T37/T38/H02/H03/S33 — mostly `index.js`; T18 reads `mainView.js`),
 `/proc/$pid/cmdline` reads (S07/S12), pgrep-based pid deltas
 (T10/T14b/H04/S16/S30), `mount(8)` parsing (S16), source-tree probes
 against `scripts/launcher-common.sh` (S02), `dpkg-query` / `rpm -qR` /
