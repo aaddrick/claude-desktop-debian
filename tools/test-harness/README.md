@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Fifty-seven specs wired (21 cross-env T-tests, 31 env-specific S-tests,
+Sixty specs wired (23 cross-env T-tests, 32 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -41,6 +41,8 @@ behind tier classification.
 | [T31](../../docs/testing/cases/code-tab-workflow.md#t31--side-chat-opens) | Bundled `index.js` contains all three side-chat eipc channel names (`startSideChat`, `sendSideChatMessage`, `stopSideChat`) — load-bearing trio | file probe |
 | [T32](../../docs/testing/cases/code-tab-workflow.md#t32--slash-command-menu) | Bundled `index.js` contains `LocalSessions_$_getSupportedCommands` eipc channel + `slashCommands` schema field | file probe |
 | [T33](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | Bundled `index.js` contains `CustomPlugins_$_listMarketplaces` and `CustomPlugins_$_listAvailablePlugins` eipc channel names (browser populate flow) | file probe |
+| [T35](../../docs/testing/cases/extensibility.md#t35--mcp-server-config-picked-up) | Bundled `index.js` contains the four-needle MCP-config separation fingerprint: `claude_desktop_config.json` (chat-tab path), `.claude.json` + `.mcp.json` (Code-tab loaders), `"user","project","local"` (settingSources triple Code-session passes to the agent SDK) — pins per-tab separation without launch | file probe |
+| [T36](../../docs/testing/cases/extensibility.md#t36--hooks-fire) | Bundled `index.js` contains the hooks runtime fingerprint: `hook_started` / `hook_progress` / `hook_response` (single-occurrence Verbose-transcript runtime emits) plus `PreToolUse` / `UserPromptSubmit` registry tokens — pins the runtime hook-fire path the case-doc Verbose-transcript claim hangs on | file probe |
 | [T37](../../docs/testing/cases/extensibility.md#t37--claudemd-memory-loads) | Bundled `index.js` contains `[GlobalMemory] Copied CLAUDE.md` log line + `CLAUDE.md` filename literal + `CLAUDE_CONFIG_DIR` env-var token (memory-loading wiring) | file probe |
 | [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | Bundled `index.js` contains `LocalSessions_$_openInEditor` eipc channel name (Tier 1 fingerprint — reclassified from session 2's broken `ipcMain._invokeHandlers` probe; eipc registry is closure-local) | file probe |
 | H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
@@ -57,6 +59,7 @@ behind tier classification.
 | [S08](../../docs/testing/cases/tray-and-window-chrome.md#s08--tray-icon-doesnt-duplicate-after-nativetheme-update) | `setImage`-based in-place fast-path injected by `tray.sh` (KDE-only, file probe) | file probe |
 | [S09](../../docs/testing/cases/shortcuts-and-input.md#s09--quick-window-patch-runs-only-on-kde-post-406-gate) | KDE-gate string present in bundled `index.js` (patch ran at build) | file probe |
 | [S10](../../docs/testing/cases/shortcuts-and-input.md#s10--quick-entry-popup-is-transparent-no-opaque-square-frame) | KDE-W only — popup runtime `getBackgroundColor() === '#00000000'` after Quick Entry opens (regression-detector against electron#50213 if bundled Electron in 41.0.4-bisect-window) | L1 + ydotool |
+| [S11](../../docs/testing/cases/shortcuts-and-input.md#s11--quick-entry-shortcut-fires-from-any-focus-on-wayland-mutter-xwayland-key-grab) | GNOME-X / Ubu-X only (X11-side regression detector) — spawn xterm marker, `xdotool windowfocus` to it, verify `_NET_ACTIVE_WINDOW` shifted, fire `Ctrl+Alt+Space` via ydotool, assert popup visible. Wayland-side mutter regression (#404) is a primitive gap — needs Wayland-native focus injection (libei) | L1 + xdotool focus + ydotool shortcut |
 | S12 | `--enable-features=GlobalShortcutsPortal` in Electron argv (GNOME-W only — currently a known-failing regression detector) | argv probe |
 | [S15](../../docs/testing/cases/distribution.md#s15--appimage-extraction---appimage-extract-works-as-documented-fallback) | `--appimage-extract` exits 0; `squashfs-root/AppRun --version` runs without FUSE error | spawn + filesystem |
 | [S16](../../docs/testing/cases/distribution.md#s16--appimage-mount-cleans-up-on-app-exit) | `mount(8)` shows new `.mount_claude` while app is up; gone within 10s of close | mount delta |
@@ -82,7 +85,7 @@ These specs exercise the substrate primitives in `lib/`: `xprop`
 shell-outs (T01, T04), `dbus-next` (T03), `dbus-monitor` subprocess
 eavesdrop (T23), Node-inspector runtime-attach
 (T07/T16/T17/T26/S10/S29-S35/T05-T14b L1 specs), `app.asar` content reads
-(S08/S09/S21/S22/S26/S27/S28/T11/T14a/T22/T30/T31/T32/T33/T37/T38/H02/H03/S33),
+(S08/S09/S21/S22/S26/S27/S28/T11/T14a/T22/T30/T31/T32/T33/T35/T36/T37/T38/H02/H03/S33),
 `/proc/$pid/cmdline` reads (S07/S12), pgrep-based pid deltas
 (T10/T14b/H04/S16/S30), `mount(8)` parsing (S16), source-tree probes
 against `scripts/launcher-common.sh` (S02), `dpkg-query` / `rpm -qR` /
@@ -90,7 +93,9 @@ against `scripts/launcher-common.sh` (S02), `dpkg-query` / `rpm -qR` /
 round-trip across two launches (S25), `extraEnv` precedence over
 isolation env (S19), the `lib/electron-mocks.ts` mock-then-call
 helpers — `installOpenDialogMock` (T17), `installShowItemInFolderMock`
-(T25), `installOpenExternalMock` (T24) — and the
+(T25), `installOpenExternalMock` (T24) — the `lib/input.ts`
+focus-shifter (`focusOtherWindow` + `spawnMarkerWindow` for S11; X11
+only — `WaylandFocusUnavailable` thrown on native Wayland) — and the
 `createIsolation({ seedFromHost: true })` primitive that lets
 login-required tests run hermetically against a copy of the host's
 signed-in auth state (T07, T16, T26).
@@ -242,6 +247,8 @@ tools/test-harness/
 │   │   ├── asar.ts                # in-place app.asar reads (no temp extract)
 │   │   ├── quickentry.ts          # Quick Entry domain wrapper (popup, MainWindow, ydotool)
 │   │   ├── claudeai.ts            # claude.ai renderer UI domain (CodeTab, dialog mock, atoms)
+│   │   ├── electron-mocks.ts      # mock-then-call helpers (dialog/showItemInFolder/openExternal)
+│   │   ├── input.ts               # focus-shifter primitive (X11 only — xdotool + xprop verify; spawnMarkerWindow xterm)
 │   │   ├── retry.ts               # poll-until-true with timeout
 │   │   └── diagnostics.ts         # launcher log, --doctor, session env
 │   └── runners/                   # one .spec.ts per test ID
