@@ -1,8 +1,8 @@
 # Testing Runbook
 
-*Last updated: 2026-04-30*
+*Last updated: 2026-05-03*
 
-How to run a test sweep, capture diagnostics, file failures, and update [`matrix.md`](./matrix.md). For the test specs themselves, see [`cases/`](./cases/) and [`ui/`](./ui/). For the automation harness, see [`automation.md`](./automation.md) and [`tools/test-harness/`](../../tools/test-harness/).
+How to run a test sweep, capture diagnostics, file failures, and update [`matrix.md`](./matrix.md). For the test specs themselves, see [`cases/`](./cases/) and [`ui/`](./ui/). For the automation harness, see [`automation.md`](./automation.md) and [`tools/test-harness/`](../../tools/test-harness/). For the grounding sweep workflow (verify case docs against the live build), see [Grounding sweep](#grounding-sweep) below.
 
 ## When to sweep
 
@@ -10,7 +10,7 @@ How to run a test sweep, capture diagnostics, file failures, and update [`matrix
 |---------|-------|------|
 | Release tag (`vX.Y.Z+claude...`) | Smoke set | KDE-W + Hypr-N (or Sway) |
 | Release tag, monthly | Smoke + Critical | All active rows |
-| Upstream Claude Desktop bump | Smoke set | KDE-W + one wlroots row |
+| Upstream Claude Desktop bump | Smoke set + [grounding sweep](#grounding-sweep) | KDE-W + one wlroots row |
 | PR touching `scripts/patches/*.sh` | Tests in the affected surface (use surface tags in cases files) | KDE-W minimum |
 | Bug report citing an env | The relevant test on the reporter's row | Just that row |
 
@@ -270,3 +270,74 @@ gate by spawning Electron clean and attaching the Node inspector via
 Process Debugger`. From there, main-process JS evaluation reaches the
 renderer through `webContents.executeJavaScript()`. Full writeup:
 [`automation.md`](./automation.md#the-cdp-auth-gate-and-the-runtime-attach-workaround-that-beats-it).
+
+### Wayland-mode sweep
+
+Default backend is X11-via-XWayland (matches `launcher-common.sh`'s
+default). To sweep the suite under native Wayland, set
+`CLAUDE_HARNESS_USE_WAYLAND=1`:
+
+```sh
+CLAUDE_HARNESS_USE_WAYLAND=1 ROW=KDE-W ./orchestrator/sweep.sh
+```
+
+Every `launchClaude()` swaps to the Wayland flag set
+(`--ozone-platform=wayland` + WaylandWindowDecorations / IME / text-
+input-version=3, mirroring `scripts/launcher-common.sh:132-139`) and
+exports `CLAUDE_USE_WAYLAND=1` + `GDK_BACKEND=wayland` into the spawn
+env. Per-launch overrides via `launchClaude({ extraEnv })` still win,
+so a single test can opt back to X11 inside a Wayland-mode sweep.
+
+Caveat: T04 (`_NET_FRAME_EXTENTS` xprop check) only works under
+XWayland — native-Wayland sessions have no X11 client list, so T04
+will skip with a "no X11 client list" diagnostic.
+
+## Grounding sweep
+
+Separate from the test sweep. Where the test sweep verifies *upstream
+Linux compat behavior* against case specs, the grounding sweep
+verifies *the specs themselves* against upstream behavior — making
+sure the Steps and Expected fields haven't bit-rotted past what the
+shipped build actually does. Run on every upstream `CLAUDE_DESKTOP_VERSION`
+bump.
+
+### Static pass
+
+For each file under [`cases/`](./cases/), confirm every test's
+`**Code anchors:**` field still resolves and the Steps/Expected match
+behavior. The convention is documented in
+[`cases/README.md`](./cases/README.md#anchor-scope) — anchors are
+either upstream code (`build-reference/app-extracted/.vite/build/`),
+wrapper scripts (`scripts/`), v7 walker inventory, or out-of-scope
+(CLI binary, server-rendered SPA).
+
+When a test drifts, edit Steps/Expected in place. When a feature is
+gone from the build, prepend
+`> **⚠ Missing in build X.Y.Z** — <note>. Re-verify after next
+upstream bump.` under the test heading.
+[`cases-grounding-prompt.md`](./cases-grounding-prompt.md) is the
+fan-out prompt the last sweep used — paste verbatim into a fresh
+session to repeat the workflow.
+
+### Runtime pass
+
+Run [`tools/test-harness/grounding-probe.ts`](../../tools/test-harness/grounding-probe.ts)
+against the live build:
+
+```sh
+cd tools/test-harness
+npm run grounding-probe -- --launch --include-synthetic \
+  --out ../../docs/testing/cases-grounding-runtime.json
+```
+
+Captures runtime state for tests where static greps can't disambiguate
+(IPC handler registry, `globalShortcut.isRegistered()` for known
+accelerators, `app.getLoginItemSettings()`, `safeStorage`,
+`autoUpdater.getFeedURL()`, SNI tray registration, AX-tree fingerprint
+of whatever's on screen). Output is keyed by test ID — diff against
+the previous version's capture to spot drift the static pass missed.
+
+Surfaces inside modals or popups (T22 PR toolbar, T26 preset list,
+T31 side chat, T32 slash menu) need the surface open at probe time.
+Open the relevant view in the running app before re-running with
+`--port 9229` (attach mode).

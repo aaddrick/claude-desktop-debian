@@ -106,6 +106,10 @@ npx playwright test --headed
 
 # Run the full suite under native Wayland instead of X11/XWayland
 CLAUDE_HARNESS_USE_WAYLAND=1 npm test
+
+# Grounding probe — dump runtime state for the case-doc grounding sweep
+npm run grounding-probe -- --launch --include-synthetic \
+  --out ../../docs/testing/cases-grounding-runtime.json
 ```
 
 Results land at `results/results-${ROW}-${DATE}/`:
@@ -195,6 +199,7 @@ tools/test-harness/
 │       ├── H03_patch_fingerprints.spec.ts
 │       └── H04_cowork_daemon_lifecycle.spec.ts
 ├── probe.ts                       # one-off renderer-DOM probe (debugger on :9229)
+├── grounding-probe.ts             # case-grounding runtime capture (see "Grounding probe" below)
 └── orchestrator/
     └── sweep.sh                   # row-aware harness invocation
 ```
@@ -241,6 +246,35 @@ Two gotchas worth knowing:
 
 Full writeup with rationale and tradeoffs:
 [`docs/testing/automation.md` "The CDP auth gate"](../../docs/testing/automation.md#the-cdp-auth-gate-and-the-runtime-attach-workaround-that-beats-it).
+
+## Grounding probe
+
+`grounding-probe.ts` is a separate entry-point — not a Playwright spec —
+that connects to a live Claude Desktop and dumps the runtime state
+backing the load-bearing claims in
+[`docs/testing/cases/`](../../docs/testing/cases/). It exists because
+static grep against the 546k-line beautified bundle has known blind
+spots (lazy `import()`s, dynamic handler tables, conditional wiring),
+and some claims (S26 autoUpdater gate, S20 powerSaveBlocker path) can
+only be verified at runtime.
+
+```sh
+# Self-contained: launchClaude() + capture + tear down
+npm run grounding-probe -- --launch
+
+# Plus the one synthetic probe (powerSaveBlocker start+stop)
+npm run grounding-probe -- --launch --include-synthetic
+
+# Attach to an already-running app (manual --inspect=9229 setup)
+npm run grounding-probe -- --port 9229 --out /tmp/probe.json
+```
+
+Output is keyed by test ID — see the file's header comment for the
+full table. Diff captures across upstream version bumps to spot
+behavior drift the static sweep would miss. Surfaces inside modals
+or popups (T22 PR toolbar, T26 preset list, T31 side chat, T32 slash
+menu) need the surface open at probe time — the AX-tree fingerprint
+is a snapshot of what's currently on screen.
 
 ## Known limitations
 - **T04** uses `xprop` (no `xdotool` dependency — walks `_NET_CLIENT_LIST` + `_NET_WM_PID`). Works on X11 native and KDE Wayland (XWayland), **not** on native-Wayland sessions where the app is running through Ozone-Wayland directly. Per Decision 6, project default is X11; native-Wayland window-state queries are deferred until those tests get added.

@@ -147,12 +147,12 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 
 ## S26 — Auto-update is disabled when installed via `apt` / `dnf`
 
-> **⚠ Missing in build 1.5354.0** — No project-side suppression of upstream auto-update exists; the launcher exports `ELECTRON_FORCE_IS_PACKAGED=true`, which causes upstream's `lii()` gate to return true on Linux and the auto-update tick loop to start. Suppression is "accidental" — it relies on Electron's built-in `autoUpdater` module being unimplemented on Linux (so `setFeedURL`/`checkForUpdates` throw, the `error` listener logs, and no download happens). Re-verify after next upstream bump.
+> **⚠ Missing in build 1.5354.0** — No project-side suppression of upstream auto-update exists; the launcher exports `ELECTRON_FORCE_IS_PACKAGED=true`, which causes upstream's `lii()` gate to return true on Linux and the auto-update tick loop to start. Suppression is "accidental" — it relies on Electron's built-in `autoUpdater` module being unimplemented on Linux (so `setFeedURL`/`checkForUpdates` throw, the `error` listener logs, and no download happens). Tracked at [#567](https://github.com/aaddrick/claude-desktop-debian/issues/567); re-verify after next upstream bump.
 
 **Severity:** Critical
 **Surface:** Auto-update path
 **Applies to:** All DEB/RPM rows
-**Issues:** —
+**Issues:** [#567](https://github.com/aaddrick/claude-desktop-debian/issues/567)
 
 **Steps:**
 1. Install via APT or DNF.

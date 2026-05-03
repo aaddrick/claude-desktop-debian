@@ -1,6 +1,6 @@
 # Linux Compatibility Testing
 
-*Last updated: 2026-04-30*
+*Last updated: 2026-05-03*
 
 This directory holds the manual test plan for the Linux fork of Claude Desktop. The structure is designed for human readers today and scripted runners tomorrow.
 
@@ -64,21 +64,34 @@ The minimum set that gates a release. Run on **KDE-W** (daily-driver) plus **Hyp
 | Bucket | Count |
 |--------|-------|
 | Cross-environment functional (`T###`) | 39 |
-| Environment-specific functional (`S###`) | 28 |
+| Environment-specific functional (`S###`) | 37 |
 | UI surfaces inventoried | 10 |
-| Total functional tests | 67 |
+| Total functional tests | 76 |
 
 For detailed status by ID, see [`matrix.md`](./matrix.md).
 
 ## Automation status
 
 Automation is partially landed. The harness lives at
-[`tools/test-harness/`](../../tools/test-harness/) and four tests are wired
-in (T01, T03, T04, T17). Three pass on KDE-W today; T17's framework is
-proven end-to-end and skips with rich diagnostics pending selector-tuning
-on its multi-step click chain. See
-[`automation.md`](./automation.md) for the architectural decisions and the
-SIGUSR1 / runtime-attach pattern that bypasses the app's CDP auth gate.
+[`tools/test-harness/`](../../tools/test-harness/) — twenty Playwright
+specs wired (T01, T03, T04, T17, S09, S12, S29-S37, plus four H-prefix
+self-tests), thirteen passing on KDE-W and six skipping cleanly per
+spec intent. See [`tools/test-harness/README.md`](../../tools/test-harness/README.md)
+for the live status table, [`automation.md`](./automation.md) for
+architectural decisions, and the SIGUSR1 / runtime-attach pattern that
+bypasses the app's CDP auth gate.
+
+### Grounding sweep + probe
+
+Separate from the test sweep:
+[`runbook.md` "Grounding sweep"](./runbook.md#grounding-sweep) covers
+the workflow for verifying case docs themselves against the live
+build on every upstream version bump — static anchor pass plus a
+runtime probe ([`tools/test-harness/grounding-probe.ts`](../../tools/test-harness/grounding-probe.ts))
+that captures IPC handler registry, accelerator state, autoUpdater
+gate, AX-tree fingerprint, and other claims static analysis can't
+disambiguate. Anchor and drift conventions live in
+[`cases/README.md`](./cases/README.md#anchor-scope).
 
 The structure remains automation-friendly for new tests:
 
