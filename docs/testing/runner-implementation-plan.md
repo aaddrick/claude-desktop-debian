@@ -18,6 +18,110 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 3 (7 new specs):** T22, T24, T30, T31, T32, T33, T37.
+Coverage moved from 50/76 (66%) to 57/76 (75%).
+
+Session 3 findings + reclassifications:
+
+- **eipc-registry finding (load-bearing — corrects session 2 T38).** The
+  `LocalSessions_$_*` and `CustomPlugins_$_*` channels named in case-doc
+  Code anchors (`:68816` framing comment, `:71392` listMarketplaces, etc.)
+  do **not** register through Electron's standard `ipcMain.handle()`
+  registry. KDE-W run revealed `ipcMain._invokeHandlers` holds only three
+  chat-tab MCP-bridge handlers (`list-mcp-servers`,
+  `connect-to-mcp-server`, `request-open-mcp-settings`) regardless of
+  ready level (`mainVisible` / `claudeAi` / `userLoaded`) and regardless
+  of whether the launch was hermetic (default isolation) or authenticated
+  (`createIsolation({ seedFromHost: true })`). Confirmed via inspector
+  walk of `globalThis` — no Map containing 5+ keys with the
+  `LocalSessions_$_*` shape exists at any reachable surface. The custom
+  `$eipc_message$_<UUID>_$_claude.web_$_<name>` protocol uses a closure-
+  local message-port registry that's not introspectable from main without
+  reverse-engineering the eipc bootstrap (deferred — same gotcha as
+  session 2's S28 with `Sbn()`).
+- **T38 reclassified from Tier 2 → Tier 1.** Session 2 shipped T38 as a
+  `ipcMain._invokeHandlers` introspection probe assuming the channel
+  registered through stdlib IPC; the eipc-registry finding above shows
+  that probe never resolved a real handler. Reclassified to a Tier 1
+  asar fingerprint asserting the channel-name string
+  `LocalSessions_$_openInEditor` is present in bundled `index.js` (case-
+  doc anchor `:68816` framing / `:464011` egress). Same drift signal,
+  zero false-positive surface, no launch needed. Updated leading
+  comment links the eipc-registry finding for future maintainers.
+- **T22, T31, T33 shipped as Tier 1 fingerprints, not Tier 2 IPC
+  probes.** All three were originally drafted using the (now-known-broken)
+  T38 handler-registered pattern. After the eipc-registry finding,
+  rewritten as pure asar fingerprints anchoring on the eipc channel-name
+  strings:
+  - **T22** asserts `LocalSessions_$_getPrChecks` *and* the
+    `"gh CLI not found in PATH"` throw site (case-doc anchors
+    `:464281` / `:464964` / `:464368`). Two-fingerprint runner; the
+    missing-`gh` string is the Linux-specific UX backstop since
+    `installGh()` is macOS-only.
+  - **T31** asserts the side-chat trio: `LocalSessions_$_startSideChat`,
+    `LocalSessions_$_sendSideChatMessage`, `LocalSessions_$_stopSideChat`
+    (case-doc anchors `:487025` / `:487265`). Trio is load-bearing —
+    side chat is broken without all three.
+  - **T33** asserts `CustomPlugins_$_listMarketplaces` and
+    `CustomPlugins_$_listAvailablePlugins` (case-doc anchors `:71392` /
+    `:71534` / `:507176`). Both load-bearing for the plugin-browser
+    populate flow.
+- **T24 shipped as Tier 2 mock-then-call (Category E pattern).**
+  Mirrors T25's `installShowItemInFolderMock` shape; new
+  `installOpenExternalMock` helper records every `shell.openExternal`
+  call without launching a real editor on the host. Strictly stronger
+  than the asar-fingerprint alternative (Category C / `Mtt` registry
+  fingerprint) — exercises the actual egress at index.js:464011 with
+  the URL flowing through verbatim. The meaningful difference from T25:
+  `shell.openExternal` returns `Promise<boolean>` (not void), so the
+  mock returns a resolved Promise.
+- **T30 sweep cadence regex tuned to minified bundle.** Case-doc names
+  the constants as `300_000` / `3_600_000` (beautified form); installed
+  asar has them as `300*1e3` / `3600*1e3`. Single regex with two
+  proximity windows — tail of `300*1e3` to `3600*1e3` ≤ 200 chars,
+  tail of `3600*1e3` to `AutoArchiveEngine` ≤ 3000 chars — confirmed
+  to match exactly once globally. Followed by an `.includes()` check
+  for `ccAutoArchiveOnPrClose` inside the captured window to colocate
+  the gate key.
+- **T37 fixture-readback form deferred — Tier 1 fingerprint shipped.**
+  Session prompt suggested placing a fixture `~/.claude/CLAUDE.md` and
+  inspector-eval'ing the loaded memory state. The parsed-memory state
+  target is a closure-local minified symbol (same gotcha as S28 from
+  session 2 / S19's `cE()`/`Tce()` re-implementation note); without a
+  reachable readback target the fixture form would assert nothing
+  beyond "the spec didn't crash". Shipped as Tier 1 fingerprint
+  anchoring on `[GlobalMemory] Copied CLAUDE.md` (single-occurrence
+  log line, the cleanest possible anchor) plus `CLAUDE.md` filename
+  literal and `CLAUDE_CONFIG_DIR` env-var token.
+- **`lib/electron-mocks.ts` extracted.** With T24 landing the third
+  mock-then-call helper (after T17's dialog mock and T25's
+  showItemInFolder mock), the threshold from the session prompt was
+  hit. Moved `installOpenDialogMock` / `installShowItemInFolderMock` /
+  `installOpenExternalMock` plus their `getCalls` readers + interfaces
+  out of `lib/claudeai.ts` into `lib/electron-mocks.ts`. T17, T24, T25
+  imports updated. The mocks are generic Electron module patches —
+  not claude.ai-domain — so the new home keeps `claudeai.ts` focused
+  on AX-tree page-objects.
+- **Authentication state in launch-based specs.** All four launch-
+  based specs in this session (T22/T24/T31/T33 originally) ran with
+  default isolation, i.e. unauthenticated. After the eipc-registry
+  finding the three IPC probes converted to pure file probes (no
+  launch needed); T24 (mock-then-call) doesn't depend on auth state
+  because `shell.openExternal` is a stdlib Electron module patched
+  in main. For future Tier 2 reframes that DO depend on authenticated
+  renderer state (e.g. testing claude.ai DOM after login), the
+  T16/T26 `seedFromHost: true` pattern is the correct gate.
+
+Tier 2 → Tier 2 candidates remaining for a future session: **S11,
+S14** (focus-shifter primitive still unbuilt). **T35** (MCP server
+config picked up — needs a reachable readback for parsed MCP server
+state, same blocker as T37b/S19/S28). The eipc-registry surface
+itself is a primitive gap — landing it would unlock proper Tier 2
+runtime probes for T22/T31/T33/T38 and any future LocalSessions_*
+or CustomPlugins_* tests.
+
+---
+
 **Shipped session 2 (10 new specs):** T10, T16, T23, T25, T26, T38, S10,
 S19, S25, S28. Coverage moved from 40/76 (53%) to 50/76 (66%).
 

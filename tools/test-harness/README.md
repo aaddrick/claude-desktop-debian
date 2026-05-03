@@ -7,8 +7,8 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Fifty specs wired (14 cross-env T-tests, 31 env-specific S-tests, 5
-H-prefix harness self-tests). See
+Fifty-seven specs wired (21 cross-env T-tests, 31 env-specific S-tests,
+5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
 behind tier classification.
@@ -32,10 +32,17 @@ behind tier classification.
 | [T14b](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | Second invocation under same isolation exits cleanly; primary pid stays alive (runtime probe) | spawn delta + pgrep |
 | [T16](../../docs/testing/cases/code-tab-foundations.md#t16--code-tab-loads) | After `seedFromHost` + `userLoaded`, `CodeTab.activate()` resolves and ≥1 compact pill renders (env pill = Code-body mounted) | L1 + AX-tree |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
+| [T22](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | Bundled `index.js` contains `LocalSessions_$_getPrChecks` eipc channel name *and* `gh CLI not found in PATH` Linux-fallthrough throw site (Tier 1 fingerprint — eipc registry not introspectable from main) | file probe |
 | [T23](../../docs/testing/cases/code-tab-handoff.md#t23--desktop-notifications-fire) | Firing `new Notification({title})` from main reaches the session bus's `org.freedesktop.Notifications.Notify` (observed via `dbus-monitor`) | L1 + DBus subprocess |
+| [T24](../../docs/testing/cases/code-tab-handoff.md#t24--open-in-external-editor) | After `installOpenExternalMock` mirroring T25's pattern, `evalInMain` calls `shell.openExternal('vscode://file/...')`; mock records the URL verbatim, no real editor launch | L1 (mocked egress) |
 | [T25](../../docs/testing/cases/code-tab-handoff.md#t25--show-in-files--file-manager) | After `installShowItemInFolderMock` mirroring T17's dialog-mock pattern, `evalInMain` calls `shell.showItemInFolder(<synthetic path>)`; mock records the call verbatim, no throw — no host side effect | L1 (mocked egress) |
 | [T26](../../docs/testing/cases/routines.md#t26--routines-page-renders) | After `seedFromHost` + `userLoaded`, click "Routines" sidebar AX button; assert "New routine" / "All" / "Calendar" anchor renders | L1 + AX-tree |
-| [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | `ipcMain._invokeHandlers` registry contains a channel ending in `LocalSessions_$_openInEditor` (handler-registered probe) | L1 (IPC introspection) |
+| [T30](../../docs/testing/cases/code-tab-workflow.md#t30--auto-archive-on-pr-merge) | Bundled `index.js` colocates the auto-archive sweep cadence (`300*1e3` ≤ `3600*1e3` ≤ `AutoArchiveEngine`) with the `ccAutoArchiveOnPrClose` gate key (single-regex multi-string fingerprint) | file probe |
+| [T31](../../docs/testing/cases/code-tab-workflow.md#t31--side-chat-opens) | Bundled `index.js` contains all three side-chat eipc channel names (`startSideChat`, `sendSideChatMessage`, `stopSideChat`) — load-bearing trio | file probe |
+| [T32](../../docs/testing/cases/code-tab-workflow.md#t32--slash-command-menu) | Bundled `index.js` contains `LocalSessions_$_getSupportedCommands` eipc channel + `slashCommands` schema field | file probe |
+| [T33](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | Bundled `index.js` contains `CustomPlugins_$_listMarketplaces` and `CustomPlugins_$_listAvailablePlugins` eipc channel names (browser populate flow) | file probe |
+| [T37](../../docs/testing/cases/extensibility.md#t37--claudemd-memory-loads) | Bundled `index.js` contains `[GlobalMemory] Copied CLAUDE.md` log line + `CLAUDE.md` filename literal + `CLAUDE_CONFIG_DIR` env-var token (memory-loading wiring) | file probe |
+| [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | Bundled `index.js` contains `LocalSessions_$_openInEditor` eipc channel name (Tier 1 fingerprint — reclassified from session 2's broken `ipcMain._invokeHandlers` probe; eipc registry is closure-local) | file probe |
 | H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
 | H02 | `frame-fix-wrapper.js` + `frame-fix-entry.js` injected into `app.asar` (Proxy + main-field reference) | file probe |
 | H03 | Build-pipeline patch fingerprints all present in `app.asar` (KDE gate, frame-fix inject, tray, cowork, claude-code) | file probe |
@@ -75,16 +82,29 @@ These specs exercise the substrate primitives in `lib/`: `xprop`
 shell-outs (T01, T04), `dbus-next` (T03), `dbus-monitor` subprocess
 eavesdrop (T23), Node-inspector runtime-attach
 (T07/T16/T17/T26/S10/S29-S35/T05-T14b L1 specs), `app.asar` content reads
-(S08/S09/S21/S22/S26/S27/S28/T11/T14a/H02/H03/S33), `/proc/$pid/cmdline`
-reads (S07/S12), pgrep-based pid deltas (T10/T14b/H04/S16/S30),
-`mount(8)` parsing (S16), source-tree probes against
-`scripts/launcher-common.sh` (S02), `dpkg-query` / `rpm -qR` / `rpm -qf`
-calls (S03/S04/S05/T13), `safeStorage.encryptString` round-trip across
-two launches (S25), `extraEnv` precedence over isolation env (S19),
-`ipcMain._invokeHandlers` registry introspection (T38), and the
+(S08/S09/S21/S22/S26/S27/S28/T11/T14a/T22/T30/T31/T32/T33/T37/T38/H02/H03/S33),
+`/proc/$pid/cmdline` reads (S07/S12), pgrep-based pid deltas
+(T10/T14b/H04/S16/S30), `mount(8)` parsing (S16), source-tree probes
+against `scripts/launcher-common.sh` (S02), `dpkg-query` / `rpm -qR` /
+`rpm -qf` calls (S03/S04/S05/T13), `safeStorage.encryptString`
+round-trip across two launches (S25), `extraEnv` precedence over
+isolation env (S19), the `lib/electron-mocks.ts` mock-then-call
+helpers — `installOpenDialogMock` (T17), `installShowItemInFolderMock`
+(T25), `installOpenExternalMock` (T24) — and the
 `createIsolation({ seedFromHost: true })` primitive that lets
 login-required tests run hermetically against a copy of the host's
 signed-in auth state (T07, T16, T26).
+
+Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
+channel names referenced in the case-doc Code anchors do not register
+through Electron's standard `ipcMain.handle()` registry — they use a
+custom `$eipc_message$_<UUID>_$_claude.web_$_<name>` message-port
+protocol whose registry is closure-local and not reachable from
+`globalThis` at any ready level. T22, T31, T33, T38 anchor on the
+eipc channel-name *strings* in the bundle (Tier 1 fingerprint) rather
+than introspecting a registry. See
+[`runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
+session 3 status section for the finding.
 
 Per-row pass/skip counts depend on which sweep runs against the row;
 see `runner-implementation-plan.md` for tier classification and
