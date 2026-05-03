@@ -170,6 +170,51 @@ export async function getOpenDialogCalls(
 	);
 }
 
+// Replace electron.shell.showItemInFolder with a mock that records every
+// call without performing the underlying DBus FileManager1 / xdg-open
+// dispatch. Same idempotency-flag pattern as installOpenDialogMock.
+//
+// Why mock vs. invoke real: `showItemInFolder` is fire-and-forget on
+// Linux (returns void, no success signal). Invoking it for real opens
+// the host's actual file manager — fine in a click-chain test, but
+// disruptive when the assertion is just "the JS-level call is reachable
+// + accepts a path arg + the IPC layer terminates here". The mock keeps
+// the same assertion shape with no host side effect.
+export async function installShowItemInFolderMock(
+	inspector: InspectorClient,
+): Promise<void> {
+	await inspector.evalInMain<null>(`
+		if (globalThis.__claudeAiShowItemMockInstalled) return null;
+		const { shell } = process.mainModule.require('electron');
+		globalThis.__claudeAiShowItemCalls = [];
+		const original = shell.showItemInFolder.bind(shell);
+		shell.showItemInFolder = function(fullPath) {
+			globalThis.__claudeAiShowItemCalls.push({
+				ts: Date.now(),
+				path: typeof fullPath === 'string' ? fullPath : String(fullPath),
+			});
+			// Return undefined like the real method — callers don't
+			// inspect the return value.
+		};
+		void original;
+		globalThis.__claudeAiShowItemMockInstalled = true;
+		return null;
+	`);
+}
+
+export interface ShowItemInFolderCall {
+	ts: number;
+	path: string;
+}
+
+export async function getShowItemInFolderCalls(
+	inspector: InspectorClient,
+): Promise<ShowItemInFolderCall[]> {
+	return await inspector.evalInMain<ShowItemInFolderCall[]>(
+		`return globalThis.__claudeAiShowItemCalls || []`,
+	);
+}
+
 // A "compact pill" — the React component used by both the env pill and
 // the "Select folder…" pill. AX shape: `role: 'button'` with
 // `hasPopup === 'menu'`, scoped away from cowork sidebar row triggers
