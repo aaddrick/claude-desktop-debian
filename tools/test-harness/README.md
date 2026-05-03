@@ -103,6 +103,9 @@ npx playwright test src/runners/T01_app_launch.spec.ts
 
 # Headed (watch the app launch in front of you)
 npx playwright test --headed
+
+# Run the full suite under native Wayland instead of X11/XWayland
+CLAUDE_HARNESS_USE_WAYLAND=1 npm test
 ```
 
 Results land at `results/results-${ROW}-${DATE}/`:
@@ -126,6 +129,7 @@ is installed.
 | `CLAUDE_DESKTOP_ELECTRON` | probed | Override the resolved Electron binary path (skips deb/rpm install probing) |
 | `CLAUDE_DESKTOP_APP_ASAR` | probed | Override the resolved `app.asar` path |
 | `CLAUDE_TEST_USE_HOST_CONFIG` | unset | When `1`, opt out of per-test isolation and use the host's real `~/.config/Claude`. Required for tests that need a signed-in claude.ai (S31, future submit-side QE runners). **Side effect:** these tests write to your real account — chats / settings persist |
+| `CLAUDE_HARNESS_USE_WAYLAND` | unset | When `1`, every runner spawns Electron with the native-Wayland backend (`--ozone-platform=wayland` + sibling flags from `launcher-common.sh`) instead of the default X11-via-XWayland. `CLAUDE_USE_WAYLAND=1` is also exported into the spawn env for in-app paths that read it. Per-launch overrides via `launchClaude({ extraEnv })` still win |
 | `YDOTOOL_SOCKET` | `/tmp/.ydotool_socket` | Path to the `ydotoold` socket. Override only if the daemon binds elsewhere |
 | `OUTPUT_DIR` | `./results` | Where bundles land |
 | `RESULTS_DIR` | per-run derived | Single-run output dir (set by `sweep.sh`; usually you don't set this manually) |

@@ -29,6 +29,13 @@ mkdir -p "$bundle_dir"
 
 cd "$harness_dir" || exit 1
 
+# Backend banner. CLAUDE_HARNESS_USE_WAYLAND=1 flips every runner from
+# the default X11/XWayland backend to native Wayland — see the
+# "Environment variables" table in tools/test-harness/README.md.
+if [[ "${CLAUDE_HARNESS_USE_WAYLAND:-}" == '1' ]]; then
+	printf 'sweep: native Wayland backend (CLAUDE_HARNESS_USE_WAYLAND=1)\n' >&2
+fi
+
 # Fast-fail prereq checks — only matter when the sweep includes
 # Quick Entry runners (S31, future S29/S30/S32/S34/S35/S37 +
 # T06 / QE-* additions). Skip with QE_PREREQ_CHECK=0 if running

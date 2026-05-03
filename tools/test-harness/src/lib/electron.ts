@@ -116,9 +116,27 @@ export interface ClaudeApp {
 // which reaches the renderer via webContents.executeJavaScript() and
 // supports main-process mocks (e.g. dialog.showOpenDialog for T17).
 
-const LAUNCHER_INJECTED_FLAGS = [
+// Default backend: X11 via XWayland. Mirrors launcher-common.sh's
+// build_electron_args() X11 branch (the launcher itself isn't invoked
+// because we spawn Electron directly to keep CLAUDE_CDP_AUTH out of
+// the picture — see the SIGUSR1 attach comment above).
+const LAUNCHER_INJECTED_FLAGS_X11 = [
 	'--disable-features=CustomTitlebar',
 	'--ozone-platform=x11',
+	'--no-sandbox',
+];
+
+// Native-Wayland backend, opted into by CLAUDE_HARNESS_USE_WAYLAND=1.
+// Mirrors launcher-common.sh's Wayland branch (lines 132-135). Tests
+// that need to drive the app under native Wayland (#226 follow-ups,
+// future S07 sweep) flip the harness-level switch and every runner
+// inherits this without per-spec changes.
+const LAUNCHER_INJECTED_FLAGS_WAYLAND = [
+	'--disable-features=CustomTitlebar',
+	'--enable-features=UseOzonePlatform,WaylandWindowDecorations',
+	'--ozone-platform=wayland',
+	'--enable-wayland-ime',
+	'--wayland-text-input-version=3',
 	'--no-sandbox',
 ];
 
@@ -126,6 +144,15 @@ const LAUNCHER_INJECTED_ENV: Record<string, string> = {
 	ELECTRON_FORCE_IS_PACKAGED: 'true',
 	ELECTRON_USE_SYSTEM_TITLE_BAR: '1',
 };
+
+// Top-level opt-in: when CLAUDE_HARNESS_USE_WAYLAND=1, every
+// launchClaude() call swaps the X11 flag set for the Wayland one and
+// also exports CLAUDE_USE_WAYLAND=1 into the spawn env (so any in-app
+// path that reads the launcher var stays consistent). Caller-supplied
+// extraEnv still wins — a single test can override per-launch.
+function harnessUseWayland(): boolean {
+	return process.env.CLAUDE_HARNESS_USE_WAYLAND === '1';
+}
 
 const DEFAULT_INSTALL_PATHS = [
 	{
@@ -272,15 +299,26 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 	const { electron: electronBin, asar } = resolveInstall();
 	const appDir = dirname(dirname(dirname(dirname(electronBin))));
 
+	const useWayland = harnessUseWayland();
+	const launcherFlags = useWayland
+		? LAUNCHER_INJECTED_FLAGS_WAYLAND
+		: LAUNCHER_INJECTED_FLAGS_X11;
+	// CLAUDE_USE_WAYLAND only when the harness-level gate is on.
+	// Spread BEFORE opts.extraEnv so a single test can override.
+	const waylandEnv: Record<string, string> = useWayland
+		? { CLAUDE_USE_WAYLAND: '1', GDK_BACKEND: 'wayland' }
+		: {};
+
 	const proc = spawn(
 		electronBin,
-		[...LAUNCHER_INJECTED_FLAGS, asar, ...(opts.args ?? [])],
+		[...launcherFlags, asar, ...(opts.args ?? [])],
 		{
 			cwd: appDir,
 			env: {
 				...process.env,
 				...LAUNCHER_INJECTED_ENV,
 				...(isolation?.env ?? {}),
+				...waylandEnv,
 				...opts.extraEnv,
 				CI: '1',
 			} as Record<string, string>,
