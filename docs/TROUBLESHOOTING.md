@@ -14,12 +14,14 @@ claude-desktop --doctor
 ./claude-desktop-*.AppImage --doctor
 ```
 
-This runs 10 checks and prints pass/fail results with suggested fixes:
+This runs a series of checks and prints pass/fail results with
+suggested fixes:
 
 | Check | What it verifies |
 |-------|-----------------|
 | Installed version | Package version via dpkg |
 | Display server | Wayland/X11 detection and mode |
+| Input method | IBus/GTK immodule sanity (ibus-gtk3 installed, cache fresh, XWayland routing note) |
 | Electron binary | Existence and version |
 | Chrome sandbox | Correct permissions (4755/root) |
 | SingletonLock | Stale lock file detection |
@@ -92,9 +94,20 @@ Common symptoms:
 - CJK input methods (IBus, Fcitx) not engaging
 - Compose key / dead-key sequences silently drop
 
-The fastest workaround is to switch the launcher to a different GTK
-input module. Set `CLAUDE_GTK_IM_MODULE` and Claude Desktop will
-propagate it as `GTK_IM_MODULE` to Electron at startup:
+**First step: run `claude-desktop --doctor`.** It checks for the
+common misconfigurations and prints fix commands inline:
+
+- `ibus-gtk3` package missing while `GTK_IM_MODULE=ibus`
+- GTK immodules cache stale (the active module isn't listed by
+  `gtk-query-immodules-3.0`)
+- XWayland session routing IBus through XIM (lossy for some IMEs —
+  set `CLAUDE_USE_WAYLAND=1` to use native Wayland IME)
+- Active value of `CLAUDE_GTK_IM_MODULE` if you've set the override
+
+If `--doctor` is clean but input still misbehaves, switch the
+launcher to a different GTK input module. Set `CLAUDE_GTK_IM_MODULE`
+and Claude Desktop will propagate it as `GTK_IM_MODULE` to Electron
+at startup:
 
 ```bash
 # Bypass IBus entirely — uses the X Input Method (XIM) protocol
