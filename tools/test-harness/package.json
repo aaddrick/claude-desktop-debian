@@ -10,7 +10,13 @@
 	"scripts": {
 		"test": "playwright test",
 		"sweep": "bash orchestrator/sweep.sh",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"explore": "npx tsx explore/explore.ts",
+		"explore:snapshot": "npx tsx explore/explore.ts snapshot",
+		"explore:diff": "npx tsx explore/explore.ts diff",
+		"explore:walk": "npx tsx explore/explore.ts walk",
+		"derive:vocabulary": "npx tsx explore/derive-vocabulary.ts",
+		"gen:render-specs": "npx tsx explore/gen-render-specs.ts"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.48.0",

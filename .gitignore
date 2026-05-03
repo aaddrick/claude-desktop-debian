@@ -33,3 +33,7 @@ result-*
 
 # Wrangler (Cloudflare Worker dev/deploy cache)
 worker/.wrangler/
+
+# UI snapshots — captured renderer state, intentionally ignored to avoid
+# diff churn. See docs/testing/ui-snapshots/README.md.
+docs/testing/ui-snapshots/*.json

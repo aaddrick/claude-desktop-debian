@@ -13,6 +13,6 @@
 		"noImplicitOverride": true,
 		"types": ["node"]
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "explore/**/*.ts"],
 	"exclude": ["node_modules", "results"]
 }
