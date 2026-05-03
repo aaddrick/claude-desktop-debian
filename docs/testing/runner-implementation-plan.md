@@ -18,11 +18,60 @@ work begins.
 
 ## Status (post-execution)
 
-**Shipped this session (25 new specs):** T02, T05, T06, T07, T08, T09,
+**Shipped session 2 (10 new specs):** T10, T16, T23, T25, T26, T38, S10,
+S19, S25, S28. Coverage moved from 40/76 (53%) to 50/76 (66%).
+
+Session 2 reclassifications:
+
+- **S28** reclassified from **Tier 2 → Tier 1**. The plan called for
+  inspector-eval against `Sbn()` permission classifier with a synthetic
+  error string, but `Sbn` is a closure-local in the bundled main process
+  — not reachable from `globalThis` and no IPC surface exposes it. The
+  shipped runner is a single-regex asar fingerprint that pins the same
+  classifier expression (the `"Permission denied" || "Access is denied"
+  || "could not lock config file" → "permission-denied"` chain) plus the
+  `Failed to create git worktree:` log line. Same drift signal, no
+  launch needed.
+- **T38** shipped as a **handler-registered probe**, not a no-throw
+  invocation. Calling `LocalSessions.openInEditor` directly would
+  terminate at `shell.openExternal('vscode://...')` (real editor launch
+  + side effect on host) and would also be blocked by the channel's
+  origin validation against non-claude.ai senders. Instead, the runner
+  inspects `ipcMain._invokeHandlers` for the channel ending in
+  `LocalSessions_$_openInEditor`. Documents the channel's
+  `$eipc_message$_<UUID>_$_claude.web_$_<name>` framing (UUID is
+  build-stable: `c0eed8c9-...`) so a future framing change is visible.
+- **T23 tool choice — dbus-monitor, not gdbus monitor.** The plan
+  suggested `gdbus monitor --session --dest=org.freedesktop.Notifications`
+  but `gdbus monitor --dest <name>` only sees signals OWNED BY that
+  destination, not method calls TO it. `Notify` is a method call FROM
+  Electron TO the daemon, so `gdbus` cannot observe it. Switched to
+  `dbus-monitor` (eavesdrop match rule). Pre-launch checks gate on
+  `dbus-monitor` presence + notification-daemon ownership of
+  `org.freedesktop.Notifications`.
+- **S19 honest-stub note.** The Tier 2 slice is env propagation
+  (`extraEnv: { CLAUDE_CONFIG_DIR }` → main-process `process.env`).
+  Half 1 (env propagation) is the load-bearing assertion. Half 2
+  (resolver-shape echo) is a synthetic re-implementation of `cE()` /
+  `Tce()` because those minified symbols are closure-locals — leading
+  comment is explicit about the re-implementation status.
+- **T25 / T38 / T23 host side effects documented.** T25 may briefly
+  open a file manager on the host; T38 deliberately doesn't invoke;
+  T23 fires a real notification. Each runner's leading comment
+  documents the side effect.
+
+Tier 2 → Tier 2 candidates remaining for a future session: **T31, T32**
+(side chat, slash menu — both need a Code-tab session OPEN, not just
+the Code tab loaded). **S11, S14** (focus-shifter primitive still
+unbuilt — flagged in plan and unchanged).
+
+---
+
+**Shipped session 1 (25 new specs):** T02, T05, T06, T07, T08, T09,
 T11, T12, T13, T14a, T14b, S01, S02, S03, S04, S05, S07, S08, S15, S16,
 S17, S21, S22, S26, S27. Coverage moved from 15/76 (20%) to 40/76 (53%).
 
-Reclassifications discovered during execution:
+Session 1 reclassifications:
 
 - **T05** shipped as a **Tier 3 delivery probe** (xdg-open →
   `app.on('second-instance', ...)`), not the originally-planned Tier 2
