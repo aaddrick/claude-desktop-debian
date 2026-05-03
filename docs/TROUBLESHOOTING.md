@@ -114,13 +114,9 @@ GTK_IM_MODULE override: ibus -> xim (via CLAUDE_GTK_IM_MODULE)
 
 **Trade-off:** `xim` is the lowest-common-denominator input module
 and does not support advanced IME features like CJK candidate
-windows or rich compose-key sequences. Only use it if your real
-input method (IBus/Fcitx) is broken — for users who don't need
-CJK/compose, `xim` is fine; for users who do, prefer fixing the
-IBus/Fcitx integration over forcing `xim`.
-
-If unset or empty, `GTK_IM_MODULE` is not modified and existing
-behavior is preserved.
+windows or rich compose-key sequences. Only reach for it if your
+real input method (IBus/Fcitx) is broken; if you depend on CJK or
+compose, prefer fixing the IBus/Fcitx integration instead.
 
 ### AppImage Sandbox Warning
 
