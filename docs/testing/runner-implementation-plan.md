@@ -18,6 +18,103 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 4 (3 new specs + 1 new primitive):** T35 (Phase 1
+fingerprint), T36 (Phase 1 fingerprint), S11 (X11-only). New primitive
+`lib/input.ts` (focus-shifter: `focusOtherWindow` /
+`spawnMarkerWindow` / `getFocusedWindowId` / `isX11Session` plus
+`WaylandFocusUnavailable` / `XdotoolUnavailable` typed errors).
+Coverage moved from 57/76 (75%) to 60/76 (79%).
+
+Session 4 findings + reclassifications:
+
+- **T35 Phase 1 shipped as Tier 1, Phase 2 deferred.** Four-needle
+  asar fingerprint pinning the chat-tab vs Code-tab MCP-config
+  separation: `claude_desktop_config.json` (chat-tab path constant,
+  case-doc :130821), `.claude.json` (Code-tab user-level loader,
+  :176766), `.mcp.json` (Code-tab project-level loader, :215418),
+  `"user","project","local"` (settingSources triple Code-session
+  passes to the agent SDK, :489098). The case-doc references
+  `~/.claude.json` with the tilde, but the minified bundle stores
+  it as `.claude.json` (no tilde — minified strips the path-prefix
+  style and resolves home at use); the runner's leading comment
+  flags this discrepancy so future maintainers don't chase the
+  tilde form. Phase 2 (place fixture
+  `<isolation>/Claude/claude_desktop_config.json` + inspector-eval
+  the parsed MCP server list) deferred — same closure-local-
+  minified-symbol blocker as T37b / S19 / S28; without a reachable
+  readback target the fixture form would assert "the spec didn't
+  crash" and nothing more.
+- **T36 shipped as Tier 1, Phase 2 deferred.** Five-needle asar
+  fingerprint following T37's "single-occurrence high-signal anchor
+  + registry tokens" shape: `hook_started` / `hook_progress` /
+  `hook_response` (each single-occurrence Verbose-transcript
+  runtime emits at case-doc :493411 — these back the case-doc's
+  "hook output is visible in Verbose transcript mode" claim) plus
+  `PreToolUse` (17×, :455717 — built-in event registry the runtime
+  extends) and `UserPromptSubmit` (4×, :455819 — less-common
+  registry token, stronger uniqueness than `PostToolUse`'s 9×).
+  Phase 2 (`~/.claude/settings.json` SessionStart-hook fixture +
+  marker-file readback) deferred — needs login + a Code-tab
+  session opener the AX-tree walker hasn't been taught.
+- **S11 shipped with X11-only row gate; GNOME-W mutter regression
+  detector remains a primitive gap.** Case-doc applies-to is
+  "GNOME, Ubu" (W and X), but the focus-shifter primitive is
+  X11-only — XDG_SESSION_TYPE === 'x11' strict — so the runner's
+  row gate is `['GNOME-X', 'Ubu-X']` only. The case-doc's
+  load-bearing concern is the GNOME-W mutter XWayland key-grab
+  regression (#404); that regression CANNOT be detected here
+  because there's no portable focus-injection on native Wayland
+  (each compositor exposes its own IPC; libei isn't universally
+  honored). What S11 does catch: a regression in the X11 path of
+  the global shortcut on GNOME-X / Ubu-X — a currently-passing
+  detector unlike S12 which is a currently-failing one. The
+  Wayland-side regression detector stays manual until libei
+  adoption broadens.
+- **S14 NOT shipped — primitive gap.** Case-doc row gate is just
+  `Niri` and Niri is wlroots Wayland with no XWayland; the
+  focus-shifter primitive throws `WaylandFocusUnavailable` there,
+  so any S14 runner consuming the new primitive would skip on
+  every row in its gate. That's the definition of a stub. Per the
+  session prompt's "don't ship stubs" rule, S14 is documented as a
+  primitive-gap (needs Wayland-native focus injection — Niri's
+  `niri msg` IPC, or libei when broadly available) and stays
+  unshipped. The Tier 1 reframe (assert
+  `--enable-features=GlobalShortcutsPortal` in argv) is already
+  covered by S12.
+- **`lib/input.ts` extracted as the focus-shifter substrate.**
+  X11-only by design — strict `XDG_SESSION_TYPE === 'x11'` gate
+  via `isX11Session()`. Exports:
+  `focusOtherWindow(title)` (xdotool `search --name` + verify via
+  `xprop -root _NET_ACTIVE_WINDOW` poll using `retryUntil`),
+  `spawnMarkerWindow(title)` (backgrounded `xterm -e 'sleep 600'`
+  with kill-with-grace), `getFocusedWindowId()` (parses xprop
+  output to lowercase 0x-prefixed hex), `isX11Session()`,
+  `MarkerWindow` interface, `WaylandFocusUnavailable` /
+  `XdotoolUnavailable` typed errors. The primitive verifies the
+  focus shift took (xdotool exits 0 even when the compositor
+  refuses activation — only `_NET_ACTIVE_WINDOW` readback is the
+  honest answer).
+- **eipc-registry exposer NOT attempted.** Listed in session 3 as
+  a high-risk-high-reward primitive that would unblock proper
+  Tier 2 runtime probes for T22/T31/T33/T38. Session 4 budget
+  didn't fit it — the primitive build (`lib/input.ts`) plus three
+  spec runners filled the realistic ceiling. Stays available for
+  a future session that wants to take the closure-local
+  reverse-engineering on as its main work.
+
+Tier 2 → Tier 2 candidates remaining for a future session:
+**S14** (focus-shifter Wayland-native variant — needs libei or
+per-compositor IPC fallback; primitive gap). **T35 Phase 2** and
+**T36 Phase 2** (both need a reachable readback for parsed
+state — same blocker as T37b / S19 / S28). **eipc-registry
+exposer** (closure-local in main; reverse-engineering remains
+unattempted). The primitive surface itself isn't growing
+quickly — `lib/electron-mocks.ts` (session 3) and `lib/input.ts`
+(session 4) are both threshold-driven extractions, not
+speculative.
+
+---
+
 **Shipped session 3 (7 new specs):** T22, T24, T30, T31, T32, T33, T37.
 Coverage moved from 50/76 (66%) to 57/76 (75%).
 
