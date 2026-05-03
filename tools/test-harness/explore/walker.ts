@@ -778,20 +778,31 @@ export async function redrivePath(
 	startUrl: string,
 	path: NavStep[],
 ): Promise<void> {
-	// Force a reload before replaying — `navigateTo(startUrl)` would
-	// short-circuit when the renderer's already at startUrl, and any
-	// state a prior drill left behind (open dialog, expanded sidebar,
-	// scrolled focus) would carry into this redrive's snapshots and
-	// throw off clickById's fingerprint suffix-match. `reloadPage`
-	// discards the React tree and forces a clean mount.
+	// Force a reload before replaying. Two cases:
+	//   1. Renderer already at startUrl (walker BFS between drills, or
+	//      U01 between two tests with empty/short paths that didn't
+	//      change the URL). `navigateTo(startUrl)` short-circuits on
+	//      URL match, so a prior drill's residual SPA state (open
+	//      dialog, expanded sidebar, scrolled focus) would bleed in.
+	//      Use `reloadPage` to discard the React tree.
+	//   2. Renderer drifted to a deeper URL (U01 between a test that
+	//      drilled into /settings/customize and a test starting from
+	//      /epitaxy). `reloadPage` would reload the wrong URL and
+	//      break the assumed startUrl baseline. Use `navigateTo` so
+	//      the React tree remounts at startUrl.
 	//
-	// After the reload, AX starts empty and Chromium repopulates it
-	// asynchronously. `waitForStable`'s 1.5s ceiling expires long
-	// before claude.ai's React tree finishes mounting on a cold load,
-	// so the explicit `waitForAxTreeStable({ minNodes: 20 })` gates
-	// the first snapshot. Subsequent in-path clicks rely on the
+	// After the reload/navigate, AX starts empty and Chromium
+	// repopulates it asynchronously. `waitForStable`'s 1.5s ceiling
+	// expires long before claude.ai's React tree finishes mounting on
+	// a cold load, so the explicit `waitForAxTreeStable({ minNodes: 20 })`
+	// gates the first snapshot. Subsequent in-path clicks rely on the
 	// AX-stable wait baked into `snapshotSurface`.
-	await reloadPage(inspector);
+	const cur = await currentUrl(inspector);
+	if (cur === startUrl) {
+		await reloadPage(inspector);
+	} else {
+		await navigateTo(inspector, startUrl);
+	}
 	await waitForStable(inspector);
 	await waitForAxTreeStable(inspector, { minNodes: 20 });
 	for (const step of path) {
@@ -847,7 +858,18 @@ export async function findByFingerprint(
 	kind: InventoryEntry['kind'],
 ): Promise<FindResult> {
 	const snapshot = await snapshotSurface(inspector);
-	const expectExactlyOne = kind !== 'instance' && kind !== 'menu';
+	// Strictness drops to "≥1 match" in two cases: (a) lifecycle kinds
+	// where the inventory contract is "this bag of items exists"
+	// (instance / menu), or (b) fingerprints whose capture-time shape
+	// is degenerate — no leaf name, no siblingIndex, just role-under-
+	// path. The post-walk persistent-collapse promotes some entries
+	// from kind=instance to kind=persistent (cross-surface chrome),
+	// but a degenerate fingerprint can't match exactly one regardless
+	// of lifecycle, so we defer to `classification` here too.
+	const expectExactlyOne =
+		kind !== 'instance' &&
+		kind !== 'menu' &&
+		fingerprint.classification !== 'instance';
 
 	const tryQuery = (
 		path: AriaStep[],
