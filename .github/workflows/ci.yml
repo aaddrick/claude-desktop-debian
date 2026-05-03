@@ -653,14 +653,12 @@ jobs:
               echo "Generating repodata for $arch..."
               createrepo_c --update "rpm/$arch/"
 
-              # Sign the repository metadata.
-              #   --yes: overwrite existing signature.
-              #   trailing '!' on keyid: force gpg to sign with the
-              #   primary key, not the most recent signing subkey.
-              #   rpm 4.20+ / zypper verify repomd.xml only against
-              #   the primary key; without '!', gpg silently picks
-              #   the subkey and verification fails (regression of
-              #   #213 — PR #217 added --default-key but missed '!').
+              # Sign repodata. Trailing '!' on keyid forces gpg to use
+              # the primary key; without it gpg picks the most recent
+              # signing subkey, and rpm 4.20+ / zypper reject repomd.xml
+              # signed by anything other than the primary key.
+              # Regression of #213 — PR #217 added --default-key but
+              # dropped the '!'. Do not strip it. --yes overwrites .asc.
               echo "Signing repodata for $arch..."
               gpg --batch --yes --default-key "${{ steps.import_gpg.outputs.keyid }}!" --detach-sign --armor "rpm/$arch/repodata/repomd.xml"
             fi
