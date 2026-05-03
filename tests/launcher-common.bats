@@ -35,10 +35,15 @@ setup() {
 	unset CLAUDE_USE_WAYLAND
 	unset NIRI_SOCKET
 	unset XDG_CURRENT_DESKTOP
+	unset XDG_SESSION_TYPE
 	unset CLAUDE_MENU_BAR
 	unset CLAUDE_TITLEBAR_STYLE
 	unset COWORK_VM_BACKEND
 	unset ELECTRON_USE_SYSTEM_TITLE_BAR
+	unset GTK_IM_MODULE
+	unset XMODIFIERS
+	unset QT_IM_MODULE
+	unset CLAUDE_GTK_IM_MODULE
 
 	# shellcheck source=scripts/launcher-common.sh
 	source "$SCRIPT_DIR/../scripts/launcher-common.sh"
@@ -84,6 +89,78 @@ teardown() {
 	run cat "$log_file"
 	[[ "${lines[0]}" == "test message one" ]]
 	[[ "${lines[1]}" == "test message two" ]]
+}
+
+# =============================================================================
+# log_session_env
+# =============================================================================
+
+@test "log_session_env: emits env={ ... } block with all required keys" {
+	setup_logging
+	XDG_SESSION_TYPE='wayland'
+	WAYLAND_DISPLAY='wayland-0'
+	DISPLAY=':0'
+	XDG_CURRENT_DESKTOP='KDE'
+	GTK_IM_MODULE='ibus'
+	XMODIFIERS='@im=ibus'
+	QT_IM_MODULE='ibus'
+	CLAUDE_USE_WAYLAND='1'
+	CLAUDE_TITLEBAR_STYLE='hybrid'
+	CLAUDE_GTK_IM_MODULE='xim'
+	log_session_env
+
+	run cat "$log_file"
+	[[ $output == *'env={'* ]]
+	[[ $output == *'XDG_SESSION_TYPE=wayland'* ]]
+	[[ $output == *'WAYLAND_DISPLAY=wayland-0'* ]]
+	[[ $output == *'DISPLAY=:0'* ]]
+	[[ $output == *'XDG_CURRENT_DESKTOP=KDE'* ]]
+	[[ $output == *'GTK_IM_MODULE=ibus'* ]]
+	[[ $output == *'XMODIFIERS=@im=ibus'* ]]
+	[[ $output == *'QT_IM_MODULE=ibus'* ]]
+	[[ $output == *'CLAUDE_USE_WAYLAND=1'* ]]
+	[[ $output == *'CLAUDE_TITLEBAR_STYLE=hybrid'* ]]
+	[[ $output == *'CLAUDE_GTK_IM_MODULE=xim'* ]]
+}
+
+@test "log_session_env: unset values are emitted as KEY= (not omitted)" {
+	setup_logging
+	# All env vars left unset by the test setup
+	log_session_env
+
+	run cat "$log_file"
+	# Each required key must appear with an empty value, not be missing
+	[[ $output == *'XDG_SESSION_TYPE='* ]]
+	[[ $output == *'WAYLAND_DISPLAY='* ]]
+	[[ $output == *'DISPLAY='* ]]
+	[[ $output == *'XDG_CURRENT_DESKTOP='* ]]
+	[[ $output == *'GTK_IM_MODULE='* ]]
+	[[ $output == *'XMODIFIERS='* ]]
+	[[ $output == *'QT_IM_MODULE='* ]]
+	[[ $output == *'CLAUDE_USE_WAYLAND='* ]]
+	[[ $output == *'CLAUDE_TITLEBAR_STYLE='* ]]
+	[[ $output == *'CLAUDE_GTK_IM_MODULE='* ]]
+}
+
+@test "log_session_env: empty value is emitted as KEY= (same as unset)" {
+	setup_logging
+	GTK_IM_MODULE=''
+	log_session_env
+
+	run cat "$log_file"
+	# `KEY=` line must be present with no value after the equals sign
+	[[ $output =~ GTK_IM_MODULE=$'\n' || $output =~ GTK_IM_MODULE=$ ]]
+}
+
+@test "log_session_env: emits opening and closing braces on their own lines" {
+	setup_logging
+	log_session_env
+
+	run cat "$log_file"
+	# Opening brace
+	[[ "${lines[0]}" == 'env={' ]]
+	# Closing brace as final line
+	[[ "${lines[${#lines[@]}-1]}" == '}' ]]
 }
 
 # =============================================================================

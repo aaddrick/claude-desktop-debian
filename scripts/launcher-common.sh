@@ -16,6 +16,39 @@ log_message() {
 	echo "$1" >> "$log_file"
 }
 
+# Log the session/IME environment vars that drive display and input
+# decisions, so bug reports include enough context to reason about
+# them without round-trip env-dump requests (#548).
+#
+# Emits one block:
+#     env={
+#       KEY=value
+#       ...
+#     }
+#
+# Empty or unset values are emitted as `KEY=` so absence is
+# unambiguous (vs. silently omitted). Caller must run setup_logging
+# first.
+log_session_env() {
+	local key
+	log_message 'env={'
+	for key in \
+		XDG_SESSION_TYPE \
+		WAYLAND_DISPLAY \
+		DISPLAY \
+		XDG_CURRENT_DESKTOP \
+		GTK_IM_MODULE \
+		XMODIFIERS \
+		QT_IM_MODULE \
+		CLAUDE_USE_WAYLAND \
+		CLAUDE_TITLEBAR_STYLE \
+		CLAUDE_GTK_IM_MODULE
+	do
+		log_message "  $key=${!key:-}"
+	done
+	log_message '}'
+}
+
 # Detect display backend (Wayland vs X11)
 # Sets: is_wayland, use_x11_on_wayland
 detect_display_backend() {

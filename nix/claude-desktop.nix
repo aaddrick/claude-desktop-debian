@@ -245,6 +245,7 @@ cleanup_stale_cowork_socket
 log_message '--- Claude Desktop Launcher Start (NixOS) ---'
 log_message "Timestamp: $(date)"
 log_message "Arguments: $@"
+log_session_env
 
 # Check for display
 if ! check_display; then

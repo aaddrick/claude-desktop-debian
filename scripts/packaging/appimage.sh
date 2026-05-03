@@ -98,6 +98,7 @@ log_message '--- Claude Desktop AppImage Start ---'
 log_message "Timestamp: $(date)"
 log_message "Arguments: $@"
 log_message "APPDIR: $appdir"
+log_session_env
 
 # Path to the bundled Electron executable and app
 electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
