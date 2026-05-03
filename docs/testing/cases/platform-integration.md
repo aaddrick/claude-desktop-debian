@@ -21,6 +21,16 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 
 **References:** [PR #450](https://github.com/aaddrick/claude-desktop-debian/pull/450)
 
+**Code anchors:**
+- `scripts/frame-fix-wrapper.js:376` — XDG Autostart shim
+  intercepting `app.{get,set}LoginItemSettings` (writes/removes
+  `$XDG_CONFIG_HOME/autostart/claude-desktop.desktop`).
+- `scripts/frame-fix-wrapper.js:429` — `buildAutostartContent()`
+  emits the spec-compliant `[Desktop Entry]` block.
+- `build-reference/app-extracted/.vite/build/index.js:524205` —
+  upstream `isStartupOnLoginEnabled` / `setStartupOnLoginEnabled` IPC
+  surface that the wrapper interposes on.
+
 ## T10 — Cowork integration
 
 **Severity:** Should
@@ -40,6 +50,20 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 
 **References:** [`docs/learnings/cowork-vm-daemon.md`](../../learnings/cowork-vm-daemon.md)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:143371` —
+  upstream's Windows named-pipe path (`\\.\pipe\cowork-vm-service`)
+  that `scripts/patches/cowork.sh` Patch 1 rewrites to
+  `$XDG_RUNTIME_DIR/cowork-vm-service.sock`.
+- `build-reference/app-extracted/.vite/build/index.js:143453` —
+  `kUe()` retry loop (5 attempts, 1 s gap) that the auto-launch
+  injection from Patch 6 piggybacks on after the rewrite.
+- `scripts/patches/cowork.sh:244` — Patch 6 (auto-launch + stdio
+  pipe + 10 s rate-limited respawn — issue #408).
+- `scripts/patches/cowork.sh:365` — Patch 6b (extends the
+  reinstall-delete list with `sessiondata.img` / `rootfs.img.zst`
+  so a wedged daemon can self-recover).
+
 ## T12 — WebGL warn-only
 
 **Severity:** Could
@@ -57,6 +81,16 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 **Diagnostics on failure:** `chrome://gpu` full content, screenshot of any visual glitch, `glxinfo | head -20` (X11) or `eglinfo` (Wayland), `lspci -k | grep -A2 VGA`.
 
 **References:** —
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:524809` —
+  `app.disableHardwareAcceleration()` is gated on the user-toggleable
+  `isHardwareAccelerationDisabled` setting; upstream does not pass
+  `--ignore-gpu-blocklist` or `--use-gl=*`, so chrome://gpu reflects
+  Chromium's stock blocklist behaviour.
+- `build-reference/app-extracted/.vite/build/index.js:500571` —
+  the only `webgl:!1` override is scoped to the feedback popup
+  (`in-memory-feedback` partition); main UI does not disable WebGL.
 
 ## S17 — App launched from `.desktop` inherits shell `PATH`
 
@@ -77,6 +111,17 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 
 **References:** [Local sessions](https://code.claude.com/docs/en/desktop#local-sessions), [Session not finding installed tools](https://code.claude.com/docs/en/desktop#session-not-finding-installed-tools)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:259300` —
+  `SLr()` resolves the bundled `shell-path-worker/shellPathWorker.js`.
+- `build-reference/app-extracted/.vite/build/index.js:259349` —
+  `NLr()` forks it via `utilityProcess.fork`; on success
+  `FX()` (line 259311) merges the extracted env into `process.env`.
+- `build-reference/app-extracted/.vite/build/shell-path-worker/shellPathWorker.js:205`
+  — `extractPathFromShell()` runs the user's login shell (`-l -i`)
+  and parses the printed `$PATH` between sentinels (mac-style env
+  inheritance now applied on Linux too).
+
 ## S18 — Local environment editor persists across reboot
 
 **Severity:** Should
@@ -95,6 +140,18 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 
 **References:** [Local sessions](https://code.claude.com/docs/en/desktop#local-sessions)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:259251` —
+  `I2t = new K_({ name: "ccd-environment-config", ... })` electron-store
+  backing file (`~/.config/Claude/ccd-environment-config.json`).
+- `build-reference/app-extracted/.vite/build/index.js:259253` —
+  `hLr()` writes via `safeStorage.encryptString` (libsecret on Linux).
+- `build-reference/app-extracted/.vite/build/index.js:259268` —
+  `J1()` decrypts on read; bails to `{}` if `safeStorage` reports
+  encryption unavailable (no keyring backend running).
+- `build-reference/app-extracted/.vite/build/index.js:70782` —
+  `LocalSessionEnvironment.save` IPC entry that calls into `hLr`.
+
 ## S22 — Computer-use toggle is absent or visibly disabled on Linux
 
 **Severity:** Should
@@ -111,6 +168,21 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 **Diagnostics on failure:** Screenshot of the Settings page, DevTools inspection of the toggle DOM (is it conditionally hidden? disabled? always-rendered?), launcher log.
 
 **References:** [Let Claude use your computer](https://code.claude.com/docs/en/desktop#let-claude-use-your-computer), [Dispatch and computer use](https://claude.com/blog/dispatch-and-computer-use)
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:240557` —
+  `qDA = new Set(["darwin", "win32"])` excludes Linux from the
+  computer-use platform set.
+- `build-reference/app-extracted/.vite/build/index.js:241190` —
+  `TF()` (the master enable check) short-circuits to `false` when
+  `qDA.has(process.platform)` is false, so toggling
+  `chicagoEnabled` on Linux can't activate the feature.
+- `build-reference/app-extracted/.vite/build/index.js:242387` —
+  `tvr()` returns `{ status: "unsupported", reason: "Computer use
+  is not available on this platform", unsupportedCode:
+  "unsupported_platform" }` for the Settings UI — confirms the
+  toggle should render with a platform-unavailable hint, not silent
+  failure.
 
 ## S23 — Dispatch-spawned sessions don't soft-lock on a never-approvable computer-use prompt
 
@@ -129,6 +201,18 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 **Diagnostics on failure:** Screenshot of session state, launcher log, sidebar state (is the Dispatch session blocking the whole sidebar?), `pgrep -af claude`.
 
 **References:** [Sessions from Dispatch](https://code.claude.com/docs/en/desktop#sessions-from-dispatch)
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:512789` —
+  `tool_permission_request` notification handler explicitly skips
+  `toolName.startsWith("computer:")`, so the desktop never queues a
+  user-facing prompt for computer-use tool calls (which couldn't run
+  on Linux anyway — see S22).
+- `build-reference/app-extracted/.vite/build/index.js:241190` —
+  `TF()` gates computer-use execution off entirely on Linux, so a
+  Dispatch-spawned session that requests it should hit the upstream
+  "Set up computer use" remote-client setup card
+  (`index.js:330114`) rather than block on a desktop prompt.
 
 ## S24 — Dispatch-spawned Code session appears with badge and notification
 
@@ -149,6 +233,20 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 
 **References:** [Sessions from Dispatch](https://code.claude.com/docs/en/desktop#sessions-from-dispatch), [Dispatch and computer use](https://claude.com/blog/dispatch-and-computer-use)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:144561` —
+  `Sd = "dispatch_child"` session-type constant.
+- `build-reference/app-extracted/.vite/build/index.js:512200` —
+  `onRemoteSessionStart` IPC routes a Dispatch-initiated child
+  session into the local sidebar via `dispatchOnRemoteSessionStart`.
+- `build-reference/app-extracted/.vite/build/index.js:285621` —
+  `notifyDispatchParentIfNeeded()` posts the
+  `Task "<title>" <state>` meta-notification when the dispatch
+  child finishes (lands the result in the parent thread's
+  notification queue).
+- `build-reference/app-extracted/.vite/build/index.js:285954` —
+  `kind:"dispatch_child"` is the sidebar badge tag.
+
 ## S25 — Mobile pairing survives Linux session restart
 
 **Severity:** Should
@@ -167,3 +265,18 @@ Tests covering autostart, Cowork integration, WebGL graceful degradation, `.desk
 **Diagnostics on failure:** `ls -la ~/.config/Claude/`, secret-store inspection, launcher log, pairing-flow IPC.
 
 **References:** [Sessions from Dispatch](https://code.claude.com/docs/en/desktop#sessions-from-dispatch)
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:511984` —
+  `ZEe = "coworkTrustedDeviceToken"` electron-store key for the
+  trusted-device token.
+- `build-reference/app-extracted/.vite/build/index.js:511989` —
+  `oYn()` writes the token via `safeStorage.encryptString` (libsecret
+  on Linux); `aYn()` (`:512003`) decrypts on read.
+- `build-reference/app-extracted/.vite/build/index.js:512022` —
+  `gYn()` re-enrolls via `POST /api/auth/trusted_devices` only when
+  there's no cached token, so a successful pair survives restart.
+- `build-reference/app-extracted/.vite/build/index.js:330229` —
+  `_5r = "bridge-state.json"` (per-org/account bridge state under
+  `~/.config/Claude/bridge-state.json`); `JF()`/`X0A()` at `:330230`
+  read/locate it.

@@ -20,6 +20,8 @@ Tests covering desktop notifications, "Open in" external editor, "Show in Files"
 
 **References:** [Scheduled tasks](https://code.claude.com/docs/en/desktop-scheduled-tasks), [Monitor pull request status](https://code.claude.com/docs/en/desktop#monitor-pull-request-status)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:494456` (`new hA.Notification(r)` — backed by Electron's libnotify on Linux); `:495110` (`showNotification(title, body, tag, navigateTo)` dispatches Swift on macOS, Electron elsewhere); `:511174`, `:512738` (cu-lock / tool-permission notifications wire a click callback that navigates to `/local_sessions/{sessionId}` to focus the session).
+
 ## T24 — Open in external editor
 
 **Severity:** Should
@@ -28,15 +30,32 @@ Tests covering desktop notifications, "Open in" external editor, "Show in Files"
 **Issues:** —
 
 **Steps:**
-1. Install at least one of: VS Code, Cursor, Zed (any install method — flatpak, AppImage, distro package).
+1. Install at least one of: VS Code, Cursor, Zed, Windsurf (any install method —
+   flatpak, AppImage, distro package). Xcode is darwin-only and absent on Linux.
 2. In the Code tab, right-click a file path → **Open in** → choose the editor.
 3. Confirm the editor opens at that file.
 
-**Expected:** Right-click → **Open in** launches the chosen editor with the file path. Resolution goes via `xdg-open` / desktop-entry rather than hard-coded paths.
+**Expected:** Right-click → **Open in** launches the chosen editor with the file
+path. Editor is invoked by URL scheme (`vscode://file/<path>`,
+`cursor://file/<path>`, `zed://file/<path>`, `windsurf://file/<path>`) via
+`shell.openExternal`, which delegates to `xdg-open`'s
+`x-scheme-handler/<editor>` resolution rather than hard-coded paths.
 
-**Diagnostics on failure:** `xdg-mime query default text/plain`, `desktop-file-validate` on the editor's `.desktop` file, `xdg-open <file>` from terminal (sanity check), launcher log.
+**Diagnostics on failure:** `xdg-mime query default x-scheme-handler/vscode` (or
+`cursor`/`zed`/`windsurf`), `desktop-file-validate` on the editor's `.desktop`
+file, `xdg-open vscode://file/<path>` from terminal (sanity check), launcher
+log.
 
 **References:** [Open files in other apps](https://code.claude.com/docs/en/desktop#open-files-in-other-apps)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:59076`
+(editor enum: VSCode, Cursor, Zed, Windsurf, Xcode); `:463902` (`Mtt`
+registry — `vscode://`, `cursor://`, `zed://`, `windsurf://`, `xcode://` with
+darwin-only flag on Xcode); `:463956` (`getInstalledEditors` probes via
+`app.getApplicationInfoForProtocol`); `:464011`
+(`shell.openExternal('<scheme>://file/<encoded-path>:<line>')` — path is
+URL-encoded but `/` separators are preserved); `:68816` IPC handler
+`LocalSessions.openInEditor(path, editor, sshConfig, line)`.
 
 ## T25 — Show in Files / file manager
 
@@ -54,6 +73,13 @@ Tests covering desktop notifications, "Open in" external editor, "Show in Files"
 **Diagnostics on failure:** `xdg-mime query default inode/directory`, `xdg-open <dir>` from terminal, the menu label rendered (was it Linux-specific or stuck on "Show in Finder"?), launcher log.
 
 **References:** [Open files in other apps](https://code.claude.com/docs/en/desktop#open-files-in-other-apps)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:66652` IPC
+handler `FileSystem.showInFolder(path)`; `:509431` impl thin-wraps
+`hA.shell.showItemInFolder(Tc(path))`. Electron's `showItemInFolder` on Linux
+falls back to `xdg-open` on the parent directory when no DBus FileManager1
+service is present, so the file is rarely pre-selected on minimal DEs — only
+the parent folder opens.
 
 ## T34 — Connector OAuth round-trip
 
@@ -74,6 +100,20 @@ Tests covering desktop notifications, "Open in" external editor, "Show in Files"
 
 **References:** [Connect external tools](https://code.claude.com/docs/en/desktop#connect-external-tools), [Connectors for everyday life](https://claude.com/blog/connectors-for-everyday-life)
 
+**Code anchors:**
+`build-reference/app-extracted/.vite/build/index.js:524819`
+(`hA.app.setAsDefaultProtocolClient("claude")` — registers the `claude://`
+deep-link scheme used by the OAuth callback); `:525026` mainWindow
+`setWindowOpenHandler` routes external URLs through `MAA(url)` →
+`:525102`–`:525135` (only `http:`/`https:`/`mailto:`/`tel:`/`sms:`/
+`ms-(excel|powerpoint|word):` are forwarded to system handlers; everything
+else is dropped); `:136233` `$a(url)` thin-wraps `hA.shell.openExternal(url)`
+(this is the single egress point for browser handoff); `:159634`
+`mcpSubmitOAuthCallbackUrl(serverName, callbackUrl)` and `:159651`
+`claudeOAuthCallback(authorizationCode, state)` — IPC bridges that consume
+the deep-link callback. See [`docs/learnings/plugin-install.md`](../../learnings/plugin-install.md)
+for orgId/sessionKey cookie chain that gates connector listing.
+
 ## T38 — Continue in IDE
 
 **Severity:** Should
@@ -87,11 +127,25 @@ Tests covering desktop notifications, "Open in" external editor, "Show in Files"
 
 **Expected:** Selected IDE opens the project at the current working directory. Resolution via `xdg-open` / `.desktop` files.
 
-**Diagnostics on failure:** `xdg-open <project-dir>` sanity check, `xdg-mime query default inode/directory`, launcher log, the IDE's `.desktop` file.
+**Diagnostics on failure:** `xdg-open <project-dir>` sanity check, `xdg-mime query default x-scheme-handler/vscode` (or matching scheme for the chosen IDE), launcher log, the IDE's `.desktop` file.
 
 **References:** [Continue in another surface](https://code.claude.com/docs/en/desktop#continue-in-another-surface)
 
+**Code anchors:** Same IPC surface as [T24](#t24--open-in-external-editor) —
+`build-reference/app-extracted/.vite/build/index.js:68816`
+(`LocalSessions.openInEditor(path, editor, sshConfig, line)` accepts a
+directory path the same way as a file path); `:463902` editor registry;
+`:464011` `shell.openExternal('<scheme>://file/<cwd>')`. The "Continue in"
+chooser UI is rendered server-side by claude.ai and not present in the local
+asar — only the IPC bridge can be code-anchored.
+
 ## T39 — `/desktop` CLI handoff (graceful N/A)
+
+> **Note** — This test exercises the upstream `claude` CLI binary, not the
+> Electron app. The CLI ships separately from this packaging (out of
+> `build-reference/`), so no anchor in `app-extracted/.vite/build/` exists for
+> the slash-command handler. Re-verify behaviour against the CLI binary that
+> ships with the upstream version under test (currently 1.5354.0).
 
 **Severity:** Could
 **Surface:** CLI `/desktop` command

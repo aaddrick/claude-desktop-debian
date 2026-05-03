@@ -21,6 +21,11 @@ Tests covering the dev-server preview pane, PR monitoring, worktree isolation, a
 
 **References:** [Preview your app](https://code.claude.com/docs/en/desktop#preview-your-app)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:262175` — `Pae = "Claude Preview"` + `preview_*` MCP tool table (`preview_start`, `preview_stop`, `preview_list`, `preview_screenshot`, `preview_snapshot`, `preview_inspect`, `preview_click`, `preview_fill`, `preview_eval`, `preview_network`, `preview_resize`).
+- `build-reference/app-extracted/.vite/build/index.js:259604` — `setAutoVerify()` and `parseLaunchJson()` (reads `.claude/launch.json`, honours `autoVerify` flag default-on).
+- `build-reference/app-extracted/.vite/build/index.js:260015` — `capturePage()` / `captureViaCDP()` drive `preview_screenshot` against the embedded preview WebContents.
+
 ## T22 — PR monitoring via `gh`
 
 **Severity:** Critical
@@ -32,13 +37,20 @@ Tests covering the dev-server preview pane, PR monitoring, worktree isolation, a
 1. Ensure `gh` is installed and authenticated (`gh auth status`).
 2. In a Code-tab session, ask Claude to open a PR for a small change.
 3. Observe the CI status bar. Toggle **Auto-fix** and **Auto-merge**.
-4. Run a separate test on a row where `gh` is **not** installed — confirm the install prompt appears the first time a PR action is taken.
+4. Run a separate test on a row where `gh` is **not** installed — confirm the missing-`gh` prompt appears the first time a PR action is taken.
 
-**Expected:** With `gh` present and authenticated, CI status bar surfaces in the session toolbar. Auto-fix and Auto-merge toggles work (auto-merge requires the corresponding GitHub repo setting). If `gh` is missing, the app prompts to install it without crashing.
+**Expected:** With `gh` present and authenticated, CI status bar surfaces in the session toolbar. Auto-fix and Auto-merge toggles work (auto-merge requires the corresponding GitHub repo setting). If `gh` is missing, the app surfaces a prompt directing the user to https://cli.github.com (auto-install via `installGh` only runs on macOS/brew; Linux returns an error string with the install URL).
 
 **Diagnostics on failure:** `gh auth status`, `which gh`, launcher log, DevTools console, screenshot of status bar, the GitHub repo's "Allow auto-merge" setting.
 
 **References:** [Monitor pull request status](https://code.claude.com/docs/en/desktop#monitor-pull-request-status)
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:464281` — `GitHubPrManager` (`prStateCache`, `prChecksCache`); `getPrChecks` at line 464964 fans out to `gh pr view`.
+- `build-reference/app-extracted/.vite/build/index.js:464368` — `"gh CLI not found in PATH"` throw site that backs the missing-`gh` prompt.
+- `build-reference/app-extracted/.vite/build/index.js:464480` — `installGh()`: macOS-only `brew install gh`; Linux/Windows return error pointing to https://cli.github.com.
+- `build-reference/app-extracted/.vite/build/index.js:465019` — `autoMergeRequest { enabledAt }` GraphQL fragment; `enableAutoMerge` / `disableAutoMerge` at lines 465531 / 465556.
+- `build-reference/app-extracted/.vite/build/index.js:534033` — `AutoFixEngine.handleSessionEvent` toggles on `autoFixEnabled` per session.
 
 ## T29 — Worktree isolation
 
@@ -59,6 +71,12 @@ Tests covering the dev-server preview pane, PR monitoring, worktree isolation, a
 
 **References:** [Work in parallel with sessions](https://code.claude.com/docs/en/desktop#work-in-parallel-with-sessions)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:462835` — `getWorktreeParentDir()`: returns `<baseRepo>/.claude/worktrees`, or `<chillingSlothLocation.customPath>/<basename>` when overridden in Settings.
+- `build-reference/app-extracted/.vite/build/index.js:462843` — `createWorktree()`: runs `git worktree add` with `core.longpaths=true` under the parent dir.
+- `build-reference/app-extracted/.vite/build/index.js:463290` — `git worktree remove --force` invoked on archive (cleanup path).
+- `build-reference/app-extracted/.vite/build/index.js:55231` — `chillingSlothLocation: "default"` settings key (Settings → "Worktree location").
+
 ## T30 — Auto-archive on PR merge
 
 **Severity:** Should
@@ -67,15 +85,22 @@ Tests covering the dev-server preview pane, PR monitoring, worktree isolation, a
 **Issues:** —
 
 **Steps:**
-1. In Settings → Claude Code, enable **Auto-archive after PR merge or close**.
+1. In Settings → Claude Code, enable **Auto-archive on PR close** (`ccAutoArchiveOnPrClose`).
 2. Open a PR from a local session. Merge or close it on GitHub.
-3. Wait ~1 minute. Observe the sidebar.
+3. Wait up to ~5–6 minutes (sweep runs every 5 minutes, with a 30s startup delay). Observe the sidebar.
 
-**Expected:** Local session whose PR merges (or closes) is archived from the sidebar within ~1 minute of the merge event. Remote and SSH sessions are not affected.
+**Expected:** Local session whose PR is `merged` or `closed` is archived from the sidebar on the next sweep tick (≤ ~5 min) after the merge/close event. Cached PR-state lookups have a 1-hour cooldown for sessions whose state isn't yet terminal. Remote and SSH sessions are not affected.
 
-**Diagnostics on failure:** Screenshot of sidebar, `gh pr view <num>` output (confirming merge state), launcher log, settings file content.
+**Diagnostics on failure:** Screenshot of sidebar, `gh pr view <num>` output (confirming merge state), launcher log, settings file content (`ccAutoArchiveOnPrClose`).
 
 **References:** [Work in parallel with sessions](https://code.claude.com/docs/en/desktop#work-in-parallel-with-sessions)
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:55269` — default `ccAutoArchiveOnPrClose: !1` setting.
+- `build-reference/app-extracted/.vite/build/index.js:533517` — sweep cadence constants: `$3n = 300_000` ms (5 min interval), `W3n = 3_600_000` ms (1 h recheck cooldown), `Fst = 10` (concurrent batch size).
+- `build-reference/app-extracted/.vite/build/index.js:533520` — `AutoArchiveEngine.start()` schedules the 5-min interval + 30s initial delay.
+- `build-reference/app-extracted/.vite/build/index.js:533537` — `sweep()` gates on `Qi("ccAutoArchiveOnPrClose")` and archives sessions whose `prState` lowercases to `merged` or `closed` (`D3A` predicate at line 533607).
+- `build-reference/app-extracted/.vite/build/index.js:533571` — `archiveSession(..., { cleanupWorktree: true })` removes the worktree alongside the archive.
 
 ## T31 — Side chat opens
 
@@ -95,6 +120,12 @@ Tests covering the dev-server preview pane, PR monitoring, worktree isolation, a
 
 **References:** [Ask a side question](https://code.claude.com/docs/en/desktop#ask-a-side-question-without-derailing-the-session)
 
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:487025` — side-chat system-prompt suffix: "You are running in a side chat — a lightweight fork… nothing you say here lands in the main transcript."
+- `build-reference/app-extracted/.vite/build/index.js:487265` — `this.sideChats = new Map()` per-session fork registry.
+- `build-reference/app-extracted/.vite/build/index.js:491658` — `startSideChat()` implementation; emits `side_chat_ready` / `side_chat_assistant` / `side_chat_turn_end` / `side_chat_closed` / `side_chat_error` events.
+- `build-reference/app-extracted/.vite/build/mainView.js:7506` — preload IPC bridges: `startSideChat`, `sendSideChatMessage`, `stopSideChat` (the renderer SPA wires `Ctrl+;` / `/btw` to these — UI lives in claude.ai's remote bundle, not build-reference).
+
 ## T32 — Slash command menu
 
 **Severity:** Should
@@ -112,3 +143,9 @@ Tests covering the dev-server preview pane, PR monitoring, worktree isolation, a
 **Diagnostics on failure:** Screenshot of slash menu, `ls ~/.claude/skills/`, project `.claude/skills/`, installed plugin manifest, launcher log.
 
 **References:** [Use skills](https://code.claude.com/docs/en/desktop#use-skills)
+
+**Code anchors:**
+- `build-reference/app-extracted/.vite/build/index.js:459463` — `getSupportedCommands({sessionId})` aggregates per-session `slashCommands` + cowork command registry (`p2()`) + built-ins (`Q_t`).
+- `build-reference/app-extracted/.vite/build/index.js:332711` — `slashCommands: Di.array(Di.string()).optional()` schema field on the session record.
+- `build-reference/app-extracted/.vite/build/index.js:377670` — `SkillManager` constructor: `skillDir = <agentDir>/.claude/skills`, `_discoverSkills()` walks project skills.
+- `build-reference/app-extracted/.vite/build/index.js:444678` — private/public skill split under `<skillsRoot>/skills/{private,public}` for plugin-supplied skills.

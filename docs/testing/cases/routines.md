@@ -20,6 +20,10 @@ Tests covering the Routines page, scheduled task firing, catch-up runs after sus
 
 **References:** [Schedule recurring tasks](https://code.claude.com/docs/en/desktop-scheduled-tasks)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:507710` (create payload — `permissionMode`, `model`, `userSelectedFolders`, `useWorktree`, `cronExpression`, `fireAt`); `build-reference/app-extracted/.vite/build/index.js:280299` (`@hourly: "0 * * * *"` preset)
+
+**Inventory anchors:** `root.complementary.button-by-name.routines` (sidebar entry); `root.complementary.button-by-name.routines.main.region.button-by-name.new-routine` (form trigger); siblings `…button-by-name.all`, `…button-by-name.calendar` (list-view tabs). Preset list (Hourly/Daily/etc.) lives inside the New-routine modal and is not in the idle-state inventory — re-capture with the modal open to anchor.
+
 ## T27 — Scheduled task fires and notifies
 
 **Severity:** Critical
@@ -37,6 +41,8 @@ Tests covering the Routines page, scheduled task firing, catch-up runs after sus
 **Diagnostics on failure:** Launcher log, screenshot of sidebar, `gdbus call --session --dest=org.freedesktop.Notifications --object-path=/org/freedesktop/Notifications --method=org.freedesktop.DBus.Introspectable.Introspect` (verify daemon present), task SKILL.md content under `~/.claude/scheduled-tasks/<task-name>/`.
 
 **References:** [How scheduled tasks run](https://code.claude.com/docs/en/desktop-scheduled-tasks#how-scheduled-tasks-run)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:282332` (`runNow(A)` — manual dispatch); `build-reference/app-extracted/.vite/build/index.js:512837` (`Rc.showNotification(...,scheduled-${l},...)` — desktop notification on completion); `build-reference/app-extracted/.vite/build/index.js:282654` (`getJitterSecondsForTask` — deterministic per-task offset via `v2r(A, n*60)`, capped by `dispatchJitterMaxMinutes` default 10)
 
 ## T28 — Scheduled task catch-up after suspend
 
@@ -57,6 +63,8 @@ Tests covering the Routines page, scheduled task firing, catch-up runs after sus
 
 **References:** [Missed runs](https://code.claude.com/docs/en/desktop-scheduled-tasks#missed-runs)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:281695` (`R2r` — walks back from now, capped at `10080 * 60 * 1e3` ms = 7 days, returns at most one missed slot, dedupes by `IfA` bucket-key); `build-reference/app-extracted/.vite/build/index.js:281942` (`scheduledTaskPostWakeDelayMs` default 60000 ms — gates dispatch after `powerMonitor.on("resume")`); `build-reference/app-extracted/.vite/build/index.js:282569` (catch-up branch: `c ? 0 : this.getJitterSecondsForTask(o.id)` — missed-slot dispatch skips jitter)
+
 ## S19 — `CLAUDE_CONFIG_DIR` redirects scheduled-task storage
 
 **Severity:** Could
@@ -74,6 +82,8 @@ Tests covering the Routines page, scheduled task firing, catch-up runs after sus
 **Diagnostics on failure:** `ls -la ${CLAUDE_CONFIG_DIR}/scheduled-tasks/` and `~/.claude/scheduled-tasks/`, launcher log, env dump.
 
 **References:** [Manage scheduled tasks](https://code.claude.com/docs/en/desktop-scheduled-tasks#manage-scheduled-tasks)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:283108` (`cE()` — resolves `process.env.CLAUDE_CONFIG_DIR ?? ~/.claude`, handles `~` prefix); `build-reference/app-extracted/.vite/build/index.js:283118` (`Tce()` — returns `${cE()}/scheduled-tasks`); `build-reference/app-extracted/.vite/build/index.js:488317` and `:509032` (call sites passing `taskFilesDir: Tce()` into the scheduled-tasks substrate)
 
 ## S20 — "Keep computer awake" inhibits idle suspend
 
@@ -93,6 +103,8 @@ Tests covering the Routines page, scheduled task firing, catch-up runs after sus
 
 **References:** [How scheduled tasks run](https://code.claude.com/docs/en/desktop-scheduled-tasks#how-scheduled-tasks-run)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:241897` (`hA.powerSaveBlocker.start("prevent-app-suspension")` — single block call, ref-counted by `PhA` Set); `build-reference/app-extracted/.vite/build/index.js:241905` (`hA.powerSaveBlocker.stop(BP)` when last claim drops); `build-reference/app-extracted/.vite/build/index.js:241909` (settings binding: `PHe = "keepAwakeEnabled"`); `build-reference/app-extracted/.vite/build/index.js:241914` (`vy.on("keepAwakeEnabled", YHe)` — toggle observer)
+
 ## S21 — Lid-close still suspends per OS policy
 
 **Severity:** Critical
@@ -109,3 +121,5 @@ Tests covering the Routines page, scheduled task firing, catch-up runs after sus
 **Diagnostics on failure:** `loginctl show-session --property=HandleLidSwitch`, `journalctl --since="-5 minutes"`, the actual `--what=` flags on the Claude-owned inhibitor.
 
 **References:** [How scheduled tasks run](https://code.claude.com/docs/en/desktop-scheduled-tasks#how-scheduled-tasks-run)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:241897` (only `"prevent-app-suspension"` is passed to `powerSaveBlocker.start` — Electron maps this to `idle:sleep`); no `handle-lid-switch` / `HandleLidSwitch` token anywhere in `index.js` (verified via `grep -nE 'lid|HandleLidSwitch|handle-lid' index.js`)

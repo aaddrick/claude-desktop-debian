@@ -21,6 +21,10 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 
 **References:** [`docs/learnings/plugin-install.md`](../../learnings/plugin-install.md), [Install plugins](https://code.claude.com/docs/en/desktop#install-plugins)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:507181` (`installPlugin` IPC + gate, with `pluginSource === "remote"` branch and CLI fallback); `:507193` log `[CustomPlugins] installPlugin: attempting remote API install`; `:465816` `dx()` returns `~/.claude/plugins`; `:465822` `installed_plugins.json` (idempotency record).
+
+**Inventory anchor:** `…customize.main.navigation.button-by-name.add-plugin` (role `button`, label `Add plugin`); sibling `…button-by-name.browse-plugins` (label `Browse plugins`). Both are persistent in the Customize panel — anchors the entry-point click chain.
+
 ## T33 — Plugin browser
 
 **Severity:** Should
@@ -39,6 +43,10 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 **Diagnostics on failure:** Screenshot of plugin browser, network captures, launcher log, `~/.claude/plugins/` listing.
 
 **References:** [Install plugins](https://code.claude.com/docs/en/desktop#install-plugins)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:71392` (`CustomPlugins.listMarketplaces` IPC); `:71534` (`listAvailablePlugins` IPC); `:507176` (`listMarketplaces` main-process handler); `:496236` deep-link route `plugins/new` opens the browser surface.
+
+**Inventory anchor:** `…customize.main.navigation.button-by-name.browse-plugins` (role `button`, label `Browse plugins`); sibling `…link-by-name.connectors` (role `link`, label `Connectors`). The browser surface itself (marketplace listings, install button) appears under a child dialog not captured at idle — re-capture with the dialog open to anchor those.
 
 ## T35 — MCP server config picked up
 
@@ -59,6 +67,8 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 
 **References:** [MCP servers: desktop chat app vs Claude Code](https://code.claude.com/docs/en/desktop#shared-configuration), [`docs/learnings/plugin-install.md`](../../learnings/plugin-install.md)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:215418` (Code-tab loads `<project>/.mcp.json` per scanned dir); `:176766` reads `~/.claude.json`; `:489098` Code-session passes `settingSources: ["user", "project", "local"]` to the agent SDK; `:130821` `claude_desktop_config.json` is the chat-tab path constant (separate userData dir at `:130829` `kee()`), confirming the two trees do not overlap.
+
 ## T36 — Hooks fire
 
 **Severity:** Critical
@@ -77,6 +87,8 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 **Diagnostics on failure:** Hook script stderr, marker file presence, launcher log, settings file content, Verbose transcript output.
 
 **References:** [Shared configuration](https://code.claude.com/docs/en/desktop#shared-configuration)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:489098` Code-session sets `settingSources: ["user", "project", "local"]` (agent SDK reads `~/.claude/settings.json` hooks from this); `:455717` built-in `PreToolUse` hooks registry the runtime extends; `:455819` `UserPromptSubmit`; `:465680` `PostToolUse`; `:465754` `Stop`; `:493411` runtime emits `hook_started` / `hook_progress` / `hook_response` for `SessionStart` (Verbose transcript path).
 
 ## T37 — `CLAUDE.md` memory loads
 
@@ -98,6 +110,8 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 
 **References:** [Shared configuration](https://code.claude.com/docs/en/desktop#shared-configuration)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:259691` working-dir scan reads `CLAUDE.md` and `.claude/CLAUDE.md`; `:455188` global account memory `zhA(accountId, orgId)` is copied to the per-session `.claude/CLAUDE.md` at session start (`[GlobalMemory] Copied CLAUDE.md`); `:283107` `cE()` resolves `CLAUDE_CONFIG_DIR` or `~/.claude`, the dir whose `CLAUDE.md` the agent SDK loads via `settingSources: ["user", ...]` (see T36 anchor at `:489098`).
+
 ## S27 — Plugins install per-user, not into system paths
 
 **Severity:** Should
@@ -116,6 +130,8 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 
 **References:** [Install plugins](https://code.claude.com/docs/en/desktop#install-plugins)
 
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:283107` `cE()` resolves the config root to `CLAUDE_CONFIG_DIR` or `~/.claude` — never `/usr`; `:465815` `dx()` returns `<cE()>/plugins`; `:465821`/`:465824`/`:465827` `installed_plugins.json`, `known_marketplaces.json`, `marketplaces/` all sit under `dx()`. No system-path writes in the install path.
+
 ## S28 — Worktree creation surfaces clear error on read-only mounts
 
 **Severity:** Could
@@ -133,3 +149,5 @@ Tests covering the Anthropic & Partners plugin install flow, the plugin browser,
 **Diagnostics on failure:** `mount | grep <project-path>`, `git worktree add` direct invocation (does it fail the same way?), launcher log, screenshot of error dialog.
 
 **References:** [Work in parallel with sessions](https://code.claude.com/docs/en/desktop#work-in-parallel-with-sessions)
+
+**Code anchors:** `build-reference/app-extracted/.vite/build/index.js:462841` worktree parent dir is `<repo>/.claude/worktrees` (or `chillingSlothLocation.customPath` override at `:462836`); `:462928` `git worktree add` failure path returns `null` after `R.error("Failed to create git worktree: …")`; `:462760` `Sbn()` classifies "Permission denied" / "Access is denied" / "could not lock config file" as `"permission-denied"` (the read-only-mount taxonomy bucket).

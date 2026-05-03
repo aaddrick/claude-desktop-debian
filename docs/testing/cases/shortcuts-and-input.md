@@ -2,7 +2,7 @@
 
 Tests covering URL handling, the Quick Entry global shortcut, and DE-specific shortcut/input failure modes. See [`../matrix.md`](../matrix.md) for status.
 
-## T05 — URL handler opens claude.ai links in-app
+## T05 — `claude://` URL handler opens links in-app
 
 **Severity:** Smoke
 **Surface:** URL handler / xdg-open
@@ -10,14 +10,15 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Issues:** —
 
 **Steps:**
-1. With Claude Desktop running, in another app run `xdg-open https://claude.ai/chat/...` (or click a `claude.ai` link in a browser/terminal).
+1. With Claude Desktop running, in another app run `xdg-open 'claude://chat/new?q=hello'` (or click a `claude://` link in a browser/terminal).
 2. Observe.
 
-**Expected:** Link opens inside the running Claude Desktop window — no new browser tab, no crash, no error dialog.
+**Expected:** Link is delivered to the running Claude Desktop process — no new browser tab, no crash, no error dialog. (Upstream's `claudeURLHandler` only accepts the `claude:`, `claude-dev:`, `claude-nest:`, `claude-nest-dev:`, `claude-nest-prod:` schemes; bare `https://claude.ai/...` clicks route through the user's default browser, not Claude Desktop. The `.desktop` file registers `MimeType=x-scheme-handler/claude` only, matching the upstream contract.)
 
-**Diagnostics on failure:** `xdg-mime query default x-scheme-handler/https`, the registered `.desktop` file content, launcher log, app crash report (if any), `coredumpctl list claude-desktop` (if subprocess died — see [S06](#s06--url-handler-doesnt-segfault-on-native-wayland)).
+**Diagnostics on failure:** `xdg-mime query default x-scheme-handler/claude`, the registered `.desktop` file content, launcher log, app crash report (if any), `coredumpctl list claude-desktop` (if subprocess died — see [S06](#s06--url-handler-doesnt-segfault-on-native-wayland)).
 
-**References:** —
+**References:** upstream `index.js:495996-496009` (`bEe()` protocol filter), `index.js:524819` (`setAsDefaultProtocolClient("claude")`), `index.js:525140-525148` (macOS `open-url`), `index.js:525162-525172` (Linux/Win `second-instance` argv path), project `scripts/packaging/{deb,rpm,appimage}.sh` (MimeType registration).
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:495996, 524819, 525140, 525162
 
 ## T06 — Quick Entry global shortcut (unfocused)
 
@@ -37,6 +38,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Launcher log (look for `Using X11 backend via XWayland (for global hotkey support)` or portal-shortcut markers), `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`, output of `gdbus call --session --dest=org.freedesktop.portal.Desktop --object-path=/org/freedesktop/portal/desktop --method=org.freedesktop.DBus.Introspectable.Introspect`, the active patch set in `scripts/patches/`.
 
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404), [#393](https://github.com/aaddrick/claude-desktop-debian/issues/393), [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406)
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:499376 (`ort` default accelerator: `"Ctrl+Alt+Space"` non-mac, `"Alt+Space"` on mac), 499416 (`globalShortcut.register`), 525287-525290 (Quick Entry trigger callback registered against `Pw.QUICK_ENTRY`).
 
 ## S06 — URL handler doesn't segfault on native Wayland
 
@@ -56,6 +58,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** Sway capture shows `Failed to connect to Wayland display: No such file or directory (2)` followed by `Segmentation fault` from the URL handler subprocess. The main app process keeps running; the URL handler dies. Not yet filed.
 
 **References:** —
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:495996 (`bEe()` URL handler), 525140-525148 (`open-url` macOS), 525162-525172 (`second-instance` argv path on Linux); project `scripts/launcher-common.sh:96-99` (`--ozone-platform=x11` default), `scripts/launcher-common.sh:41-44` (Niri force-native-Wayland).
 
 ## S07 — `CLAUDE_USE_WAYLAND=1` opt-in path works without crashing
 
@@ -73,6 +76,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Launcher log (confirm Wayland mode active), `--doctor`, full env dump, screenshot of any crash dialog.
 
 **References:** [PR #228](https://github.com/aaddrick/claude-desktop-debian/pull/228), [PR #232](https://github.com/aaddrick/claude-desktop-debian/pull/232)
+**Code anchors:** project `scripts/launcher-common.sh:28-29` (`CLAUDE_USE_WAYLAND=1` opt-out of XWayland), 100-111 (native-Wayland Electron flags: `UseOzonePlatform,WaylandWindowDecorations`, `--ozone-platform=wayland`, `--enable-wayland-ime`, `--wayland-text-input-version=3`, `GDK_BACKEND=wayland`).
 
 ## S09 — Quick window patch runs only on KDE (post-#406 gate)
 
@@ -90,6 +94,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Launcher log, `XDG_CURRENT_DESKTOP`, the patch-gate code path in `scripts/patches/`.
 
 **References:** [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406), [#393](https://github.com/aaddrick/claude-desktop-debian/issues/393)
+**Code anchors:** project `scripts/patches/quick-window.sh:32-42` (KDE-gated `blur()` insertion), 115-125 (KDE-gated focus/visibility check replacement); upstream sites the patch rewrites are around `index.js:515374-515471` (Quick Entry popup construction + handlers).
 
 ## S10 — Quick Entry popup is transparent (no opaque square frame)
 
@@ -107,6 +112,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Screenshot, KDE compositor settings (`kwriteconfig5 --read kwinrc Compositing/Backend`), launcher log, BrowserWindow construction args.
 
 **References:** [#370](https://github.com/aaddrick/claude-desktop-debian/issues/370) (current open report), [#223](https://github.com/aaddrick/claude-desktop-debian/issues/223) (closed predecessor), [PR #244](https://github.com/aaddrick/claude-desktop-debian/pull/244)
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515380 (`transparent: !0`), 515383 (`backgroundColor: "#00000000"`), 515381 (`frame: !1`), 515377 (`skipTaskbar: !0`).
 
 ## S11 — Quick Entry shortcut fires from any focus on Wayland (mutter XWayland key-grab)
 
@@ -127,6 +133,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** Fedora 43 GNOME Wayland reproduces [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404) — mutter doesn't honour the XWayland-side key grab, so the shortcut is focus-bound. On Ubuntu 24.04 GNOME, the [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406) KDE-only gate prevents the regressing patch from running, leaving the older (working) code path active — hence `🔧` on Ubu. The unsolved fix path is [S12](#s12----enable-featuresglobalshortcutsportal-launcher-flag-wired-up-for-gnome-wayland).
 
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404), [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406)
+**Code anchors:** project `scripts/launcher-common.sh:96-99` (XWayland-default `--ozone-platform=x11`); upstream `index.js:499416` (`globalShortcut.register`).
 
 ## S12 — `--enable-features=GlobalShortcutsPortal` launcher flag wired up for GNOME Wayland
 
@@ -146,7 +153,10 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 
 **Currently:** Not yet implemented. Tracking under [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404).
 
+> **⚠ Missing in build 1.5354.0** — `--enable-features=GlobalShortcutsPortal` is not appended by `scripts/launcher-common.sh` for any GNOME Wayland variant. Re-verify after next upstream bump and after #404 lands.
+
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)
+**Code anchors:** project `scripts/launcher-common.sh:59-112` (`build_electron_args` — no `GlobalShortcutsPortal` branch present).
 
 ## S14 — Global shortcuts via XDG portal work on Niri
 
@@ -167,6 +177,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** `Failed to call BindShortcuts (error code 5)` — portal global shortcuts fail on Niri. Different root cause from [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404), same user-visible symptom (Quick Entry shortcut doesn't fire). Not yet filed.
 
 **References:** —
+**Code anchors:** project `scripts/launcher-common.sh:41-44` (Niri force-native-Wayland branch); upstream `index.js:499416` (`globalShortcut.register`, which on native Wayland routes through Electron's `xdg-desktop-portal` `BindShortcuts` path inside Chromium).
 
 ## S29 — Quick Entry popup is created lazily on first shortcut press (closed-to-tray sanity)
 
@@ -186,6 +197,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Launcher log, `~/.config/Claude/logs/`, `XDG_CURRENT_DESKTOP`, screenshot of empty desktop after shortcut press.
 
 **References:** [#393](https://github.com/aaddrick/claude-desktop-debian/issues/393), upstream `index.js:515375-515397`
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515374 (`if (!Ko ...) Ko = new BrowserWindow(...)` lazy construction guard), 515394 (`preload: ".vite/build/quickWindow.js"`), 515438 (`Ko.loadFile(".vite/renderer/quick_window/quick-window.html")`).
 
 ## S30 — Quick Entry shortcut becomes a no-op after full app exit
 
@@ -204,6 +216,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** `pgrep -af app.asar` output, `journalctl --user -e -n 100`, OS-level shortcut bindings (`gsettings list-recursively | grep -i shortcut`).
 
 **References:** upstream `index.js:499416` (registration site)
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:499398-499428 (`nG()` register/unregister wrapper — passing `null` accelerator unregisters), 499416 (`hA.globalShortcut.register`), 499403 (`hA.globalShortcut.unregister`).
 
 ## S31 — Quick Entry submit makes the new chat reachable from any main-window state
 
@@ -224,6 +237,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** On non-KDE rows, the post-#406 KDE-only patch gate leaves the upstream code path (`isFocused()` short-circuit) active. Andrej730's #393 GNOME repro shows the stale-`isFocused()` bug can still suppress `show()` in tray-only state. See [S32](#s32--quick-entry-submit-on-gnome-mutter-doesnt-trip-electron-stale-isfocused).
 
 **References:** [#393](https://github.com/aaddrick/claude-desktop-debian/issues/393), upstream `index.js:515566, 515599, 105164-171`
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515567 (`h1() || ut.show(), ut.focus()` in `gHn()` existing-chat path), 515598-515599 (`h1() || ut.show(), ut.focus()` in `ynt()` new-chat path), 105164-105171 (`h1()` returns `ut.isFocused() || mainView.webContents.isFocused()`).
 
 ## S32 — Quick Entry submit on GNOME mutter doesn't trip Electron stale-`isFocused()`
 
@@ -245,6 +259,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** Open. The KDE-only gate from PR #406 leaves this path unfixed on GNOME. Resolution requires either (a) widening the patch to all DEs by dropping the `isFocused()` fallback in the patched code, or (b) waiting for an upstream Electron fix to `isFocused()` on Linux.
 
 **References:** [#393](https://github.com/aaddrick/claude-desktop-debian/issues/393) (Andrej730's diagnosis with `eU()` logging output)
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:105164-105171 (`h1()` body — the exact short-circuit Andrej730 instrumented), 515567 + 515598 (the two `h1() || ut.show()` call sites the suppression hits).
 
 ## S33 — Quick Entry transparent rendering tracked against bundled Electron version
 
@@ -264,6 +279,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** Per @noctuum's bisect, 41.0.4 introduced the regression. No upstream fix shipped as of last check.
 
 **References:** [#370](https://github.com/aaddrick/claude-desktop-debian/issues/370), upstream `index.js:515380, 515383` (already sets `transparent: true` and `backgroundColor: "#00000000"`)
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515380 (`transparent: !0`), 515383 (`backgroundColor: "#00000000"`), 515374-515397 (popup `BrowserWindow` construction args block, including `frame: !1`, `hasShadow: Zr`, `type: Zr ? "panel" : void 0`).
 
 ## S34 — Quick Entry shortcut focuses fullscreen main window instead of showing popup
 
@@ -281,6 +297,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Screenshot, launcher log, confirm fullscreen state via `wmctrl -l -G` / Wayland equivalent.
 
 **References:** upstream `index.js:525287-525290`
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:525287-525290 (Quick Entry callback: `ut && !ut.isDestroyed() && ut.isFullScreen() ? (ut.focus(), ide()) : Yri()`), 515234-515241 (`ide()` — `show()` + `focus()` + `webContents.send(TEe.cmdK)` for the cmd-K dispatch).
 
 ## S35 — Quick Entry popup position is persisted across invocations and across app restarts
 
@@ -300,6 +317,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Diagnostics on failure:** Captured coordinates pre/post-restart, content of any persisted settings file (project's settings storage location varies by OS).
 
 **References:** upstream `index.js:515491-515526`
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515444-515461 (`Ko.on("hide", …)` persists `quickWindowPosition` via `an.set(...)`), 515491-515521 (`aHn()` resolves saved monitor by `label + bounds.width + bounds.height`, falling back to label-only or proportional placement), 515489 (`Ko.setPosition(...)` after show).
 
 ## S36 — Quick Entry popup falls back to primary display when saved monitor is gone
 
@@ -320,6 +338,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Skip when:** Single-monitor VM or host. Not part of the [§ Mandatory matrix](../quick-entry-closeout.md#mandatory-matrix); skip with `-` in the dashboard.
 
 **References:** upstream `index.js:515502`
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515502 (`return cHn();` early-return when no saved position), 515523-515527 (`cHn()` centres popup on `screen.getPrimaryDisplay()` workArea), 515514-515515 (`label`-only match fallback before primary-display fallback).
 
 ## S37 — Quick Entry popup remains functional after main window destroy
 
@@ -343,3 +362,4 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** Likely unreachable on Linux without a debug build, due to project's hide-to-tray override of the X button. Mark `-` (N/A) on rows where the destroy path can't be triggered.
 
 **References:** upstream `index.js:515595`
+**Code anchors:** build-reference/app-extracted/.vite/build/index.js:515595-515602 (`setTimeout(() => { !ut || ut.isDestroyed() || (h1() || ut.show(), ut.focus(), Qe == null || Qe.webContents.focus(), iri()); }, 0)` — guard skips show/focus block on destroy without throwing); 515547 (companion guard in `nde()` chat-id submit path: `else if (ut && !ut.isDestroyed())`).
