@@ -1,17 +1,23 @@
-// Grounding probe — connects to a running Claude Desktop with the
-// main-process inspector open (launchClaude opens port 9229 via SIGUSR1;
-// or pass --inspect=9229 in a manual run) and dumps runtime state that
-// backs the load-bearing claims in docs/testing/cases/. Output is keyed
-// by test-ID so the next grounding sweep can diff captures across
+// Grounding probe — dumps Claude Desktop runtime state that backs the
+// load-bearing claims in docs/testing/cases/. Output is keyed by
+// test-ID so the next grounding sweep can diff captures across
 // upstream versions.
 //
-// Read-only / non-destructive — observes Electron API state, never
-// clicks UI or fires shortcuts. Designed to run as a batch alongside
-// the static grep pass, not to replace it.
+// Two modes:
+//   - attach (default): connect to an already-running app on port 9229
+//     (manual `--inspect=9229` run, or a launchClaude() instance that
+//     called attachInspector()).
+//   - --launch: spin up a fresh isolated instance via launchClaude(),
+//     capture, tear down. Self-contained — usable in CI.
+//
+// Mostly read-only; --include-synthetic enables short-lived state
+// changes (powerSaveBlocker start+stop) to close API-only gaps.
 //
 // Usage:
 //   cd tools/test-harness
-//   npx tsx grounding-probe.ts                                       # → /tmp/grounding-probe.json
+//   npx tsx grounding-probe.ts                                          # attach :9229
+//   npx tsx grounding-probe.ts --launch                                 # self-contained
+//   npx tsx grounding-probe.ts --launch --include-synthetic
 //   npx tsx grounding-probe.ts --out ../../docs/testing/cases-grounding-runtime.json
 //   npx tsx grounding-probe.ts --port 9229 --out path/to/file.json
 //
@@ -21,6 +27,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { InspectorClient } from './src/lib/inspector.js';
+import { launchClaude } from './src/lib/electron.js';
 
 // Accelerators we expect to be registered on Linux. T06 = Quick Entry
 // default. S31/S32 — fullscreen + cmd-K dispatch. Extend per case docs.
@@ -51,7 +58,14 @@ interface GroundingCapture {
 	gaps: string[];
 }
 
-async function capture(client: InspectorClient): Promise<GroundingCapture> {
+interface CaptureOptions {
+	includeSynthetic: boolean;
+}
+
+async function capture(
+	client: InspectorClient,
+	opts: CaptureOptions,
+): Promise<GroundingCapture> {
 	const gaps: string[] = [];
 
 	// App metadata — every test references at least one of these.
@@ -174,16 +188,47 @@ async function capture(client: InspectorClient): Promise<GroundingCapture> {
 	`);
 
 	// Powermonitor / suspend inhibit — S20. powerSaveBlocker has no
-	// public enumeration API; we can only confirm the module is loaded.
-	// Real verification requires either a synthetic start+stop probe
-	// (destructive — would briefly inhibit suspend) or a private-state
-	// scrape of the `PhA` Set referenced at index.js:241897. Flagged
-	// as a gap so the next sweep can decide whether to add a synthetic
-	// probe or pin the minified name.
-	gaps.push(
-		'S20: no public API for active powerSaveBlocker enumeration. ' +
-			'Add synthetic start+stop probe or pin `PhA` Set name (index.js:241897).',
-	);
+	// public enumeration API. Synthetic probe (gated behind
+	// --include-synthetic) starts a blocker, reads isStarted, stops
+	// immediately. Brief inhibit (~ms) is harmless; what we get back
+	// is empirical proof the API path is alive on this host. Doesn't
+	// verify the case-doc claim that `keepAwakeEnabled` setting toggles
+	// trigger this — that requires correlating settings IO with the
+	// `PhA` Set at index.js:241897, which depends on minified-name
+	// stability and is left to the next sweep.
+	let powerSaveBlocker: {
+		apiAvailable: boolean;
+		startWorks: boolean;
+		idType: string;
+		probeError: string | null;
+	} | null = null;
+	if (opts.includeSynthetic) {
+		powerSaveBlocker = await client.evalInMain(`
+			const { powerSaveBlocker } = process.mainModule.require('electron');
+			let id = null, started = false, probeError = null;
+			try {
+				id = powerSaveBlocker.start('prevent-app-suspension');
+				started = powerSaveBlocker.isStarted(id);
+			} catch (e) {
+				probeError = String(e && e.message);
+			} finally {
+				if (id !== null) {
+					try { powerSaveBlocker.stop(id); } catch (_) {}
+				}
+			}
+			return {
+				apiAvailable: true,
+				startWorks: started,
+				idType: typeof id,
+				probeError,
+			};
+		`);
+	} else {
+		gaps.push(
+			'S20: powerSaveBlocker not probed (skip-synthetic). ' +
+				'Re-run with --include-synthetic to confirm API path.',
+		);
+	}
 
 	// T22 PR toolbar / T31 side chat / T32 slash menu / T39 /desktop —
 	// these are renderer-side surfaces. Reachable via
@@ -216,6 +261,7 @@ async function capture(client: InspectorClient): Promise<GroundingCapture> {
 			T09: loginItems,
 			T23: notifications,
 			S18: safeStorage,
+			S20: powerSaveBlocker,
 			S22: {
 				platform: appMeta.platform,
 				expectedDisabledOnLinux: appMeta.platform === 'linux',
@@ -232,33 +278,75 @@ async function capture(client: InspectorClient): Promise<GroundingCapture> {
 	};
 }
 
-function parseArgs(argv: string[]): { port: number; out: string } {
+interface ParsedArgs {
+	port: number;
+	out: string;
+	launch: boolean;
+	includeSynthetic: boolean;
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
+	const flags = new Set<string>();
 	const args = new Map<string, string>();
-	for (let i = 2; i < argv.length; i += 2) {
-		const k = argv[i];
-		const v = argv[i + 1];
-		if (k && v) args.set(k.replace(/^--/, ''), v);
+	for (let i = 2; i < argv.length; i++) {
+		const tok = argv[i];
+		if (!tok || !tok.startsWith('--')) continue;
+		const key = tok.replace(/^--/, '');
+		const next = argv[i + 1];
+		if (next && !next.startsWith('--')) {
+			args.set(key, next);
+			i++;
+		} else {
+			flags.add(key);
+		}
 	}
 	return {
 		port: Number(args.get('port') ?? 9229),
 		out: args.get('out') ?? '/tmp/grounding-probe.json',
+		launch: flags.has('launch'),
+		includeSynthetic: flags.has('include-synthetic'),
 	};
 }
 
 async function main() {
-	const { port, out } = parseArgs(process.argv);
-	const client = await InspectorClient.connect(port);
+	const parsed = parseArgs(process.argv);
+	const { out, launch, includeSynthetic } = parsed;
+
+	let client: InspectorClient;
+	let cleanup: () => Promise<void>;
+
+	if (launch) {
+		// Self-contained: fresh isolation per run, tear down on exit.
+		// 'mainVisible' is the lowest level that gives us the inspector
+		// without waiting on claude.ai network load. Sufficient for
+		// every probe in capture() — none touch renderer DOM.
+		const app = await launchClaude();
+		const ready = await app.waitForReady('mainVisible');
+		client = ready.inspector;
+		cleanup = async () => {
+			client.close();
+			await app.close();
+		};
+	} else {
+		client = await InspectorClient.connect(parsed.port);
+		cleanup = async () => {
+			client.close();
+		};
+	}
+
 	try {
-		const result = await capture(client);
+		const result = await capture(client, { includeSynthetic });
 		writeFileSync(out, JSON.stringify(result, null, 2));
 		console.log(
 			`grounding-probe: wrote ${out} ` +
 				`(${result.ipcInvokeChannels.length} invoke channels, ` +
 				`${result.webContents.length} webContents, ` +
-				`${result.gaps.length} gaps)`,
+				`${result.gaps.length} gaps` +
+				`${launch ? ', --launch' : ''}` +
+				`${includeSynthetic ? ', synthetic' : ''})`,
 		);
 	} finally {
-		client.close();
+		await cleanup();
 	}
 }
 
