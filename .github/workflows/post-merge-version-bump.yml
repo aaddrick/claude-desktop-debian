@@ -1,0 +1,79 @@
+name: Post-Merge Version Bump
+run-name: >-
+  Post-merge version bump (PR #${{ github.event.pull_request.number || 'manual' }})
+
+# Bumps the REPO_VERSION repo variable patch component by 1 on every
+# merged PR to main. Tagging stays manual — see CLAUDE.md "Versioning"
+# for the `git tag v${REPO_VERSION}+claude${CLAUDE_DESKTOP_VERSION}`
+# flow that triggers a release build.
+
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Read REPO_VERSION but don't write the bump"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Global serialization: gh's variable API has no compare-and-swap, so
+# two near-simultaneous merges could both read the pre-bump value and
+# both write the same +1, losing one increment. Group across all
+# merges, not per-PR.
+concurrency:
+  group: post-merge-version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump REPO_VERSION
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'main')
+
+    steps:
+      - name: Bump REPO_VERSION
+        env:
+          # GH_PAT is required because the default GITHUB_TOKEN can't
+          # write Actions repo variables. Same secret as
+          # check-claude-version.yml. No checkout step — the bump
+          # never touches the working tree, so the PAT's scope is
+          # only exercised against the variables API here.
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          current=$(gh variable get REPO_VERSION \
+            --repo "${GITHUB_REPOSITORY}")
+
+          if [[ -z "${current}" ]]; then
+            echo "::error::REPO_VERSION variable is empty or unset"
+            exit 1
+          fi
+          if [[ ! "${current}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::REPO_VERSION '${current}' is not in X.Y.Z form"
+            exit 1
+          fi
+
+          IFS='.' read -r major minor patch <<<"${current}"
+          new_version="${major}.${minor}.$((patch + 1))"
+
+          echo "REPO_VERSION: ${current} -> ${new_version}"
+
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "::notice::dry-run requested; not writing"
+            exit 0
+          fi
+
+          gh variable set REPO_VERSION \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "${new_version}"
+
+          echo "::notice::REPO_VERSION bumped to ${new_version}"
