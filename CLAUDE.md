@@ -17,6 +17,7 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 - [`linux-topbar-shim.md`](docs/learnings/linux-topbar-shim.md) — why claude.ai's in-app topbar is missing on Linux, the four gates that hide it, why the upstream `frame:false` + WCO config has unclickable buttons on X11 (Chromium-level implicit drag region), and the resolution: hybrid mode (system frame + UA-spoof shim → stacked layout, full button functionality)
 - [`test-harness-electron-hooks.md`](docs/learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps are silently bypassed by `frame-fix-wrapper`'s Proxy, and the prototype-method hook pattern that works (used by the Quick Entry test runners)
 - [`test-harness-ax-tree-walker.md`](docs/learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker after the AX-tree migration: AX-enable async lag, navigateTo-to-same-URL no-op, claude.ai's flat `dialog>button[]` lists, the `more options for X` per-row shape, and sidebar virtualization vs the lookup-failure threshold
+- [`patching-minified-js.md`](docs/learnings/patching-minified-js.md) — general lessons from maintaining a long-lived patch suite against an actively re-minified upstream: anchor selection (literals over identifiers), the `\w` vs `$` identifier-capture trap, beautified false-negatives, idempotency guards, multi-site coordination, non-unique anchor disambiguation, and the SHA-256-pinned hypothesis-verification recipe
 
 ## Code Style
 
@@ -125,7 +126,7 @@ Contributors are listed in chronological order: inspirational projects first (k3
 4. **Extract variable names dynamically** rather than hardcoding them. Shared extraction helpers live in `scripts/patches/_common.sh`. Example:
    ```bash
    # Extract function name from a known pattern
-   TRAY_FUNC=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K\w+(?=\(\)\})' app.asar.contents/.vite/build/index.js)
+   TRAY_FUNC=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K[$\w]+(?=\(\)\})' app.asar.contents/.vite/build/index.js)
    ```
 
 5. **Handle optional whitespace** in regex patterns:
