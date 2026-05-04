@@ -120,11 +120,18 @@ against case-doc anchors; consumed by T19 / T20 / T22b / T31b / T33b /
 T38b) plus its session 8 invoke surface (`invokeEipcChannel` — calls
 a registered handler through the renderer-side wrapper at
 `window['claude.<scope>'].<Iface>.<method>`; consumed by T19 / T20 /
-T27 / T33c / T35b / T37b) — and the `createIsolation({ seedFromHost:
-true })` primitive that lets login-required tests run hermetically
-against a copy of the host's signed-in auth state (T07, T11_runtime,
-T16, T19, T20, T21, T22b, T26, T27, T31b, T33b, T33c, T35b, T37b,
-T38b).
+T27 / T33c / T35b / T37b), the `lib/ax.ts` AX-tree substrate
+(`snapshotAx` for one-shot reads + `waitForAxNode` / `waitForAxNodes`
+for predicate-based polling, plus re-exports of `RawElement` /
+`AxNode` / `axTreeToSnapshot` / `waitForAxTreeStable` from
+`explore/walker.ts` so consumers stay inside `lib/`; threshold-
+driven extraction in session 13 once T26 had to duplicate the
+formerly-private `snapshotAx` from `claudeai.ts`; consumed by
+`claudeai.ts` page-objects + T26) — and the
+`createIsolation({ seedFromHost: true })` primitive that lets login-
+required tests run hermetically against a copy of the host's signed-
+in auth state (T07, T11_runtime, T16, T19, T20, T21, T22b, T26, T27,
+T31b, T33b, T33c, T35b, T37b, T38b).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register

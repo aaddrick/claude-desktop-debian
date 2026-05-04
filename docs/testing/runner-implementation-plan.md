@@ -18,6 +18,116 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 13 (1 new primitive, no new spec):** `lib/ax.ts` —
+shared AX-tree loading + traversal substrate, threshold-driven
+extraction. The plan-doc had flagged "Unified DOM/AX loading +
+traversal primitive" in session 12 as the natural priority for
+session 13 if the operon / Tier 3 / schema-rev categories were
+blocked. Phase 0 of session 13 found the debugger detached on the
+dev box (port 9229 not listening), which blocked Categories A and C
+(operon-mode navigation probe + schema-rev for `listRemotePluginsPage`
+/ `listSkillFiles` — both need runtime probing against the user's
+debugger-attached running Claude). Category B (Tier 3 read-only
+reframes) ALSO effectively required the debugger for the smoke-test
+investigation phase. The PRIORITY (DOM unification) primitive
+landed as the strongly-supported alternative — two threshold-
+driven extraction signals (T26 had duplicated `snapshotAx` from
+claudeai.ts, plus user-reported flake in AX-tree queries).
+
+Coverage stays at 74/76 (97%) — primitive-only session, no spec
+landed. The matrix coverage doesn't reflect primitive landings;
+those show up in the `lib/` surface and are picked up by future
+spec consumers.
+
+Two commits on `docs/compat-matrix` expected (SHAs inserted after
+the test-harness commit lands — the user reviews and commits at the
+end of every session):
+
+- TBD — `test(harness): session 13 lib/ax.ts AX substrate primitive`
+  (extracts `snapshotAx` + adds `waitForAxNode` / `waitForAxNodes`;
+  refactors `claudeai.ts` and `T26_routines_page_renders.spec.ts` to
+  consume the shared substrate instead of carrying duplicate
+  implementations; passes typecheck + H01-H03 canaries + T26 +
+  T11_runtime spot-checks on KDE-W).
+
+Session 13 findings + reclassifications:
+
+- **`lib/ax.ts` primitive surface.** Threshold-driven extraction
+  hitting 2 consumers (the formerly-private `snapshotAx` in
+  `claudeai.ts` + the explicit duplicate in T26 noted as
+  "premature abstraction at 1 consumer"). Surface:
+  - `snapshotAx(inspector, opts)` — single AX read with a stability
+    gate. `opts.fast` skips the gate for inside-poll callers
+    (matches the existing internal contract).
+  - `waitForAxNode(inspector, predicate, opts)` — repeatedly
+    snapshot the tree and return the first matching `RawElement`,
+    or null on timeout. Gates on stability once at the start
+    (configurable), then iterates with `fast: true`. Built against
+    the inline polling loops in `CodeTab.activate`, `openPill`,
+    `clickMenuItem`, T26 pre/post-click anchor scans.
+  - `waitForAxNodes(inspector, predicate, opts)` — same shape,
+    returns every match. For consumers that want to enumerate.
+  - Re-exports: `RawElement`, `AxNode`, `axTreeToSnapshot`,
+    `waitForAxTreeStable` — so consumers don't have to reach into
+    `explore/walker.ts` themselves. Walker stays the source of
+    truth for AX-snapshot construction; this file is the runner-
+    facing alias.
+- **Refactor scope was minimal.** `claudeai.ts` swaps its private
+  `snapshotAx` for the shared one (5-line import change). T26
+  drops its inlined helper and imports from `lib/ax.ts`. No
+  call-site rewrites — the predicate-based polling in
+  `CodeTab.activate` / `openPill` / `clickMenuItem` is unchanged
+  this session. Future sessions can opportunistically migrate
+  hand-rolled retry loops to `waitForAxNode` when re-touching
+  those code paths; not forced this session because the call-site
+  retry patterns each carry per-spec budget tuning that the
+  primitive's defaults need to validate against real flake data.
+- **Why no spec landed.** Phase 0 calibration found port 9229
+  detached (Claude was running but debugger wasn't attached via
+  Developer → Enable Main Process Debugger). Categories A and C
+  strictly need runtime probing against the debugger; Category B
+  needs the debugger for the smoke-test verification phase (per
+  session-12 pattern). The PRIORITY primitive build was the
+  highest-impact deliverable that didn't require the debugger —
+  pure static-analysis-driven extraction with two existing
+  consumers as the threshold signal. Primitive-only sessions are
+  in scope per the followup prompt's termination criteria
+  ("Session budget hits ~1 new spec OR one new primitive
+  landing").
+- **What's NOT in `lib/ax.ts`.** Did NOT add a
+  `waitForRenderedSurface(client, surfaceKey)` registry — the
+  plan-doc flag mentioned it but no consumer asks for a named
+  surface anchor today; promote when a third consumer crystallizes
+  with a specific surface name in mind. Did NOT extract T07's
+  CSS-querySelector poll loop — that's a different abstraction
+  (DOM, not AX) with no second consumer signal yet. Did NOT
+  rewrite call-site retry budgets in `claudeai.ts` — the budgets
+  are tuned per-spec and changing them speculatively risks
+  introducing flake rather than removing it.
+- **Pre-existing T16 / T17 flake confirmed unchanged.** Running
+  the full suite found T16 / T17 / T07 / S25 / S29-S31 / etc.
+  failing on KDE-W — these failures are pre-existing on the
+  baseline (verified by stashing the session-13 changes and re-
+  running T16, which still failed with the same
+  `CodeTab.activate: no AX-tree button with accessibleName="Code"
+  found` error). Session 13's primitive doesn't fix the existing
+  flake; it lays groundwork that future sessions can build
+  flake-reduction patches against (e.g. promoting `activateTab`
+  to use `waitForAxNode` with a longer budget instead of a one-
+  shot snapshot would be the next session's natural follow-up).
+
+Tier 2 → Tier 2 candidates remaining for next session: the same
+list as session 12 — operon-mode navigation probe (still needs a
+debugger-attached Claude), schema-rev for `listRemotePluginsPage`
+/ `listSkillFiles` (same), Tier 3 read-only reframes (same). The
+new option for next session is **call-site migration to
+`waitForAxNode`** — promote `activateTab`'s one-shot snapshot to a
+proper retry, give T07's CSS poll a more durable wait shape, etc.
+That's a flake-reduction session shape rather than a coverage-
+expansion shape; the session 13 primitive made it tractable.
+
+---
+
 **Shipped session 12 (1 new spec, no primitive change):** T11_runtime
 (Tier 2 reframe — `seedFromHost` + multi-suffix registration probe
 over five install-flow handlers + dual-handler invocation across two
@@ -1642,35 +1752,22 @@ a primitive that needs a small extension:
   dependent), but if it ever becomes tractable, a
   `lib/displays.ts` mocking `screen.getAllDisplays()` would be
   the entry.
-- **Unified DOM/AX loading + traversal primitive (FLAGGED session
-  12).** Existing wait/traversal primitives are scattered:
-  `electron.ts:waitForReady('userLoaded')` covers the post-login
-  webContents URL transition; `claudeai.ts` page-objects roll their
-  own `retryUntil` for AX-tree node lookups; `eipc.ts:waitForEipcChannel`
-  covers handler registration. The user reports lots of failures
-  because tests aren't waiting long enough for the DOM to render —
-  AX-tree queries fire before the relevant subtree is mounted, and
-  individual specs each pick their own `retryUntil` budget. Symptoms:
-  flaky AX-anchor lookups under cold-cache or slow-machine conditions;
-  premature `waitForReady('userLoaded')` resolution before claude.ai's
-  client-side router has hydrated the surface the test wants to query.
-  Proposed shape: **`lib/dom-ready.ts`** exporting one or more
-  composable wait helpers — e.g. `waitForAxNode(client, selector,
-  opts)` (retryUntil over the AX walker with a sensible default
-  budget, ~15-30s, plus a per-call override), `waitForAxTreeStable(client,
-  opts)` (no node count change for N consecutive ticks — proxy for
-  "render finished"), and `waitForRenderedSurface(client, surfaceKey)`
-  (case-doc-anchored surface markers — a small registry of known
-  anchors per surface so consumers don't roll their own AX selectors).
-  Should also unify the existing `claudeai.ts` activation methods
-  around the new helpers rather than each rolling its own retryUntil.
-  Touches enough specs that a session 13 primitive build would
-  reduce flake across T16/T17/T26/T07/H05 plus any future Code-tab
-  AX work — flag as the main bet for session 13 if the operon /
-  Tier 3 / schema-rev categories are blocked. Pre-work: audit
-  per-spec `retryUntil` budgets and AX-query sites to identify the
-  3-5 most-flaky callsites; build the primitive against those
-  specifically rather than speculatively.
+- **Unified DOM/AX loading + traversal primitive (LANDED session
+  13 as `lib/ax.ts`).** Threshold-driven extraction once T26 had to
+  redefine `snapshotAx` inline (after `claudeai.ts`'s private copy
+  was the only consumer for sessions 1-12). The primitive surface
+  exports `snapshotAx`, `waitForAxNode`, `waitForAxNodes`, plus
+  re-exports of `RawElement` / `AxNode` / `axTreeToSnapshot` /
+  `waitForAxTreeStable` so consumers don't reach into
+  `explore/walker.ts` directly. `claudeai.ts` and T26 both consume
+  the shared substrate; future call-site migrations (e.g.
+  `activateTab` → `waitForAxNode`) are tractable now. The
+  speculative `waitForRenderedSurface(client, surfaceKey)` shape
+  was deliberately NOT shipped — no consumer asks for a named-
+  surface registry today; promote when a third consumer
+  crystallizes with a specific surface name. The CSS-querySelector
+  poll in T07 was deliberately NOT extracted — different
+  abstraction (DOM, not AX), no second consumer signal yet.
 
 ## Open questions for the parent agent
 
