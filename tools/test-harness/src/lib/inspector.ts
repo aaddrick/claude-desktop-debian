@@ -151,6 +151,9 @@ export class InspectorClient {
 	// value. JSON-stringification inside the IIFE dodges the inspector's
 	// Promise-result deep-marshaling quirks (returnByValue produces empty
 	// objects for awaited Promise resolutions on this build).
+	//
+	// Bare `require` is NOT a global in the CDP eval scope — go through
+	// `process.mainModule.require('electron'|'node:fs'|…)` instead.
 	async evalInMain<T = unknown>(body: string, timeoutMs?: number): Promise<T> {
 		const expression =
 			'globalThis.__r = (async () => { ' +

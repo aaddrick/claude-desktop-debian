@@ -104,7 +104,7 @@ test('S25 — safeStorage token round-trip survives app restart', async ({}, tes
 				path: string;
 			}>(`
 				const { safeStorage } = process.mainModule.require('electron');
-				const fs = require('node:fs');
+				const fs = process.mainModule.require('node:fs');
 				const cipher = safeStorage.encryptString(${JSON.stringify(PLAINTEXT)});
 				fs.mkdirSync(${JSON.stringify(isolation.configDir)}, {
 					recursive: true,
@@ -133,7 +133,7 @@ test('S25 — safeStorage token round-trip survives app restart', async ({}, tes
 			// that's harder to distinguish from a cross-restart break.
 			const inSessionRoundTrip = await inspector.evalInMain<string>(`
 				const { safeStorage } = process.mainModule.require('electron');
-				const fs = require('node:fs');
+				const fs = process.mainModule.require('node:fs');
 				const cipher = fs.readFileSync(${JSON.stringify(tokenFile)});
 				return safeStorage.decryptString(cipher);
 			`);
@@ -168,7 +168,7 @@ test('S25 — safeStorage token round-trip survives app restart', async ({}, tes
 
 			decrypted = await inspector.evalInMain<string>(`
 				const { safeStorage } = process.mainModule.require('electron');
-				const fs = require('node:fs');
+				const fs = process.mainModule.require('node:fs');
 				const cipher = fs.readFileSync(${JSON.stringify(tokenFile)});
 				return safeStorage.decryptString(cipher);
 			`);
