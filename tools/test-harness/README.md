@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Seventy-three specs wired (35 cross-env T-tests, 33 env-specific S-tests,
+Seventy-four specs wired (36 cross-env T-tests, 33 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -26,6 +26,7 @@ behind tier classification.
 | [T09](../../docs/testing/cases/platform-integration.md#t09--autostart-via-xdg) | `setLoginItemSettings({ openAtLogin })` writes/removes `$XDG_CONFIG_HOME/autostart/claude-desktop.desktop` | L1 + filesystem |
 | [T10](../../docs/testing/cases/platform-integration.md#t10--cowork-integration) | After H04-style spawn detection, `kill -9` the daemon and confirm a *different* pid respawns within ~20s (Patch 6 cooldown + retry) | pgrep delta + spawn delta |
 | [T11](../../docs/testing/cases/extensibility.md#t11--plugin-install) | Plugin-install code path fingerprints present in bundled `index.js` | file probe |
+| [T11_runtime](../../docs/testing/cases/extensibility.md#t11--plugin-install) | After `seedFromHost` + `userLoaded`, the install-flow eipc surface (`installPlugin`, `uninstallPlugin`, `updatePlugin`, `listInstalledPlugins`, `LocalPlugins/getPlugins` — five-suffix presence probe) is registered on the claude.ai webContents AND BOTH read-side handlers across the two impl objects are callable through the renderer-side wrapper: `CustomPlugins/listInstalledPlugins([])` returns array shape (drives Manage plugins panel), `LocalPlugins/getPlugins()` returns array shape (reads `~/.claude/plugins/installed_plugins.json` per case-doc :465822) — Tier 2 reframe of T11 (case-doc anchor :507181) | L1 (eipc registry + invoke) |
 | [T12](../../docs/testing/cases/platform-integration.md#t12--webgl-warn-only) | `app.getGPUFeatureStatus()` returns a populated object; renderer reached visible | L1 |
 | [T13](../../docs/testing/cases/launch.md#t13--doctor-reports-correct-package-format) | `--doctor` does not false-flag rpm/deb installs as missing-dpkg AppImage | spawn + stdout grep |
 | [T14a](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | `requestSingleInstanceLock` + `'second-instance'` strings in bundled `index.js` (file probe) | file probe |
@@ -121,8 +122,9 @@ a registered handler through the renderer-side wrapper at
 `window['claude.<scope>'].<Iface>.<method>`; consumed by T19 / T20 /
 T27 / T33c / T35b / T37b) — and the `createIsolation({ seedFromHost:
 true })` primitive that lets login-required tests run hermetically
-against a copy of the host's signed-in auth state (T07, T16, T19,
-T20, T22b, T26, T27, T31b, T33b, T33c, T35b, T37b, T38b).
+against a copy of the host's signed-in auth state (T07, T11_runtime,
+T16, T19, T20, T21, T22b, T26, T27, T31b, T33b, T33c, T35b, T37b,
+T38b).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register
@@ -147,7 +149,16 @@ case-doc-anchored write-side surface plus a single foundational
 read-side `LocalSessions/getAll` invocation as the read-side
 surrogate (case-doc connection: integrated terminal and file pane
 both bind to LocalSessions; `getAll` proves the LocalSessions impl
-object is reachable through the renderer wrapper). All wrapper
+object is reachable through the renderer wrapper). T21 and
+T11_runtime extend the dual-invocation pattern: when a case-doc has
+read-side anchors with resolvable arg shapes, invoke the case-doc-
+anchored handlers directly rather than through a foundational
+surrogate (T21: `getConfiguredServices` array + `getAutoVerify`
+boolean on a single Launch impl object; T11_runtime: cross-impl-
+object dual invocation — `CustomPlugins/listInstalledPlugins` array
++ `LocalPlugins/getPlugins` array — proves the install plumbing
+crosses both interfaces intact, strictly stronger than single-
+interface coverage). All wrapper
 invocations use the wrapper exposed by `mainView.js` via
 `contextBridge.exposeInMainWorld` after a top-frame + origin gate
 (`Qc()`: claude.ai / claude.com / preview.* / localhost). Calling

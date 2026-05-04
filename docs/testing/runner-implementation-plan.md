@@ -18,6 +18,110 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 12 (1 new spec, no primitive change):** T11_runtime
+(Tier 2 reframe — `seedFromHost` + multi-suffix registration probe
+over five install-flow handlers + dual-handler invocation across two
+distinct impl objects). First runtime probe for T11 — sibling to the
+existing T11 Tier 1 fingerprint (`T11_plugin_install_fingerprint.spec.ts`,
+session 3). The case-doc anchors `CustomPlugins.installPlugin` at
+index.js:507181 (write-side) plus `installed_plugins.json` at :465822
+(idempotency record) and `dx()` returns `~/.claude/plugins` at :465816.
+Coverage moved from 73/76 (96%) to 74/76 (97%). Passes on KDE-W in
+28.8s (cold).
+
+Two commits on `docs/compat-matrix` expected (SHAs inserted after the
+test-harness commit lands — the user reviews and commits at the end of
+every session):
+
+- TBD — `test(harness): session 12 T11 plugin install runtime`
+  (Tier 2 reframe; multi-suffix `waitForEipcChannels` over the install-
+  flow suffixes — `CustomPlugins/installPlugin` (case-doc :507181) /
+  `uninstallPlugin` / `updatePlugin` / `listInstalledPlugins` /
+  `LocalPlugins/getPlugins` — plus dual `invokeEipcChannel` across
+  TWO impl objects: `CustomPlugins_$_listInstalledPlugins` with
+  `args = [[]]` (empty `egressAllowedDomains` per T33c pattern,
+  returns array — drives Manage plugins panel) and
+  `LocalPlugins_$_getPlugins` with `args = []` (returns array —
+  reads `~/.claude/plugins/installed_plugins.json` per case-doc
+  :465822).
+
+Session 12 findings + reclassifications:
+
+- **`LocalPlugins` registers 15 methods, `CustomPlugins` 16.** Smoke-
+  test on the user's debugger-attached running Claude dumped the full
+  method list. LocalPlugins read-sides (cleanly invocable):
+  `getPlugins` (`[]` → array), `getDownloadedRemotePlugins` (`[]` →
+  array), plus three pluginId-arg read-sides (`getPluginOAuthStatus`,
+  `getPluginCliStatus`, `getPluginShimOps` — all accept any string at
+  position 0, smoke-tested). `listSkillFiles` rejects `[]` then
+  `[cwd]` — needs both `pluginId` AND `skillName` (positional 0+1,
+  not derivable from a fresh isolation). LocalPlugins write-sides:
+  `uploadPlugin`, `deletePlugin`, `setPluginEnabled`,
+  `startPluginOAuthFlow`, `revokePluginOAuth`, `setPluginEnvVars`,
+  `setPluginOAuthClient`, `setPluginShimPermission`,
+  `syncRemotePlugins` (sync may write).
+- **`CustomPlugins` read-sides invocable:** `listMarketplaces` /
+  `listInstalledPlugins` / `listAvailablePlugins` (all need `[[]]` —
+  `egressAllowedDomains` empty array, T33c pattern), `getCachedCommands`
+  / `getInstallCounts` / `getAndClearMigrationIssues` /
+  `listLocalOrgPlugins` (all `[]`), `checkPluginHasLocalChanges` (`[cwd]`
+  → object). `listRemotePluginsPage` rejects every smoke-tested arg
+  shape — needs a numeric `limit` at position 0 (rejection: `Argument
+  "limit" at position 0 ...`); resolvable via grep on the rejection
+  literal if a future test needs paginated remote plugin listings.
+- **Dual-impl-object invocation pattern.** T11_runtime is the first
+  spec to invoke handlers across TWO distinct impl objects in a
+  single test (CustomPlugins + LocalPlugins). Pattern: when the case-
+  doc surface spans two interfaces (here: the install API side and
+  the local-fs storage side), invoke a read-side from each rather
+  than picking one. Strictly stronger than single-interface coverage
+  — proves the install plumbing crosses both impls intact. Mixed-arg-
+  shape (CustomPlugins needs `[[]]`, LocalPlugins needs `[]`) is fine,
+  same as T21's mixed-shape (one returns array, another returns
+  boolean).
+- **No primitive change.** `lib/eipc.ts`'s `waitForEipcChannels` +
+  `invokeEipcChannel` cover T11_runtime unchanged. Investigation
+  budget was ~5 minutes for the smoke-test (15 read-side candidates
+  × 3-5 arg shapes); no bundle-grep needed for any of the candidates
+  used by the spec.
+- **Filename convention.** T11_runtime is a sibling to the existing
+  T11 Tier 1 fingerprint (`T11_plugin_install_fingerprint.spec.ts`)
+  rather than a first-runtime-probe — uses the `_runtime` suffix
+  (no letter), consistent with T19/T20/T21/T26/T27. The "b" / "c"
+  letter convention is reserved for sequencing multiple runtime
+  siblings on the same case-doc (T22 → T22b; T33 → T33b → T33c);
+  T11_runtime is the only runtime sibling to T11, so plain `_runtime`
+  fits.
+
+Tier 2 → Tier 2 candidates remaining for next session: **operon-mode
+navigation probe** (still on the table — session 10 confirmed
+`OperonBootstrap.ensure` registers eagerly but the other 21 wrapper-
+exposed operon interfaces remain registry-unconfirmed; would need an
+operon-mode URL form recovered from the bundle). Beyond that, the
+reframe pool is essentially exhausted — every Tier 1 fingerprint with
+a tractable runtime sibling has been promoted, and the remaining
+deferred items are Tier 3 (login-required write-side flows) or Tier 4
+(out of scope). Next session's natural shape is either:
+
+1. **Operon investigation** (smaller-scope category B from session 12's
+   prompt — bundle grep for operon URL routes + per-URL registry probe).
+2. **Tier 3 read-only reframes** that the harness can construct from
+   existing `seedFromHost` state (e.g. T22's gh PR check monitoring —
+   the `getPrChecks` read-side might be invocable with a non-existent
+   PR number to assert error shape).
+3. **Schema-rev** any of the still-rejecting read-sides surfaced this
+   session (`listRemotePluginsPage`, `listSkillFiles`, the LocalSessions
+   methods that need `cwd` / `config` args) and ship narrowly-scoped
+   Tier 2 invocations if they unblock a case-doc claim.
+
+The primitive surface remains broad enough that consumer-driven
+extensions are the right next move. Coverage at 74/76 (97%) means the
+test budget can shift toward Tier 3 read-only reframes or shoring up
+the existing test-harness's documentation / drift-detection rather
+than chasing more Tier 2 promotions.
+
+---
+
 **Shipped session 11 (1 new spec, no primitive change):** T21 (Tier 2
 reframe — `seedFromHost` + multi-suffix registration probe over five
 case-doc-anchored Launch handlers + dual-handler invocation of the
@@ -1153,10 +1257,13 @@ filesystem reads, `execFile` shells) suffice. Cheap wins.
   and `installed_plugins.json` strings. This is the file-level
   "install code path is wired" signal — the end-to-end install flow
   with a real plugin click chain is Tier 3 (T33). T11's case-doc
-  smoke claim is satisfied by the plumbing being present. Could
-  reasonably be argued into Tier 3; kept here because the existing
-  case-doc anchors are all upstream-code strings and a pure asar
-  probe matches the H02/H03 shape.
+  smoke claim is satisfied by the plumbing being present. **Tier 2
+  runtime sibling shipped session 12** (`T11_runtime.spec.ts`) — five-
+  suffix registration probe over `CustomPlugins/installPlugin` (case-
+  doc anchor :507181) + `uninstallPlugin` + `updatePlugin` +
+  `listInstalledPlugins` + `LocalPlugins/getPlugins`, plus dual
+  invocation across both impl objects (CustomPlugins +
+  LocalPlugins). Tier 1 fingerprint kept as the cheap drift sentinel.
 - **T14 — Multi-instance behavior (asar fingerprint).** Template:
   `H03`. Layer: file probe. Assertion: `requestSingleInstanceLock`
   + `second-instance` listener strings present in `index.js`. The
@@ -1535,6 +1642,35 @@ a primitive that needs a small extension:
   dependent), but if it ever becomes tractable, a
   `lib/displays.ts` mocking `screen.getAllDisplays()` would be
   the entry.
+- **Unified DOM/AX loading + traversal primitive (FLAGGED session
+  12).** Existing wait/traversal primitives are scattered:
+  `electron.ts:waitForReady('userLoaded')` covers the post-login
+  webContents URL transition; `claudeai.ts` page-objects roll their
+  own `retryUntil` for AX-tree node lookups; `eipc.ts:waitForEipcChannel`
+  covers handler registration. The user reports lots of failures
+  because tests aren't waiting long enough for the DOM to render —
+  AX-tree queries fire before the relevant subtree is mounted, and
+  individual specs each pick their own `retryUntil` budget. Symptoms:
+  flaky AX-anchor lookups under cold-cache or slow-machine conditions;
+  premature `waitForReady('userLoaded')` resolution before claude.ai's
+  client-side router has hydrated the surface the test wants to query.
+  Proposed shape: **`lib/dom-ready.ts`** exporting one or more
+  composable wait helpers — e.g. `waitForAxNode(client, selector,
+  opts)` (retryUntil over the AX walker with a sensible default
+  budget, ~15-30s, plus a per-call override), `waitForAxTreeStable(client,
+  opts)` (no node count change for N consecutive ticks — proxy for
+  "render finished"), and `waitForRenderedSurface(client, surfaceKey)`
+  (case-doc-anchored surface markers — a small registry of known
+  anchors per surface so consumers don't roll their own AX selectors).
+  Should also unify the existing `claudeai.ts` activation methods
+  around the new helpers rather than each rolling its own retryUntil.
+  Touches enough specs that a session 13 primitive build would
+  reduce flake across T16/T17/T26/T07/H05 plus any future Code-tab
+  AX work — flag as the main bet for session 13 if the operon /
+  Tier 3 / schema-rev categories are blocked. Pre-work: audit
+  per-spec `retryUntil` budgets and AX-query sites to identify the
+  3-5 most-flaky callsites; build the primitive against those
+  specifically rather than speculatively.
 
 ## Open questions for the parent agent
 
