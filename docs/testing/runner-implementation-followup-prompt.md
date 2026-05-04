@@ -1,118 +1,139 @@
-# test-harness runner implementation — session 15 prompt
+# test-harness runner implementation — session 16 prompt
 
 This file is meant to be **copied verbatim into a fresh Claude Code
 session** as the initial user message. Don't paraphrase it; the
 orchestration depends on the exact directives below.
 
 You're picking up after a runner-implementation session that landed 1
-call-site migration (no new spec, no new primitive). Session 14 was
-a flake-reduction session: Phase 0 calibration found the debugger
-detached on the dev box (port 9229 not listening — Claude was not
-running, or running but Developer → Enable Main Process Debugger had
-not been clicked), which blocked Categories A (operon-mode
-navigation probe), B (Tier 3 read-only reframes), and C (schema-rev
-for `listRemotePluginsPage` / `listSkillFiles`) — all needing runtime
-probing against debugger-attached Claude. Session 14 pivoted to the
-PRIORITY Category D (call-site migration to `waitForAxNode`), which
-was tractable without the debugger because the migration is pure
-shape-only refactor against existing `lib/ax.ts` substrate. Coverage
-unchanged at 74/76 (97%) — migration sessions don't move the spec
-count, but T16's pre-existing failure mode (`no AX-tree button with
-accessibleName="Code" found`) is fixed by the migration. Two commits
-on `docs/compat-matrix` expected (autonomous orchestration commits +
-pushes — the user reviews after the session):
+structural fix (T17 migrated from legacy `CLAUDE_TEST_USE_HOST_CONFIG=1`
+auth path to `seedFromHost: true`, no new spec, no AX migration).
+Session 15 was an investigation session: Phase 0 calibration found
+port 9229 listening BUT the attached process was a leaked test
+isolation at `claude.ai/login` rather than the user's auth-bearing
+Claude — every webContents URL on that process was either `find_in_page`,
+`/login`, or `main_window/index.html`, and the user-data-dir was
+`/tmp/claude-test-*`. That made Categories A (operon-mode probe) / B
+(Tier 3 read-only reframes) / C (schema-rev) all soft-blocked: the
+debugger was technically attached, but to the wrong process for any
+auth-required investigation. Session 15 pivoted to investigating T17's
+pre-existing flake (the PRIORITY directive) and discovered the failure
+was structural rather than AX-polling-related — the spec was using the
+legacy `CLAUDE_TEST_USE_HOST_CONFIG=1` / `isolation: null` shape, and
+when run without that env var fell through to a fresh isolation with no
+auth, where `waitForUserLoaded`'s 90s default budget gets preempted by
+Playwright's 60s spec timeout. Coverage unchanged at 74/76 (97%) —
+structural fixes don't move the spec count, but T17 should now succeed
+when host is signed in (rather than auto-failing with a bare 60s
+timeout). Two commits on `docs/compat-matrix` expected (autonomous
+orchestration commits + pushes — the user reviews after the session):
 
-- TBD — `test(harness): session 14 migrate activateTab to
-  waitForAxNode (no spec, coverage unchanged at 97%)`
-  (migrates `activateTab` from one-shot snapshot to `waitForAxNode`
-  with a configurable pre-click timeout; migrates
-  `CodeTab.activate`'s post-click `retryUntil`-around-
-  `findCompactPills` loop to `waitForAxNodes`; T16 passes 3/3 on
-  KDE-W against the migrated form, was pre-existing-flaky on the
-  baseline; T26 passes; T17 still pre-existing-flaky — verified by
-  stash + retry).
+- TBD — `test(harness): session 15 migrate T17 to seedFromHost +
+  prune unused RawElement import (no spec, coverage unchanged at 97%)`
+  (T17 spec rewrite swapping the `CLAUDE_TEST_USE_HOST_CONFIG=1` +
+  `isolation: null` branch for the canonical `seedFromHost: true`
+  pattern; prunes unused `RawElement` re-export import in
+  `lib/claudeai.ts` per session 14's leftover hint; typecheck clean;
+  T17 not actually run this session — see below).
 
 The plan doc at
 [`docs/testing/runner-implementation-plan.md`](runner-implementation-plan.md)
 captures the tier classification and execution-time reclassifications.
 Its "Status (post-execution)" section is the source of truth for
-what's done and what's deferred — read **session 14** first, then
-**session 13**, then **session 12**, then **session 11**, then
-**session 10**, then **session 9**, then **session 8**, then **session
-7**, then **session 6**, then **session 5**, then **session 4**, then
-**session 3**, then **session 2**, then **session 1** sub-sections.
+what's done and what's deferred — read **session 15** first, then
+**session 14**, then **session 13**, then **session 12**, then
+**session 11**, then **session 10**, then **session 9**, then **session
+8**, then **session 7**, then **session 6**, then **session 5**, then
+**session 4**, then **session 3**, then **session 2**, then **session
+1** sub-sections.
 
 This session is a continuation, not a restart. Start by reading the
 plan doc's status sections.
 
-### Big new findings from session 14
+### Big new findings from session 15
 
-1. **`activateTab` no-retry was the T16 failure mode.** Verified by
-   stashing the migration and re-running T16 against the baseline —
-   same `CodeTab.activate: no AX-tree button with accessibleName="Code"
-   found` failure. The migration converts the pre-click snapshot from
-   one-shot to a `waitForAxNode` poll, with the existing T16 budget
-   (15s through `CodeTab.activate({ timeout })`) covering both the
-   pre-click click-budget and the post-click pill poll. T16 passed
-   3/3 in succession against the migrated form. Strong signal that
-   "convert one-shot AX snapshots to `waitForAxNode` polling" is a
-   high-leverage flake-reduction shape — this is the first migration
-   that demonstrably fixed an existing failure.
-2. **T17 stays pre-existing-flaky.** T17 exercises the env-pill →
-   Local → Select-folder → Open-folder chain via `openEnvPill` /
-   `selectLocal` / `openFolderPicker`, which use `openPill` and
-   `clickMenuItem` internally. Those weren't migrated this session
-   (their post-click stability gates plus per-spec sleep budgets
-   carry tuning the prompt explicitly cautioned against changing).
-   T17's flake mode is unchanged-by-migration; future sessions can
-   take it if budget tuning data warrants. The `openPill` while-loop
-   on a successful menu render takes 100ms-per-poll-iteration; if the
-   menu hasn't rendered within 5s, it returns `{ opened: false,
-   items: [] }`. Migrating to `waitForAxNode` would flatten the loop
-   shape but doesn't obviously change the outcome, so the migration
-   wasn't worth the budget-tuning risk this session.
-3. **The debugger-attachment precondition is still binding.**
-   Sessions 9-12 did extensive runtime probing of the per-wc IPC
-   registry against the user's debugger-attached Claude. Without
-   that probing, Categories A / B / C in this prompt are blocked at
-   the smoke-test phase. If the user hasn't clicked Developer →
-   Enable Main Process Debugger before the session starts, port 9229
-   is closed and the categories pivot to either documentation work
-   or further call-site migration. Phase 0 must check `ss -tln |
-   grep ':9229'` (or `curl --max-time 2 http://127.0.0.1:9229/json`)
-   before fanning out.
-4. **The reframe pool remains essentially exhausted.** Same status
-   as sessions 12-13 — every Tier 1 fingerprint with a tractable
-   runtime sibling has been promoted. The remaining options are now:
-   (a) further call-site migration to `waitForAxNode` for flake
-   reduction (`openPill` / `clickMenuItem` / T26's pre-click
-   `retryUntil` — though T26's needs a `context-was-destroyed`
-   exception swallow), (b) operon-mode navigation probe (still needs
-   debugger), (c) schema-rev for `listRemotePluginsPage` /
-   `listSkillFiles` (still needs debugger), (d) Tier 3 read-only
-   reframes (most need user-account state). Session 14 demonstrated
-   migration can deliver a measurable bug-fix outcome; that
-   continues to be the highest-leverage shape when the debugger is
-   closed.
+1. **T17 flake was structural, not AX-polling.** The trace showed
+   bare 60s Playwright timeout with NO `renderer-url` attachment —
+   meaning the test never reached line 49's attach call, which
+   means it never resolved `waitForReady('userLoaded')` at line 40.
+   Root cause: T17 was the last spec on the legacy
+   `CLAUDE_TEST_USE_HOST_CONFIG=1` / `isolation: null` shape — every
+   other auth-required spec (T07, T16, T19, T20, T21, T22b, T26,
+   T27, T31b, T33b/c, T35b, T37b, T38b) had moved to `seedFromHost:
+   true`. Without that env var (which CI / orchestration didn't
+   set), T17 fell through to a fresh isolation with no auth, hit
+   `/login`, and `waitForUserLoaded`'s 90s budget got preempted by
+   the 60s spec timeout. **Session 14's hypothesis was wrong** —
+   the AX click chain in `openPill` / `clickMenuItem` was never
+   reached, so migrating those wouldn't have fixed anything.
+2. **`openPill` / `clickMenuItem` migration parked.** With T17's
+   actual flake explained by the auth-path mismatch, there's no
+   remaining flake-evidence pulling for the AX migration that
+   sessions 14-15 considered. `openPill`'s while-loop and
+   `clickMenuItem`'s while-loop work fine when the auth path is
+   correct. Don't migrate speculatively — wait for a third
+   consumer to surface with budget-tuning evidence.
+3. **Phase 0 must distinguish "port open" from "port attached to
+   user's signed-in Claude".** Session 14 saw port 9229 closed and
+   correctly classified as debugger-detached. Session 15 saw port
+   9229 OPEN but attached to a leaked test isolation at /login —
+   Categories A/B/C still soft-blocked. The right Phase 0 probe:
+   `evalInMain` listing webContents and checking that AT LEAST one
+   URL is `https://claude.ai/<not /login>`. If every webContents is
+   `/login` or `find_in_page` or `main_window`, treat it the same
+   as port-closed for auth-required investigations. Session 15's
+   one-off probe shape (kept inline in the report, deleted after):
+
+   ```ts
+   const wcs = await client.evalInMain(`
+     const { webContents } = process.mainModule.require('electron');
+     return webContents.getAllWebContents().map((w) => ({
+       id: w.id, url: w.getURL(), title: w.getTitle(),
+     }));
+   `);
+   ```
+
+4. **Leaked `/tmp/claude-test-*` dirs accumulating on dev box.**
+   Multiple test isolations from prior sessions have leaked their
+   tmpdirs and (in some cases) their Electron child processes.
+   `ls /tmp/ | grep claude-test` showed several. The session 15
+   T17 spec wasn't run because killing those leaked Electron
+   processes might also kill the user's real running Claude (PID
+   ambiguity from `ps`). A future session can either (a) verify
+   no real Claude is running before invoking T17, or (b) just
+   accept the seedFromHost kill side effect and let the user
+   re-launch Claude after the session.
+5. **Productivity signal is dimming.** Sessions 13-15 collectively
+   produced one new primitive (`lib/ax.ts`), one substantive AX
+   migration (`activateTab` + `CodeTab.activate`), and one
+   structural fix (T17 seedFromHost). NO coverage gain in those
+   three sessions. The remaining categories without an
+   auth-bearing debugger-attached Claude are mostly exhausted.
+   Next session should prioritise (a) running T17 to verify the
+   seedFromHost fix actually resolves the timeout, and (b) checking
+   whether a Category C schema-rev probe against the leaked /login
+   isolation is tractable (validators don't need auth, only
+   invocation does — worth a 15-min investigation). If both turn
+   up empty, the orchestrator should seriously consider stopping —
+   at 97% coverage with no clear high-leverage shapes left,
+   further sessions are likely to produce documentation-only or
+   marginal-improvement deliverables.
 
 ### Authoritative reference
 
 Read these in order before fanning out:
 
 - [`docs/testing/runner-implementation-plan.md`](runner-implementation-plan.md)
-  — tier classification + status section. Read **session 14**, then
-  **session 13**, **session 12**, **session 11**, **session 10**,
-  **session 9**, **session 8**, **session 7**, **session 6**,
-  **session 5**, **session 4**, **session 3**, **session 2**, then
-  **session 1** "Status (post-execution)" sub-sections. The Tier-3
-  list (search for "## Tier 3") is the candidate pool for any further
-  reframes.
+  — tier classification + status section. Read **session 15**, then
+  **session 14**, **session 13**, **session 12**, **session 11**,
+  **session 10**, **session 9**, **session 8**, **session 7**,
+  **session 6**, **session 5**, **session 4**, **session 3**,
+  **session 2**, then **session 1** "Status (post-execution)"
+  sub-sections. The Tier-3 list (search for "## Tier 3") is the
+  candidate pool for any further reframes.
 - [`tools/test-harness/README.md`](../../tools/test-harness/README.md)
   — runner conventions, the now-74-spec inventory, primitives in
-  `lib/`, isolation defaults, the CDP-gate workaround, the eipc
-  note, and `lib/ax.ts` substrate (session 13 addition; session 14
-  migrated `activateTab` + `CodeTab.activate`'s post-click pill
-  poll to use it).
+  `lib/`, isolation defaults (T17 now seedFromHost per session 15),
+  the CDP-gate workaround, the eipc note, and `lib/ax.ts` substrate.
 - [`docs/testing/cases/README.md`](cases/README.md) — case-doc
   structure and the four anchor scopes.
 - [`tools/test-harness/src/lib/`](../../tools/test-harness/src/lib/)
@@ -123,297 +144,236 @@ Read these in order before fanning out:
   `waitForEipcChannels` / `invokeEipcChannel` on `lib/eipc.ts`) is
   unchanged.
 - [`tools/test-harness/eipc-registry-probe.ts`](../../tools/test-harness/eipc-registry-probe.ts)
-  — the session 7 read-only registry probe. Re-run against a
-  debugger-attached Claude (`Developer → Enable Main Process
-  Debugger` from the menu) to capture the current registry shape.
-  Sessions 11 / 12 used small one-off smoke-tests in the test-
-  harness dir that clone the InspectorClient connection pattern
-  and run N candidate read-sides through M arg shapes; deleted
-  after.
+  — the session 7 read-only registry probe. Re-run against an
+  auth-bearing debugger-attached Claude (`Developer → Enable Main
+  Process Debugger` from the menu, signed-in) to capture the
+  current registry shape.
 - [`tools/test-harness/src/runners/`](../../tools/test-harness/src/runners/)
-  — every existing spec is a template. Notable session 14
+  — every existing spec is a template. Notable session 15
   candidates for follow-up:
-  - `T17_folder_picker.spec.ts` — the next test that would benefit
-    from `openPill` / `clickMenuItem` migration. Pre-existing
-    flake; current failure is a 60s timeout in the
-    openEnvPill/selectLocal/openFolderPicker chain.
-  - `T26_routines_page_renders.spec.ts` — has a pre-click
-    `retryUntil` block with `context-was-destroyed` exception
-    handling that could become a `waitForAxNode` call once the
-    primitive grows error-class options.
+  - `T17_folder_picker.spec.ts` — newly migrated to seedFromHost.
+    Run to verify the 60s timeout is gone. If T17 now passes, the
+    structural fix shipped session 15 is verified.
+  - Schema-rev for `listRemotePluginsPage` / `listSkillFiles` —
+    rejection literals can be bundle-grepped without auth, and the
+    validator runs auth-independent if /login state lets us
+    invoke through the renderer-side wrapper. Session 12 found
+    `listRemotePluginsPage` needs `limit: number` at position 0
+    and `listSkillFiles` needs both `pluginId` and `skillName`.
 - [`docs/testing/cases/*.md`](cases/) — the spec each runner
   asserts. The **Code anchors:** field tells you exactly where
   upstream implements the feature.
 
 ### Tests in scope this session
 
-**Realistic ceiling: ~1 new spec OR one substantive flake-reduction
-deliverable OR one investigation.** Sessions 9-12 each landed 1-2
-specs; session 13 landed only a primitive (debugger blocked); session
-14 landed only a migration (debugger blocked). Coverage at 74/76
-means the test budget naturally shifts toward either (a) further flake
-reduction by extending the migration shape, (b) investigation that
-requires the debugger and was deferred from sessions 12-14, or (c)
-Tier 3 read-only reframes that the harness can construct from
-existing `seedFromHost` state.
+**Realistic ceiling: ~1 verification run OR ~1 schema-rev investigation
+OR a "stop the orchestration" recommendation.** Sessions 9-12 each
+landed 1-2 specs; session 13 landed only a primitive (debugger
+blocked); session 14 landed only a migration (debugger blocked);
+session 15 landed only a structural fix (debugger soft-blocked).
+Coverage at 74/76 means the test budget naturally shifts toward
+verification, low-stakes investigation, or the orchestration
+termination decision.
 
-**Phase 0 MUST check the debugger BEFORE picking a category.** Run
-`ss -tln 2>/dev/null | grep ':9229'` (or
-`curl --max-time 2 http://127.0.0.1:9229/json`). If port 9229 is not
-listening, Categories A and C are hard-blocked. Pivot to D or B.
+**Phase 0 MUST check the debugger-attachment quality, not just port
+status.** Run `ss -tln 2>/dev/null | grep ':9229'` for port. If open,
+also run an `evalInMain` probe to enumerate webContents URLs — if no
+URL is `https://claude.ai/<not /login>`, treat as soft-blocked for
+auth-required categories. Probe shape (kept inline; delete after):
 
-#### **PRIORITY: Investigate why T17 stays flaky and decide on a
-migration-or-fix path.** Session 14's migration fixed T16's pre-
-existing failure mode. T17 is the next-clearest pre-existing-flaky
-spec on KDE-W; it shares plumbing with T16 (`CodeTab` → AX-driven
-clicks) but goes deeper through `openEnvPill` / `selectLocal` /
-`openFolderPicker`. The session 14 migration does NOT reach into
-those (they use `openPill` + `clickMenuItem`, both of which carry
-post-click stability gates and per-iteration sleep loops). The
-investigation: (1) read T17's failure trace from the most recent
-session-14 stashed run (under `tools/test-harness/results/local/
-test-output/T17_folder_picker-T17-—-Folder-picker-opens/`), (2)
-classify the failure (env-pill probe? Local item? Select-folder
-pill? Open-folder click?), (3) decide if (a) `openPill` migration
-to `waitForAxNode` would reach it, or (b) the budget defaults need
-tuning, or (c) the failure is from something orthogonal to AX
-polling. If (a), ship the migration. If (b), document the budget
-mismatch in plan-doc. If (c), defer to a future session with a
-clearer signal. **If this is what session 15 ships, that's a
-strictly higher-impact outcome than another Tier 2 / Tier 3 reframe
-— flake reduction touches every existing AX-using spec.** Doesn't
-need the debugger.
+```ts
+import { InspectorClient } from './src/lib/inspector.js';
+const client = await InspectorClient.connect(9229);
+const wcs = await client.evalInMain<unknown>(`
+  const { webContents } = process.mainModule.require('electron');
+  return webContents.getAllWebContents().map((w) => ({
+    id: w.id, url: w.getURL(), title: w.getTitle(),
+  }));
+`);
+console.log(wcs); client.close();
+```
 
-Three categories — pick ONE as the main bet, treat the others as
-fallback if the main bet hits an early blocker:
+If every URL is `/login` or `find_in_page` or `main_window/index.html`,
+the debugger is attached to a leaked test isolation, not the user's
+Claude. Categories A and most of B are blocked. Category C may still
+be tractable since validators run auth-independent — try the schema-
+rev probe against the /login wrapper.
+
+#### **PRIORITY: Verify T17's session 15 seedFromHost migration
+actually resolves the 60s timeout.** Session 15 didn't run T17 because
+the dev box had ambiguous Electron processes (some leaked test
+isolations, possibly the user's real Claude — `ps` couldn't
+disambiguate cleanly). Session 16's first action:
+
+1. Check `pgrep -af "ozone-platform=x11.*app.asar"` and
+   `ps -o pid,user-data-dir` to identify whether any real-Claude
+   process is running (real Claude has a non-`/tmp/claude-test-*`
+   user-data-dir, typically nothing or `~/.config/Claude`).
+2. If only test cruft is running, run T17 (`npx playwright test
+   T17 --reporter=list`). The test will kill those leaked
+   processes via `seedFromHost`'s host-Claude-kill semantics —
+   that's actually a desirable cleanup side effect.
+3. If a real Claude IS running, **flag clearly in the report
+   before running**, then run T17. The user accepted the
+   `seedFromHost` kill side effect when authorising autonomous
+   orchestration; just be transparent about it.
+4. Capture pass/skip/fail. Update the matrix coverage doc if
+   T17 now passes.
+5. If T17 still fails, classify the new failure mode (is it now
+   AX-polling? Folder picker chain? Mock not installing?) and
+   decide whether to fix or defer.
+
+This is **strictly higher-impact than session 14/15's
+spec-implementation work** because it produces a concrete
+pass/fail data point that resolves a 2-session-old hypothesis.
+Doesn't need the debugger.
+
+Three categories — pick the verification run as the main bet, treat
+the others as fallback if the main bet hits an early blocker:
 
 | # | Tests | Source | Notes |
 |---|---|---|---|
-| **D** further call-site migration / T17 investigation | T17 / `claudeai.ts` `openPill` + `clickMenuItem` | `lib/ax.ts` (session 13 primitive) | The PRIORITY shape this session. Read T17's failure trace, decide if `openPill` migration would fix it, ship the migration if so. Same shape-only refactor risk as session 14: keep the per-spec retry budgets matching the existing tuning. Doesn't need the debugger. **Risk:** `openPill` and `clickMenuItem` carry post-click stability gates that `waitForAxNode` already covers via `stabilityGate: true`, so the migration shape should slot in cleanly — but each spec's overall budget needs verification. |
-| **A** operon-mode navigation probe | n/a (investigation) + maybe small Tier 2 reframe | new probe + bundle grep for operon URL routes | Session 10 confirmed `OperonBootstrap.ensure` registers eagerly but the other 21 wrapper-exposed operon interfaces remain registry-unconfirmed. Outputs: either an operon-mode URL form recovered from the bundle (search for `operon`-keyed routes in `claude.ai/...` paths) plus a registry re-probe after navigation, OR a deferral note explaining why operon scope can't be reached without an operon-mode entry. **Needs debugger-attached Claude on port 9229.** |
-| **B** Tier 3 read-only reframes | Pick from the Tier 3 list | T33c / T35b / T37b template + bundle grep | The Tier 3 list is full of login-required flows; some have read-only entry points that the harness CAN construct. Candidates: T22's `getPrChecks` read-side might accept a non-existent PR number / dry-run mode; T15's OAuth surface has read-only state queries. Most need the user-account-scoped state to fail-fast with a clean error rather than a real network roundtrip — investigate first. **Needs debugger for smoke-test verification.** |
-| **C** Schema-rev for `listRemotePluginsPage` / `listSkillFiles` | Bundle grep | session 9 schema-rev pattern | Both methods rejected every smoke-tested arg shape during session 12's investigation. `listRemotePluginsPage` needs `limit: number` at position 0 (rejection: `Argument "limit" at position 0 ...`); `listSkillFiles` needs both `pluginId` and `skillName` (rejection: `Argument "skillName" at position 1 ...`). Bundle-grep on the rejection literals → resolve the schema → ship a narrowly-scoped Tier 2 invocation if it unblocks a case-doc claim. **Needs debugger to verify the recovered schema.** |
+| **D-verify** T17 verification run (PRIORITY) | T17 | session 15 migration | Run T17 against the dev box. If pass, log it. If fail, classify the new failure mode. **Side effect: kills any running Claude (the user's, or leaked test cruft). Flag in the report.** Doesn't need the debugger. |
+| **C** Schema-rev for `listRemotePluginsPage` / `listSkillFiles` | Bundle grep | session 9 schema-rev pattern | Both methods rejected every smoke-tested arg shape during session 12's investigation. `listRemotePluginsPage` needs `limit: number` at position 0 (rejection: `Argument "limit" at position 0 ...`); `listSkillFiles` needs both `pluginId` and `skillName` (rejection: `Argument "skillName" at position 1 ...`). Bundle-grep on the rejection literals → resolve the schema → ship a narrowly-scoped Tier 2 invocation if it unblocks a case-doc claim. **Tractable against a /login isolation since validators run auth-independent.** |
+| **STOP** Orchestrator stop recommendation | n/a | session 15 productivity signal | Coverage at 97%, three consecutive non-coverage sessions, remaining categories soft- or hard-blocked. If D-verify and C both produce nothing tractable, formally recommend the orchestrator stop. Documentation-only sessions are still acceptable per the followup termination criteria, but consecutive ones with no improvement signal are noise. |
 
-If port 9229 is closed, only D is fully tractable. A documentation-
-only session that audits the existing AX call-sites and proposes a
-migration plan (without shipping) is also acceptable — pre-work for
-a future session that DOES land the migration.
+#### Category D-verify — T17 verification run
 
-#### Category D — further call-site migration / T17 investigation
+The plan: run the post-session-15 T17 against the dev box and capture
+the result. Pass = the structural fix landed correctly. Fail = the
+hypothesis was incomplete; classify and decide.
 
-The plan: investigate T17's pre-existing flake, decide on a fix path,
-ship if a `waitForAxNode`-shaped migration of `openPill` /
-`clickMenuItem` would reach it.
-
-1. **Read T17's most recent failure trace.** Either the session-14
-   stashed-baseline trace (under `tools/test-harness/results/local/
-   test-output/T17_folder_picker-T17-—-Folder-picker-opens/`) or run
-   T17 fresh against the post-session-14 form. Classify the failure:
-   - openEnvPill timeout? (would suggest `openPill` migration)
-   - selectLocal timeout? (would suggest `clickMenuItem` migration)
-   - openFolderPicker chain timeout? (suggests deeper issue)
-   - Some other failure?
-2. **If `openPill` migration would reach the failure**, migrate it.
-   The shape: replace the post-click while-loop with
-   `waitForAxNodes` filtered to MENU_ITEM_ROLES, with the existing
-   `timeout` parameter as `timeoutMs`. Keep the upfront
-   `waitForAxTreeStable` gate or pass `stabilityGate: true` to
-   `waitForAxNodes`. Verify with T17 (or the originally-affected
-   spec).
-3. **If `clickMenuItem` migration would reach the failure**, same
-   shape. Replace the while-loop with `waitForAxNode` filtered on
-   role + textPattern, with the existing `timeout` as `timeoutMs`.
-4. **If the failure is orthogonal to AX polling** (e.g. environmental,
-   timing race outside the AX surface, dialog mock not installing),
-   document and defer.
+1. **Disambiguate running Claude processes.** `pgrep -af
+   "ozone-platform=x11.*app.asar"`; for each, `cat
+   /proc/<pid>/cmdline | tr '\0' '\n' | grep user-data-dir` (or
+   inspect via `ps` cmdline). If only `/tmp/claude-test-*`
+   user-data-dirs, no real Claude is running.
+2. **Run T17.** `cd tools/test-harness && npx playwright test
+   T17_folder_picker --reporter=list 2>&1 | tee
+   /tmp/t17-session16.log`.
+3. **Classify.**
+   - Pass: structural fix verified. Update plan-doc / matrix.
+   - Skip with "seedFromHost unavailable": means host has no
+     `~/.config/Claude/Local State`. Should be rare on the dev
+     box but possible if config was wiped between sessions.
+   - Skip with "seeded auth did not reach post-login URL":
+     auth was seeded but stale. User needs to re-sign-in
+     manually. Don't try to reseed automatically.
+   - Fail with NEW failure mode: classify the failure (AX
+     click? openFolderPicker chain? dialog mock?). If it's
+     now in `openPill` / `clickMenuItem`, sessions 14/15's
+     speculation has finally hit; ship the AX migration.
+     Otherwise document and defer.
+4. **Don't restructure T17's body** unless step 3 surfaces a
+   real new bug. Keep changes scoped to whatever the verification
+   surfaces.
 
 Doesn't need the debugger.
-
-#### Category A — operon-mode navigation probe
-
-The plan: find an operon-mode URL form and verify whether the other
-21 operon interfaces register lazily.
-
-1. **Bundle grep for operon URL routes.** Search the bundled
-   `index.js` and `mainView.js` for `operon`-keyed paths (e.g.
-   `/operon/...`, `claude.ai/operon`, etc.). Compile a candidate URL
-   list.
-2. **Navigate the user's debugger-attached running Claude** to each
-   candidate URL via `inspector.evalInRenderer('claude.ai',
-   "window.location.href = '<URL>'")`. After each navigation, re-run
-   the registry probe and check the operon scope's interface count.
-3. **If any URL surfaces additional operon handlers**, ship a small
-   Tier 2 reframe spec.
-4. **If none of the candidate URLs surface additional handlers**,
-   document as "operon scope handlers register lazily on a navigation
-   we can't easily construct from the harness" and defer.
-
-**Needs debugger-attached Claude on port 9229.**
-
-#### Category B — Tier 3 read-only reframes
-
-The plan: identify a Tier 3 spec where a non-destructive read-side
-is invocable from a fresh `seedFromHost` isolation.
-
-1. **Read the Tier 3 list** in plan-doc and pick 1-2 candidates with
-   read-side anchors. Most Tier 3 specs are write-side flows (T15
-   OAuth, T22 PR write, T27 scheduling write, T29 worktree creation,
-   T34 OAuth, T36 hooks-fire-on-prompt-submit) — those are out of
-   scope. The exceptions are read-side anchors that just need
-   user-account-scoped data to assert against.
-2. **Smoke-test the candidate read-side** with various arg shapes.
-3. **Ship a Tier 2 reframe** if the read-side resolves cleanly.
-4. **Defer** if every candidate requires real account state to assert
-   meaningfully.
-
-**Needs debugger for smoke-test verification.**
 
 #### Category C — Schema-rev for rejecting read-sides
 
 The plan: resolve the validator schema for `listRemotePluginsPage` /
 `listSkillFiles` via bundle grep, ship invocations if either unblocks
-a case-doc claim.
+a case-doc claim. Tractable against a /login isolation since
+validators run auth-independent.
 
 1. **Grep on the rejection literal** in the bundled `index.js`.
    Validator block sits ~50-200 chars before the throw site (session
    9 finding). Read ~2KB around the hit to surface the full schema.
 2. **Smoke-test the recovered schema** against the user's debugger-
-   attached running Claude.
+   attached running Claude (or, if auth-soft-blocked as in session 15,
+   against the /login isolation — validators run regardless of auth).
 3. **Connect the resolved invocation to a case-doc claim.**
 4. **Ship a Tier 2 invocation** if a case-doc claim is unblocked.
 
-**Needs debugger to verify the recovered schema.**
+Auth-independent for the validator; auth-bearing for any handler that
+actually returns plugin / skill data. If the validator resolves but
+the handler fails on auth, document the schema in plan-doc as a
+deferred reframe and move on.
 
-#### Cross-compositor focus-shifter expansion (NOT recommended this session)
+#### STOP recommendation
 
-Building `lib/input-sway.ts` / `lib/input-hypr.ts` would mirror
-`lib/input-niri.ts`'s shape but no consumer is asking for them.
-Premature abstractions are wrong abstractions. Wait for a real
-consumer.
-
-#### Main-side `invokeEipcChannel` fallback (NOT recommended this session)
-
-Same status as sessions 8-14 — wait for a real consumer.
-
-#### Launch event-subscription primitive (NOT recommended this session)
-
-Same status as sessions 11-14 — wait for a real consumer.
-
-#### `waitForRenderedSurface` registry (NOT recommended this session)
-
-Session 13's `lib/ax.ts` deliberately did NOT ship a named-surface
-registry; promote when a third consumer crystallizes with a specific
-surface name in mind.
-
-#### CSS-querySelector primitive (NOT recommended this session)
-
-Session 13's `lib/ax.ts` covers AX-tree consumers only. T07's CSS-
-querySelector poll for the topbar is a different abstraction (DOM,
-not AX). Wait for a second consumer before extracting.
+If D-verify resolves cleanly (pass or stable skip) and C produces no
+shippable spec after the schema-rev investigation, the productivity
+signal for further sessions is squarely "documentation-only with no
+clear next-step deliverable." The orchestrator should stop. State
+this plainly in the final report; don't keep cycling.
 
 ### Constraints to respect (don't violate)
 
-These are unchanged from sessions 1-14 and still load-bearing:
+These are unchanged from sessions 1-15 and still load-bearing:
 
 - **Default isolation** unless the spec needs otherwise. Use
   `seedFromHost: true` for any test that depends on authenticated
   renderer state — never assume default isolation gets past
   `/login`. T07/T11_runtime/T16/T17/T19/T20/T21/T26/T22b/T27/T31b/T33b/T33c/T35b/T37b/T38b
-  are the templates.
+  are the templates. **T17 was migrated to this shape in session 15.**
 - **eipc handlers register on `webContents.ipc._invokeHandlers`,
   NOT global `ipcMain._invokeHandlers`.** Session 7 finding. Use
-  `lib/eipc.ts` rather than rolling a new walker. The framing
-  prefix `$eipc_message$_<UUID>_$_` should stay opaque to consumers
-  (UUID has been stable but `lib/eipc.ts` doesn't pin it — match
-  by case-doc-anchored suffix).
+  `lib/eipc.ts` rather than rolling a new walker.
 - **eipc invocation goes through the renderer-side wrapper at
   `window['claude.<scope>'].<Iface>.<method>`.** Session 8 finding.
   Use `lib/eipc.ts`'s `invokeEipcChannel` rather than rolling
   main-side direct calls.
 - **For arg validator schema-rev: try smoke-test first, then grep
-  the rejection message literal.** Session 9 finding. Trivial
-  validators (`typeof === 'string'` / similar) resolve in one
-  round-trip. Elaborate validators get the bundle-grep treatment.
-- **For session-scoped Tier 2 reframes: `LocalSessions/getAll` is
-  the foundational read-side surrogate.** Session 10 finding.
-- **For Tier 2 reframes with case-doc-anchored read-side handlers:
-  invoke the case-doc-anchored handlers directly.** Session 11
-  finding. Mixed-shape dual invocation is fine.
-- **For Tier 2 reframes spanning two interfaces: invoke a read-side
-  from each.** Session 12 finding (T11_runtime template).
+  the rejection message literal.** Session 9 finding.
 - **For AX-tree consumers: use `lib/ax.ts`.** Session 13 finding.
   `snapshotAx` for one-shot reads, `waitForAxNode` /
-  `waitForAxNodes` for predicate-based polling. Don't reach into
-  `explore/walker.ts` directly — re-exports go through `lib/ax.ts`.
-  Consumers in session 14: `lib/claudeai.ts`'s `activateTab` +
-  `CodeTab.activate` post-click pill poll (migrated from one-shot
-  / hand-rolled retryUntil), plus T26.
+  `waitForAxNodes` for predicate-based polling.
 - **For call-site migrations to `waitForAxNode`: keep the per-spec
   retry budgets matching the existing tuning.** Session 14
-  finding. The defaults in `lib/ax.ts` (`timeoutMs: 5000`,
-  `intervalMs: 200`) are reasonable starting values, but any
-  caller with a known per-spec budget should pass it through. The
-  one acceptable bug-fix during migration is when the existing
-  call-site had NO retry at all (e.g. `activateTab`'s pre-click
-  one-shot snapshot) — adding a budget is the fix the migration
-  delivers, and the prompt explicitly authorized it.
+  finding. Migration is shape-only EXCEPT when the call-site has
+  NO retry at all — adding a budget is the bug-fix the migration
+  delivers.
+- **For test specs that depend on host auth: use `seedFromHost:
+  true`.** Session 15 finding. The legacy `CLAUDE_TEST_USE_HOST_CONFIG=1`
+  / `isolation: null` shape collides with Playwright's 60s spec
+  timeout when the env var isn't set; `seedFromHost` gives a clean
+  skip-or-pass shape. T17 was the last spec on the legacy shape.
 - **`lib/input.ts` is X11-only.** Strict gate.
 - **`lib/input-niri.ts` is Niri-only.** Strict gate.
-- **Don't speculate on `lib/input-wayland.ts` dispatcher.**
-- **Code-tab AX anchors stay in plan-doc until a consumer needs
-  them.**
 - **CDP auth gate is alive** — runtime SIGUSR1 attach via
   `app.attachInspector()`, never Playwright's `_electron.launch()`
   or `chromium.connectOverCDP()`.
 - **BrowserWindow Proxy gotcha** — use
   `webContents.getAllWebContents()` not
-  `BrowserWindow.getAllWindows()`. Constructor-level wraps don't
-  work; use prototype-method hooks.
+  `BrowserWindow.getAllWindows()`.
 - **`skipUnlessRow()` always first.**
 - **No fixed sleeps.** `retryUntil` from `lib/retry.ts`, or
   Playwright auto-wait, or `waitForAxNode` from `lib/ax.ts`.
-  (Exception: short sleeps inside hand-rolled retry loops that
-  catch typed errors and short-circuit; see S11 / S14.)
 - **Diagnostics on every run.** `testInfo.attach()` the artefacts.
 - **Tag with annotations.** `severity:` and `surface:` on every
   test so JUnit carries them through to matrix-regen.
 - **Tabs in TS, ~80-char wrap as the existing files do.**
 - **Don't break existing runners.** `npm run typecheck` must stay
   clean. H01-H05 are the canaries; `npm test` must still pass them
-  after every commit. Note that T17/T07/S25/S29-S31/S04 etc.
-  are pre-existing-flaky on KDE-W per session 13's full-suite run
-  (T16 fixed by session 14) — they're NOT canaries; baseline
-  failures don't block work.
+  after every commit. Note that T07 / S25 / S29-S31 / S04 etc.
+  may be pre-existing-flaky on KDE-W — they're NOT canaries;
+  baseline failures don't block work.
 - **Always grep the installed asar** to verify a fingerprint
   string is present.
-- **For mock-then-call: the helper goes in
-  `lib/electron-mocks.ts`.**
-- **Marker windows / sacrificial host processes always die in
-  `finally`.**
-- **Never log handler response BODIES into JUnit.**
 
 ### Phases
 
 #### Phase 0 — calibration
 
 1. `cd tools/test-harness && npm run typecheck` — should pass.
-2. **Check debugger:** `ss -tln 2>/dev/null | grep ':9229'` (or
-   `curl --max-time 2 http://127.0.0.1:9229/json`). If port 9229 is
-   open, A / B / C are tractable; if closed, pivot to D or
-   documentation-only.
-3. Read the plan doc's "Status (post-execution)" session 14 section,
-   then read `lib/ax.ts`'s API + `lib/claudeai.ts`'s post-session-14
-   migration shape. Confirm you understand the `waitForAxNode` /
-   `waitForAxNodes` consumer pattern.
-4. Pick ONE Category as the main bet:
-   - **D** (PRIORITY when debugger is closed): read T17's failure
-     trace; classify the failure; decide if `openPill` /
-     `clickMenuItem` migration would reach it.
-   - **A**: bundle grep + per-URL navigation + registry re-probe.
-   - **B**: pick a Tier 3 candidate, smoke-test the read-side, decide
-     ship or defer.
-   - **C**: bundle grep on rejection literals, schema-rev, smoke-test
-     the resolved shape, decide ship or defer.
+2. **Check debugger ATTACHMENT QUALITY (not just port).** First
+   `ss -tln 2>/dev/null | grep ':9229'`. If port open, also probe
+   webContents via `evalInMain` (see "Big new findings" §3 for
+   the probe shape). If every URL is `/login` /
+   `find_in_page` / `main_window`, treat as soft-blocked.
+3. **Disambiguate running Claude processes.** Required before any
+   `seedFromHost` spec. `pgrep -af "ozone-platform=x11.*app.asar"`
+   + cmdline inspection for user-data-dir.
+4. Read the plan doc's "Status (post-execution)" session 15 section,
+   then read T17's session-15 form and the seedFromHost convention.
+5. Pick the main bet:
+   - **D-verify** (PRIORITY): run T17, classify the result.
+   - **C**: bundle grep on rejection literals, schema-rev,
+     smoke-test the resolved shape against the /login isolation.
+   - **STOP**: if both above produce nothing tractable, recommend
+     stopping the orchestration.
 
 If Phase 0 surfaces a problem (typecheck failing, primitives unclear,
 the chosen Category's prerequisites don't hold), stop and report.
@@ -421,31 +381,24 @@ Don't fan out.
 
 #### Phase 1 — fan-out batch
 
-For Category D (further migration / T17 investigation):
-- Single subagent reads T17's trace, classifies, ships the migration
-  if applicable. Verify by running T16 / T17 / T26 / H05.
-
-For Category A (operon investigation):
-- Single subagent does bundle-grep for operon URL routes + per-URL
-  registry re-probe. Report findings; if a Tier 2 reframe is
-  tractable, ship one spec.
-
-For Category B (Tier 3 read-only reframes):
-- Spawn ONE subagent for the candidate read-side investigation
-  (smoke-test + bundle-grep if needed).
+For Category D-verify (T17 run):
+- Single subagent (or do directly — it's a single-command run +
+  trace inspection) runs T17 and classifies. Verify by checking
+  pass/skip/fail and any new failure-mode trace.
 
 For Category C (schema-rev):
 - Single subagent does bundle-grep on the rejection literals,
   surfaces the validator schemas, smoke-tests the recovered shapes
-  against the user's debugger-attached running Claude.
+  against the user's debugger-attached running Claude (or /login
+  isolation if soft-blocked).
 
-Cap at ~1 spec OR ~1 primitive migration total — same scope as
-sessions 9-14.
+Cap at ~1 spec OR ~1 verification + 1 schema-rev — same scope as
+sessions 9-15.
 
 #### Per-subagent prompt shape
 
 ```
-You're implementing ONE [test-harness runner | primitive migration |
+You're implementing ONE [verification run | primitive migration |
 investigation] for <TARGET>.
 
 Read in order:
@@ -454,15 +407,11 @@ Read in order:
   the most-recent-template that fits)
 - tools/test-harness/src/runners/<closest-template>.spec.ts
 - tools/test-harness/src/lib/ (the primitives you'll reuse —
-  including session 13's `lib/ax.ts` and session 14's migration
-  examples in `lib/claudeai.ts`)
+  including session 13's `lib/ax.ts` and session 15's seedFromHost
+  T17 migration)
 - CLAUDE.md (project conventions)
 
-Write tools/test-harness/src/runners/<TARGET>_short_name.spec.ts
-[ AND/OR  tools/test-harness/src/lib/<NEW-PRIMITIVE>.ts
-  AND/OR  edits to tools/test-harness/src/lib/claudeai.ts ].
-
-[per-task specifics: pattern (seedFromHost / mock-then-call /
+[per-task specifics: pattern (verification run / mock-then-call /
 asar fingerprint / shared isolation / new-primitive-build /
 investigation / call-site migration), assertion shape, skip rules,
 key constraint warnings]
@@ -481,17 +430,15 @@ Constraints:
 If the target isn't reasonable to implement (anchors don't resolve
 to anything assertable, the test depends on state you can't
 construct, the existing primitives don't cover the surface), DO
-NOT write a stub. Report under Open questions and stop. Sessions
-1-14 had cumulative ~17 "stop and report" outcomes that were the
-right call.
+NOT write a stub. Report under Open questions and stop.
 
 Report shape (~150 words):
-## <TARGET> [runner | primitive | investigation | migration]
+## <TARGET> [verification | primitive | investigation | migration]
 
 - File written: tools/test-harness/src/runners/<filename>.spec.ts
   [or lib/<newfile>.ts or modified lib/<existing>.ts]
 - Layer: file probe | argv probe | L1 | L2 (xprop) | L2 (DBus) |
-  pgrep | new-primitive | investigation | migration
+  pgrep | new-primitive | investigation | migration | verification
 - Assertion shape (or migration shape): <one sentence>
 - Skip rules: <which rows + why>
 - Verification path: <typecheck + run result>
@@ -525,7 +472,7 @@ After fan-out returns:
 
 ### Self-correction loop
 
-Same as sessions 1-14:
+Same as sessions 1-15:
 
 1. Subagent typecheck failure → re-spawn with explicit fix
    instruction.
@@ -538,12 +485,11 @@ Same as sessions 1-14:
    examine the assertion shape.
 5. Migration breaks an existing spec → roll back the migration; the
    per-spec retry budget was load-bearing and the primitive
-   defaults didn't match. Document the budget mismatch in plan-doc.
-6. **Carry-over from session 5/6/7/8/9/10/11/12/13/14:** If the
-   chosen Category's investigation doesn't resolve / requires
-   schema-rev that exceeds budget after 2-3 approaches, STOP. Don't
-   keep digging — pivot to a fallback Category. Document what was
-   tried.
+   defaults didn't match.
+6. **Carry-over from sessions 5-15:** If the chosen Category's
+   investigation doesn't resolve / requires schema-rev that exceeds
+   budget after 2-3 approaches, STOP. Don't keep digging — pivot
+   to a fallback Category. Document what was tried.
 7. **Carry-over from session 10:** If a registration probe surfaces
    "registered but uninvocable", document and defer rather than
    building the main-side fallback speculatively.
@@ -562,29 +508,26 @@ Stop and write the final report when one of:
 3. **Discovered a primitive gap that breaks 5+ Tier 2/Tier 3
    tests.** Stop, propose where the new primitive should live in
    `lib/`. Future session adds the primitive first, then resumes.
-4. **Session budget hits ~1 new spec OR one new primitive
-   landing OR one substantive call-site migration.** Stop,
-   synthesize, leave the rest for the next session.
-5. **All categories blocked after 2-3 attempts each.** Document the
-   findings as plan-doc additions and stop — coverage is at 97%, a
-   no-spec session that surfaces deferral notes is fine.
+4. **Session budget hits ~1 verification + 1 schema-rev landing.**
+   Stop, synthesize, leave the rest for the next session.
+5. **All categories blocked / unproductive after 2-3 attempts
+   each.** Document the findings as plan-doc additions, **and
+   recommend the orchestrator stop the campaign** — coverage at
+   97%, three+ consecutive non-coverage sessions, dimming
+   productivity signal.
 
 ### What you should NOT do
 
-- **Don't try to land Category D + A + B + C in one batch.** Pick
-  ONE as the main bet.
+- **Don't try to land D-verify + C in one batch.** Pick D-verify
+  first; if that resolves cleanly, take C as a stretch goal.
 - **Don't ship stubs.** If a runner can't actually assert what the
   spec says, mark it as Tier 3 / blocked / primitive-gap and
   don't write a placeholder.
 - **Don't break existing runners.** H01-H05 are the canaries.
-  T17 / T07 / S25 / S29-S31 are pre-existing-flaky on KDE-W
-  per session 13's full-suite run (T16 fixed by session 14) —
-  those are NOT canaries.
 - **Don't restructure `lib/`** beyond targeted additions.
   Premature abstractions are wrong abstractions.
 - **Don't run destructive Tier 3 tests** that write to the user's
-  real claude.ai account (T22 PR write, T27 scheduling write, T29
-  worktree creation, T34 OAuth, T36 hooks-fire-on-prompt-submit).
+  real claude.ai account.
 - **Don't introspect `ipcMain._invokeHandlers` for `claude.web`
   eipc channels.** Use `lib/eipc.ts`.
 - **Don't call `invokeEipcChannel` for write-side handlers.**
@@ -602,25 +545,28 @@ Stop and write the final report when one of:
 - **Don't add a `waitForRenderedSurface(client, surfaceKey)`
   registry to `lib/ax.ts`.** Session 13 deliberately deferred
   this — wait for a third consumer with a specific named surface.
-- **Don't change the existing per-spec retry budgets when migrating
-  to `waitForAxNode`.** The budgets are tuned. Migration is shape-
-  only — except when the call-site has NO retry at all (the
-  session-14-authorized bug-fix shape).
+- **Don't migrate `openPill` / `clickMenuItem` to `waitForAxNode`
+  speculatively.** Session 15 confirmed T17's flake didn't need
+  it; without a third consumer signal, it's premature optimisation.
 - **Don't reach into `explore/walker.ts` for AX types/helpers.**
-  `lib/ax.ts` re-exports `RawElement` / `AxNode` /
-  `axTreeToSnapshot` / `waitForAxTreeStable` — use those.
+  `lib/ax.ts` re-exports — use those.
 - **Don't implement the #569 power-inhibit patch in this
   session.** That's a separate workstream.
+- **Don't keep cycling on documentation-only sessions.** If
+  D-verify and C both turn up empty, formally recommend the
+  orchestrator stop the campaign rather than burning another
+  session of compute on marginal output.
 
 ### Final report format
 
 ```markdown
-## Runner implementation summary (session 15)
+## Runner implementation summary (session 16)
 
-- Main-bet category: D | A | B | C
+- Main-bet category: D-verify | C | STOP
 - Specs landed: N
 - Migrations completed: N
 - Primitives landed: N
+- Verifications run: N
 - Reclassified mid-flight: N (with reasons)
 - Coverage: was 74/76 (97%), now <NEW>/76 (<PCT>%)
 - Typecheck: clean | <errors>
@@ -630,7 +576,7 @@ Stop and write the final report when one of:
 
 | Cat | Test ID | File | Assertion shape | Status |
 |---|---|---|---|---|
-| D | <call-site> | <file>.ts | … | ✓ pass / skip / fail |
+| D-verify | T17 | T17_folder_picker.spec.ts | … | ✓ pass / skip / fail |
 | ... |
 
 ## Notable findings
@@ -638,6 +584,9 @@ Stop and write the final report when one of:
 
 ## Open questions
 - ...
+
+## Stop recommendation
+- Yes / no, with rationale.
 
 ## Files touched
 git status output.
@@ -659,12 +608,8 @@ git diff --stat
   Connects to a debugger-attached running Claude on port 9229.
 - For seedFromHost specs, the host MUST have a signed-in Claude
   Desktop. The primitive throws with a clear message if not.
-- For tests that touch the AX tree, **`lib/ax.ts`** is the new
-  shared substrate. `claudeai.ts` page-objects are still the
-  right substrate for renderer-UI domain operations (CodeTab,
-  compact pills, menu items) — they consume `lib/ax.ts`
-  internally. Don't query DOM by CSS selector unless `claudeai.ts`
-  doesn't already cover the surface.
+- For tests that touch the AX tree, **`lib/ax.ts`** is the shared
+  substrate.
 - For mock-then-call: helpers live in `lib/electron-mocks.ts`.
 - For focus-shifting (X11 only): `lib/input.ts` exports
   `focusOtherWindow` + `spawnMarkerWindow`.
@@ -685,14 +630,13 @@ git diff --stat
   finding):** invoke a read-side from each impl object.
 - **For AX-tree polling (session 13 finding):** `lib/ax.ts`'s
   `waitForAxNode` / `waitForAxNodes` for predicate-based polling.
-  `snapshotAx` for one-shot reads. Re-exports keep
-  `explore/walker.ts` types accessible without crossing the
-  lib/explore boundary.
 - **For call-site migrations to `waitForAxNode` (session 14
   finding):** keep per-spec retry budgets matching the existing
-  tuning. Migration is shape-only EXCEPT when the call-site had
-  NO retry at all — adding a budget is the bug-fix the migration
-  delivers.
+  tuning.
+- **For auth-required spec migrations (session 15 finding):**
+  use `seedFromHost: true`, NOT `CLAUDE_TEST_USE_HOST_CONFIG=1` /
+  `isolation: null`. The legacy shape collides with Playwright's
+  60s spec timeout.
 - **For asar fingerprints: ALWAYS grep the installed asar
   first.** Build-reference is beautified; the bundle is
   minified.

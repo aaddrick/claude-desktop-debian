@@ -18,6 +18,135 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 15 (1 structural fix, no new spec, no AX migration):**
+T17 migrated from the legacy `CLAUDE_TEST_USE_HOST_CONFIG=1` /
+`isolation: null` auth path to the canonical `seedFromHost: true`
+pattern (mirroring T16 / T26). Phase 0 calibration found port 9229
+listening BUT the attached process was a leaked test isolation
+(claude.ai loaded at `/login`, NOT the user's auth-bearing Claude),
+which made Categories A (operon-mode probe) / B (Tier 3 read-only
+reframes) / C (schema-rev) all soft-blocked: the debugger was
+technically attached, but to the wrong process for any auth-required
+investigation. Session 15 pivoted to investigating T17's pre-existing
+flake (the PRIORITY directive in the followup) and discovered the
+failure was structural rather than AX-polling-related.
+
+**T17 flake root cause (session 15 finding):** The trace shows a
+bare 60s Playwright spec timeout with NO `renderer-url` attachment
+fired. That attachment lives at line 49 of the pre-migration spec —
+which means the test never reached line 40's `waitForReady(
+'userLoaded')` resolution. Session 14's hypothesis that T17's flake
+was an `openPill` / `clickMenuItem` issue was wrong: the failure is
+upstream of the AX click chain. The spec was running with
+`isolation: undefined` (the no-`CLAUDE_TEST_USE_HOST_CONFIG` branch),
+which produces a fresh isolation with no auth tokens, claude.ai
+redirects to `/login`, and `waitForUserLoaded` polls for its full 90s
+budget — but Playwright's spec timeout is 60s (per
+`playwright.config.ts`). The 30s incompatibility produces the bare
+"Test timeout of 60000ms exceeded" with no test-body trace events.
+The fix is to align T17 with T16 / T26's shape: `seedFromHost: true`
+copies the host's auth into the per-test isolation, hits a clean
+`postLoginUrl` resolution, and skips cleanly when no signed-in host is
+available (rather than hanging until the spec timeout preempts).
+
+Coverage stays at 74/76 (97%) — structural fix, no spec landed. The
+matrix coverage doesn't reflect spec-shape migrations; this shows up
+as a real productivity gain (T17 should now succeed when host is
+signed in, rather than auto-failing with a 60s timeout regardless).
+
+Two commits on `docs/compat-matrix` expected (the orchestration
+directive supersedes "the user reviews and commits" — autonomous
+commit + push at end of session):
+
+- TBD — `test(harness): session 15 migrate T17 to seedFromHost +
+  prune unused RawElement import (no spec, coverage unchanged at
+  97%)` (T17 spec rewrite swapping the `CLAUDE_TEST_USE_HOST_CONFIG`
+  + `isolation: null` branch for the canonical `seedFromHost: true`
+  pattern; prunes unused `RawElement` re-export import in
+  `lib/claudeai.ts` per session 14's leftover hint; typecheck clean;
+  T17 not run this session because the dev box's running processes
+  ambiguously include leaked test isolations and possibly the user's
+  real Claude — `seedFromHost` would kill both, deferred to next
+  session for verification).
+- TBD — `docs(testing): session 15 plan/inventory + rotate session 16
+  prompt`.
+
+Session 15 findings + reclassifications:
+
+- **T17 flake reclassified from "AX-polling tuning" to "auth path
+  not seeded".** Session 14's followup hypothesised the flake lived
+  in `openPill` / `clickMenuItem` post-click loops; the trace
+  evidence rules that out. The Playwright spec timeout (60s) is
+  shorter than `waitForReady('userLoaded')`'s default budget (90s),
+  so any unauth'd test that polls userLoaded will fail with a bare
+  timeout regardless of what the AX code does. T17 was the last
+  spec on the legacy `CLAUDE_TEST_USE_HOST_CONFIG=1` / `isolation:
+  null` shape — every other auth-required spec (T07, T16, T19,
+  T20, T21, T22b, T26, T27, T31b, T33b/c, T35b, T37b, T38b) had
+  already moved to `seedFromHost: true`. T17 was an outlier, and
+  the outlier-ness was the flake.
+- **`openPill` / `clickMenuItem` migration NOT shipped.** Session
+  14's followup proposed migrating these to `waitForAxNode` /
+  `waitForAxNodes`. With T17's actual failure mode resolved by
+  the structural fix, there's no remaining flake-evidence pulling
+  for that migration. `openPill`'s while-loop and
+  `clickMenuItem`'s while-loop both work fine when the auth path
+  is correct; speculatively migrating them now would be premature
+  optimisation. Future sessions can take it if a third consumer
+  surfaces with budget-tuning evidence.
+- **Unused `RawElement` import pruned.** Session 14 left
+  `import type { RawElement }` in `lib/claudeai.ts`'s
+  destructured `./ax.js` import after the migration didn't end up
+  needing the type re-export. Pruned in session 15 alongside the
+  T17 migration (one commit, two related shape fixes).
+- **Debugger-attached process is a leaked test isolation.** The
+  port-9229 listener pointed at a process whose webContents listed
+  three URLs: `find_in_page.html`, `https://claude.ai/login`, and
+  `main_window/index.html`. NOT the user's signed-in Claude. The
+  user-data-dir on those processes was `/tmp/claude-test-*`,
+  confirming they're leaked from prior test runs. There are
+  multiple `/tmp/claude-test-*` dirs accumulating on the dev box
+  (visible via `ls /tmp/`). Future sessions: Phase 0 calibration
+  should distinguish "port 9229 is open" from "port 9229 is open
+  AND attached to the user's auth-bearing Claude". Probe via
+  `evalInMain` listing webContents — if every URL is `/login`,
+  the auth-required investigations (Categories A/B/C) are blocked
+  same as if the debugger were closed.
+- **No primitive change, no AX migration.** `lib/ax.ts` and the
+  session 14 migration shape are unchanged. The change was a
+  spec-level structural fix, not a substrate or page-object
+  change.
+
+Tier 2 → Tier 2 candidates remaining for next session: same as
+sessions 12-14 — operon-mode navigation probe (still needs an
+auth-bearing debugger-attached Claude), schema-rev for
+`listRemotePluginsPage` / `listSkillFiles` (might be tractable
+against the leaked-isolation /login process since validators run
+auth-independent — investigate), Tier 3 read-only reframes
+(login-required). The `openPill` / `clickMenuItem` migration is
+parked: session 15 confirmed T17's flake didn't need it, and no
+other consumer is signalling for it. Coverage at 74/76 (97%) with
+the test budget naturally cycling through low-impact deliverables
+unless a true coverage opportunity surfaces.
+
+**Productivity signal for next session.** Session 15 fixed a
+real T17 failure mode (structural). Sessions 13-15 collectively
+have produced one new primitive (`lib/ax.ts`), one substantive
+migration (`activateTab` + `CodeTab.activate`), one structural
+fix (T17 seedFromHost). NO coverage gain in those three sessions.
+The remaining categories without a debugger that hits the user's
+signed-in process are mostly exhausted. Next session should
+prioritise (a) running T17 to verify the seedFromHost fix actually
+resolves the 60s timeout, and (b) checking whether a Category C
+schema-rev probe against the leaked /login isolation is tractable
+(validators don't need auth, only invocation does — worth a 15-min
+investigation). If both turn up empty, the orchestrator should
+seriously consider stopping — at 97% coverage with no clear
+high-leverage shapes left, further sessions are likely to produce
+documentation-only or marginal-improvement deliverables.
+
+---
+
 **Shipped session 14 (1 call-site migration, no new spec):**
 `activateTab` and `CodeTab.activate` in `lib/claudeai.ts` migrated
 from hand-rolled retry loops to session 13's `lib/ax.ts` substrate.
