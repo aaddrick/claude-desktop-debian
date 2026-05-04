@@ -32,7 +32,7 @@ behind tier classification.
 | [T14a](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | `requestSingleInstanceLock` + `'second-instance'` strings in bundled `index.js` (file probe) | file probe |
 | [T14b](../../docs/testing/cases/launch.md#t14--multi-instance-behavior) | Second invocation under same isolation exits cleanly; primary pid stays alive (runtime probe) | spawn delta + pgrep |
 | [T16](../../docs/testing/cases/code-tab-foundations.md#t16--code-tab-loads) | After `seedFromHost` + `userLoaded`, `CodeTab.activate()` resolves and ≥1 compact pill renders (env pill = Code-body mounted) | L1 + AX-tree |
-| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
+| [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | After `seedFromHost` + `userLoaded`, Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (mock installed via `installOpenDialogMock`); skips cleanly when host has no signed-in Claude config | L1 + AX-tree |
 | [T18](../../docs/testing/cases/code-tab-foundations.md#t18--drag-and-drop-files-into-prompt) | Bundled `mainView.js` preload contains the path-resolution bridge fingerprints: `getPathForFile` (2× — property key + the `webUtils.getPathForFile(` call, both at case-doc :9267), `webUtils`, `filePickers`, and the `claudeAppSettings` `contextBridge.exposeInMainWorld` namespace (case-doc :9552) — pins the load-bearing wiring without faking OS-level XDND drag (xdotool can't put file URIs on the X11 selection; Wayland needs per-compositor IPC + libei) | file probe |
 | [T19](../../docs/testing/cases/code-tab-foundations.md#t19--integrated-terminal) | After `seedFromHost` + `userLoaded`, the integrated-terminal eipc surface (`startShellPty`, `writeShellPty`, `stopShellPty`, `resizeShellPty`, `getShellPtyBuffer` — five-suffix presence probe) is registered on the claude.ai webContents AND the foundational `LocalSessions/getAll` returns array shape (Tier 2 reframe of the case-doc T19 case; case-doc anchors are write-side `startShellPty` etc. so reframe asserts the FULL terminal IPC surface registers + a stateless read-side surrogate is invocable) | L1 (eipc registry + invoke) |
 | [T20](../../docs/testing/cases/code-tab-foundations.md#t20--file-pane-opens-and-saves) | After `seedFromHost` + `userLoaded`, the file-pane eipc surface (`readSessionFile`, `writeSessionFile`, `pickSessionFile` — three-suffix presence probe) is registered on the claude.ai webContents AND the foundational `LocalSessions/getAll` returns array shape (Tier 2 reframe of the case-doc T20 case; the case-doc's `readSessionFile` anchor is read-side but needs (sessionId, path) args not constructible from a fresh isolation, so the registration probe + foundational `getAll` invocation is the strongest non-destructive Tier 2 layer) | L1 (eipc registry + invoke) |
@@ -135,8 +135,12 @@ and converted `CodeTab.activate`'s post-click `findCompactPills`
 retry loop to `waitForAxNodes`) — and the
 `createIsolation({ seedFromHost: true })` primitive that lets login-
 required tests run hermetically against a copy of the host's signed-
-in auth state (T07, T11_runtime, T16, T19, T20, T21, T22b, T26, T27,
-T31b, T33b, T33c, T35b, T37b, T38b).
+in auth state (T07, T11_runtime, T16, T17, T19, T20, T21, T22b, T26,
+T27, T31b, T33b, T33c, T35b, T37b, T38b — session 15 migrated T17
+from the legacy `CLAUDE_TEST_USE_HOST_CONFIG=1` / `isolation: null`
+shape to `seedFromHost`, fixing a pre-existing 60s spec-timeout
+flake where the unauth'd default isolation polled `userLoaded` past
+Playwright's spec budget).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register

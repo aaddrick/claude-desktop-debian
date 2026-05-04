@@ -31,7 +31,6 @@
 
 import type { InspectorClient } from './inspector.js';
 import {
-	type RawElement,
 	snapshotAx,
 	waitForAxNode,
 	waitForAxNodes,
