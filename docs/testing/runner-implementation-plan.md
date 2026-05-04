@@ -18,6 +18,111 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 7 (4 new specs + 1 new primitive):** T22b, T31b, T33b,
+T38b (Tier 2 runtime probes — `seedFromHost` + eipc-registry presence
+checks, strictly stronger than the Tier 1 fingerprint siblings T22 / T31
+/ T33 / T38 from session 3). New primitive `lib/eipc.ts`
+(`getEipcChannels` / `findEipcChannel` / `findEipcChannels` /
+`waitForEipcChannel` / `waitForEipcChannels`; opaque on the
+`$eipc_message$_<UUID>_$_` framing prefix, matches by case-doc-anchored
+suffix). Coverage moved from 62/76 (82%) to 66/76 (87%) — the four
+session 3 fingerprint specs gained Tier 2 siblings; the 4 session 1
+splits (T14a/T14b shape) precedent applies. All four pass on KDE-W
+(~7.5s each, ~32s total).
+
+Session 7 findings + reclassifications:
+
+- **eipc registry IS reachable from main — session 3's "closure-local"
+  conclusion was wrong about WHERE, not whether.** The handlers go
+  through Electron's stdlib `IpcMainImpl`, just on the per-`webContents`
+  IPC scope (`webContents.ipc._invokeHandlers`, Electron 17+) rather
+  than the global `ipcMain._invokeHandlers`. Sessions 2-6 only ever
+  walked the global registry (which holds 3 chat-tab MCP-bridge
+  handlers); the per-wc registry on the claude.ai webContents holds
+  490 handlers including all 117 `LocalSessions_$_*` and 16
+  `CustomPlugins_$_*` channels. Verified empirically against a
+  debugger-attached running Claude via
+  `tools/test-harness/eipc-registry-probe.ts` (kept in-tree as a
+  re-runnable read-only probe).
+- **Registry is sticky across route changes.** Run-1 captured
+  `https://claude.ai/epitaxy` with cowork loaded → 490 handlers. Run-2
+  navigated to `https://claude.ai/new` (chat tab) → still 490 handlers,
+  same 117 LocalSessions + 16 CustomPlugins. Conclusion: handlers
+  register at webContents init and persist; specs don't need to
+  navigate to /epitaxy specifically — `seedFromHost` + `userLoaded` on
+  any post-login route is sufficient.
+- **Framing UUID is build-stable** at
+  `c0eed8c9-c94a-4931-8cc3-3a08694e9863` (single UUID across all 647
+  per-wc handlers). Session 2's T38 partial `c0eed8c9-…` confirmed.
+  `lib/eipc.ts` does NOT pin the UUID — it strips it via regex and
+  matches by suffix so a future build that rotates the UUID doesn't
+  silently break consumers.
+- **53 distinct interfaces fully mapped.** The probe's per-interface
+  breakdown surfaced every `(scope, iface)` pair across the three
+  webContents. Notable interfaces with direct line-of-sight to
+  deferred Tier 2 / Tier 3 work (NOT shipped this session — flagged
+  for next):
+  - `claude.web/CoworkMemory/readGlobalMemory` (read-only) — direct
+    path to **T37 Phase 2** (CLAUDE.md memory loads), upgrades the
+    Tier 1 fingerprint to Tier 2 invocation.
+  - `claude.settings/MCP/getMcpServersConfig` (present on ALL three
+    webContents, read-only) — direct path to **T35 Phase 2** (MCP
+    config picked up).
+  - `claude.web/CoworkScheduledTasks/getAllScheduledTasks` and
+    `claude.web/CCDScheduledTasks/getAllScheduledTasks` — pathway for
+    a T27 Tier 2 reframe (scheduled tasks).
+  - `claude.web/ClaudeCode/{getStatus, prepare, checkGitAvailable,
+    resolveLocalSettings}` — useful for the deferred T19/T20/T21
+    cluster (Code-tab integrated terminal, file pane, dev server
+    preview).
+  - `claude.web/CustomPlugins/listMarketplaces` is shape-identical to
+    `getMcpServersConfig` (read-only) — could feed a T33 Phase 2
+    invocation if a consumer needs marketplace contents asserted, not
+    just handler presence.
+- **`lib/eipc.ts` API: read-only by design.** `getEipcChannels` walks
+  the per-wc registry; `waitForEipcChannel` / `waitForEipcChannels`
+  add the populate-on-init poll; no `invokeEipcChannel` yet. Adding
+  invocation would unlock T35 Phase 2 / T37 Phase 2 but the design
+  decisions (event synthesis, args marshaling, side-effect gating per
+  read vs write channel) need a real consumer to anchor against.
+  Same anti-speculation rule that kept `lib/electron-mocks.ts`
+  (session 3) and `lib/input.ts` (session 4) and `lib/input-niri.ts`
+  (session 6) threshold-driven.
+- **T14a/T14b convention applied.** Existing T22 / T31 / T33 / T38
+  shipped session 2/3 without the `a` suffix; session 7 left them
+  unchanged (Tier 1 fingerprint files are still authoritative for
+  bundle-string-presence regression detection) and added T22b / T31b
+  / T33b / T38b siblings (Tier 2 runtime probes). The `b` files use
+  the `_runtime` filename suffix to disambiguate from the `_fingerprint`
+  / `_handler_registered` shape of the existing files.
+- **All four pass on KDE-W (Plasma 6 Wayland, XWayland).** Sequential
+  run (Playwright `workers: 1`) — 7.7s / 7.5s / 7.5s / 7.7s. The
+  `host-claude` killer fired once at the start (sent SIGTERM to the
+  user's running Claude); subsequent specs found no host process to
+  kill. End-to-end shape: createIsolation seedFromHost → launchClaude
+  → waitForReady('userLoaded') → waitForEipcChannel(s) → assert
+  presence → app.close().
+- **eipc-registry-probe kept in-tree.** `tools/test-harness/eipc-registry-probe.ts`
+  is the read-only standalone probe that surfaced the per-wc finding;
+  parallel to the existing `probe.ts` (renderer-DOM probe) and
+  `grounding-probe.ts` (case-grounding runtime capture). Useful
+  re-run target across upstream version bumps to confirm the registry
+  shape hasn't drifted.
+
+Tier 2 → Tier 2 candidates remaining for next session: **T35 Phase 2**
+and **T37 Phase 2** (now MUCH more tractable — the registry primitive
+gives a discoverable surface for the read-side handlers like
+`getMcpServersConfig` / `readGlobalMemory`; what's missing is the
+invocation surface in `lib/eipc.ts`). **T27 Tier 2 reframe** (scheduled
+tasks; same invocation pattern). **T19/T20/T21 Code-tab cluster** (each
+needs different combos of `claude.web/ClaudeCode/*` + AX-tree click
+chains). The primitive surface itself (`lib/electron-mocks.ts`,
+`lib/input.ts`, `lib/input-niri.ts`, `lib/eipc.ts`) is now broad enough
+that the next session is more about consumer-driven extensions
+(`invokeEipcChannel`) than fresh primitive builds.
+
+---
+
 **Shipped session 6 (1 new spec + 1 new primitive):** S14 (Tier 2 — Niri-
 only, currently known-failing detector). New primitive `lib/input-niri.ts`
 (Wayland-native focus-shifter sibling of `lib/input.ts`:

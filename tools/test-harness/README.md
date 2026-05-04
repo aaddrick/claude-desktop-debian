@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Sixty-two specs wired (24 cross-env T-tests, 33 env-specific S-tests,
+Sixty-six specs wired (28 cross-env T-tests, 33 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -33,19 +33,23 @@ behind tier classification.
 | [T16](../../docs/testing/cases/code-tab-foundations.md#t16--code-tab-loads) | After `seedFromHost` + `userLoaded`, `CodeTab.activate()` resolves and ≥1 compact pill renders (env pill = Code-body mounted) | L1 + AX-tree |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
 | [T18](../../docs/testing/cases/code-tab-foundations.md#t18--drag-and-drop-files-into-prompt) | Bundled `mainView.js` preload contains the path-resolution bridge fingerprints: `getPathForFile` (2× — property key + the `webUtils.getPathForFile(` call, both at case-doc :9267), `webUtils`, `filePickers`, and the `claudeAppSettings` `contextBridge.exposeInMainWorld` namespace (case-doc :9552) — pins the load-bearing wiring without faking OS-level XDND drag (xdotool can't put file URIs on the X11 selection; Wayland needs per-compositor IPC + libei) | file probe |
-| [T22](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | Bundled `index.js` contains `LocalSessions_$_getPrChecks` eipc channel name *and* `gh CLI not found in PATH` Linux-fallthrough throw site (Tier 1 fingerprint — eipc registry not introspectable from main) | file probe |
+| [T22](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | Bundled `index.js` contains `LocalSessions_$_getPrChecks` eipc channel name *and* `gh CLI not found in PATH` Linux-fallthrough throw site (Tier 1 fingerprint) | file probe |
+| [T22b](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | After `seedFromHost` + `userLoaded`, the `LocalSessions_$_getPrChecks` eipc handler is registered on the claude.ai webContents (`webContents.ipc._invokeHandlers` — Tier 2 runtime probe sibling of T22, strictly stronger than the bundle-string fingerprint) | L1 (eipc registry) |
 | [T23](../../docs/testing/cases/code-tab-handoff.md#t23--desktop-notifications-fire) | Firing `new Notification({title})` from main reaches the session bus's `org.freedesktop.Notifications.Notify` (observed via `dbus-monitor`) | L1 + DBus subprocess |
 | [T24](../../docs/testing/cases/code-tab-handoff.md#t24--open-in-external-editor) | After `installOpenExternalMock` mirroring T25's pattern, `evalInMain` calls `shell.openExternal('vscode://file/...')`; mock records the URL verbatim, no real editor launch | L1 (mocked egress) |
 | [T25](../../docs/testing/cases/code-tab-handoff.md#t25--show-in-files--file-manager) | After `installShowItemInFolderMock` mirroring T17's dialog-mock pattern, `evalInMain` calls `shell.showItemInFolder(<synthetic path>)`; mock records the call verbatim, no throw — no host side effect | L1 (mocked egress) |
 | [T26](../../docs/testing/cases/routines.md#t26--routines-page-renders) | After `seedFromHost` + `userLoaded`, click "Routines" sidebar AX button; assert "New routine" / "All" / "Calendar" anchor renders | L1 + AX-tree |
 | [T30](../../docs/testing/cases/code-tab-workflow.md#t30--auto-archive-on-pr-merge) | Bundled `index.js` colocates the auto-archive sweep cadence (`300*1e3` ≤ `3600*1e3` ≤ `AutoArchiveEngine`) with the `ccAutoArchiveOnPrClose` gate key (single-regex multi-string fingerprint) | file probe |
 | [T31](../../docs/testing/cases/code-tab-workflow.md#t31--side-chat-opens) | Bundled `index.js` contains all three side-chat eipc channel names (`startSideChat`, `sendSideChatMessage`, `stopSideChat`) — load-bearing trio | file probe |
+| [T31b](../../docs/testing/cases/code-tab-workflow.md#t31--side-chat-opens) | After `seedFromHost` + `userLoaded`, all three side-chat eipc handlers (`startSideChat`, `sendSideChatMessage`, `stopSideChat`) are registered on the claude.ai webContents — load-bearing trio (Tier 2 runtime sibling of T31) | L1 (eipc registry) |
 | [T32](../../docs/testing/cases/code-tab-workflow.md#t32--slash-command-menu) | Bundled `index.js` contains `LocalSessions_$_getSupportedCommands` eipc channel + `slashCommands` schema field | file probe |
 | [T33](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | Bundled `index.js` contains `CustomPlugins_$_listMarketplaces` and `CustomPlugins_$_listAvailablePlugins` eipc channel names (browser populate flow) | file probe |
+| [T33b](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | After `seedFromHost` + `userLoaded`, both plugin-browser eipc handlers (`listMarketplaces`, `listAvailablePlugins`) are registered on the claude.ai webContents — load-bearing pair (Tier 2 runtime sibling of T33) | L1 (eipc registry) |
 | [T35](../../docs/testing/cases/extensibility.md#t35--mcp-server-config-picked-up) | Bundled `index.js` contains the four-needle MCP-config separation fingerprint: `claude_desktop_config.json` (chat-tab path), `.claude.json` + `.mcp.json` (Code-tab loaders), `"user","project","local"` (settingSources triple Code-session passes to the agent SDK) — pins per-tab separation without launch | file probe |
 | [T36](../../docs/testing/cases/extensibility.md#t36--hooks-fire) | Bundled `index.js` contains the hooks runtime fingerprint: `hook_started` / `hook_progress` / `hook_response` (single-occurrence Verbose-transcript runtime emits) plus `PreToolUse` / `UserPromptSubmit` registry tokens — pins the runtime hook-fire path the case-doc Verbose-transcript claim hangs on | file probe |
 | [T37](../../docs/testing/cases/extensibility.md#t37--claudemd-memory-loads) | Bundled `index.js` contains `[GlobalMemory] Copied CLAUDE.md` log line + `CLAUDE.md` filename literal + `CLAUDE_CONFIG_DIR` env-var token (memory-loading wiring) | file probe |
-| [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | Bundled `index.js` contains `LocalSessions_$_openInEditor` eipc channel name (Tier 1 fingerprint — reclassified from session 2's broken `ipcMain._invokeHandlers` probe; eipc registry is closure-local) | file probe |
+| [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | Bundled `index.js` contains `LocalSessions_$_openInEditor` eipc channel name (Tier 1 fingerprint) | file probe |
+| [T38b](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | After `seedFromHost` + `userLoaded`, the `LocalSessions_$_openInEditor` eipc handler is registered on the claude.ai webContents (Tier 2 runtime sibling of T38) | L1 (eipc registry) |
 | H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
 | H02 | `frame-fix-wrapper.js` + `frame-fix-entry.js` injected into `app.asar` (Proxy + main-field reference) | file probe |
 | H03 | Build-pipeline patch fingerprints all present in `app.asar` (KDE gate, frame-fix inject, tray, cowork, claude-code) | file probe |
@@ -100,21 +104,32 @@ focus-shifter (`focusOtherWindow` + `spawnMarkerWindow` for S11; X11
 only — `WaylandFocusUnavailable` thrown on native Wayland) and its
 Niri-native sibling `lib/input-niri.ts` (`niri msg --json` for the
 focus-injection + readback chain, `foot --title` for the marker
-window; `NiriIpcUnavailable` thrown off-Niri; consumed by S14) — and
+window; `NiriIpcUnavailable` thrown off-Niri; consumed by S14), the
+`lib/eipc.ts` registry walker (`getEipcChannels` /
+`waitForEipcChannel` / `waitForEipcChannels` against
+`webContents.ipc._invokeHandlers`; opaque on the UUID, suffix-matched
+against case-doc anchors; consumed by T22b / T31b / T33b / T38b) — and
 the `createIsolation({ seedFromHost: true })` primitive that lets
 login-required tests run hermetically against a copy of the host's
-signed-in auth state (T07, T16, T26).
+signed-in auth state (T07, T16, T22b, T26, T31b, T33b, T38b).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
-channel names referenced in the case-doc Code anchors do not register
-through Electron's standard `ipcMain.handle()` registry — they use a
-custom `$eipc_message$_<UUID>_$_claude.web_$_<name>` message-port
-protocol whose registry is closure-local and not reachable from
-`globalThis` at any ready level. T22, T31, T33, T38 anchor on the
-eipc channel-name *strings* in the bundle (Tier 1 fingerprint) rather
-than introspecting a registry. See
+channel names referenced in the case-doc Code anchors don't register
+through Electron's *global* `ipcMain.handle()` registry (which only
+carries 3 chat-tab MCP-bridge handlers). They DO register through
+Electron's stdlib `IpcMainImpl` — just on the per-`webContents` IPC
+scope (`webContents.ipc._invokeHandlers`, Electron 17+) rather than
+the global one. The framing is
+`$eipc_message$_<UUID>_$_<scope>_$_<iface>_$_<method>` (UUID stable
+across builds at `c0eed8c9-…`); 117 `LocalSessions_*` + 16
+`CustomPlugins_*` + 50+ other interfaces register on the claude.ai
+webContents. T22 / T31 / T33 / T38 ship as Tier 1 fingerprints
+against the bundled channel-name strings; T22b / T31b / T33b / T38b
+are the runtime registry-presence siblings (strictly stronger,
+require `seedFromHost`). See `lib/eipc.ts` for the primitive that
+wraps the registry walk and
 [`runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
-session 3 status section for the finding.
+session 7 status section for the finding.
 
 Per-row pass/skip counts depend on which sweep runs against the row;
 see `runner-implementation-plan.md` for tier classification and
@@ -255,6 +270,7 @@ tools/test-harness/
 │   │   ├── electron-mocks.ts      # mock-then-call helpers (dialog/showItemInFolder/openExternal)
 │   │   ├── input.ts               # focus-shifter primitive (X11 only — xdotool + xprop verify; spawnMarkerWindow xterm)
 │   │   ├── input-niri.ts          # focus-shifter primitive (Niri only — niri msg --json verify; spawnMarkerWindow foot)
+│   │   ├── eipc.ts                # eipc-channel registry walker (per-webContents IPC scope; suffix-matched, UUID-opaque)
 │   │   ├── retry.ts               # poll-until-true with timeout
 │   │   └── diagnostics.ts         # launcher log, --doctor, session env
 │   └── runners/                   # one .spec.ts per test ID
