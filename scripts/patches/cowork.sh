@@ -109,6 +109,13 @@ if (vmClientLogMatch) {
             '(' + win32Var + '||process.platform==="linux")$1');
         console.log('  Patched VM client log check for Linux');
         patchCount++;
+    } else if (code.includes(
+        '||process.platform==="linux")?"vmClient (TypeScript)"'
+    )) {
+        console.log('  VM client log gate already applied (Patch 2a)');
+    } else {
+        console.log('  WARNING: Could not find anchor for VM client log' +
+            ' gate (Patch 2a) — half-patched asar will fail Cowork startup');
     }
 
     // 2b: Patch the actual module assignment
@@ -125,6 +132,12 @@ if (vmClientLogMatch) {
             '(' + win32Var + '||process.platform==="linux")$1');
         console.log('  Patched VM module assignment for Linux');
         patchCount++;
+    } else if (/\|\|process\.platform==="linux"\)\??\(?[\w$]+=\{vm:[\w$]+\}/.test(code)) {
+        console.log('  VM module assignment already applied (Patch 2b)');
+    } else {
+        console.log('  WARNING: Could not find anchor for VM module' +
+            ' assignment (Patch 2b) — half-patched asar will fail' +
+            ' Cowork startup (PR #555 failure mode)');
     }
 } else {
     console.log('  WARNING: Could not find vmClient variable for module loading patch');
