@@ -18,6 +18,143 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 8 (3 new specs + 1 primitive extension):** T35b, T37b,
+T27 (Tier 2 runtime invocations — `seedFromHost` + eipc-handler invoke
+through the renderer-side wrapper, strictly stronger than the Tier 1
+fingerprint siblings T35 / T37 from session 4 and the previously-
+unshipped T27 case-doc target). New `invokeEipcChannel` API on
+`lib/eipc.ts` (suffix-resolved through the existing
+`findEipcChannel`, then dispatched via
+`inspector.evalInRenderer('claude.ai', "window['claude.<scope>']
+.<Iface>.<method>(...args)")`). Coverage moved from 66/76 (87%) to 69/76
+(91%). All three pass on KDE-W (T27 27.7s, T35b 33.2s, T37b 25.8s; ~1.5m
+total sequential).
+
+Session 8 findings + reclassifications:
+
+- **eipc invocation is tractable from main, with two viable approaches.**
+  Three parallel investigations were spawned: (a) direct main-side call
+  (pull function from `_invokeHandlers`, synthesize `event` object), (b)
+  renderer-side wrapper at `window['claude.<scope>'].<Iface>.<method>`,
+  (c) hook the eipc dispatcher prototype. Approach (c) turned out
+  unnecessary — the gate `le(e)` / `Vi(e)` / `mm(e)` etc. is a structural
+  duck-type check on `event.senderFrame.url` and
+  `event.senderFrame.parent === null`, NOT an `instanceof Frame` check,
+  so a literal-object fake event passes. Approaches (a) and (b) are both
+  empirically tractable — the smoke test against the user's debugger-
+  attached running Claude returned the documented response shape for
+  four read-only handlers via each path.
+- **Renderer-side wrapper chosen for the primitive.** Honors the gate
+  honestly (the wrapper IS at claude.ai; no spoofing of `senderFrame.url`
+  to claim an origin the test isn't actually at), can't accidentally
+  invoke a handler the real renderer can't reach (test surface stays
+  aligned with real attack surface), and is shorter to spell. Trade-off:
+  errors come back as serialized strings rather than native exceptions,
+  but the framed channel name appears in the error message so per-handler
+  triage is intact. Approach (a) stays available as a fallback for
+  future scopes whose renderer-side wrapper isn't exposed (e.g. the
+  `find_in_page` / `main_window` webContents host `claude.settings/*`
+  handlers in their per-wc registry, but their renderers run from
+  `file://` so the wrapper isn't there); not implemented in this
+  session — anti-speculation rule (no consumer asks for it yet).
+- **`mainView.js` exposes 9 wrapper namespaces** (more than the
+  registry-side scope count): `claude.settings`, `claude.web`,
+  `claude.operon`, `claude.skills`, `claude.simulator`,
+  `claude.officeAddin`, `claude.hybrid`, `claude.buddy`, plus
+  `claudeAppBindings` / `claudeAppSettings`. Each is a literal-dot key
+  on `window` (`window['claude.web']`, NOT `window.claude.web`). The
+  exposure gate `Qc()` checks top-level frame + origin allow-list
+  (`https://claude.ai`, `https://claude.com`, preview.*, localhost). On
+  the `find_in_page` and `main_window` webContents the wrapper is NOT
+  exposed (origin is `file://`); the registry walker still sees their
+  `claude.settings/*` handlers but `invokeEipcChannel` would need a
+  different (main-side) approach to reach them.
+- **`invokeEipcChannel(inspector, suffix, args?, opts?)` API shape.**
+  Suffix is the same case-doc-anchored input the existing
+  `findEipcChannel` accepts (e.g. `MCP_$_getMcpServersConfig` or fully
+  qualified `claude.settings_$_MCP_$_getMcpServersConfig`). Internally
+  resolves the full suffix through `findEipcChannel`, splits on `_$_`
+  to recover `[scope, iface, method]`, then `evalInRenderer(urlFilter,
+  "window[scope][iface][method](...args)")`. Default `urlFilter` is
+  `'claude.ai'`. Args are JSON-marshaled in; return value is JSON-
+  deserialized via `evalInRenderer`'s `executeJavaScript` path. Read-by-
+  default but not allowlist-enforced — the safety property is that
+  consumers pass case-doc-anchored suffixes verbatim (write-side suffixes
+  never appear in case-doc text).
+- **T35b assertion shape: response is a non-null, non-array object.**
+  Empty-config (host has no `~/.claude.json` MCP servers) returns `{}`;
+  configured-host returns `Record<string, MCPServerConfig>`. Either is
+  the documented shape. Strongest assertion that doesn't depend on host
+  MCP-config state. Diagnostic attachment shows shape + truncated
+  sample (4KB cap) so a configured-host run can be triaged without
+  dumping potentially-PII config into JUnit.
+- **T37b assertion shape: `string | null`.** The dev box returns `null`
+  (host account has no global CLAUDE.md memory written). Spec asserts
+  `result === null || typeof result === 'string'` — rejects an envelope
+  / object / number as a wiring regression. Diagnostic attachment shows
+  type + length only (never the body — global memory is per-account
+  user content and can hold sensitive material).
+- **T27 (no `b` suffix — first T27 spec) ships as the case-doc Tier 2
+  reframe.** Previous sessions didn't ship a T27 fingerprint sibling
+  because the case-doc anchors (`runNow(A)` / `Rc.showNotification` /
+  `getJitter`) are minified-symbol-shaped and don't form a high-
+  confidence string fingerprint. The eipc registry names ARE high-
+  confidence, so T27 ships directly as the runtime probe (same shape
+  as T26's "Routines page renders" runner that has no fingerprint
+  sibling). Asserts both `claude.web/CoworkScheduledTasks/
+  getAllScheduledTasks` AND `claude.web/CCDScheduledTasks/
+  getAllScheduledTasks` return arrays — Cowork (chat-side / Routines
+  sidebar) and CCD (Code-tab) scheduling are parallel surfaces; the
+  case-doc T27 mentions both Manual (Cowork-shaped) and Hourly (CCD-
+  shaped) tasks.
+- **The session 8 prompt's `le(i)` reference at `:68820` was off.**
+  Approach 3's investigator flagged that the followup-prompt's
+  reference to `le(i)` origin validation at `index.js:68820` is
+  misaligned with the current build — `le` is at `:5045138` in this
+  bundle; offset 68820 hits OpenTelemetry SemRes constants. Doesn't
+  affect the outcome (the gate's behavior is the same regardless of
+  offset) but worth noting for any future probe that takes the
+  followup-prompt offset literally.
+- **Renderer-eval errors are stringified.** When `invokeEipcChannel`'s
+  underlying handler rejects (origin gate, arg validator, result
+  validator), the error surface is `Error: Error invoking remote method
+  '<framed-channel>': <inner-message>`. The framed channel name in the
+  message lets consumers triage per-handler. Two non-Tier-2 handlers
+  hit during investigation (`listMarketplaces`, `getPrChecks`) failed
+  arg validation cleanly — proves the gate accepted the wrapper-
+  synthesized event, which is the load-bearing signal that the
+  primitive's invocation path is real.
+- **Smoke-test artefact deleted.** Built a quick smoke test
+  (`tools/test-harness/smoke-test-invoke.ts`) to verify the new primitive
+  against the user's debugger-attached Claude before writing specs.
+  Confirmed all four target invocations (`getMcpServersConfig`,
+  `readGlobalMemory`, `CCDScheduledTasks/getAllScheduledTasks`,
+  `CoworkScheduledTasks/getAllScheduledTasks`) returned their
+  documented shapes. Smoke-test deleted after; the runners themselves
+  are the durable assertion surface. The probe artefacts at
+  `/tmp/eipc-invoke-probe-*.{ts,md,log,json}` from the three
+  investigation subagents are also disposable — `/tmp` is wiped on
+  next reboot, and the per-investigation findings are captured in the
+  bullets above.
+
+Tier 2 → Tier 2 candidates remaining for next session: **T33 Phase 2**
+(`CustomPlugins/listMarketplaces` — currently fails arg validation on
+`egressAllowedDomains`; would need the schema reverse-engineered from
+the bundle, then the spec invokes with valid args), **T19/T20/T21
+Code-tab cluster** (each needs `claude.web/ClaudeCode/*` invocation +
+AX-tree click chains; AX anchors verified session 5), **operon scope
+exposure-vs-registration check** (the renderer wrapper exposes 22
+operon interfaces but session 7's registry walk didn't catalogue them
+on claude.ai — either lazy-register on operon-mode entry, or wrapper-
+exposed without a registered handler; worth a one-liner probe before
+any operon-scope spec lands). Primitive surface
+(`lib/electron-mocks.ts`, `lib/input.ts`, `lib/input-niri.ts`,
+`lib/eipc.ts` with read-and-invoke surfaces) is now broad enough that
+session 9 is more about consumer-driven additions than primitive
+builds.
+
+---
+
 **Shipped session 7 (4 new specs + 1 new primitive):** T22b, T31b, T33b,
 T38b (Tier 2 runtime probes — `seedFromHost` + eipc-registry presence
 checks, strictly stronger than the Tier 1 fingerprint siblings T22 / T31

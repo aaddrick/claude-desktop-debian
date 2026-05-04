@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Sixty-six specs wired (28 cross-env T-tests, 33 env-specific S-tests,
+Sixty-nine specs wired (31 cross-env T-tests, 33 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -39,6 +39,7 @@ behind tier classification.
 | [T24](../../docs/testing/cases/code-tab-handoff.md#t24--open-in-external-editor) | After `installOpenExternalMock` mirroring T25's pattern, `evalInMain` calls `shell.openExternal('vscode://file/...')`; mock records the URL verbatim, no real editor launch | L1 (mocked egress) |
 | [T25](../../docs/testing/cases/code-tab-handoff.md#t25--show-in-files--file-manager) | After `installShowItemInFolderMock` mirroring T17's dialog-mock pattern, `evalInMain` calls `shell.showItemInFolder(<synthetic path>)`; mock records the call verbatim, no throw — no host side effect | L1 (mocked egress) |
 | [T26](../../docs/testing/cases/routines.md#t26--routines-page-renders) | After `seedFromHost` + `userLoaded`, click "Routines" sidebar AX button; assert "New routine" / "All" / "Calendar" anchor renders | L1 + AX-tree |
+| [T27](../../docs/testing/cases/routines.md#t27--scheduled-task-fires-and-notifies) | After `seedFromHost` + `userLoaded`, both Cowork and CCD `getAllScheduledTasks` eipc handlers are registered AND callable through the renderer-side wrapper, returning array shape — Tier 2 reframe of the case-doc T27 case | L1 (eipc invoke) |
 | [T30](../../docs/testing/cases/code-tab-workflow.md#t30--auto-archive-on-pr-merge) | Bundled `index.js` colocates the auto-archive sweep cadence (`300*1e3` ≤ `3600*1e3` ≤ `AutoArchiveEngine`) with the `ccAutoArchiveOnPrClose` gate key (single-regex multi-string fingerprint) | file probe |
 | [T31](../../docs/testing/cases/code-tab-workflow.md#t31--side-chat-opens) | Bundled `index.js` contains all three side-chat eipc channel names (`startSideChat`, `sendSideChatMessage`, `stopSideChat`) — load-bearing trio | file probe |
 | [T31b](../../docs/testing/cases/code-tab-workflow.md#t31--side-chat-opens) | After `seedFromHost` + `userLoaded`, all three side-chat eipc handlers (`startSideChat`, `sendSideChatMessage`, `stopSideChat`) are registered on the claude.ai webContents — load-bearing trio (Tier 2 runtime sibling of T31) | L1 (eipc registry) |
@@ -46,8 +47,10 @@ behind tier classification.
 | [T33](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | Bundled `index.js` contains `CustomPlugins_$_listMarketplaces` and `CustomPlugins_$_listAvailablePlugins` eipc channel names (browser populate flow) | file probe |
 | [T33b](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | After `seedFromHost` + `userLoaded`, both plugin-browser eipc handlers (`listMarketplaces`, `listAvailablePlugins`) are registered on the claude.ai webContents — load-bearing pair (Tier 2 runtime sibling of T33) | L1 (eipc registry) |
 | [T35](../../docs/testing/cases/extensibility.md#t35--mcp-server-config-picked-up) | Bundled `index.js` contains the four-needle MCP-config separation fingerprint: `claude_desktop_config.json` (chat-tab path), `.claude.json` + `.mcp.json` (Code-tab loaders), `"user","project","local"` (settingSources triple Code-session passes to the agent SDK) — pins per-tab separation without launch | file probe |
+| [T35b](../../docs/testing/cases/extensibility.md#t35--mcp-server-config-picked-up) | After `seedFromHost` + `userLoaded`, the `claude.settings/MCP/getMcpServersConfig` eipc handler is registered AND callable through the renderer-side wrapper, returning a non-array object (Tier 2 runtime sibling of T35, strictly stronger than the bundle-string fingerprint) | L1 (eipc invoke) |
 | [T36](../../docs/testing/cases/extensibility.md#t36--hooks-fire) | Bundled `index.js` contains the hooks runtime fingerprint: `hook_started` / `hook_progress` / `hook_response` (single-occurrence Verbose-transcript runtime emits) plus `PreToolUse` / `UserPromptSubmit` registry tokens — pins the runtime hook-fire path the case-doc Verbose-transcript claim hangs on | file probe |
 | [T37](../../docs/testing/cases/extensibility.md#t37--claudemd-memory-loads) | Bundled `index.js` contains `[GlobalMemory] Copied CLAUDE.md` log line + `CLAUDE.md` filename literal + `CLAUDE_CONFIG_DIR` env-var token (memory-loading wiring) | file probe |
+| [T37b](../../docs/testing/cases/extensibility.md#t37--claudemd-memory-loads) | After `seedFromHost` + `userLoaded`, the `claude.web/CoworkMemory/readGlobalMemory` eipc handler is registered AND callable through the renderer-side wrapper, returning the documented `string \| null` shape (Tier 2 runtime sibling of T37) | L1 (eipc invoke) |
 | [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | Bundled `index.js` contains `LocalSessions_$_openInEditor` eipc channel name (Tier 1 fingerprint) | file probe |
 | [T38b](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | After `seedFromHost` + `userLoaded`, the `LocalSessions_$_openInEditor` eipc handler is registered on the claude.ai webContents (Tier 2 runtime sibling of T38) | L1 (eipc registry) |
 | H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
@@ -108,10 +111,14 @@ window; `NiriIpcUnavailable` thrown off-Niri; consumed by S14), the
 `lib/eipc.ts` registry walker (`getEipcChannels` /
 `waitForEipcChannel` / `waitForEipcChannels` against
 `webContents.ipc._invokeHandlers`; opaque on the UUID, suffix-matched
-against case-doc anchors; consumed by T22b / T31b / T33b / T38b) — and
-the `createIsolation({ seedFromHost: true })` primitive that lets
-login-required tests run hermetically against a copy of the host's
-signed-in auth state (T07, T16, T22b, T26, T31b, T33b, T38b).
+against case-doc anchors; consumed by T22b / T31b / T33b / T38b)
+plus its session 8 invoke surface (`invokeEipcChannel` — calls a
+registered handler through the renderer-side wrapper at
+`window['claude.<scope>'].<Iface>.<method>`; consumed by T27 / T35b /
+T37b) — and the `createIsolation({ seedFromHost: true })` primitive
+that lets login-required tests run hermetically against a copy of the
+host's signed-in auth state (T07, T16, T22b, T26, T27, T31b, T33b,
+T35b, T37b, T38b).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register
@@ -126,10 +133,16 @@ across builds at `c0eed8c9-…`); 117 `LocalSessions_*` + 16
 webContents. T22 / T31 / T33 / T38 ship as Tier 1 fingerprints
 against the bundled channel-name strings; T22b / T31b / T33b / T38b
 are the runtime registry-presence siblings (strictly stronger,
-require `seedFromHost`). See `lib/eipc.ts` for the primitive that
-wraps the registry walk and
+require `seedFromHost`). T27 / T35b / T37b go one step further —
+they invoke the resolved handlers through the renderer-side wrapper
+at `window['claude.<scope>'].<Iface>.<method>`, which `mainView.js`
+exposes via `contextBridge.exposeInMainWorld` after a top-frame +
+origin gate (`Qc()`: claude.ai / claude.com / preview.* / localhost).
+Calling through the wrapper carries an honest `senderFrame` for the
+inlined `le()` / `Vi()` per-handler origin gate, so the test surface
+matches real attack surface. See `lib/eipc.ts` for both surfaces, and
 [`runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
-session 7 status section for the finding.
+session 7 / 8 status sections for the findings.
 
 Per-row pass/skip counts depend on which sweep runs against the row;
 see `runner-implementation-plan.md` for tier classification and
