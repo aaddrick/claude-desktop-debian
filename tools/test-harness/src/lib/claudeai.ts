@@ -33,6 +33,8 @@ import type { InspectorClient } from './inspector.js';
 import {
 	type RawElement,
 	snapshotAx,
+	waitForAxNode,
+	waitForAxNodes,
 	waitForAxTreeStable,
 } from './ax.js';
 import { retryUntil, sleep } from './retry.js';
@@ -69,14 +71,28 @@ const ROW_MORE_OPTIONS_RE = /^More options for /;
 // today, and the AX-computed name follows the same cascade — pinning
 // to the name keeps the page-object durable across the tailwind
 // regenerations that motivated the migration.
+//
+// Pre-click polling budget. Up to session 13, this was a one-shot
+// snapshot — if the tab button hadn't rendered yet when activateTab
+// was called, the function returned `{ clicked: false }` immediately.
+// Session 13's `waitForAxNode` substrate makes "wait for the button to
+// appear" a one-line shape-only change. Default 5000ms matches the
+// `lib/ax.ts` defaults; callers that previously relied on the no-retry
+// shape pass `timeout: 0` (e.g. via `waitForAxNode`'s timeoutMs) to
+// keep the old behaviour, though no caller currently does so. T16
+// passes 15s through `CodeTab.activate({ timeout })` — that budget is
+// still spent on the post-click pill poll; the pre-click click budget
+// is independent.
 export async function activateTab(
 	inspector: InspectorClient,
 	name: 'Chat' | 'Cowork' | 'Code',
+	opts: { timeout?: number } = {},
 ): Promise<{ clicked: boolean }> {
-	const elements = await snapshotAx(inspector);
-	const target = elements.find(
+	const target = await waitForAxNode(
+		inspector,
 		(el) =>
 			el.computedRole === 'button' && el.accessibleName === name,
+		{ timeoutMs: opts.timeout ?? 5_000 },
 	);
 	if (!target || target.backendDOMNodeId === null) {
 		return { clicked: false };
@@ -238,20 +254,36 @@ export class CodeTab {
 	// the URL doesn't change (route stays `/new` etc.), so we can't
 	// anchor on navigation. Throws on miss with the candidate count for
 	// triage.
+	//
+	// Session 14 migration: the pre-click `activateTab` call now polls
+	// up to `opts.timeout` for the Code button itself to appear (was a
+	// one-shot snapshot prior — the T16 failure mode). Same budget
+	// covers both phases; in practice the click resolves in well under
+	// a second when the Code button is present, so the post-click pill
+	// poll inherits the bulk of the budget.
 	async activate(opts: { timeout?: number } = {}): Promise<void> {
 		const timeout = opts.timeout ?? 5000;
-		const result = await activateTab(this.inspector, 'Code');
+		const result = await activateTab(this.inspector, 'Code', { timeout });
 		if (!result.clicked) {
 			throw new Error(
 				'CodeTab.activate: no AX-tree button with accessibleName="Code" found',
 			);
 		}
-		const ready = await retryUntil(
-			async () => {
-				const pills = await findCompactPills(this.inspector);
-				return pills.length > 0 ? pills : null;
-			},
-			{ timeout, interval: 200 },
+		// Post-click: poll the AX tree for at least one compact pill.
+		// `waitForAxNodes` carries the snapshot+filter+sleep loop
+		// formerly hand-rolled here, with the same per-iteration cadence
+		// (200ms) and overall budget. Predicate matches `findCompactPills`
+		// — `role: 'button'` + `hasPopup: 'menu'` + non-empty
+		// accessibleName + not a per-row "More options for X" trigger.
+		const ready = await waitForAxNodes(
+			this.inspector,
+			(el) =>
+				el.computedRole === 'button' &&
+				el.hasPopup === 'menu' &&
+				el.accessibleName !== null &&
+				el.accessibleName.length > 0 &&
+				!ROW_MORE_OPTIONS_RE.test(el.accessibleName),
+			{ timeoutMs: timeout, intervalMs: 200 },
 		);
 		if (!ready) {
 			throw new Error(

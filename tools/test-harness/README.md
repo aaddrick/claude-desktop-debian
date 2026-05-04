@@ -127,7 +127,12 @@ for predicate-based polling, plus re-exports of `RawElement` /
 `explore/walker.ts` so consumers stay inside `lib/`; threshold-
 driven extraction in session 13 once T26 had to duplicate the
 formerly-private `snapshotAx` from `claudeai.ts`; consumed by
-`claudeai.ts` page-objects + T26) — and the
+`claudeai.ts` page-objects + T26; session 14 migrated `activateTab`
+from a one-shot snapshot to `waitForAxNode` polling — fixes the
+T16 `no AX-tree button with accessibleName="Code" found` failure
+mode where the Code button hadn't rendered yet at click time —
+and converted `CodeTab.activate`'s post-click `findCompactPills`
+retry loop to `waitForAxNodes`) — and the
 `createIsolation({ seedFromHost: true })` primitive that lets login-
 required tests run hermetically against a copy of the host's signed-
 in auth state (T07, T11_runtime, T16, T19, T20, T21, T22b, T26, T27,
