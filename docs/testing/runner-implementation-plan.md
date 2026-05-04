@@ -18,6 +18,94 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 11 (1 new spec, no primitive change):** T21 (Tier 2
+reframe — `seedFromHost` + multi-suffix registration probe over five
+case-doc-anchored Launch handlers + dual-handler invocation of the
+case-doc-anchored read-side getters `getConfiguredServices` /
+`getAutoVerify`). First runtime probe for T21 — no fingerprint sibling
+shipped because the case-doc anchors point at impl-side function
+names (`setAutoVerify`, `parseLaunchJson`, `capturePage` /
+`captureViaCDP`) plus an MCP tool table (`preview_*`), not the user-
+facing channel names. Coverage moved from 72/76 (95%) to 73/76 (96%).
+Passes on KDE-W in 16.7s (cold) / 5.2s (warm follow-up).
+
+Two commits on `docs/compat-matrix` expected (SHAs inserted after
+the test-harness commit lands — the user reviews and commits at the
+end of every session):
+
+- TBD — `test(harness): session 11 T21 dev server preview runtime`
+  (Tier 2 reframe; multi-suffix `waitForEipcChannels` over the
+  case-doc-anchored Launch suffixes — `getConfiguredServices` /
+  `startFromConfig` / `stopServer` / `getAutoVerify` /
+  `capturePreviewScreenshot` — plus dual `invokeEipcChannel` on
+  `Launch_$_getConfiguredServices` (returns array) and
+  `Launch_$_getAutoVerify` (returns boolean), both with
+  `cwd = process.cwd()` as the validator-passing string).
+
+Session 11 findings + reclassifications:
+
+- **`Launch` cwd validator is `typeof cwd === 'string'` only.** Smoke-
+  test against the user's debugger-attached running Claude on
+  `getAutoVerify` and `getConfiguredServices` showed: `''` (empty
+  string), `'.'` (relative), `'/tmp'` (existing absolute), `'/'`
+  (root), `'/home/aaddrick'` (home), `'/nonexistent-path-xyzzy'`
+  (non-existent), `'/home/aaddrick/source/claude-desktop-debian'`
+  (existing) ALL pass. Only `null`, `undefined`, and object wraps
+  (`{path:'/tmp'}`, `{cwd:'/tmp'}`) reject. No path-existence check,
+  no absolute-path requirement. The handler tolerates missing
+  `<cwd>/.claude/launch.json` — returns `[]` for `getConfiguredServices`
+  and `false` for `getAutoVerify` when the config file is absent.
+  Bundle-grep on the rejection literal NOT needed — direct smoke-
+  test resolved the schema in one round-trip.
+- **`window['claude.web'].Launch` exposes 30 callable members.** The
+  registry probe sees 25 `_invokeHandlers`; the wrapper additionally
+  surfaces 5 `on*` event subscribers (`onDeployEvent`,
+  `onElementSelected`, `onPreviewSelectionShortcut`,
+  `onPreviewUrlChanged`) plus `isAvailable` and `activeServersStore`.
+  Wrapper-only entries don't show up in `webContents.ipc._invokeHandlers`
+  because they're not invoke-style channels — they bind to event
+  emitters and store proxies via different bridge primitives. Worth
+  noting for any future T21-area test that wants to probe event
+  subscription paths (those would need a different primitive than
+  `invokeEipcChannel`).
+- **UUID still `c0eed8c9-c94a-4931-8cc3-3a08694e9863`.** Build-stable
+  since session 2; smoke-test confirmed.
+- **Dual case-doc-anchored read-side invocation pattern.** T21
+  follows T33c's shape (invoke each case-doc-anchored read-side
+  suffix, assert the documented shape per handler) rather than T19
+  / T20's foundational-surrogate shape (invoke `LocalSessions/getAll`
+  as a stand-in because case-doc anchors were write-side). When a
+  case-doc has read-side anchors with resolvable arg shapes, prefer
+  invoking the case-doc-anchored handlers directly — it removes the
+  surrogate hop and the assertion is "the documented handler returns
+  the documented shape" rather than "a foundational sibling is
+  reachable".
+- **No primitive change.** `lib/eipc.ts`'s `waitForEipcChannels` +
+  `invokeEipcChannel` cover T21 unchanged. Investigation budget was
+  ~3 minutes for the smoke-test (eight cwd shapes against
+  `getAutoVerify` plus three against `getConfiguredServices`); no
+  bundle-grep needed.
+- **Filename convention.** T21 had no fingerprint sibling, so
+  follows T19 / T20 / T26 / T27's `_runtime` (no letter suffix)
+  shape — `T21_runtime.spec.ts`. Same pattern as session 10's first-
+  runtime-probe-against-case-doc filename rule.
+
+Tier 2 → Tier 2 candidates remaining for next session: **T11 plugin
+install runtime upgrade** (currently a Tier 1 fingerprint;
+`LocalPlugins` registers 15 handlers per session 7's probe, includes
+`getPlugins` / `getDownloadedRemotePlugins` / `syncRemotePlugins` /
+`listSkillFiles` candidates — needs schema-rev or smoke-test). **operon
+scope navigation probe** still on the table (session 10 confirmed
+`OperonBootstrap.ensure` registers eagerly but the other 21
+wrapper-exposed operon interfaces remain registry-unconfirmed; would
+need an operon-mode URL form recovered from the bundle). **T11 is
+the natural main bet for session 12** — same pattern as session 11's
+T21 (single Launch interface investigated, single new spec landed).
+The primitive surface remains broad enough that consumer-driven
+extensions are the right next move.
+
+---
+
 **Shipped session 10 (2 new specs, no primitive change):** T19 + T20
 (Tier 2 reframes — `seedFromHost` + multi-suffix registration probe
 over the case-doc-anchored write-side handlers + invocation of the
