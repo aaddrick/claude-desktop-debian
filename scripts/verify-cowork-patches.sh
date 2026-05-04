@@ -41,8 +41,8 @@ usage() {
 
 # Parse the marker TSV into three parallel arrays. Skips comments
 # and blank lines. Used by both the verify path here and by the
-# BATS test (which sources this function via the script's library
-# mode — see _is_sourced below).
+# BATS test, which sources this script (see _is_sourced below) to
+# share parsing and avoid drift between the two consumers.
 load_markers() {
 	marker_names=()
 	marker_patterns=()
@@ -156,26 +156,21 @@ main() {
 	echo "Verifying cowork patch markers in: $index_js"
 	echo "Marker source: $markers_tsv"
 
-	local i=0 missing=0
-	local missing_names=()
-	while [[ $i -lt ${#marker_names[@]} ]]; do
-		local name="${marker_names[$i]}"
-		local pattern="${marker_patterns[$i]}"
-		if grep -qP -- "$pattern" "$index_js"; then
-			printf '  OK   %s\n' "$name"
+	local i missing_names=()
+	for i in "${!marker_names[@]}"; do
+		if grep -qP -- "${marker_patterns[$i]}" "$index_js"; then
+			printf '  OK   %s\n' "${marker_names[$i]}"
 		else
-			printf '  MISS %s\n' "$name" >&2
-			missing_names+=("$name")
-			missing=$((missing + 1))
+			printf '  MISS %s\n' "${marker_names[$i]}" >&2
+			missing_names+=("${marker_names[$i]}")
 		fi
-		i=$((i + 1))
 	done
 
-	if [[ $missing -gt 0 ]]; then
+	if [[ ${#missing_names[@]} -gt 0 ]]; then
 		local joined
 		joined="$(IFS=','; printf '%s' "${missing_names[*]}")"
 		printf '\nverify-cowork-patches: %d/%d markers missing: %s\n' \
-			"$missing" "${#marker_names[@]}" "$joined" >&2
+			"${#missing_names[@]}" "${#marker_names[@]}" "$joined" >&2
 		return 2
 	fi
 

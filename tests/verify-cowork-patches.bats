@@ -12,22 +12,16 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 VERIFY_SH="$SCRIPT_DIR/../scripts/verify-cowork-patches.sh"
-MARKERS_TSV="$SCRIPT_DIR/../scripts/cowork-patch-markers.tsv"
 
 setup() {
 	TEST_TMP=$(mktemp -d)
 	export TEST_TMP
 
-	marker_names=()
-	marker_patterns=()
-	marker_samples=()
-	local name pattern sample
-	while IFS=$'\t' read -r name pattern sample; do
-		[[ -z $name || $name == '#'* ]] && continue
-		marker_names+=("$name")
-		marker_patterns+=("$pattern")
-		marker_samples+=("$sample")
-	done < "$MARKERS_TSV"
+	# Source the verify script in library mode and reuse its
+	# parser, so a TSV format change can't desync the two consumers.
+	# shellcheck source-path=SCRIPTDIR/.. source=scripts/verify-cowork-patches.sh
+	source "$VERIFY_SH"
+	load_markers
 }
 
 teardown() {
@@ -43,12 +37,11 @@ write_fixture() {
 	local omit="${1:-}"
 	local fixture="$TEST_TMP/index.js"
 	: > "$fixture"
-	local i=0
-	while [[ $i -lt ${#marker_names[@]} ]]; do
+	local i
+	for i in "${!marker_names[@]}"; do
 		if [[ ${marker_names[$i]} != "$omit" ]]; then
 			printf '%s\n' "${marker_samples[$i]}" >> "$fixture"
 		fi
-		i=$((i + 1))
 	done
 	printf '%s\n' "$fixture"
 }
@@ -58,8 +51,8 @@ write_fixture() {
 # =============================================================================
 
 @test "markers file: every regex matches its sample" {
-	local i=0
-	while [[ $i -lt ${#marker_names[@]} ]]; do
+	local i
+	for i in "${!marker_names[@]}"; do
 		run grep -qP -- "${marker_patterns[$i]}" \
 			<(printf '%s\n' "${marker_samples[$i]}")
 		[[ "$status" -eq 0 ]] || {
@@ -68,7 +61,6 @@ write_fixture() {
 			echo "sample:  ${marker_samples[$i]}"
 			return 1
 		}
-		i=$((i + 1))
 	done
 }
 
@@ -106,11 +98,8 @@ write_fixture() {
 # =============================================================================
 
 @test "verify: exits 2 and names the missing marker (each)" {
-	local i=0
-	local failures=0
-	while [[ $i -lt ${#marker_names[@]} ]]; do
-		local name="${marker_names[$i]}"
-		local fixture
+	local name fixture failures=0
+	for name in "${marker_names[@]}"; do
 		fixture="$(write_fixture "$name")"
 
 		run "$VERIFY_SH" "$fixture"
@@ -124,7 +113,6 @@ write_fixture() {
 			echo "$output"
 			failures=$((failures + 1))
 		fi
-		i=$((i + 1))
 	done
 	[[ "$failures" -eq 0 ]]
 }
@@ -136,11 +124,10 @@ write_fixture() {
 @test "verify: accepts a directory containing the asar layout" {
 	local layout="$TEST_TMP/staging/app.asar.contents/.vite/build"
 	mkdir -p "$layout"
-	local i=0
 	: > "$layout/index.js"
-	while [[ $i -lt ${#marker_names[@]} ]]; do
-		printf '%s\n' "${marker_samples[$i]}" >> "$layout/index.js"
-		i=$((i + 1))
+	local sample
+	for sample in "${marker_samples[@]}"; do
+		printf '%s\n' "$sample" >> "$layout/index.js"
 	done
 
 	run "$VERIFY_SH" "$TEST_TMP/staging"
