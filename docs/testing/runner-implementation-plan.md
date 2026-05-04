@@ -18,6 +18,116 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 14 (1 call-site migration, no new spec):**
+`activateTab` and `CodeTab.activate` in `lib/claudeai.ts` migrated
+from hand-rolled retry loops to session 13's `lib/ax.ts` substrate.
+This is a flake-reduction session — the priority shape called out in
+session 13's followup as the natural next step once the substrate
+landed. Phase 0 calibration found the debugger detached on the dev
+box (port 9229 not listening), which blocked Categories A / B / C
+(operon-mode navigation probe + Tier 3 read-only reframes + schema-
+rev for `listRemotePluginsPage` / `listSkillFiles` — all needing
+runtime probing against debugger-attached Claude). The PRIORITY
+Category D (call-site migration) was the highest-impact deliverable
+that didn't require the debugger.
+
+Coverage stays at 74/76 (97%) — migration session, no spec landed.
+The matrix coverage doesn't reflect call-site migrations; those show
+up as flake-reduction in existing specs (T16's pre-existing `no
+AX-tree button with accessibleName="Code" found` failure mode is
+fixed by session 14's migration).
+
+Two commits on `docs/compat-matrix` expected (the orchestration
+directive supersedes "the user reviews and commits" — autonomous
+commit + push at end of session):
+
+- TBD — `test(harness): session 14 migrate activateTab to
+  waitForAxNode (no spec, coverage unchanged at 97%)`
+  (migrates `activateTab` from one-shot snapshot to
+  `waitForAxNode` with a configurable pre-click timeout; migrates
+  `CodeTab.activate`'s post-click `retryUntil`-around-
+  `findCompactPills` loop to `waitForAxNodes`; T16 passes 3/3 on
+  KDE-W against the migrated form, was pre-existing-flaky on the
+  baseline; T26 still passes (regression check); T17 still pre-
+  existing-flaky (verified by stash + retry — failure shape
+  unchanged-by-migration).
+
+Session 14 findings + reclassifications:
+
+- **T16 fix landed.** Session 13 documented T16 as pre-existing-
+  flaky on KDE-W with the failure mode `CodeTab.activate: no
+  AX-tree button with accessibleName="Code" found`. Verified by
+  stashing session 13's changes and re-running T16 against the
+  baseline — same failure. Session 14's migration converts the
+  pre-click `activateTab` from a one-shot AX snapshot into a
+  `waitForAxNode` poll. The Code button is now waited-for up to
+  the caller's budget (T16 passes 15s through `CodeTab.activate`)
+  rather than checked-once. T16 passed 3/3 in succession against
+  the migrated form.
+- **`activateTab` API change is additive.** New optional `opts:
+  { timeout?: number }` parameter; default 5000ms matches the
+  `lib/ax.ts` defaults. Existing callers (just `CodeTab.activate`)
+  pass through their own timeout. No breaking shape change to
+  return type or first/second positional args.
+- **`CodeTab.activate` post-click loop migrated.** The hand-rolled
+  `retryUntil(async () => { const pills = await
+  findCompactPills(...); return pills.length > 0 ? pills : null; },
+  { timeout, interval: 200 })` block is structurally identical to
+  `waitForAxNodes` with the compact-pill predicate inlined. The
+  predicate (role: 'button' + hasPopup: 'menu' + non-empty
+  accessibleName + not a `^More options for ` row trigger) is
+  copy-pasted from `findCompactPills` to keep the page-object
+  free-standing without changing observable shape. `waitForAxNodes`
+  carries the existing 200ms interval and overall budget through
+  via `intervalMs` / `timeoutMs`.
+- **`findCompactPills` not migrated.** It's used in three call-
+  sites: (a) inside `CodeTab.activate`'s formerly-hand-rolled
+  retry — migrated; (b) T16's diagnostic capture on failure
+  (line 91, expects fail-fast / wants whatever's currently on the
+  page); (c) T16's post-activate diagnostic (already-stable, one-
+  shot-by-design). Migrating `findCompactPills` itself would push
+  unwanted retry latency into the diagnostic path, so the helper
+  stays a one-shot snapshot — only the retry shape moved into
+  `CodeTab.activate`.
+- **`openPill` / `clickMenuItem` not migrated.** Both have
+  post-click stability gates + sleep-based polling loops that
+  could in principle be `waitForAxNode`-shaped, but each carries
+  per-spec budget tuning (T17 / openFolderPicker chain uses
+  `openPill { timeout: 1500 }` and `clickMenuItem { timeout:
+  1500 }` defaults) that the prompt explicitly cautions against
+  changing speculatively. The migration was scoped to the
+  highest-impact call-site (the T16 fix) plus the cleanest shape
+  match (`CodeTab.activate`'s post-click pill poll). Future
+  sessions can take `openPill` / `clickMenuItem` if a third
+  consumer signals.
+- **T17 unchanged-by-migration.** T17 was reported pre-existing-
+  flaky on KDE-W per session 13's full-suite run. Verified that
+  status by stashing the migration and re-running T17 — same
+  60s timeout. T17 exercises the env-pill → Local → Select-folder
+  → Open-folder chain via `openEnvPill` / `selectLocal` /
+  `openFolderPicker`, which use `openPill` and `clickMenuItem`
+  internally. Those weren't migrated this session (per above), so
+  T17's flake mode is unchanged and is pre-existing rather than
+  a session-14 regression.
+- **No primitive change.** `lib/ax.ts`'s `waitForAxNode` /
+  `waitForAxNodes` cover both migration sites unchanged. No new
+  `WaitForAxNodeOptions` flags needed.
+
+Tier 2 → Tier 2 candidates remaining for next session: same as
+session 12 / 13 — operon-mode navigation probe (still needs
+debugger), schema-rev for `listRemotePluginsPage` / `listSkillFiles`
+(still needs debugger), Tier 3 read-only reframes (login-required).
+The new shape unlocked this session: **further call-site migrations**
+in `lib/claudeai.ts` — `openPill`'s post-click while-loop and
+`clickMenuItem`'s while-loop are tractable when a follow-up signal
+warrants. Plus migrating T26's pre-click `retryUntil` (carries a
+`context-was-destroyed` retry — `waitForAxNode` doesn't currently
+swallow that exception class, so it'd need a primitive extension or
+a wrapper). Coverage at 74/76 (97%) with the test budget naturally
+shifting toward flake reduction now that the substrate exists.
+
+---
+
 **Shipped session 13 (1 new primitive, no new spec):** `lib/ax.ts` —
 shared AX-tree loading + traversal substrate, threshold-driven
 extraction. The plan-doc had flagged "Unified DOM/AX loading +

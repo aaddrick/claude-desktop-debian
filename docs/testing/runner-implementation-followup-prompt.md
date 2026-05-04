@@ -1,127 +1,127 @@
-# test-harness runner implementation — session 14 prompt
+# test-harness runner implementation — session 15 prompt
 
 This file is meant to be **copied verbatim into a fresh Claude Code
 session** as the initial user message. Don't paraphrase it; the
 orchestration depends on the exact directives below.
 
 You're picking up after a runner-implementation session that landed 1
-new primitive (`lib/ax.ts`) and NO new spec. Session 13 was a pivot:
-Phase 0 calibration found the debugger detached on the dev box (port
-9229 not listening — Claude was running but Developer → Enable Main
-Process Debugger had not been clicked), which blocked Categories A
-(operon-mode navigation probe) and C (schema-rev for
-`listRemotePluginsPage` / `listSkillFiles`) — both need runtime
-probing against a debugger-attached running Claude. Category B (Tier
-3 read-only reframes) ALSO effectively needed the debugger for the
-smoke-test investigation phase. Session 13 pivoted to the
-PRIORITY-flagged DOM unification primitive, which was tractable
-without the debugger because both consumer signals existed
-statically: `claudeai.ts` had a private `snapshotAx`, T26 had a
-duplicate inline copy explicitly noted as "premature abstraction at 1
-consumer", plus the user reported recurring AX-query flake. Coverage
-unchanged at 74/76 (97%) — primitive-only sessions don't move the
-spec count. Two commits on `docs/compat-matrix` expected (SHAs
-inserted after the test-harness commit lands — the user reviews and
-commits at the end of every session):
+call-site migration (no new spec, no new primitive). Session 14 was
+a flake-reduction session: Phase 0 calibration found the debugger
+detached on the dev box (port 9229 not listening — Claude was not
+running, or running but Developer → Enable Main Process Debugger had
+not been clicked), which blocked Categories A (operon-mode
+navigation probe), B (Tier 3 read-only reframes), and C (schema-rev
+for `listRemotePluginsPage` / `listSkillFiles`) — all needing runtime
+probing against debugger-attached Claude. Session 14 pivoted to the
+PRIORITY Category D (call-site migration to `waitForAxNode`), which
+was tractable without the debugger because the migration is pure
+shape-only refactor against existing `lib/ax.ts` substrate. Coverage
+unchanged at 74/76 (97%) — migration sessions don't move the spec
+count, but T16's pre-existing failure mode (`no AX-tree button with
+accessibleName="Code" found`) is fixed by the migration. Two commits
+on `docs/compat-matrix` expected (autonomous orchestration commits +
+pushes — the user reviews after the session):
 
-- TBD — `test(harness): session 13 lib/ax.ts AX substrate primitive`
-  (extracts `snapshotAx` from `claudeai.ts` private + T26 inlined
-  duplicate; adds `waitForAxNode` / `waitForAxNodes` predicate-based
-  polling helpers; re-exports `RawElement` / `AxNode` /
-  `axTreeToSnapshot` / `waitForAxTreeStable` from `explore/walker.ts`
-  so consumers stay inside `lib/`; refactors `claudeai.ts` and T26
-  to consume the shared substrate).
+- TBD — `test(harness): session 14 migrate activateTab to
+  waitForAxNode (no spec, coverage unchanged at 97%)`
+  (migrates `activateTab` from one-shot snapshot to `waitForAxNode`
+  with a configurable pre-click timeout; migrates
+  `CodeTab.activate`'s post-click `retryUntil`-around-
+  `findCompactPills` loop to `waitForAxNodes`; T16 passes 3/3 on
+  KDE-W against the migrated form, was pre-existing-flaky on the
+  baseline; T26 passes; T17 still pre-existing-flaky — verified by
+  stash + retry).
 
 The plan doc at
 [`docs/testing/runner-implementation-plan.md`](runner-implementation-plan.md)
 captures the tier classification and execution-time reclassifications.
 Its "Status (post-execution)" section is the source of truth for
-what's done and what's deferred — read **session 13** first, then
-**session 12**, then **session 11**, then **session 10**, then
-**session 9**, then **session 8**, then **session 7**, then **session
-6**, then **session 5**, then **session 4**, then **session 3**, then
-**session 2**, then **session 1** sub-sections.
+what's done and what's deferred — read **session 14** first, then
+**session 13**, then **session 12**, then **session 11**, then
+**session 10**, then **session 9**, then **session 8**, then **session
+7**, then **session 6**, then **session 5**, then **session 4**, then
+**session 3**, then **session 2**, then **session 1** sub-sections.
 
 This session is a continuation, not a restart. Start by reading the
 plan doc's status sections.
 
-### Big new findings from session 13
+### Big new findings from session 14
 
-1. **Pre-existing T16 / T17 / T07 / S25 / S29-S31 flake confirmed
-   on KDE-W against the unchanged baseline.** Running the full suite
-   surfaced 12 failures, including T16 (CodeTab.activate: no AX-tree
-   button with accessibleName="Code" found) and T17. Verified
-   pre-existing by stashing the session-13 changes and re-running
-   T16 — same failure. Session 13's primitive doesn't fix the existing
-   flake; it lays groundwork. Future sessions can build flake-
-   reduction patches against `lib/ax.ts`'s `waitForAxNode` (e.g.
-   promote `activateTab`'s one-shot snapshot to a proper retry, or
-   give T07's CSS-querySelector poll a more durable wait shape if
-   that abstraction emerges).
-2. **`lib/ax.ts` is the new shared AX-tree substrate.** Surface:
-   - `snapshotAx(inspector, opts)` — single AX read with the
-     stability gate. `opts.fast` skips the gate for inside-poll
-     callers (matches the existing `claudeai.ts`/T26 contract).
-   - `waitForAxNode(inspector, predicate, opts)` — repeatedly
-     snapshot the tree and return the first matching `RawElement`,
-     null on timeout. Gates on stability once at the start
-     (configurable), then iterates with `fast: true`. Built against
-     the inline polling loops in `CodeTab.activate`, `openPill`,
-     `clickMenuItem`, T26 pre/post-click anchor scans — but the
-     existing call-sites are NOT migrated this session (their per-
-     spec retry budgets are tuned and changing them speculatively
-     risks flake). Future call-site migrations are tractable.
-   - `waitForAxNodes(inspector, predicate, opts)` — same shape,
-     returns every match. For consumers that want to enumerate.
-   - Re-exports: `RawElement`, `AxNode`, `axTreeToSnapshot`,
-     `waitForAxTreeStable` — so consumers stay inside `lib/`
-     instead of reaching into `explore/walker.ts` directly.
-3. **The debugger-attachment precondition is binding.** Sessions 9
-   through 12 did extensive runtime probing of the per-wc IPC
+1. **`activateTab` no-retry was the T16 failure mode.** Verified by
+   stashing the migration and re-running T16 against the baseline —
+   same `CodeTab.activate: no AX-tree button with accessibleName="Code"
+   found` failure. The migration converts the pre-click snapshot from
+   one-shot to a `waitForAxNode` poll, with the existing T16 budget
+   (15s through `CodeTab.activate({ timeout })`) covering both the
+   pre-click click-budget and the post-click pill poll. T16 passed
+   3/3 in succession against the migrated form. Strong signal that
+   "convert one-shot AX snapshots to `waitForAxNode` polling" is a
+   high-leverage flake-reduction shape — this is the first migration
+   that demonstrably fixed an existing failure.
+2. **T17 stays pre-existing-flaky.** T17 exercises the env-pill →
+   Local → Select-folder → Open-folder chain via `openEnvPill` /
+   `selectLocal` / `openFolderPicker`, which use `openPill` and
+   `clickMenuItem` internally. Those weren't migrated this session
+   (their post-click stability gates plus per-spec sleep budgets
+   carry tuning the prompt explicitly cautioned against changing).
+   T17's flake mode is unchanged-by-migration; future sessions can
+   take it if budget tuning data warrants. The `openPill` while-loop
+   on a successful menu render takes 100ms-per-poll-iteration; if the
+   menu hasn't rendered within 5s, it returns `{ opened: false,
+   items: [] }`. Migrating to `waitForAxNode` would flatten the loop
+   shape but doesn't obviously change the outcome, so the migration
+   wasn't worth the budget-tuning risk this session.
+3. **The debugger-attachment precondition is still binding.**
+   Sessions 9-12 did extensive runtime probing of the per-wc IPC
    registry against the user's debugger-attached Claude. Without
    that probing, Categories A / B / C in this prompt are blocked at
    the smoke-test phase. If the user hasn't clicked Developer →
    Enable Main Process Debugger before the session starts, port 9229
    is closed and the categories pivot to either documentation work
-   or the call-site-migration shape that doesn't need runtime
-   probing. Phase 0 must check `ss -tln | grep ':9229'` (or `curl
-   --max-time 2 http://127.0.0.1:9229/json`) before fanning out.
+   or further call-site migration. Phase 0 must check `ss -tln |
+   grep ':9229'` (or `curl --max-time 2 http://127.0.0.1:9229/json`)
+   before fanning out.
 4. **The reframe pool remains essentially exhausted.** Same status
-   as session 12 — every Tier 1 fingerprint with a tractable runtime
-   sibling has been promoted. The remaining options are now: (a)
-   call-site migration to `waitForAxNode` for flake reduction, (b)
-   operon-mode navigation probe (still needs debugger), (c) schema-
-   rev for `listRemotePluginsPage` / `listSkillFiles` (still needs
-   debugger), (d) Tier 3 read-only reframes (most need user-account
-   state). The natural next-session shape is (a) — flake reduction
-   builds on session 13's primitive and doesn't need the debugger.
+   as sessions 12-13 — every Tier 1 fingerprint with a tractable
+   runtime sibling has been promoted. The remaining options are now:
+   (a) further call-site migration to `waitForAxNode` for flake
+   reduction (`openPill` / `clickMenuItem` / T26's pre-click
+   `retryUntil` — though T26's needs a `context-was-destroyed`
+   exception swallow), (b) operon-mode navigation probe (still needs
+   debugger), (c) schema-rev for `listRemotePluginsPage` /
+   `listSkillFiles` (still needs debugger), (d) Tier 3 read-only
+   reframes (most need user-account state). Session 14 demonstrated
+   migration can deliver a measurable bug-fix outcome; that
+   continues to be the highest-leverage shape when the debugger is
+   closed.
 
 ### Authoritative reference
 
 Read these in order before fanning out:
 
 - [`docs/testing/runner-implementation-plan.md`](runner-implementation-plan.md)
-  — tier classification + status section. Read **session 13**, then
-  **session 12**, then **session 11**, **session 10**, **session 9**,
-  **session 8**, **session 7**, **session 6**, **session 5**, **session
-  4**, **session 3**, **session 2**, then **session 1** "Status (post-
-  execution)" sub-sections. The Tier-3 list (search for "## Tier 3")
-  is the candidate pool for any further reframes.
+  — tier classification + status section. Read **session 14**, then
+  **session 13**, **session 12**, **session 11**, **session 10**,
+  **session 9**, **session 8**, **session 7**, **session 6**,
+  **session 5**, **session 4**, **session 3**, **session 2**, then
+  **session 1** "Status (post-execution)" sub-sections. The Tier-3
+  list (search for "## Tier 3") is the candidate pool for any further
+  reframes.
 - [`tools/test-harness/README.md`](../../tools/test-harness/README.md)
   — runner conventions, the now-74-spec inventory, primitives in
   `lib/`, isolation defaults, the CDP-gate workaround, the eipc
-  note, and the new `lib/ax.ts` substrate (session 13 addition;
-  consumer list is `claudeai.ts` page-objects + T26).
+  note, and `lib/ax.ts` substrate (session 13 addition; session 14
+  migrated `activateTab` + `CodeTab.activate`'s post-click pill
+  poll to use it).
 - [`docs/testing/cases/README.md`](cases/README.md) — case-doc
   structure and the four anchor scopes.
 - [`tools/test-harness/src/lib/`](../../tools/test-harness/src/lib/)
-  — the existing primitives. Session 13 added `lib/ax.ts`; surface
-  is `snapshotAx` / `waitForAxNode` / `waitForAxNodes` plus re-
-  exports of `RawElement` / `AxNode` / `axTreeToSnapshot` /
-  `waitForAxTreeStable`. The session 8 eipc surface
-  (`getEipcChannels` / `findEipcChannel` / `findEipcChannels` /
-  `waitForEipcChannel` / `waitForEipcChannels` / `invokeEipcChannel`
-  on `lib/eipc.ts`) is unchanged.
+  — the existing primitives. `lib/ax.ts` surface is `snapshotAx` /
+  `waitForAxNode` / `waitForAxNodes` plus re-exports. The session 8
+  eipc surface (`getEipcChannels` / `findEipcChannel` /
+  `findEipcChannels` / `waitForEipcChannel` /
+  `waitForEipcChannels` / `invokeEipcChannel` on `lib/eipc.ts`) is
+  unchanged.
 - [`tools/test-harness/eipc-registry-probe.ts`](../../tools/test-harness/eipc-registry-probe.ts)
   — the session 7 read-only registry probe. Re-run against a
   debugger-attached Claude (`Developer → Enable Main Process
@@ -131,13 +131,16 @@ Read these in order before fanning out:
   and run N candidate read-sides through M arg shapes; deleted
   after.
 - [`tools/test-harness/src/runners/`](../../tools/test-harness/src/runners/)
-  — every existing spec is a template. Notable session 13
+  — every existing spec is a template. Notable session 14
   candidates for follow-up:
-  - `T26_routines_page_renders.spec.ts` — first consumer of
-    `lib/ax.ts`'s exported `snapshotAx` (refactored from inline).
-    Other AX-using specs (T16, T17, H05) still call through
-    `claudeai.ts` page-objects which use the shared substrate
-    transparently.
+  - `T17_folder_picker.spec.ts` — the next test that would benefit
+    from `openPill` / `clickMenuItem` migration. Pre-existing
+    flake; current failure is a 60s timeout in the
+    openEnvPill/selectLocal/openFolderPicker chain.
+  - `T26_routines_page_renders.spec.ts` — has a pre-click
+    `retryUntil` block with `context-was-destroyed` exception
+    handling that could become a `waitForAxNode` call once the
+    primitive grows error-class options.
 - [`docs/testing/cases/*.md`](cases/) — the spec each runner
   asserts. The **Code anchors:** field tells you exactly where
   upstream implements the feature.
@@ -146,40 +149,47 @@ Read these in order before fanning out:
 
 **Realistic ceiling: ~1 new spec OR one substantive flake-reduction
 deliverable OR one investigation.** Sessions 9-12 each landed 1-2
-specs; session 13 landed only a primitive (debugger blocked).
-Coverage at 74/76 means the test budget naturally shifts toward
-either (a) flake reduction against `lib/ax.ts`'s primitive, (b)
-investigation that requires the debugger and was deferred from
-sessions 12-13, or (c) Tier 3 read-only reframes that the harness
-can construct from existing `seedFromHost` state.
+specs; session 13 landed only a primitive (debugger blocked); session
+14 landed only a migration (debugger blocked). Coverage at 74/76
+means the test budget naturally shifts toward either (a) further flake
+reduction by extending the migration shape, (b) investigation that
+requires the debugger and was deferred from sessions 12-14, or (c)
+Tier 3 read-only reframes that the harness can construct from
+existing `seedFromHost` state.
 
 **Phase 0 MUST check the debugger BEFORE picking a category.** Run
 `ss -tln 2>/dev/null | grep ':9229'` (or
 `curl --max-time 2 http://127.0.0.1:9229/json`). If port 9229 is not
 listening, Categories A and C are hard-blocked. Pivot to D or B.
 
-#### **PRIORITY: Call-site migration to `lib/ax.ts`'s
-`waitForAxNode` for flake reduction.** Session 13 landed the
-substrate; this session can promote the inline retry loops in
-`claudeai.ts` (`activateTab` is the strongest candidate — it does a
-one-shot snapshot with no retry, which is exactly the failure mode
-T16 hits). Smaller-scope candidates: `findCompactPills` (one-shot
-snapshot, no retry — same shape as `activateTab`), `openPill`'s
-post-click while-loop, `clickMenuItem`'s while-loop. Each migration
-is a localized refactor; verify by running the affected specs
-(T16/T17/T26/H05) and checking pass rate. Don't speculatively
-change the budget defaults — match the existing per-spec retry
-budgets so the migration is shape-only. **If this is what session
-14 ships, that's a strictly higher-impact outcome than another Tier
-2 / Tier 3 reframe — flake reduction touches every existing AX-
-using spec.** Doesn't need the debugger.
+#### **PRIORITY: Investigate why T17 stays flaky and decide on a
+migration-or-fix path.** Session 14's migration fixed T16's pre-
+existing failure mode. T17 is the next-clearest pre-existing-flaky
+spec on KDE-W; it shares plumbing with T16 (`CodeTab` → AX-driven
+clicks) but goes deeper through `openEnvPill` / `selectLocal` /
+`openFolderPicker`. The session 14 migration does NOT reach into
+those (they use `openPill` + `clickMenuItem`, both of which carry
+post-click stability gates and per-iteration sleep loops). The
+investigation: (1) read T17's failure trace from the most recent
+session-14 stashed run (under `tools/test-harness/results/local/
+test-output/T17_folder_picker-T17-—-Folder-picker-opens/`), (2)
+classify the failure (env-pill probe? Local item? Select-folder
+pill? Open-folder click?), (3) decide if (a) `openPill` migration
+to `waitForAxNode` would reach it, or (b) the budget defaults need
+tuning, or (c) the failure is from something orthogonal to AX
+polling. If (a), ship the migration. If (b), document the budget
+mismatch in plan-doc. If (c), defer to a future session with a
+clearer signal. **If this is what session 15 ships, that's a
+strictly higher-impact outcome than another Tier 2 / Tier 3 reframe
+— flake reduction touches every existing AX-using spec.** Doesn't
+need the debugger.
 
 Three categories — pick ONE as the main bet, treat the others as
 fallback if the main bet hits an early blocker:
 
 | # | Tests | Source | Notes |
 |---|---|---|---|
-| **D** call-site migration to `waitForAxNode` | `claudeai.ts` page-objects + T26 + future Code-tab AX work | `lib/ax.ts` (session 13 primitive) | The PRIORITY shape this session. Promote `activateTab`'s one-shot snapshot to use `waitForAxNode`; same for `findCompactPills`. Validate by re-running T16 / T17 / T26 / H05 against the migrated form. Doesn't need the debugger. Risk: changing the retry shape can introduce new flake if the budget defaults don't match the existing per-spec tuning — keep migrations shape-only, no budget changes. |
+| **D** further call-site migration / T17 investigation | T17 / `claudeai.ts` `openPill` + `clickMenuItem` | `lib/ax.ts` (session 13 primitive) | The PRIORITY shape this session. Read T17's failure trace, decide if `openPill` migration would fix it, ship the migration if so. Same shape-only refactor risk as session 14: keep the per-spec retry budgets matching the existing tuning. Doesn't need the debugger. **Risk:** `openPill` and `clickMenuItem` carry post-click stability gates that `waitForAxNode` already covers via `stabilityGate: true`, so the migration shape should slot in cleanly — but each spec's overall budget needs verification. |
 | **A** operon-mode navigation probe | n/a (investigation) + maybe small Tier 2 reframe | new probe + bundle grep for operon URL routes | Session 10 confirmed `OperonBootstrap.ensure` registers eagerly but the other 21 wrapper-exposed operon interfaces remain registry-unconfirmed. Outputs: either an operon-mode URL form recovered from the bundle (search for `operon`-keyed routes in `claude.ai/...` paths) plus a registry re-probe after navigation, OR a deferral note explaining why operon scope can't be reached without an operon-mode entry. **Needs debugger-attached Claude on port 9229.** |
 | **B** Tier 3 read-only reframes | Pick from the Tier 3 list | T33c / T35b / T37b template + bundle grep | The Tier 3 list is full of login-required flows; some have read-only entry points that the harness CAN construct. Candidates: T22's `getPrChecks` read-side might accept a non-existent PR number / dry-run mode; T15's OAuth surface has read-only state queries. Most need the user-account-scoped state to fail-fast with a clean error rather than a real network roundtrip — investigate first. **Needs debugger for smoke-test verification.** |
 | **C** Schema-rev for `listRemotePluginsPage` / `listSkillFiles` | Bundle grep | session 9 schema-rev pattern | Both methods rejected every smoke-tested arg shape during session 12's investigation. `listRemotePluginsPage` needs `limit: number` at position 0 (rejection: `Argument "limit" at position 0 ...`); `listSkillFiles` needs both `pluginId` and `skillName` (rejection: `Argument "skillName" at position 1 ...`). Bundle-grep on the rejection literals → resolve the schema → ship a narrowly-scoped Tier 2 invocation if it unblocks a case-doc claim. **Needs debugger to verify the recovered schema.** |
@@ -189,27 +199,35 @@ only session that audits the existing AX call-sites and proposes a
 migration plan (without shipping) is also acceptable — pre-work for
 a future session that DOES land the migration.
 
-#### Category D — call-site migration to `waitForAxNode`
+#### Category D — further call-site migration / T17 investigation
 
-The plan: promote inline AX retry loops in `claudeai.ts` to use
-`waitForAxNode` from `lib/ax.ts`.
+The plan: investigate T17's pre-existing flake, decide on a fix path,
+ship if a `waitForAxNode`-shaped migration of `openPill` /
+`clickMenuItem` would reach it.
 
-1. **Audit the call-sites.** `activateTab` does one-shot snapshot,
-   no retry — direct candidate. `findCompactPills` same. `openPill`
-   post-click while-loop and `clickMenuItem` while-loop both do
-   snapshot+filter+sleep — convert to `waitForAxNode` /
-   `waitForAxNodes` with the existing budget. T26's pre/post-click
-   `retryUntil` blocks are also direct candidates.
-2. **Migrate one call-site at a time.** Run the affected specs after
-   each migration (T16 / T17 / T26 / H05). Don't migrate all at
-   once — one bad budget change can cascade across multiple specs.
-3. **Don't change the retry budgets.** The existing per-spec timeouts
-   are tuned (CodeTab.activate uses 5s default but T16 passes 15s);
-   match them when migrating.
-4. **Don't add new functionality.** This is a shape-only refactor.
-   If a migration reveals a budget that's clearly wrong (e.g.
-   `activateTab` has NO retry today, which is the T16 failure mode),
-   that's a small bug-fix the migration corrects — but document it.
+1. **Read T17's most recent failure trace.** Either the session-14
+   stashed-baseline trace (under `tools/test-harness/results/local/
+   test-output/T17_folder_picker-T17-—-Folder-picker-opens/`) or run
+   T17 fresh against the post-session-14 form. Classify the failure:
+   - openEnvPill timeout? (would suggest `openPill` migration)
+   - selectLocal timeout? (would suggest `clickMenuItem` migration)
+   - openFolderPicker chain timeout? (suggests deeper issue)
+   - Some other failure?
+2. **If `openPill` migration would reach the failure**, migrate it.
+   The shape: replace the post-click while-loop with
+   `waitForAxNodes` filtered to MENU_ITEM_ROLES, with the existing
+   `timeout` parameter as `timeoutMs`. Keep the upfront
+   `waitForAxTreeStable` gate or pass `stabilityGate: true` to
+   `waitForAxNodes`. Verify with T17 (or the originally-affected
+   spec).
+3. **If `clickMenuItem` migration would reach the failure**, same
+   shape. Replace the while-loop with `waitForAxNode` filtered on
+   role + textPattern, with the existing `timeout` as `timeoutMs`.
+4. **If the failure is orthogonal to AX polling** (e.g. environmental,
+   timing race outside the AX surface, dialog mock not installing),
+   document and defer.
+
+Doesn't need the debugger.
 
 #### Category A — operon-mode navigation probe
 
@@ -275,11 +293,11 @@ consumer.
 
 #### Main-side `invokeEipcChannel` fallback (NOT recommended this session)
 
-Same status as sessions 8-13 — wait for a real consumer.
+Same status as sessions 8-14 — wait for a real consumer.
 
 #### Launch event-subscription primitive (NOT recommended this session)
 
-Same status as sessions 11-13 — wait for a real consumer.
+Same status as sessions 11-14 — wait for a real consumer.
 
 #### `waitForRenderedSurface` registry (NOT recommended this session)
 
@@ -295,7 +313,7 @@ not AX). Wait for a second consumer before extracting.
 
 ### Constraints to respect (don't violate)
 
-These are unchanged from sessions 1-13 and still load-bearing:
+These are unchanged from sessions 1-14 and still load-bearing:
 
 - **Default isolation** unless the spec needs otherwise. Use
   `seedFromHost: true` for any test that depends on authenticated
@@ -327,7 +345,18 @@ These are unchanged from sessions 1-13 and still load-bearing:
   `snapshotAx` for one-shot reads, `waitForAxNode` /
   `waitForAxNodes` for predicate-based polling. Don't reach into
   `explore/walker.ts` directly — re-exports go through `lib/ax.ts`.
-  Consumers in session 13: `lib/claudeai.ts` page-objects + T26.
+  Consumers in session 14: `lib/claudeai.ts`'s `activateTab` +
+  `CodeTab.activate` post-click pill poll (migrated from one-shot
+  / hand-rolled retryUntil), plus T26.
+- **For call-site migrations to `waitForAxNode`: keep the per-spec
+  retry budgets matching the existing tuning.** Session 14
+  finding. The defaults in `lib/ax.ts` (`timeoutMs: 5000`,
+  `intervalMs: 200`) are reasonable starting values, but any
+  caller with a known per-spec budget should pass it through. The
+  one acceptable bug-fix during migration is when the existing
+  call-site had NO retry at all (e.g. `activateTab`'s pre-click
+  one-shot snapshot) — adding a budget is the fix the migration
+  delivers, and the prompt explicitly authorized it.
 - **`lib/input.ts` is X11-only.** Strict gate.
 - **`lib/input-niri.ts` is Niri-only.** Strict gate.
 - **Don't speculate on `lib/input-wayland.ts` dispatcher.**
@@ -351,9 +380,10 @@ These are unchanged from sessions 1-13 and still load-bearing:
 - **Tabs in TS, ~80-char wrap as the existing files do.**
 - **Don't break existing runners.** `npm run typecheck` must stay
   clean. H01-H05 are the canaries; `npm test` must still pass them
-  after every commit. Note that T16/T17/T07/S25/S29-S31/S04 etc.
+  after every commit. Note that T17/T07/S25/S29-S31/S04 etc.
   are pre-existing-flaky on KDE-W per session 13's full-suite run
-  — they're NOT canaries; baseline failures don't block work.
+  (T16 fixed by session 14) — they're NOT canaries; baseline
+  failures don't block work.
 - **Always grep the installed asar** to verify a fingerprint
   string is present.
 - **For mock-then-call: the helper goes in
@@ -371,13 +401,14 @@ These are unchanged from sessions 1-13 and still load-bearing:
    `curl --max-time 2 http://127.0.0.1:9229/json`). If port 9229 is
    open, A / B / C are tractable; if closed, pivot to D or
    documentation-only.
-3. Read the plan doc's "Status (post-execution)" session 13 section,
-   then read `lib/ax.ts`'s API + `T26` and `claudeai.ts`'s
-   integration. Confirm you understand the `snapshotAx` /
-   `waitForAxNode` / `waitForAxNodes` surface.
+3. Read the plan doc's "Status (post-execution)" session 14 section,
+   then read `lib/ax.ts`'s API + `lib/claudeai.ts`'s post-session-14
+   migration shape. Confirm you understand the `waitForAxNode` /
+   `waitForAxNodes` consumer pattern.
 4. Pick ONE Category as the main bet:
-   - **D** (PRIORITY when debugger is closed): pick 1-2 call-sites
-     in `claudeai.ts` to migrate, list which.
+   - **D** (PRIORITY when debugger is closed): read T17's failure
+     trace; classify the failure; decide if `openPill` /
+     `clickMenuItem` migration would reach it.
    - **A**: bundle grep + per-URL navigation + registry re-probe.
    - **B**: pick a Tier 3 candidate, smoke-test the read-side, decide
      ship or defer.
@@ -390,9 +421,9 @@ Don't fan out.
 
 #### Phase 1 — fan-out batch
 
-For Category D (call-site migration):
-- Single subagent migrates 1-2 call-sites in `claudeai.ts` to use
-  `waitForAxNode`. Verify by running T16 / T17 / T26 / H05.
+For Category D (further migration / T17 investigation):
+- Single subagent reads T17's trace, classifies, ships the migration
+  if applicable. Verify by running T16 / T17 / T26 / H05.
 
 For Category A (operon investigation):
 - Single subagent does bundle-grep for operon URL routes + per-URL
@@ -409,7 +440,7 @@ For Category C (schema-rev):
   against the user's debugger-attached running Claude.
 
 Cap at ~1 spec OR ~1 primitive migration total — same scope as
-sessions 9-13.
+sessions 9-14.
 
 #### Per-subagent prompt shape
 
@@ -423,11 +454,13 @@ Read in order:
   the most-recent-template that fits)
 - tools/test-harness/src/runners/<closest-template>.spec.ts
 - tools/test-harness/src/lib/ (the primitives you'll reuse —
-  including session 13's `lib/ax.ts`)
+  including session 13's `lib/ax.ts` and session 14's migration
+  examples in `lib/claudeai.ts`)
 - CLAUDE.md (project conventions)
 
 Write tools/test-harness/src/runners/<TARGET>_short_name.spec.ts
-[ AND/OR  tools/test-harness/src/lib/<NEW-PRIMITIVE>.ts ].
+[ AND/OR  tools/test-harness/src/lib/<NEW-PRIMITIVE>.ts
+  AND/OR  edits to tools/test-harness/src/lib/claudeai.ts ].
 
 [per-task specifics: pattern (seedFromHost / mock-then-call /
 asar fingerprint / shared isolation / new-primitive-build /
@@ -449,7 +482,7 @@ If the target isn't reasonable to implement (anchors don't resolve
 to anything assertable, the test depends on state you can't
 construct, the existing primitives don't cover the surface), DO
 NOT write a stub. Report under Open questions and stop. Sessions
-1-13 had cumulative ~17 "stop and report" outcomes that were the
+1-14 had cumulative ~17 "stop and report" outcomes that were the
 right call.
 
 Report shape (~150 words):
@@ -492,7 +525,7 @@ After fan-out returns:
 
 ### Self-correction loop
 
-Same as sessions 1-13:
+Same as sessions 1-14:
 
 1. Subagent typecheck failure → re-spawn with explicit fix
    instruction.
@@ -506,10 +539,11 @@ Same as sessions 1-13:
 5. Migration breaks an existing spec → roll back the migration; the
    per-spec retry budget was load-bearing and the primitive
    defaults didn't match. Document the budget mismatch in plan-doc.
-6. **Carry-over from session 5/6/7/8/9/10/11/12/13:** If the chosen
-   Category's investigation doesn't resolve / requires schema-rev
-   that exceeds budget after 2-3 approaches, STOP. Don't keep
-   digging — pivot to a fallback Category. Document what was tried.
+6. **Carry-over from session 5/6/7/8/9/10/11/12/13/14:** If the
+   chosen Category's investigation doesn't resolve / requires
+   schema-rev that exceeds budget after 2-3 approaches, STOP. Don't
+   keep digging — pivot to a fallback Category. Document what was
+   tried.
 7. **Carry-over from session 10:** If a registration probe surfaces
    "registered but uninvocable", document and defer rather than
    building the main-side fallback speculatively.
@@ -543,8 +577,9 @@ Stop and write the final report when one of:
   spec says, mark it as Tier 3 / blocked / primitive-gap and
   don't write a placeholder.
 - **Don't break existing runners.** H01-H05 are the canaries.
-  T16 / T17 / T07 / S25 / S29-S31 are pre-existing-flaky on KDE-W
-  per session 13's full-suite run — those are NOT canaries.
+  T17 / T07 / S25 / S29-S31 are pre-existing-flaky on KDE-W
+  per session 13's full-suite run (T16 fixed by session 14) —
+  those are NOT canaries.
 - **Don't restructure `lib/`** beyond targeted additions.
   Premature abstractions are wrong abstractions.
 - **Don't run destructive Tier 3 tests** that write to the user's
@@ -569,7 +604,8 @@ Stop and write the final report when one of:
   this — wait for a third consumer with a specific named surface.
 - **Don't change the existing per-spec retry budgets when migrating
   to `waitForAxNode`.** The budgets are tuned. Migration is shape-
-  only.
+  only — except when the call-site has NO retry at all (the
+  session-14-authorized bug-fix shape).
 - **Don't reach into `explore/walker.ts` for AX types/helpers.**
   `lib/ax.ts` re-exports `RawElement` / `AxNode` /
   `axTreeToSnapshot` / `waitForAxTreeStable` — use those.
@@ -579,7 +615,7 @@ Stop and write the final report when one of:
 ### Final report format
 
 ```markdown
-## Runner implementation summary (session 14)
+## Runner implementation summary (session 15)
 
 - Main-bet category: D | A | B | C
 - Specs landed: N
@@ -652,6 +688,11 @@ git diff --stat
   `snapshotAx` for one-shot reads. Re-exports keep
   `explore/walker.ts` types accessible without crossing the
   lib/explore boundary.
+- **For call-site migrations to `waitForAxNode` (session 14
+  finding):** keep per-spec retry budgets matching the existing
+  tuning. Migration is shape-only EXCEPT when the call-site had
+  NO retry at all — adding a budget is the bug-fix the migration
+  delivers.
 - **For asar fingerprints: ALWAYS grep the installed asar
   first.** Build-reference is beautified; the bundle is
   minified.
