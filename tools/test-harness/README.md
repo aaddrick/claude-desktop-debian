@@ -140,7 +140,14 @@ T27, T31b, T33b, T33c, T35b, T37b, T38b — session 15 migrated T17
 from the legacy `CLAUDE_TEST_USE_HOST_CONFIG=1` / `isolation: null`
 shape to `seedFromHost`, fixing a pre-existing 60s spec-timeout
 flake where the unauth'd default isolation polled `userLoaded` past
-Playwright's spec budget).
+Playwright's spec budget; session 16 verified the migration end-to-
+end — `seedFromHost` clones the host's signed-in config,
+`waitForReady('userLoaded')` resolves to a post-login URL, and the
+session-14 `CodeTab.activate({ timeout: 15_000 })` succeeds; T17
+now reaches a NEW failure mode at the next chain step
+(`openFolderPicker` after `selectLocal`, `Select folder…` pill
+doesn't render on `/epitaxy` workspace route — likely needs `/new`
+context, deferred for a future session).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register

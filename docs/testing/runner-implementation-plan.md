@@ -18,6 +18,140 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 16 (verification + schema-rev investigation, no new spec):**
+T17's session-15 `seedFromHost` migration verified end-to-end against
+the dev box: the bare 60s Playwright timeout is GONE, `seedFromHost`
+clones the host's signed-in config, `waitForReady('userLoaded')`
+resolves to `https://claude.ai/epitaxy` (post-login), the dialog mock
+installs, and `CodeTab.activate({ timeout: 15_000 })` (session 14
+migration) succeeds. T17 reaches a NEW failure mode at the next chain
+step: `CodeTab.openFolderPicker: "Select folder…" pill did not open
+within 4s after Local was clicked` — the env-pill open + Local click
+both succeed, but the Select-folder pill doesn't render in the URL
+state we reach (`/epitaxy`, the user's workspace, NOT `/new`). Per the
+session-15 followup classification rules: this is NOT in `openPill` /
+`clickMenuItem`'s post-click loops (those work — the env pill opened
+and Local was found and clicked); the failure is one chain step later,
+likely renderer-state-dependent (the workspace route doesn't expose a
+local-folder picker the same way `/new` does). Don't migrate
+`openPill` / `clickMenuItem` speculatively — that's been the standing
+deferral since session 14. Document and defer the new failure mode.
+
+Category C schema-rev (`listRemotePluginsPage` / `listSkillFiles`)
+**resolved** by bundle inspection of
+`/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar`
+(extracted via `@electron/asar`):
+
+- `CustomPlugins.listRemotePluginsPage(limit: number, offset: number)`
+  — both positional, both numbers. Validator block sits at
+  `'$eipc_message$_..._$_claude.web_$_CustomPlugins_$_listRemotePluginsPage'`,
+  with explicit `typeof r!="number"` / `typeof n!="number"` checks
+  preceding the throw. Result validator `VUi(s)`.
+- `LocalPlugins.listSkillFiles(pluginId: string, skillName: string,
+  pluginContext?: opaque)` — two required strings + optional context
+  arg validated by `sc(s)` (the same shared validator used elsewhere
+  for plugin-context blobs). Result validator `bUi(o)`.
+
+**No Tier 2 invocation shipped for either** because neither method
+connects to a case-doc claim:
+
+- `listRemotePluginsPage` is NOT anchored in any case doc. T33 anchors
+  `listMarketplaces` (`:71392`) and `listAvailablePlugins` (`:71534`)
+  — both already covered by T33b/T33c — but `listRemotePluginsPage`
+  is a separate read-side surface (paginated remote-plugin list) that
+  the case docs don't claim. Shipping a probe just to exercise the
+  validator with no assertion bound to a real-product behaviour would
+  be a stub.
+- `listSkillFiles` is `LocalPlugins`-scoped and meaningful only with
+  an installed plugin (T11 step 3: "verify its skills appear in the
+  slash menu"). Reaching that requires the destructive Tier 3 install
+  path, which the constraints explicitly forbid. The validator
+  resolves auth-independent, but the underlying handler needs real
+  account state.
+
+Schemas captured in plan-doc as a deferred reframe so a future session
+with a real-account install fixture can ship the invocation.
+
+Coverage stays at 74/76 (97%) — verification + investigation, no spec
+landed.
+
+Two commits on `docs/compat-matrix` expected (the orchestration
+directive supersedes "the user reviews and commits" — autonomous
+commit + push at end of session):
+
+- TBD — `test(harness): session 16 verify T17 seedFromHost fix +
+  schema-rev for listRemotePluginsPage / listSkillFiles (no spec,
+  coverage unchanged at 97%)` (no code change beyond the doc updates;
+  T17 verification run + schema-rev bundle inspection captured in
+  the plan-doc).
+- TBD — `docs(testing): session 16 plan/inventory + flag orchestrator
+  STOP for session 17`.
+
+Session 16 findings + reclassifications:
+
+- **Session 15's structural T17 fix VERIFIED.** The pre-fix bare 60s
+  timeout was real and is gone. `seedFromHost` clones host config,
+  the renderer reaches a post-login URL, mocks install, and tab
+  activation succeeds. Session 14's `activateTab` /
+  `CodeTab.activate` AX migration also verified — `activate({
+  timeout: 15_000 })` resolved on the FIRST run with no flake.
+- **T17's NEW failure mode classified as renderer-state, not AX.**
+  Post-`selectLocal` the Select-folder pill never appeared; this is
+  upstream of `openPill`'s click loop (the env pill opened, Local
+  was clicked successfully). The trace shows the URL is
+  `https://claude.ai/epitaxy` — the user's workspace route, not
+  `/new`. The folder-picker UI may only render on `/new` (or a
+  fresh project), not on a workspace already containing files.
+  Future fix: navigate to `/new` post-userLoaded before invoking
+  `openFolderPicker`. NOT shipped this session — needs a careful
+  navigation primitive that doesn't break existing seedFromHost
+  specs.
+- **`openPill` / `clickMenuItem` migration STILL parked.** Sessions
+  14/15 speculated about migrating these; session 15 walked it back;
+  session 16 confirms session 15's call. The new T17 failure is one
+  chain step later, NOT in the post-click polling loops.
+- **Schema-rev cleanly resolved both deferred validators.** Session 9
+  pattern (bundle-grep on the rejection literal) works as expected.
+  No smoke-test was needed because the validator literal IS the
+  schema source of truth (typeof checks are explicit in source).
+  Smoke-test against a live debugger-attached Claude wasn't possible
+  this session because T17's seedFromHost step killed the leaked
+  isolations and tore down the debugger.
+- **No case-doc connection for either resolved schema.**
+  `listRemotePluginsPage` is paginated remote-plugin enumeration
+  (a separate surface from T33's `listMarketplaces` /
+  `listAvailablePlugins` already covered). `listSkillFiles` needs
+  real account state via a Tier 3 install. Both are documented for
+  future revisit, neither shipped as a runner.
+- **Three Tier 4 blockers crystallised.** Sessions 13-16 collectively
+  confirm the remaining un-runner'd specs all sit behind one of:
+  (a) write-side state on a real claude.ai account (Tier 3
+  destructive — explicitly forbidden); (b) renderer-state-dependent
+  UI that the harness can't construct without account-side fixtures
+  (T17's `/new` requirement); (c) auth-bearing debugger-attached
+  Claude that exists only when a real signed-in app is running on
+  the dev box (which the session-13 onwards sessions have been
+  unable to keep alive across orchestration runs because seedFromHost
+  kills it). At 74/76 (97%), the structural ceiling for the harness
+  is reached; the remaining 2 specs need real-account write-side
+  fixtures.
+
+**ORCHESTRATION-LEVEL STOP RECOMMENDATION (session 16 final).**
+Sessions 13-16 produced: 1 primitive (`lib/ax.ts` — session 13), 1
+substantive AX migration (`activateTab` + `CodeTab.activate` —
+session 14), 1 structural fix (T17 seedFromHost — session 15), 1
+verification + 1 schema-rev investigation (session 16). NO coverage
+gain across 4 sessions. Coverage start 74/76 → end 74/76 (97%
+throughout). The structural ceiling is reached. Future sessions
+should be triggered manually — only when (a) the user has a real
+signed-in Claude they're willing to dedicate to a debugger-attached
+session, or (b) a new test-harness primitive opportunity surfaces
+from product changes (e.g. claude.ai renderer drift requiring
+refactoring, new IPC surfaces requiring registry walking). The
+autonomous orchestration is being stopped after session 16.
+
+---
+
 **Shipped session 15 (1 structural fix, no new spec, no AX migration):**
 T17 migrated from the legacy `CLAUDE_TEST_USE_HOST_CONFIG=1` /
 `isolation: null` auth path to the canonical `seedFromHost: true`
