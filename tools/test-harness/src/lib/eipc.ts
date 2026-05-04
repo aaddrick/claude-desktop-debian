@@ -35,25 +35,35 @@
 // So the wait-for-channel poll just needs claude.ai to be alive +
 // finished initial handler registration, NOT a specific route.
 //
-// What this primitive does NOT do
-// -------------------------------
-// Read-only enumeration. No invocation. The `_invokeHandlers` map
-// holds the handler functions but they expect a synthesized
-// `IpcMainInvokeEvent` with a real sender, and most claude.web_$_*
-// handlers have side effects (`startSideChat` writes to the user's
-// account; `openInEditor` shells out to a real editor). T22/T31/T33/T38
-// only need handler PRESENCE — that's strictly stronger than the asar
-// fingerprint (a handler registered at runtime is a handler that
-// actually wired up, not just a string in the bundle).
+// What this primitive does
+// ------------------------
+// Read-only enumeration via `getEipcChannels` / `findEipcChannel` /
+// `waitForEipcChannel(s)`. Handler PRESENCE checks (T22b / T31b / T33b
+// / T38b) — that's strictly stronger than the asar fingerprint (a
+// handler registered at runtime is a handler that actually wired up,
+// not just a string in the bundle).
 //
-// Future T35 Phase 2 / T37 Phase 2 may want invocation against
-// read-only handlers like `claude.settings/MCP/getMcpServersConfig`
-// or `claude.web/CoworkMemory/readGlobalMemory`. When that happens
-// the right shape is a separate `invokeEipcChannel(inspector, suffix,
-// args)` helper here — keep this file the single home for eipc surface
-// abstractions. Don't add it speculatively until a consumer needs it
-// (same anti-speculation rule as `lib/electron-mocks.ts` /
-// `lib/input.ts` / `lib/input-niri.ts`).
+// Plus `invokeEipcChannel` (session 8 addition) — calls a registered
+// handler through the renderer-side wrapper at `window['claude.<scope>']
+// .<Iface>.<method>(...args)`. The wrapper is exposed by `mainView.js`
+// preload via `contextBridge.exposeInMainWorld` after a frame + origin
+// gate (top-level frame, origin in `{claude.ai, claude.com,
+// preview.claude.ai, preview.claude.com, localhost}`). Because the
+// `inspector.evalInRenderer('claude.ai', ...)` path runs inside the
+// claude.ai renderer, the wrapper is present and the synthesized
+// `IpcMainInvokeEvent` carries an honest `senderFrame` — the alternative
+// of pulling the function out of `_invokeHandlers` and synthesizing a
+// fake event with `senderFrame.url = 'https://claude.ai/'` works (the
+// gates are duck-typed structural checks) but spoofs a security-relevant
+// claim. Going through the wrapper keeps the test surface aligned with
+// real attack surface.
+//
+// `invokeEipcChannel` is read-by-default but doesn't enforce a
+// read-only allowlist — the safety property is that consumers pass
+// case-doc-anchored suffixes verbatim, which limits the blast radius
+// to whatever the case doc said the test should poke. Don't pass
+// `start*` / `set*` / `write*` / `run*` / `openIn*` suffixes; those
+// mutate user state.
 //
 // Framing opacity
 // ---------------
@@ -292,4 +302,112 @@ export async function waitForEipcChannels(
 		},
 	);
 	return result ?? lastSnapshot;
+}
+
+export interface InvokeEipcChannelOptions {
+	// Renderer URL filter. Default 'claude.ai' — the only webContents
+	// whose origin passes the wrapper-exposure gate (`Qc()` in
+	// `mainView.js`: `https://claude.ai`, `https://claude.com`,
+	// preview.*, localhost). The `find_in_page` and `main_window`
+	// webContents register `claude.settings/*` handlers in their
+	// per-wc IPC scope but their renderers run from `file://`, so
+	// `window['claude.settings']` is never exposed there and invocation
+	// through them would need a different (main-side, fake-event)
+	// approach not implemented in this primitive.
+	urlFilter?: string;
+	// Inspector eval timeout. Default = InspectorClient.defaultTimeoutMs
+	// (30s). Read-only handlers like `getMcpServersConfig` /
+	// `readGlobalMemory` / `getAllScheduledTasks` return well within
+	// 1s on a warm app; the 30s budget is for cold-cache cases.
+	timeoutMs?: number;
+}
+
+// Invoke an eipc handler through the renderer-side wrapper at
+// `window['claude.<scope>'].<Iface>.<method>(...args)`. The suffix is
+// resolved against the per-wc registry first (same matching rules as
+// `findEipcChannel` — accepts both fully-qualified
+// `claude.web_$_LocalSessions_$_getPrChecks` and the more concise
+// `LocalSessions_$_getPrChecks`) and the scope/iface/method triplet is
+// pulled from the resolved full suffix.
+//
+// Why through the renderer wrapper, not a direct main-side call:
+// handlers register via `e.ipc.handle(framedName, async (event, args)
+// => { if (!le(event)) throw ...; return A.<method>(args); })` — the
+// origin gate is inlined at registration time (variants `le`/`Vi`/`mm`
+// in the bundle, all duck-typed structural checks against
+// `event.senderFrame.url` and `event.senderFrame.parent === null`).
+// Pulling the function out of `_invokeHandlers` and calling it with a
+// synthesized event whose `senderFrame.url` is `'https://claude.ai/'`
+// works (the gate is structural, not `instanceof`-checked) but spoofs
+// the gate's security claim. The wrapper IS at claude.ai, so the
+// synthesized event carries an honest senderFrame and the test surface
+// matches real attack surface.
+//
+// Errors:
+// - "no handler registered with suffix": the registry walk returned
+//   nothing matching. Same shape as `findEipcChannel` returning null;
+//   waitForEipcChannel first if your spec needs the populate-on-init
+//   poll.
+// - "eipc namespace missing in renderer: claude.<scope>": the wrapper
+//   isn't exposed on this renderer. Either the urlFilter selected a
+//   webContents whose origin failed `Qc()`, or the build flipped the
+//   scope's exposure gate. Check `evalInRenderer(urlFilter,
+//   'Object.keys(window).filter(k => k.startsWith("claude."))')`.
+// - String-form rejection from the renderer eval: the gate / arg-
+//   validator / result-validator inside the handler closure rejected.
+//   The framed channel name appears in the error message — use it to
+//   pinpoint which handler rejected.
+//
+// Args are JSON-marshaled into the renderer eval. Return value is
+// JSON-deserialized via `evalInRenderer`'s `executeJavaScript` path.
+// Non-JSON-serializable handler returns (Date, Buffer, circular refs)
+// would mangle through this primitive — none of the current Tier 2
+// case-doc consumers return such shapes; flag if a future one does.
+export async function invokeEipcChannel<T = unknown>(
+	inspector: InspectorClient,
+	caseDocSuffix: string,
+	args: readonly unknown[] = [],
+	opts: InvokeEipcChannelOptions = {},
+): Promise<T> {
+	const urlFilter = opts.urlFilter ?? 'claude.ai';
+	const channel = await findEipcChannel(inspector, caseDocSuffix, {
+		urlFilter,
+	});
+	if (!channel) {
+		throw new Error(
+			`invokeEipcChannel: no handler registered with suffix ` +
+				`'${caseDocSuffix}' on a webContents matching ` +
+				`'${urlFilter}'`,
+		);
+	}
+	// Full suffix is `<scope>_$_<iface>_$_<method>`. Scope contains a
+	// dot (e.g. claude.web) but the `_$_` separator is unambiguous —
+	// a 3-part split gives [scope, iface, method] cleanly.
+	const parts = channel.suffix.split('_$_');
+	if (parts.length !== 3) {
+		throw new Error(
+			`invokeEipcChannel: bad suffix shape '${channel.suffix}' ` +
+				`(expected '<scope>_$_<iface>_$_<method>')`,
+		);
+	}
+	const [scope, iface, method] = parts;
+	const argsJson = JSON.stringify(args);
+	const js = `(async () => {
+		const ns = window[${JSON.stringify(scope)}];
+		if (!ns) throw new Error(
+			'eipc namespace missing in renderer: ' + ${JSON.stringify(scope)}
+		);
+		const ifaceObj = ns[${JSON.stringify(iface)}];
+		if (!ifaceObj) throw new Error(
+			'eipc interface missing: ' + ${JSON.stringify(iface)} +
+			' (under ' + ${JSON.stringify(scope)} + ')'
+		);
+		const fn = ifaceObj[${JSON.stringify(method)}];
+		if (typeof fn !== 'function') throw new Error(
+			'eipc method not a function: ' + ${JSON.stringify(method)} +
+			' (under ' + ${JSON.stringify(scope)} + '.' + ${JSON.stringify(iface)} + ')'
+		);
+		return await fn.apply(ifaceObj, ${argsJson});
+	})()`;
+	return inspector.evalInRenderer<T>(urlFilter, js, opts.timeoutMs);
 }
