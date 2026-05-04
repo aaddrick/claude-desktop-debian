@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Sixty-nine specs wired (31 cross-env T-tests, 33 env-specific S-tests,
+Seventy specs wired (32 cross-env T-tests, 33 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -46,6 +46,7 @@ behind tier classification.
 | [T32](../../docs/testing/cases/code-tab-workflow.md#t32--slash-command-menu) | Bundled `index.js` contains `LocalSessions_$_getSupportedCommands` eipc channel + `slashCommands` schema field | file probe |
 | [T33](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | Bundled `index.js` contains `CustomPlugins_$_listMarketplaces` and `CustomPlugins_$_listAvailablePlugins` eipc channel names (browser populate flow) | file probe |
 | [T33b](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | After `seedFromHost` + `userLoaded`, both plugin-browser eipc handlers (`listMarketplaces`, `listAvailablePlugins`) are registered on the claude.ai webContents — load-bearing pair (Tier 2 runtime sibling of T33) | L1 (eipc registry) |
+| [T33c](../../docs/testing/cases/extensibility.md#t33--plugin-browser) | After `seedFromHost` + `userLoaded`, both plugin-browser eipc handlers (`listMarketplaces`, `listAvailablePlugins`) are callable through the renderer-side wrapper with `args = [[]]` (empty `egressAllowedDomains`), each returning array shape — Tier 2 invocation upgrade of T33b, strictly stronger than registration alone | L1 (eipc invoke) |
 | [T35](../../docs/testing/cases/extensibility.md#t35--mcp-server-config-picked-up) | Bundled `index.js` contains the four-needle MCP-config separation fingerprint: `claude_desktop_config.json` (chat-tab path), `.claude.json` + `.mcp.json` (Code-tab loaders), `"user","project","local"` (settingSources triple Code-session passes to the agent SDK) — pins per-tab separation without launch | file probe |
 | [T35b](../../docs/testing/cases/extensibility.md#t35--mcp-server-config-picked-up) | After `seedFromHost` + `userLoaded`, the `claude.settings/MCP/getMcpServersConfig` eipc handler is registered AND callable through the renderer-side wrapper, returning a non-array object (Tier 2 runtime sibling of T35, strictly stronger than the bundle-string fingerprint) | L1 (eipc invoke) |
 | [T36](../../docs/testing/cases/extensibility.md#t36--hooks-fire) | Bundled `index.js` contains the hooks runtime fingerprint: `hook_started` / `hook_progress` / `hook_response` (single-occurrence Verbose-transcript runtime emits) plus `PreToolUse` / `UserPromptSubmit` registry tokens — pins the runtime hook-fire path the case-doc Verbose-transcript claim hangs on | file probe |
@@ -114,11 +115,11 @@ window; `NiriIpcUnavailable` thrown off-Niri; consumed by S14), the
 against case-doc anchors; consumed by T22b / T31b / T33b / T38b)
 plus its session 8 invoke surface (`invokeEipcChannel` — calls a
 registered handler through the renderer-side wrapper at
-`window['claude.<scope>'].<Iface>.<method>`; consumed by T27 / T35b /
-T37b) — and the `createIsolation({ seedFromHost: true })` primitive
-that lets login-required tests run hermetically against a copy of the
-host's signed-in auth state (T07, T16, T22b, T26, T27, T31b, T33b,
-T35b, T37b, T38b).
+`window['claude.<scope>'].<Iface>.<method>`; consumed by T27 / T33c /
+T35b / T37b) — and the `createIsolation({ seedFromHost: true })`
+primitive that lets login-required tests run hermetically against a
+copy of the host's signed-in auth state (T07, T16, T22b, T26, T27,
+T31b, T33b, T33c, T35b, T37b, T38b).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register
@@ -133,16 +134,22 @@ across builds at `c0eed8c9-…`); 117 `LocalSessions_*` + 16
 webContents. T22 / T31 / T33 / T38 ship as Tier 1 fingerprints
 against the bundled channel-name strings; T22b / T31b / T33b / T38b
 are the runtime registry-presence siblings (strictly stronger,
-require `seedFromHost`). T27 / T35b / T37b go one step further —
-they invoke the resolved handlers through the renderer-side wrapper
-at `window['claude.<scope>'].<Iface>.<method>`, which `mainView.js`
-exposes via `contextBridge.exposeInMainWorld` after a top-frame +
-origin gate (`Qc()`: claude.ai / claude.com / preview.* / localhost).
-Calling through the wrapper carries an honest `senderFrame` for the
-inlined `le()` / `Vi()` per-handler origin gate, so the test surface
-matches real attack surface. See `lib/eipc.ts` for both surfaces, and
+require `seedFromHost`). T27 / T33c / T35b / T37b go one step
+further — they invoke the resolved handlers through the renderer-
+side wrapper at `window['claude.<scope>'].<Iface>.<method>`, which
+`mainView.js` exposes via `contextBridge.exposeInMainWorld` after a
+top-frame + origin gate (`Qc()`: claude.ai / claude.com / preview.*
+/ localhost). Calling through the wrapper carries an honest
+`senderFrame` for the inlined `le()` / `Vi()` per-handler origin
+gate, so the test surface matches real attack surface. T33c also
+demonstrates the schema-rev path: when invocation rejects with
+`Argument "<name>" at position N ... failed to pass validation`,
+the verbatim rejection string is the cheapest grep target back to
+the inline hand-rolled validator block (bundle bytes 5013601 /
+5018821 for the two CustomPlugins methods). See `lib/eipc.ts` for
+both surfaces, and
 [`runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
-session 7 / 8 status sections for the findings.
+session 7 / 8 / 9 status sections for the findings.
 
 Per-row pass/skip counts depend on which sweep runs against the row;
 see `runner-implementation-plan.md` for tier classification and

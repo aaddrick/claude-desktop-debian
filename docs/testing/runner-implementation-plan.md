@@ -18,6 +18,117 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 9 (1 new spec, no primitive change):** T33c (Tier 2
+runtime invocation upgrade — `seedFromHost` + dual-handler invocation
+of `claude.web/CustomPlugins/{listMarketplaces, listAvailablePlugins}`
+through the renderer-side wrapper, asserting array shape on each).
+T33 (Tier 1 fingerprint, session 3) and T33b (Tier 2 handler-
+registration, session 7) already covered the bundle-string and
+registry-presence layers; T33c closes the chain by proving the impls
+are wired through and return the documented `Array<…>` shape. Coverage
+moved from 69/76 (91%) to 70/76 (92%). Passes on KDE-W in 39.2s
+(both impls returned arrays of length 0 on the dev box's host
+config).
+
+Session 9 findings + reclassifications:
+
+- **`CustomPlugins/listMarketplaces` and `listAvailablePlugins` use
+  byte-identical hand-rolled arg validators** (NOT Zod for args; the
+  result validator IS Zod, runs after the impl returns). Validator
+  block at bytes 5013601 / 5018821 in the bundled `index.js`. Args
+  are positional:
+  - `[0] egressAllowedDomains: string[]` — required;
+    `Array.isArray(r) && r.every(a => typeof a === "string")`. Empty
+    array passes.
+  - `[1] pluginContext: { mode: string, ...optional fields } |
+    undefined` — optional. The closed-over `sc(...)` validator
+    requires `mode: string`, with optional `workspacePath?`,
+    `settingsLevel?`, `pluginSource?`, `marketplaceScope?`,
+    `telemetryAttempt?: { attempt, maxAttempts }`.
+  - **Minimal valid arg literal**: `args = [[]]`. Both methods
+    accept this and treat the empty allow-list as the safety
+    property — if the underlying impl is the CLI-shelling variant,
+    the egress allow-list is forwarded as the spawned subprocess's
+    permitted domains, so `[]` blocks any network attempt.
+- **Two impl variants exist in the bundle.** `A.listMarketplaces`
+  has a CLI-shelling implementation (`runCommand(["plugin",
+  "marketplace", "list", "--json"])` with timeout 30s) AND a native
+  implementation (reads `knownMarketplacesFile` directly). Same for
+  `listAvailablePlugins` (CLI: `["plugin", "list", "--json",
+  "--available"]`, timeout 60s; native: scans `marketplacesDir`).
+  The selection logic isn't called out in the closure source but
+  both variants return the same `Array<…>` shape on success — the
+  T33c assertion (`Array.isArray(result) === true`) holds for either
+  impl. Test budget bumped to 180s to accommodate worst-case
+  sequential CLI timeouts.
+- **Side-effect profile is acceptable for an automated runner.** No
+  installs, no fs writes to user content, no state mutation. The CLI
+  variant spawns a subprocess that emits log lines and may emit a
+  Sentry capture on subprocess failure (e.g. `claude` CLI missing on
+  PATH); the native variant performs a JSON file read. With the
+  empty allow-list, no network egress from the spawned subprocess.
+  Mirrors the read-only invariant T35b / T37b / T27 already rely on.
+- **Both schema-rev paths converged independently.** Bundle grep
+  (static analysis of the minified `.vite/build/index.js`) and
+  runtime closure inspection (Function.prototype.toString of the
+  registered handler pulled from `webContents.ipc._invokeHandlers`
+  via the user's debugger-attached running Claude on :9229)
+  produced byte-identical validator literals and the same minimal
+  arg shape. High confidence. Investigation budget: ~3 minutes
+  bundle-grep, ~2.5 minutes runtime-closure (subagent traces in
+  /tmp; cleaned up after the run).
+- **T33c filename convention follows T33/T33b.** Sessions 7 / 8
+  established `_handler_registered` (Tier 1 fingerprint) /
+  `_handler_runtime` (Tier 2 registration) suffixes for T33's
+  paired runners. T33c the invocation upgrade is
+  `T33c_plugin_browser_invocation.spec.ts` — keeps the case-doc
+  pairing visible in `ls runners/`. Same pattern T35b / T37b /
+  T27 implicitly used (no `_invocation` suffix needed because they
+  ship as the first/only Tier 2 runner against their case-doc; T33c
+  has T33 / T33b siblings to disambiguate against).
+- **Registry-side T33b assertion is preserved unchanged.** T33c
+  calls `waitForEipcChannels` on the same suffix pair before
+  invoking — surfaces "registered but uninvocable" cleanly if the
+  wrapper-exposure gate flips (registration would still happen on
+  the per-wc registry, only the renderer-side wrapper would be
+  missing). Both T33b and T33c can keep co-existing; T33b is the
+  fast-path Tier 2 sibling for sweeps that don't need the
+  invocation cost.
+- **Session 8's smoke-test rejection cleanly identified the
+  validator.** The session 8 prompt called out that
+  `CustomPlugins/listMarketplaces` failed with `Argument
+  "egressAllowedDomains" at position 0 ... failed to pass
+  validation`. That error message is verbatim what the inline hand-
+  rolled validator throws — the framed channel name carries through
+  into the renderer-eval error surface, so the path from "invocation
+  rejected by validator" to "exact validator location in the
+  bundle" was a single grep on the literal error string. Worth
+  noting for any future schema-rev session: the validator's own
+  rejection messages are the cheapest grep target.
+
+Tier 2 → Tier 2 candidates remaining for next session: **T19 / T20
+Code-tab cluster** (each needs `claude.web/LocalSessions/*`
+invocation + AX-tree click chains; LocalSessions handlers verified
+present via T22b / T31b / T38b; AX anchors verified session 5).
+**T19** (integrated terminal) needs `LocalSessions_$_startShellPty`
+shape — but that's a write-side suffix (spawns a shell), so the
+read-side reframe would be e.g. `LocalSessions_$_listSessions` or a
+similar getter, not the case-doc anchor. **T20** (file pane) needs
+`LocalSessions_$_writeSessionFile` (also write-side); read-side
+sibling `LocalSessions_$_readSessionFile` could be the Tier 2 entry
+point. **T21** (dev server preview) needs `claude.web/Launch/*`
+which session 7's registry walk did NOT confirm — needs an
+exposure-vs-registration probe first (mirrors the operon scope
+finding from session 8). **operon scope exposure-vs-registration
+probe** is still on the table from session 8 — the session 9 budget
+went to T33c and didn't touch this. Primitive surface
+(`lib/electron-mocks.ts`, `lib/input.ts`, `lib/input-niri.ts`,
+`lib/eipc.ts` with read-and-invoke surfaces) remains broad enough
+that consumer-driven extensions are the right next move, not
+fresh primitive builds.
+
+---
+
 **Shipped session 8 (3 new specs + 1 primitive extension):** T35b, T37b,
 T27 (Tier 2 runtime invocations — `seedFromHost` + eipc-handler invoke
 through the renderer-side wrapper, strictly stronger than the Tier 1
