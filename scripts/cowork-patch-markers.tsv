@@ -1,0 +1,29 @@
+# Cowork patch markers — single source of truth.
+#
+# Format:
+#     <name><TAB><pcre_pattern><TAB><sample>
+# Lines starting with '#' and blank lines are ignored.
+#
+# Each row names a post-patch fingerprint of patch_cowork_linux() in
+# scripts/patches/cowork.sh. Both verify-cowork-patches.sh and
+# tests/verify-cowork-patches.bats consume this file, so adding a
+# marker here adds it to the runtime check and the test matrix at
+# the same time.
+#
+# Columns:
+#   name     — kebab-case id; surfaces in verify output and BATS names.
+#   pattern  — PCRE matched against the shipped index.js by `grep -P`.
+#   sample   — concrete string the pattern matches; BATS uses it to
+#              build positive and per-marker negative fixtures.
+#
+# The 9 markers below correspond 1:1 with the smoke-test set defined
+# in issue #559 (PR #555 retrofit, deliverable D6).
+vmclient-log-gate	process\.platform==="linux"\)\s*\?\s*"vmClient \(TypeScript\)"	(F||process.platform==="linux")?"vmClient (TypeScript)"
+vm-assignment-linux-gate	process\.platform==="linux"\)\?\(?[\w$]+=\{vm:[\w$]+\}	(F||process.platform==="linux")?N={vm:M}
+unix-socket-path	process\.platform==="linux"\?\(process\.env\.XDG_RUNTIME_DIR\|\|"/tmp"\)\+"/cowork-vm-service\.sock"	process.platform==="linux"?(process.env.XDG_RUNTIME_DIR||"/tmp")+"/cowork-vm-service.sock"
+empty-linux-bundle-manifest	linux:\{x64:\[\],arm64:\[\]\}	,linux:{x64:[],arm64:[]}
+getdownloadstatus-suppression	getDownloadStatus\(\)\{return process\.platform==="linux"\?[\w$]+\.NotDownloaded	getDownloadStatus(){return process.platform==="linux"?Z.NotDownloaded
+econnrefused-on-linux	process\.platform==="linux"&&[\w$]+\.code==="ECONNREFUSED"	(n.code==="ENOENT"||process.platform==="linux"&&n.code==="ECONNREFUSED")
+cowork-daemon-pid	global\.__coworkDaemonPid	global.__coworkDaemonPid=_c.pid
+cowork-linux-daemon-shutdown	cowork-linux-daemon-shutdown	name:"cowork-linux-daemon-shutdown"
+sharedcwdpath-threadthrough	sharedCwdPath:this\.sessions\.get\(	sharedCwdPath:this.sessions.get(t)?.userSelectedFolders?.[0]

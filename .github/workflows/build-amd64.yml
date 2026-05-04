@@ -49,6 +49,29 @@ jobs:
           fi
           ./build.sh ${{ inputs.build_flags }} $TAG_FLAG
 
+      # Static-grep the shipped asar for the cowork patch markers
+      # defined in scripts/cowork-patch-markers.tsv (issue #559 D6,
+      # PR #555). Pinned to amd64-deb because the patched JS is
+      # identical across formats, so one verification per CI run is
+      # sufficient — no need to duplicate across the matrix.
+      - name: Verify cowork patches in shipped asar
+        if: inputs.artifact_suffix == 'deb'
+        run: |
+          deb_file=$(find . -maxdepth 1 -name 'claude-desktop_*amd64.deb' \
+            -print -quit)
+          if [[ -z "$deb_file" ]]; then
+            echo "verify-cowork-patches: no .deb artifact found" >&2
+            exit 1
+          fi
+          extract_dir=$(mktemp -d)
+          dpkg-deb -x "$deb_file" "$extract_dir"
+          asar_path=$(find "$extract_dir" -name app.asar -print -quit)
+          if [[ -z "$asar_path" ]]; then
+            echo "verify-cowork-patches: app.asar not found in deb" >&2
+            exit 1
+          fi
+          ./scripts/verify-cowork-patches.sh "$asar_path"
+
       - name: Upload AMD64 Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
