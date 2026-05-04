@@ -29,12 +29,12 @@
 //   - Menu items: any of `menuitem` / `menuitemradio` /
 //     `menuitemcheckbox` (collected as MENU_ITEM_ROLES below).
 
-import type { AxNode, InspectorClient } from './inspector.js';
+import type { InspectorClient } from './inspector.js';
 import {
 	type RawElement,
-	axTreeToSnapshot,
+	snapshotAx,
 	waitForAxTreeStable,
-} from '../../explore/walker.js';
+} from './ax.js';
 import { retryUntil, sleep } from './retry.js';
 
 // All three CDP-exposed menu-item variants. Caller code wants to treat
@@ -52,36 +52,12 @@ const MENU_ITEM_ROLES = new Set<string>([
 // want, so excluding them by name is the load-bearing discriminator.
 const ROW_MORE_OPTIONS_RE = /^More options for /;
 
-interface SnapshotOpts {
-	// Skip the AX-tree stability gate. Default false — i.e. callers
-	// gate by default. Pass true inside polling loops where the gate
-	// fights the loop (each iteration would block waiting for stability
-	// even when the change we're polling for is the AX tree updating).
-	fast?: boolean;
-}
-
-// Fetch the live AX tree and convert into the walker's RawElement[]
-// snapshot shape. By default gates on `waitForAxTreeStable` first —
-// without it, the first read after a fresh page-load can return only
-// the RootWebArea + shell (~4 nodes) even when the DOM has hundreds
-// of interactive elements (Chromium populates AX async; see
-// docs/learnings/test-harness-ax-tree-walker.md §1). Cost is ~800ms
-// when already stable.
-//
-// Pass `{ fast: true }` inside polling loops — `openPill`'s
-// post-click menuitem search and `clickMenuItem`'s click-when-it-
-// arrives loop both want fast iterations after one upfront stability
-// gate, not stability re-checked on every poll.
-async function snapshotAx(
-	inspector: InspectorClient,
-	opts: SnapshotOpts = {},
-): Promise<RawElement[]> {
-	if (!opts.fast) {
-		await waitForAxTreeStable(inspector, { minNodes: 1, timeoutMs: 10_000 });
-	}
-	const nodes: AxNode[] = await inspector.getAccessibleTree('claude.ai');
-	return axTreeToSnapshot(nodes);
-}
+// `snapshotAx` and the stability gate are now in `lib/ax.ts` —
+// extracted there in session 13 once T26 had to redefine the same
+// helper inline (two consumers = threshold-driven extraction). Page-
+// objects below import via the lib aliases; consumers outside this
+// file should reach for `lib/ax.ts` directly rather than re-importing
+// through `lib/claudeai.ts`.
 
 // One of the three top-level pills. Click is fire-and-forget — the
 // router rerenders the tab body inline (no URL change on Code), so

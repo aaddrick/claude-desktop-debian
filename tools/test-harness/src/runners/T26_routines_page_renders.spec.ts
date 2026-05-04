@@ -3,12 +3,11 @@ import { launchClaude } from '../lib/electron.js';
 import { createIsolation, type Isolation } from '../lib/isolation.js';
 import { captureSessionEnv } from '../lib/diagnostics.js';
 import { retryUntil } from '../lib/retry.js';
-import type { InspectorClient } from '../lib/inspector.js';
 import {
 	type RawElement,
-	axTreeToSnapshot,
+	snapshotAx,
 	waitForAxTreeStable,
-} from '../../explore/walker.js';
+} from '../lib/ax.js';
 
 // T26 — Routines page renders.
 //
@@ -46,24 +45,10 @@ interface AxAnchorSnapshot {
 	matches: AxAnchorMatch[];
 }
 
-// Pull a flat AX snapshot via the same primitives lib/claudeai.ts uses.
-// Inlined rather than importing a private helper from claudeai.ts —
-// snapshotAx isn't exported there and adding a public wrapper for one
-// runner is premature abstraction. `fast` skips the upfront stability
-// gate so polling loops don't burn ~800ms per iteration.
-async function snapshotAx(
-	inspector: InspectorClient,
-	opts: { fast?: boolean } = {},
-): Promise<RawElement[]> {
-	if (!opts.fast) {
-		await waitForAxTreeStable(inspector, {
-			minNodes: 1,
-			timeoutMs: 10_000,
-		});
-	}
-	const nodes = await inspector.getAccessibleTree('claude.ai');
-	return axTreeToSnapshot(nodes);
-}
+// `snapshotAx` (and `waitForAxTreeStable`) come from `lib/ax.ts` —
+// the shared AX-loading substrate. T26 was the second consumer to
+// reach for the helper (after `lib/claudeai.ts`'s page-objects),
+// which crossed the threshold for extraction in session 13.
 
 // Find every interactive element whose role+accessibleName matches one
 // of the supplied {role, name} pairs. Used both pre-click (to locate
