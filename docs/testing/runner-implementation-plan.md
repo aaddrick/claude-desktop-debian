@@ -18,6 +18,114 @@ work begins.
 
 ## Status (post-execution)
 
+**Shipped session 10 (2 new specs, no primitive change):** T19 + T20
+(Tier 2 reframes — `seedFromHost` + multi-suffix registration probe
+over the case-doc-anchored write-side handlers + invocation of the
+foundational read-side `LocalSessions/getAll` as the surrogate).
+First runtime probes for both T19 (integrated terminal) and T20
+(file pane) — neither had a Tier 1 fingerprint sibling because the
+case-doc anchors are channel names + impl line numbers, not user-
+facing literals. Coverage moved from 70/76 (92%) to 72/76 (95%).
+
+Session 10 findings + reclassifications:
+
+- **`claude.web/Launch` IS registered on the claude.ai webContents
+  with 25 handlers** — overturns session 7's per-interface map which
+  did not list Launch (it captured /epitaxy with cowork loaded; the
+  Launch interface was either lazy-registered after a navigation
+  not yet performed or the per-interface enumeration missed it). The
+  session 10 registry probe re-run on /epitaxy with an active session
+  saw all 25: `getLogs`, `stopServer`, `showPreview`, `hidePreview`,
+  `startFromConfig`, `getConfiguredServices`, `getAutoVerify`,
+  `setAutoVerify`, `deployPreview`, `destroyPreview`, `pickHtmlFile`,
+  `loadHtmlPreview`, `goBack`, `goForward`, `refreshPreview`,
+  `navigatePreview`, `getPreviewUrl`, `setPreviewColorScheme`,
+  `setPreviewViewport`, `clearPreviewViewport`, `capturePreviewScreenshot`,
+  `suggestDeployName`, `unpublishDeploy`, `toggleSelectionMode`,
+  `activeServers_$store$_getState`. T21's case-doc claim (dev server
+  preview pane) is now reachable as a Tier 2 reframe — not shipped this
+  session, deferred to next.
+- **`claude.web/Launch` invocation is gated on a `cwd` argument.**
+  Smoke-test of `Launch/getConfiguredServices` and `Launch/getAutoVerify`
+  against the user's debugger-attached running Claude rejected with
+  `Argument "cwd" at position 0 to method "<name>" in interface
+  "Launch" failed to pass validation`. Schema-rev next session via the
+  rejection-message grep pattern (session 9 finding) — the validator
+  block sits ~50-200 chars before the throw site in the bundled
+  `index.js`. T21 ships once the cwd format is recovered.
+- **`claude.operon/OperonBootstrap.ensure` registers eagerly on
+  claude.ai** — partially answers session 8's open question. The
+  registry probe surfaced 1 operon handler (`OperonBootstrap.ensure`)
+  on /epitaxy with the active Code session. The other 21 wrapper-
+  exposed operon interfaces (per session 8's `mainView.js` namespace
+  count) remain registry-unconfirmed; either they lazy-register on
+  operon-mode entry, or the `claude.operon` wrapper is exposed
+  without registration as session 8 hypothesized. Worth a follow-up
+  navigation probe (operon-mode URL TBD — would need to grep
+  `claude.ai/...` paths in the bundle for `operon`-keyed routes), but
+  the current finding is enough to stop calling operon "registry-un-
+  confirmed" — at least one handler IS registered.
+- **`LocalSessions` registers 117 methods** (full list dumped to
+  `/tmp/eipc-full-methods.json` during smoke-test). Read-side methods
+  invocable cleanly with `args = []` as confirmed by smoke-test on the
+  user's debugger-attached running Claude:
+  - `getAll` → `Array<Session>` (length 1 on dev box's active /epitaxy
+    session)
+  - `getInstalledEditors` → `Array<EditorConfig>` (length 4 on dev box)
+  - `getDetectedProjects` → `Array<Project>` (length 0 on dev box, no
+    detected projects in the harness's CWD)
+  - `isVSCodeInstalled` → boolean (false on dev box)
+  - `getSSHConfigs` → `Array<SSHConfig>` (length 0 on dev box)
+  - `getTrustedSSHHosts` → `Array<Host>` (length 0 on dev box)
+  - `getDefaultEffort` → object (returns null on dev box)
+  - `getSupportedCommands` → `Array<Command>` (length 25 on dev box)
+  Several other read-sides DO require args:
+  - `getDefaultPermissionMode` rejects with `Argument "cwd" at position
+    0 ... failed to pass validation` — needs cwd
+  - `getSSHSupportedCommands` rejects with `Argument "config" at position
+    0 ... failed to pass validation` — needs an SSH config object
+  T19 and T20 use `getAll` as the foundational read-side surrogate
+  because both surfaces (terminal + file pane) bind to LocalSessions;
+  the session enumeration handler is what proves the LocalSessions
+  impl object is reachable through the renderer wrapper.
+- **T19/T20 case-doc anchors are write-side; reframe is registration
+  + foundational read-side invocation.** T19's anchors are all
+  `LocalSessions_$_*ShellPty*` (start/write/stop/resize/getBuffer);
+  T20's are `readSessionFile` (read-side but needs sessionId+path
+  args not constructible from a fresh isolation) + `writeSessionFile`
+  (write-side, would mutate user content if invoked). The strongest
+  non-destructive Tier 2 layer for both is registration probe over
+  the case-doc-anchored suffixes plus a single invocation of `getAll`.
+  Different shape from T33c (which invokes each case-doc-anchored
+  suffix because both `listMarketplaces`/`listAvailablePlugins` are
+  read-side); T19/T20 mirror T22b/T31b/T33b/T38b's registration
+  shape but add the `getAll` invocation for the impl-object
+  reachability assertion.
+- **No primitive change.** `lib/eipc.ts`'s `waitForEipcChannels` +
+  `invokeEipcChannel` cover both new specs. The existing primitive
+  surface remains broad enough that consumer-driven additions are
+  the right next move, not fresh primitive builds.
+- **Filename convention: `_runtime` suffix, no `b`/`c` letter.** T19
+  and T20 had no prior runners — these are the first siblings, so
+  the naming follows T26/T27 (single `_runtime` Tier 2 reframe with
+  no fingerprint predecessor) rather than T33b/T33c (numbered after
+  earlier siblings). `T19_runtime.spec.ts` / `T20_runtime.spec.ts`.
+
+Tier 2 → Tier 2 candidates remaining for next session: **T21 dev
+server preview** (NOW tractable — `claude.web/Launch` registers 25
+handlers including read-side getters; needs `cwd` arg schema-rev via
+the rejection-message grep pattern). **T11 plugin install** (currently
+just a fingerprint — could promote to invocation if a read-side
+plugin-listing handler is identified; `LocalPlugins/getPlugins` is
+listed in the registry probe with 15 LocalPlugins handlers). **operon
+scope navigation probe** (still on the table — the partial answer is
+that OperonBootstrap registers eagerly, but the other 21 interfaces
+would need an operon-mode navigation; URL form TBD). The primitive
+surface remains broad enough that consumer-driven additions are the
+right next move.
+
+---
+
 **Shipped session 9 (1 new spec, no primitive change):** T33c (Tier 2
 runtime invocation upgrade — `seedFromHost` + dual-handler invocation
 of `claude.web/CustomPlugins/{listMarketplaces, listAvailablePlugins}`

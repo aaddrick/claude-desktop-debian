@@ -7,7 +7,7 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Seventy specs wired (32 cross-env T-tests, 33 env-specific S-tests,
+Seventy-two specs wired (34 cross-env T-tests, 33 env-specific S-tests,
 5 H-prefix harness self-tests). See
 [`docs/testing/runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
 for the tiered triage of remaining tests and the per-spec rationale
@@ -33,6 +33,8 @@ behind tier classification.
 | [T16](../../docs/testing/cases/code-tab-foundations.md#t16--code-tab-loads) | After `seedFromHost` + `userLoaded`, `CodeTab.activate()` resolves and ≥1 compact pill renders (env pill = Code-body mounted) | L1 + AX-tree |
 | [T17](../../docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens) | Code df-pill → env pill → Local → Select folder → Open folder triggers `dialog.showOpenDialog` (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 |
 | [T18](../../docs/testing/cases/code-tab-foundations.md#t18--drag-and-drop-files-into-prompt) | Bundled `mainView.js` preload contains the path-resolution bridge fingerprints: `getPathForFile` (2× — property key + the `webUtils.getPathForFile(` call, both at case-doc :9267), `webUtils`, `filePickers`, and the `claudeAppSettings` `contextBridge.exposeInMainWorld` namespace (case-doc :9552) — pins the load-bearing wiring without faking OS-level XDND drag (xdotool can't put file URIs on the X11 selection; Wayland needs per-compositor IPC + libei) | file probe |
+| [T19](../../docs/testing/cases/code-tab-foundations.md#t19--integrated-terminal) | After `seedFromHost` + `userLoaded`, the integrated-terminal eipc surface (`startShellPty`, `writeShellPty`, `stopShellPty`, `resizeShellPty`, `getShellPtyBuffer` — five-suffix presence probe) is registered on the claude.ai webContents AND the foundational `LocalSessions/getAll` returns array shape (Tier 2 reframe of the case-doc T19 case; case-doc anchors are write-side `startShellPty` etc. so reframe asserts the FULL terminal IPC surface registers + a stateless read-side surrogate is invocable) | L1 (eipc registry + invoke) |
+| [T20](../../docs/testing/cases/code-tab-foundations.md#t20--file-pane-opens-and-saves) | After `seedFromHost` + `userLoaded`, the file-pane eipc surface (`readSessionFile`, `writeSessionFile`, `pickSessionFile` — three-suffix presence probe) is registered on the claude.ai webContents AND the foundational `LocalSessions/getAll` returns array shape (Tier 2 reframe of the case-doc T20 case; the case-doc's `readSessionFile` anchor is read-side but needs (sessionId, path) args not constructible from a fresh isolation, so the registration probe + foundational `getAll` invocation is the strongest non-destructive Tier 2 layer) | L1 (eipc registry + invoke) |
 | [T22](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | Bundled `index.js` contains `LocalSessions_$_getPrChecks` eipc channel name *and* `gh CLI not found in PATH` Linux-fallthrough throw site (Tier 1 fingerprint) | file probe |
 | [T22b](../../docs/testing/cases/code-tab-workflow.md#t22--pr-monitoring-via-gh) | After `seedFromHost` + `userLoaded`, the `LocalSessions_$_getPrChecks` eipc handler is registered on the claude.ai webContents (`webContents.ipc._invokeHandlers` — Tier 2 runtime probe sibling of T22, strictly stronger than the bundle-string fingerprint) | L1 (eipc registry) |
 | [T23](../../docs/testing/cases/code-tab-handoff.md#t23--desktop-notifications-fire) | Firing `new Notification({title})` from main reaches the session bus's `org.freedesktop.Notifications.Notify` (observed via `dbus-monitor`) | L1 + DBus subprocess |
@@ -112,14 +114,14 @@ window; `NiriIpcUnavailable` thrown off-Niri; consumed by S14), the
 `lib/eipc.ts` registry walker (`getEipcChannels` /
 `waitForEipcChannel` / `waitForEipcChannels` against
 `webContents.ipc._invokeHandlers`; opaque on the UUID, suffix-matched
-against case-doc anchors; consumed by T22b / T31b / T33b / T38b)
-plus its session 8 invoke surface (`invokeEipcChannel` — calls a
-registered handler through the renderer-side wrapper at
-`window['claude.<scope>'].<Iface>.<method>`; consumed by T27 / T33c /
-T35b / T37b) — and the `createIsolation({ seedFromHost: true })`
-primitive that lets login-required tests run hermetically against a
-copy of the host's signed-in auth state (T07, T16, T22b, T26, T27,
-T31b, T33b, T33c, T35b, T37b, T38b).
+against case-doc anchors; consumed by T19 / T20 / T22b / T31b / T33b /
+T38b) plus its session 8 invoke surface (`invokeEipcChannel` — calls
+a registered handler through the renderer-side wrapper at
+`window['claude.<scope>'].<Iface>.<method>`; consumed by T19 / T20 /
+T27 / T33c / T35b / T37b) — and the `createIsolation({ seedFromHost:
+true })` primitive that lets login-required tests run hermetically
+against a copy of the host's signed-in auth state (T07, T16, T19,
+T20, T22b, T26, T27, T31b, T33b, T33c, T35b, T37b, T38b).
 
 Note on eipc channels: the `LocalSessions_$_*` and `CustomPlugins_$_*`
 channel names referenced in the case-doc Code anchors don't register
@@ -136,12 +138,21 @@ against the bundled channel-name strings; T22b / T31b / T33b / T38b
 are the runtime registry-presence siblings (strictly stronger,
 require `seedFromHost`). T27 / T33c / T35b / T37b go one step
 further — they invoke the resolved handlers through the renderer-
-side wrapper at `window['claude.<scope>'].<Iface>.<method>`, which
-`mainView.js` exposes via `contextBridge.exposeInMainWorld` after a
-top-frame + origin gate (`Qc()`: claude.ai / claude.com / preview.*
-/ localhost). Calling through the wrapper carries an honest
-`senderFrame` for the inlined `le()` / `Vi()` per-handler origin
-gate, so the test surface matches real attack surface. T33c also
+side wrapper at `window['claude.<scope>'].<Iface>.<method>`. T19 /
+T20 are first-runtime-probe siblings of case-doc tests whose anchors
+are write-side handlers (`startShellPty` / `writeSessionFile`); they
+ship a five-suffix / three-suffix registration probe over the
+case-doc-anchored write-side surface plus a single foundational
+read-side `LocalSessions/getAll` invocation as the read-side
+surrogate (case-doc connection: integrated terminal and file pane
+both bind to LocalSessions; `getAll` proves the LocalSessions impl
+object is reachable through the renderer wrapper). All wrapper
+invocations use the wrapper exposed by `mainView.js` via
+`contextBridge.exposeInMainWorld` after a top-frame + origin gate
+(`Qc()`: claude.ai / claude.com / preview.* / localhost). Calling
+through the wrapper carries an honest `senderFrame` for the inlined
+`le()` / `Vi()` per-handler origin gate, so the test surface matches
+real attack surface. T33c also
 demonstrates the schema-rev path: when invocation rejects with
 `Argument "<name>" at position N ... failed to pass validation`,
 the verbatim rejection string is the cheapest grep target back to
@@ -149,7 +160,7 @@ the inline hand-rolled validator block (bundle bytes 5013601 /
 5018821 for the two CustomPlugins methods). See `lib/eipc.ts` for
 both surfaces, and
 [`runner-implementation-plan.md`](../../docs/testing/runner-implementation-plan.md)
-session 7 / 8 / 9 status sections for the findings.
+session 7 / 8 / 9 / 10 status sections for the findings.
 
 Per-row pass/skip counts depend on which sweep runs against the row;
 see `runner-implementation-plan.md` for tier classification and

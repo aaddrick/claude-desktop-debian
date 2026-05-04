@@ -1,104 +1,116 @@
-# test-harness runner implementation — session 10 prompt
+# test-harness runner implementation — session 11 prompt
 
 This file is meant to be **copied verbatim into a fresh Claude Code
 session** as the initial user message. Don't paraphrase it; the
 orchestration depends on the exact directives below.
 
-You're picking up after a runner-implementation session that landed 1
-new spec (T33c) by way of reverse-engineering the
-`CustomPlugins/listMarketplaces` arg validator. No primitive change.
-Coverage 69/76 (91%) → 70/76 (92%). One commit on `docs/compat-matrix`
-expected (SHA inserted after the test-harness commit lands — the user
-reviews and commits at the end of every session):
+You're picking up after a runner-implementation session that landed 2
+new specs (T19 + T20) by way of registering the case-doc-anchored
+write-side eipc surfaces plus invoking the foundational read-side
+`LocalSessions/getAll` as the read-side surrogate. No primitive
+change. Coverage 70/76 (92%) → 72/76 (95%). Two commits on
+`docs/compat-matrix` expected (SHAs inserted after the test-harness
+commit lands — the user reviews and commits at the end of every
+session):
 
-- TBD — `test(harness): session 9 T33c plugin browser invocation`
-  (Tier 2 invocation upgrade of T33b; schema-rev surfaced the
-  byte-identical hand-rolled validator on both `listMarketplaces` and
-  `listAvailablePlugins`; minimal valid arg is `[[]]` — empty
-  egressAllowedDomains, omit pluginContext; passes on KDE-W in 39.2s
-  with array shape on both invocations).
+- TBD — `test(harness): session 10 T19/T20 runtime probes`
+  (Tier 2 reframes; multi-suffix `waitForEipcChannels` over the
+  case-doc-anchored write-side suffixes — `startShellPty` / `writeShellPty`
+  / `stopShellPty` / `resizeShellPty` / `getShellPtyBuffer` for T19,
+  `readSessionFile` / `writeSessionFile` / `pickSessionFile` for T20
+  — plus single `invokeEipcChannel('LocalSessions_$_getAll', [])`
+  array-shape assertion as the foundational read-side surrogate;
+  passes on KDE-W in 23.4s + 27.7s sequential).
 
 The plan doc at
 [`docs/testing/runner-implementation-plan.md`](runner-implementation-plan.md)
 captures the tier classification and execution-time reclassifications.
 Its "Status (post-execution)" section is the source of truth for
-what's done and what's deferred — read **session 9** first, then
-**session 8**, then **session 7**, then **session 6**, then **session
-5**, then **session 4**, then **session 3**, then **session 2**, then
-**session 1** sub-sections.
+what's done and what's deferred — read **session 10** first, then
+**session 9**, then **session 8**, then **session 7**, then **session
+6**, then **session 5**, then **session 4**, then **session 3**, then
+**session 2**, then **session 1** sub-sections.
 
 This session is a continuation, not a restart. Start by reading the
 plan doc's status sections.
 
-### Big new findings from session 9
+### Big new findings from session 10
 
-1. **Hand-rolled positional arg validators.** Both
-   `claude.web/CustomPlugins/listMarketplaces` and `listAvailablePlugins`
-   use byte-identical inline `Array.isArray(...) && r.every(a => typeof
-   a === "string")` checks for `egressAllowedDomains: string[]` (arg 0,
-   required) plus an optional `pluginContext` checked by a closed-over
-   `sc(...)` requiring `mode: string`. NOT Zod for args — the result
-   validator IS Zod, runs after the impl returns. Validator blocks at
-   bytes 5013601 / 5018821 in the bundled `index.js` (single-line
-   minified bundle, ~15 MB, byte offsets not line numbers). Minimal
-   valid arg: `args = [[]]`. The empty allow-list is the safety
-   property — if the underlying impl is the CLI-shelling variant, it
-   forwards as the spawned subprocess's permitted domains.
-2. **Two impl variants exist.** Both methods have a CLI-shelling impl
-   (`runCommand(["plugin", ...], { timeout: 30s/60s, allowedDomains: A
-   })`) AND a native impl (reads `knownMarketplacesFile` /
-   `marketplacesDir` directly). Selection logic isn't called out in
-   the registered handler's closure source; both variants return the
-   same `Array<…>` shape on success. T33c's `Array.isArray(result) ===
-   true` assertion holds regardless of which is active. Test budget
-   bumped to 180s to accommodate worst-case sequential CLI timeouts.
-3. **Validator rejection messages are the cheapest grep target.** When
-   `invokeEipcChannel` rejects with `Argument "<name>" at position N
-   ... failed to pass validation`, the verbatim rejection string in
-   the inline validator block is the entry point — single grep on the
-   literal error message resolves to the exact validator location in
-   the bundle. Save this pattern for any future schema-rev session
-   where invocation fails with a structured rejection.
-4. **Bundle grep + runtime closure inspection converged independently.**
-   Two parallel investigations (subagents read the bundle vs. read
-   `Function.prototype.toString` of the registered handler via the
-   debugger-attached running Claude on :9229) produced byte-identical
-   validator literals and the same minimal arg shape. High confidence
-   on the schema. Worth using the dual-approach pattern again when a
-   future schema-rev needs cross-checking — both paths are cheap and
-   the false-positive rate goes to zero when they agree.
-5. **`mainView.js` exposes 9 wrapper namespaces but only 5 currently
-   have registry-confirmed handlers** on the claude.ai webContents.
-   Carryover from session 8: `claude.operon` exposes 22 interfaces in
-   the renderer wrapper but session 7's registry walk on `/epitaxy`
-   and `/new` saw zero operon handlers registered. Either operon
-   handlers register lazily on operon-mode entry, or the wrapper is
-   exposed even when the handler isn't yet registered (in which case
-   `invokeEipcChannel` would fail with "no handler registered with
-   suffix"). Same uncertainty applies to `claude.web/Launch/*`
-   (relevant for T21 dev server preview): wrapper present, registry
-   un-confirmed. Worth a one-liner probe before any operon-scope or
-   Launch-scope spec lands.
+1. **`claude.web/Launch` IS registered on claude.ai with 25 handlers.**
+   Overturns session 7's per-interface map (which captured /epitaxy
+   with cowork loaded but didn't list Launch). Session 10's registry
+   probe re-run on /epitaxy with an active session saw all 25:
+   `getLogs`, `stopServer`, `showPreview`, `hidePreview`,
+   `startFromConfig`, `getConfiguredServices`, `getAutoVerify`,
+   `setAutoVerify`, `deployPreview`, `destroyPreview`, `pickHtmlFile`,
+   `loadHtmlPreview`, `goBack`, `goForward`, `refreshPreview`,
+   `navigatePreview`, `getPreviewUrl`, `setPreviewColorScheme`,
+   `setPreviewViewport`, `clearPreviewViewport`,
+   `capturePreviewScreenshot`, `suggestDeployName`, `unpublishDeploy`,
+   `toggleSelectionMode`, `activeServers_$store$_getState`. T21 is now
+   tractable as a Tier 2 reframe.
+2. **Launch invocation is `cwd`-gated.** Smoke-test of
+   `Launch/getConfiguredServices` and `Launch/getAutoVerify` rejected
+   with `Argument "cwd" at position 0 to method "<name>" in interface
+   "Launch" failed to pass validation`. Schema-rev via the rejection-
+   message grep pattern (session 9 finding) — the validator block sits
+   ~50-200 chars before the throw site in the bundled `index.js`. T21
+   ships once the cwd format is recovered.
+3. **`claude.operon/OperonBootstrap.ensure` registers eagerly on
+   claude.ai** (1 handler). Partial answer to session 8's open
+   question. The other 21 wrapper-exposed operon interfaces remain
+   registry-unconfirmed; they likely lazy-register on operon-mode
+   entry. Worth a follow-up navigation probe — operon-mode URL form
+   TBD (search `claude.ai/...` paths in the bundle for `operon`-keyed
+   routes).
+4. **`LocalSessions/getAll` is the foundational read-side surrogate
+   for any session-scoped Tier 2 reframe.** Pattern: `args = []`,
+   returns `Array<Session>`, the case-doc connection is "this surface
+   binds to a LocalSession; getAll proves the LocalSessions impl
+   object is reachable through the renderer wrapper". T19 (terminal
+   binds to session) and T20 (file pane edits session-bound files)
+   both ship with this. Reuse for any future LocalSessions-scoped
+   case-doc test where the case-doc anchor is write-side.
+5. **Smoke-test enumeration of LocalSessions read-sides.** The
+   following all invoke cleanly with `args = []`:
+   - `getAll`, `getInstalledEditors`, `getDetectedProjects`,
+     `isVSCodeInstalled`, `getSSHConfigs`, `getTrustedSSHHosts`,
+     `getDefaultEffort`, `getSupportedCommands`
+   These DO require args (rejected on smoke-test):
+   - `getDefaultPermissionMode` rejects on `cwd` arg
+   - `getSSHSupportedCommands` rejects on `config` arg (SSH config
+     object)
+   The full LocalSessions method list (117 methods) is in the registry
+   probe dump — if a future session needs to identify a specific
+   read-side, dump and grep there rather than re-enumerating.
+6. **Filename convention for first-runtime-probe siblings.** When a
+   case-doc test has no Tier 1 fingerprint sibling and the Tier 2
+   reframe is the FIRST runner against that case-doc, name it
+   `T<NN>_runtime.spec.ts` (no `b` / `c` letter suffix). T19 / T20
+   followed this — same as T26 / T27 from earlier sessions. Use `b` /
+   `c` only when there's an earlier sibling to disambiguate against
+   (T22b after T22; T33c after T33b).
 
 ### Authoritative reference
 
 Read these in order before fanning out:
 
 - [`docs/testing/runner-implementation-plan.md`](runner-implementation-plan.md)
-  — tier classification + status section. Read **session 9**,
-  **session 8**, **session 7**, **session 6**, **session 5**,
-  **session 4**, **session 3**, **session 2**, then **session 1**
+  — tier classification + status section. Read **session 10**, then
+  **session 9**, **session 8**, **session 7**, **session 6**, **session
+  5**, **session 4**, **session 3**, **session 2**, then **session 1**
   "Status (post-execution)" sub-sections. The Tier-3 list (search for
   "## Tier 3") is the candidate pool for further reframes.
 - [`tools/test-harness/README.md`](../../tools/test-harness/README.md)
-  — runner conventions, the now-70-spec inventory, primitives in
+  — runner conventions, the now-72-spec inventory, primitives in
   `lib/`, isolation defaults, the CDP-gate workaround, the eipc
-  note (now updated to cover registry walk, renderer-wrapper
-  invocation, AND the schema-rev pattern from session 9).
+  note (covers registry walk, renderer-wrapper invocation, the
+  schema-rev pattern from session 9, and the foundational-getAll
+  pattern from session 10).
 - [`docs/testing/cases/README.md`](cases/README.md) — case-doc
   structure and the four anchor scopes.
 - [`tools/test-harness/src/lib/`](../../tools/test-harness/src/lib/)
-  — the existing primitives. No session 9 additions; surface remains
+  — the existing primitives. No session 10 additions; surface remains
   the session 8 shape (`getEipcChannels` / `findEipcChannel` /
   `findEipcChannels` / `waitForEipcChannel` / `waitForEipcChannels` /
   `invokeEipcChannel` on `lib/eipc.ts`).
@@ -106,166 +118,136 @@ Read these in order before fanning out:
   — the session 7 read-only registry probe. Re-run against a
   debugger-attached Claude (`Developer → Enable Main Process
   Debugger` from the menu) to capture the current registry shape.
+  Session 10 used the existing probe verbatim plus a small
+  per-interface method-list dump (deleted after; lives in /tmp at
+  capture time).
 - [`tools/test-harness/src/runners/`](../../tools/test-harness/src/runners/)
-  — every existing spec is a template. Notable session 9 template:
-  - `T33c_plugin_browser_invocation.spec.ts` — multi-suffix
-    `waitForEipcChannels` + per-suffix `invokeEipcChannel` loop with
-    `args = [[]]` for both methods, `Array.isArray` shape assertion,
-    180s budget for CLI-spawn worst case. Pattern for any Tier 2
-    invocation upgrade where the validator requires a positional arg
-    AND the impl may shell out to a subprocess.
+  — every existing spec is a template. Notable session 10 templates:
+  - `T19_runtime.spec.ts` / `T20_runtime.spec.ts` — multi-suffix
+    `waitForEipcChannels` over case-doc-anchored write-side suffixes
+    + single `invokeEipcChannel('LocalSessions_$_getAll', [])` for
+    foundational read-side reachability. Pattern for any case-doc
+    test whose anchors are write-side and no read-side equivalent
+    invokes cleanly with `args = []`.
 - [`docs/testing/cases/*.md`](cases/) — the spec each runner
   asserts. The **Code anchors:** field tells you exactly where
   upstream implements the feature.
 
 ### Tests in scope this session
 
-**Realistic ceiling: ~2 new specs OR one investigation + one new
-spec landing.** Session 9 was at the lower end (1 spec + 0 primitives)
-because the schema-rev was the work; now that the validator pattern
-is documented, follow-on Tier 2 invocation upgrades that need similar
-schema work are cheaper. Session 8's upper end (3 specs + 1 primitive
-extension) was a near-identical-shape batch; session 10's main bet
-should aim for the lower-middle (2 specs OR 1 investigation + 1 spec).
+**Realistic ceiling: ~1-2 new specs OR one investigation + one new
+spec landing.** Session 10 landed 2 specs without primitive change;
+Session 9 landed 1 spec. Session 11's main bet should aim for 1-2.
 
-**Category B remains the natural next step** but its case-doc anchors
-point at write-side handlers — needs read-side reframes before
-shipping. Category C (operon / Launch exposure-vs-registration) is
-still on the table from session 8 and is the smallest-scope option.
+**Category A (T21 dev server preview) is now the natural next step.**
+Launch IS registered (session 10 finding); only the cwd-arg schema-
+rev separates it from invocation. Category B (T11 plugin install
+runtime upgrade) is a parallel option using the same pattern.
+Category C (operon-mode navigation probe) is investigation-shaped.
 
 Three categories — pick ONE as the main bet, treat the others as
 fallback if the main bet hits an early blocker:
 
 | # | Tests | Source | Notes |
 |---|---|---|---|
-| **A** T19/T20 read-side reframes | T19, T20 (read-side) | T33c template + `lib/eipc.ts` invokeEipcChannel | Case-doc anchors are write-side (`startShellPty`, `writeSessionFile`). Investigate read-side equivalents in the registry first — `LocalSessions_$_listSessions`, `LocalSessions_$_getSessionInfo`, `LocalSessions_$_readSessionFile` are candidates per session 7's per-interface map (117 LocalSessions handlers total). Schema-rev each before invocation — the validator-rejection-grep pattern from session 9 applies. Risk: read-side handlers may not have one-to-one case-doc anchor mapping; the spec body has to motivate why the read-side reframe asserts the same surface as the write-side case-doc claim. |
-| **B** Launch scope + T21 | T21 (dev server preview) | exposure-vs-registration probe + new spec | Confirm `claude.web/Launch/*` handlers register on the claude.ai webContents at all (session 7 mapped 53 distinct interfaces; Launch wasn't in the surfaced list — could be lazy-register on `.claude/launch.json` presence, or exposed-but-not-registered). If registered, ship a Tier 2 reframe similar to T33c. If wrapper-only, document and pivot. |
-| **C** operon scope exposure-vs-registration probe | n/a (investigation) | new probe, possibly small Tier 1 reframe | Confirm whether operon handlers register on claude.ai webContents at any point, or only on operon-mode entry. Outputs: either a Tier 2 reframe of an operon case-doc test, OR a deferral note explaining why operon scope can't be reached without an operon-mode session. Smaller scope than A or B. |
+| **A** T21 dev server preview | T21 | T19/T20 template + `lib/eipc.ts` invokeEipcChannel + bundle grep for `cwd` validator | `claude.web/Launch` registers 25 handlers (session 10 finding). T21's case-doc claim is "dev server preview pane"; the read-side reframe targets `Launch/getAutoVerify` or `Launch/getConfiguredServices` — both reject with `Argument "cwd" at position 0` on `args = []`. Schema-rev cwd via rejection-grep (session 9 pattern); cwd is likely just a string filesystem path. Then ship a Tier 2 invocation runner asserting the array-or-object shape. Risk: cwd validation may be more elaborate than a string (might need an existing-directory check); have a fallback path that uses the harness's isolation tmpdir as cwd. Smaller than A from session 10 — single suffix invocation, no multi-suffix registration probe needed unless you want to belt-and-suspender it. |
+| **B** T11 plugin install runtime upgrade | T11 | T19/T20 template + read-side `LocalPlugins` enumeration | Session 7's registry probe surfaced 15 `LocalPlugins_*` handlers. T11 currently is a Tier 1 fingerprint only. Read-side candidate: `LocalPlugins/getPlugins` (likely returns array of installed plugins; needs schema-rev or smoke-test first). Same pattern as T19/T20 — registration probe + foundational read-side invocation. Risk: getPlugins may need a cwd or plugin-context arg; smoke-test first. |
+| **C** operon-mode navigation probe | n/a (investigation) + maybe small Tier 2 reframe | new probe + bundle grep for operon URL routes | Session 10 confirmed `OperonBootstrap.ensure` registers eagerly but the other 21 operon interfaces remain registry-unconfirmed. Outputs: either an operon-mode URL form recovered from the bundle (search for `operon`-keyed routes in `claude.ai/...` paths) plus a registry re-probe after navigation, OR a deferral note explaining why operon scope can't be reached without an operon-mode entry. Smaller scope than A or B. |
 
-#### Category A — T19/T20 read-side reframes
+#### Category A — T21 dev server preview
 
-The plan: pick read-side `LocalSessions_$_*` getters that map to the
-write-side case-doc claims for T19 (integrated terminal) and T20
-(file pane), then ship Tier 2 invocation runners against each.
+The plan: schema-rev the `cwd` validator on `Launch/getAutoVerify`
+or `Launch/getConfiguredServices`, then ship a Tier 2 invocation
+runner.
 
-**Investigation phase first** — case-doc anchors are write-side,
-need read-side equivalents:
+**Investigation phase first** — cwd format isn't yet known:
 
-1. **Re-run `eipc-registry-probe.ts`** against a debugger-attached
-   Claude. Filter for `LocalSessions_$_*` and look for `list*` /
-   `get*` / `read*` patterns. Session 7 catalogued 117 LocalSessions
-   handlers but only listed sample method names (4 per interface).
-   The full list lives in `/tmp/eipc-registry-probe.json` from a
-   re-run. Candidate read-sides:
-   - For T19 (terminal): `LocalSessions_$_listSessions`,
-     `LocalSessions_$_getSessionInfo`, `LocalSessions_$_readPty`?
-   - For T20 (file pane): `LocalSessions_$_readSessionFile`,
-     `LocalSessions_$_listSessionFiles`?
-2. **Schema-rev each candidate** using the session 9 pattern:
-   - First call: smoke test against the user's debugger-attached
-     Claude with `args = []`. Capture the rejection error.
-   - If rejection error includes `Argument "<name>" at position N
-     ... failed to pass validation`, grep the bundle for the literal
-     rejection string to find the validator block.
-   - If the call succeeds with `[]`, you don't need schema-rev — go
-     straight to runner shape.
-   - If the call succeeds but returns a non-array shape, decide
-     whether the assertion shape is `Array.isArray` (T33c, T27) or
-     `non-array object` (T35b) or `string | null` (T37b) based on
-     what the read-side returns.
-3. **Motivate the reframe** in the leading comment. T19's case-doc
-   claim is "integrated terminal opens"; the read-side reframe is
-   e.g. "the per-session listing handler is wired and returns an
-   array — the terminal-spawn path consumes this list to attach to
-   an existing PTY". The connection to the case-doc surface needs
-   to be plausible, not just "this handler returns an array".
+1. **Re-run smoke-test** against the user's debugger-attached Claude
+   with various cwd shapes (mirror session 10's `/tmp/eipc-smoke-
+   test.ts`):
+   - `args = ['']` (empty string)
+   - `args = ['/tmp']` (existing directory)
+   - `args = ['/nonexistent']` (non-existent path — does the validator
+     gate on existence?)
+   - `args = ['/home/$USER']` (home dir)
+   - `args = ['.']` (relative path)
+   - `args = [process.cwd()]` (test CWD itself)
+   - `args = [{ path: '/tmp' }]` (object form — some validators wrap)
+2. **Capture rejection messages**. If `Argument "cwd" ... must be a
+   string` → it's a flat string. If `must be an absolute path` → it
+   needs absolute. If a successful invocation returns an array/object,
+   you have the shape.
+3. **Schema-rev the validator** via bundle grep on the rejection
+   message literal (session 9 finding). The validator block sits
+   ~50-200 chars before the throw site.
+4. **Motivate the reframe** in the leading comment. T21's case-doc
+   claim is "dev server preview pane starts on Preview → Start"; the
+   read-side reframe is e.g. "the configured-services / auto-verify
+   getters are wired and return their documented shape — the Preview
+   dropdown populates from this surface". The connection to the case-
+   doc surface needs to be plausible, not just "this handler returns
+   an array".
 
 **Approaches to investigate (in order):**
 
-1. **Re-run the registry probe against the user's running
-   debugger-attached Claude.** Cheapest signal — captures the full
-   `LocalSessions_$_*` method list as seen from main. Mirror the
-   existing probe; don't rewrite.
-2. **Smoke-test candidate read-side suffixes** with `args = []`.
-   Capture rejections. The validator-rejection grep pattern from
-   session 9 resolves the schema cheaply.
-3. **If a candidate's invocation succeeds**, draft a Tier 2 spec
-   using T33c's shape (multi-suffix if both T19 and T20 read-sides
-   land, single-suffix otherwise).
+1. **Smoke-test cwd shapes** against the user's debugger-attached
+   Claude. Cheapest signal — directly probes what the validator
+   accepts.
+2. **Bundle grep on the rejection message literal** for any rejection
+   not resolved by smoke-test alone. The validator block is byte-
+   adjacent to the throw site.
+3. **Draft Tier 2 spec** using T19_runtime / T20_runtime shape (multi-
+   suffix `waitForEipcChannels` over the read-side getters, plus
+   `invokeEipcChannel` on the resolved cwd shape).
 
-If Category A turns up empty after 2-3 distinct read-side candidates
-(none invoke cleanly with `args = []`, all require schema-rev that
-exceeds the session budget, OR the registry walk doesn't surface a
-plausible read-side equivalent), STOP AND REPORT. Don't keep
-digging — pivot to Category B or C.
+If Category A's cwd schema doesn't resolve cleanly after 2-3 attempts
+(rejections include shape constraints not derivable from the bundle,
+all attempts fail validation, the validator demands an existing
+directory and the test isolation tmpdir doesn't qualify), STOP AND
+REPORT. Pivot to Category B or C.
 
-#### Category B — Launch scope + T21
+#### Category B — T11 plugin install runtime upgrade
 
-The plan: confirm `claude.web/Launch/*` handlers register on the
-claude.ai webContents (session 7's per-interface map didn't list
-them; either lazy-register on `.claude/launch.json` presence, or
-exposed-but-not-registered).
+The plan: confirm `LocalPlugins/*` is a tractable invocation surface,
+then ship a Tier 2 reframe.
 
 1. **Re-run `eipc-registry-probe.ts`** filtering for
-   `claude.web_$_Launch_$_*`. If non-empty, treat similarly to
-   T33c: pick a read-side getter, schema-rev with the rejection-
-   grep pattern, ship a Tier 2 invocation runner.
-2. **If empty**, navigate the running Claude to a project with
-   `.claude/launch.json` and re-run. If still empty, document
-   "Launch scope handlers register lazily on a path we can't
-   construct from the harness" and defer.
-3. **If wrapper-exposed without registry-side handlers**,
-   document as a known limitation alongside the operon finding.
+   `LocalPlugins_$_*`. Session 7 surfaced 15 handlers but only listed
+   4 sample method names per interface. Dump the full method list.
+2. **Smoke-test candidate read-sides** with `args = []`:
+   - `getPlugins`, `getDownloadedRemotePlugins`, `syncRemotePlugins`,
+     `listSkillFiles` (sample names from session 7)
+   - Capture rejections. Schema-rev via bundle grep if needed.
+3. **Draft Tier 2 spec** as `T11_runtime.spec.ts` — registration
+   probe + foundational read-side invocation. The case-doc connection:
+   "T11 verifies the plugin install code path; the LocalPlugins
+   listing handler is wired and returns the documented array shape".
 
-T21's case-doc claim is "dev server preview pane" — needs
-`.claude/launch.json` AND a real project to fully exercise. The
-Tier 2 reframe is "the Launch dispatch handler is registered AND
-returns the documented shape on a known fixture path"; needs more
-investigation than T19/T20.
+Skip this category unless Category A is blocked AND Category C is
+unappealing.
 
-Skip this category unless Category A's read-side candidates turn
-up empty AND Category C is also unappealing.
+#### Category C — operon-mode navigation probe
 
-#### Category C — operon / Launch exposure-vs-registration probe
+The plan: find an operon-mode URL form and verify whether the other
+21 operon interfaces register lazily.
 
-The plan: write a small read-only probe (mirror
-`eipc-registry-probe.ts`'s shape) that asks two questions for each
-of operon and Launch:
+1. **Bundle grep for operon URL routes.** Search the bundled
+   `index.js` and `mainView.js` for `operon`-keyed paths (e.g.
+   `/operon/...`, `claude.ai/operon`, etc.). Compile a candidate URL
+   list.
+2. **Navigate the user's debugger-attached running Claude** to each
+   candidate URL via `inspector.evalInRenderer('claude.ai',
+   "window.location.href = '<URL>'")`. After each navigation, re-run
+   the registry probe and check the operon scope's interface count.
+3. **If any URL surfaces additional operon handlers**, ship a small
+   Tier 2 reframe spec (e.g. probe `OperonBootstrap.ensure` invocation
+   shape, or assert the lazy-registration count).
+4. **If none of the candidate URLs surface additional handlers**,
+   document as "operon scope handlers register lazily on a navigation
+   we can't easily construct from the harness" and defer.
 
-1. **At fresh launch + post-login**, are any operon / Launch handlers
-   registered on the claude.ai webContents? Session 7's registry walk
-   on `/epitaxy` and `/new` didn't surface them in the per-interface
-   summary (which lists every `(scope, iface)` pair). Confirm — re-
-   run the registry walker, filter by `scope === 'claude.operon'` and
-   `scope === 'claude.web' && iface.startsWith('Launch')`, capture
-   the count.
-2. **After navigating to operon-mode URL or a launch-config'd
-   project**, do the missing handlers appear? Operon-mode URLs are
-   TBD — search `claude.ai/...` paths in the bundle for `operon`-
-   keyed routes. Launch-config navigation needs `.claude/launch.json`
-   in the working folder.
-3. **Independently**, does the renderer-side wrapper expose
-   `window['claude.operon']` / `window['claude.web'].Launch`
-   regardless of registration status? (Yes per session 8 for
-   operon; un-confirmed for Launch.)
-
-Outputs:
-
-- If operon / Launch handlers register on claude.ai eagerly: write a
-  one-liner Tier 2 reframe spec for the highest-priority case-doc
-  target.
-- If they register lazily on a navigation we can't easily construct:
-  document the prerequisite in plan-doc Status section as a Tier 3
-  item ("requires operon-mode navigation primitive" /
-  "requires .claude/launch.json fixture"), and don't ship a probe.
-- If the wrapper is exposed without registered handlers: document as
-  a known limitation of `invokeEipcChannel` (will fail with "no
-  handler registered" even though `window['claude.<scope>']` is
-  present).
-
-This is a smaller-scope category — investigation + maybe one spec
-landing. Best fallback if Category A's read-side candidates turn up
-empty.
+This is the smallest-scope category — investigation + maybe one
+spec landing. Best fallback if Category A is blocked.
 
 #### Cross-compositor focus-shifter expansion (NOT recommended this session)
 
@@ -284,13 +266,13 @@ section. Don't add it speculatively — wait for a real consumer.
 
 ### Constraints to respect (don't violate)
 
-These are unchanged from sessions 1-9 and still load-bearing:
+These are unchanged from sessions 1-10 and still load-bearing:
 
 - **Default isolation** unless the spec needs otherwise. Use
   `seedFromHost: true` for any test that depends on authenticated
   renderer state — never assume default isolation gets past
-  `/login`. T16/T26/T22b/T27/T31b/T33b/T33c/T35b/T37b/T38b are the
-  templates.
+  `/login`. T16/T19/T20/T26/T22b/T27/T31b/T33b/T33c/T35b/T37b/T38b
+  are the templates.
 - **eipc handlers register on `webContents.ipc._invokeHandlers`,
   NOT global `ipcMain._invokeHandlers`.** Session 7 finding. Use
   `lib/eipc.ts` rather than rolling a new walker. The framing
@@ -312,6 +294,15 @@ These are unchanged from sessions 1-9 and still load-bearing:
   ~2KB around it surfaces the full schema. Cheaper than runtime
   closure inspection in most cases (closure inspection is a good
   cross-check).
+- **For session-scoped Tier 2 reframes: `LocalSessions/getAll` is
+  the foundational read-side surrogate.** Session 10 finding. When
+  a case-doc test's anchors are write-side LocalSessions handlers,
+  ship a registration probe over the case-doc-anchored suffixes
+  PLUS a single `invokeEipcChannel('LocalSessions_$_getAll', [])`
+  array-shape assertion as the read-side surrogate. The case-doc
+  connection: "this surface binds to a LocalSession; getAll proves
+  the LocalSessions impl object is reachable through the renderer
+  wrapper".
 - **`lib/input.ts` is X11-only.** Strict `XDG_SESSION_TYPE ===
   'x11'` gate. Wayland consumers must skip — don't try to bolt
   Wayland into the file.
@@ -325,10 +316,7 @@ These are unchanged from sessions 1-9 and still load-bearing:
 - **Code-tab AX anchors stay in plan-doc until a consumer needs
   them.** Don't preemptively add `CodeTab.activateTopTab()` to
   `claudeai.ts` — session 5's anchors block out the work for
-  whenever a future consumer surfaces. T19/T20 read-side reframes
-  may need them; pre-flight check before adding to `claudeai.ts`
-  whether the read-side path actually exercises the AX surface or
-  only the IPC.
+  whenever a future consumer surfaces.
 - **CDP auth gate is alive** — runtime SIGUSR1 attach via
   `app.attachInspector()`, never Playwright's `_electron.launch()`
   or `chromium.connectOverCDP()`.
@@ -344,8 +332,8 @@ These are unchanged from sessions 1-9 and still load-bearing:
   errors and short-circuit; see S11 / S14 for the pattern.)
 - **Diagnostics on every run.** `testInfo.attach()` the artefacts.
   Single-shot JSON dumps for multi-state tests (S11, S14, S31,
-  T22b, T27, T31b, T33b, T33c, T35b, T37b, T38b pattern) are
-  cleaner than 5+ separate attachments.
+  T19, T20, T22b, T27, T31b, T33b, T33c, T35b, T37b, T38b pattern)
+  are cleaner than 5+ separate attachments.
 - **Tag with annotations.** `severity:` and `surface:` on every
   test so JUnit carries them through to matrix-regen.
 - **Tabs in TS, ~80-char wrap as the existing files do.** Match
@@ -369,25 +357,26 @@ These are unchanged from sessions 1-9 and still load-bearing:
   contain credentials; scheduled-task instructions may reference
   internal projects; marketplace `pluginContext`-filtered listings
   may surface internal-org marketplace pointers (T33c's defensive
-  default).
+  default). T19/T20's `getAll` defensive default extends the
+  pattern: session metadata may include user-account-scoped paths
+  and titles.
 
 ### Phases
 
 #### Phase 0 — calibration
 
 1. `cd tools/test-harness && npm run typecheck` — should pass.
-2. Read the plan doc's "Status (post-execution)" session 9 section,
+2. Read the plan doc's "Status (post-execution)" session 10 section,
    then read `lib/eipc.ts`'s `invokeEipcChannel` API +
-   `T33c_plugin_browser_invocation.spec.ts` leading comments.
-   Confirm you understand the multi-suffix invocation pattern, the
-   schema-rev approach (rejection-message grep), and the 180s
-   timeout budget.
+   `T19_runtime.spec.ts` / `T20_runtime.spec.ts` leading comments.
+   Confirm you understand the multi-suffix registration + foundational
+   read-side invocation pattern.
 3. Pick ONE Category as the main bet. For Category A, plan the
-   approach: (a) re-run the registry probe to enumerate
-   LocalSessions read-sides, (b) smoke-test candidates with `args =
-   []`, (c) schema-rev any rejections via bundle grep. List which
-   approaches you'll try in what order, with the cap at 2-3
-   distinct approaches before STOP AND REPORT.
+   approach: (a) smoke-test cwd shapes against `Launch/getAutoVerify`,
+   (b) bundle-grep any rejection literal for shape constraints, (c)
+   draft the Tier 2 invocation spec. List which approaches you'll try
+   in what order, with the cap at 2-3 distinct approaches before STOP
+   AND REPORT.
 
 If Phase 0 surfaces a problem (typecheck failing, primitives unclear,
 the chosen Category's prerequisites don't hold), stop and report.
@@ -395,32 +384,26 @@ Don't fan out.
 
 #### Phase 1 — fan-out batch
 
-For Category A (T19/T20 read-side reframes):
-- Spawn ONE subagent per read-side candidate (or one per
-  investigation approach if candidates aren't yet identified):
-  registry-probe re-run, smoke-test of candidate suffixes, schema-
-  rev of any rejections. Treat as exploratory; report findings
+For Category A (T21 dev server preview):
+- Spawn ONE subagent for the cwd schema-rev investigation
+  (smoke-test + bundle-grep). Treat as exploratory; report findings
   before committing to a spec shape. The user's debugger-attached
-  running Claude is a great target for verification probes (mirror
-  session 7's `eipc-registry-probe.ts` shape and session 9's
-  bundle-grep pattern).
-- Cap re-spawns at 2-3 distinct approaches; if all empty, STOP AND
-  REPORT. Pivot to Category B or C if budget remains.
-- If a candidate's schema is recoverable AND invocation lands
-  cleanly with valid args, second batch: ship `T19c` /
-  `T20c` (or whatever the file-naming convention dictates given
-  the existing T19/T20 files don't exist yet — use `_runtime`
-  suffix as session 7 did for T22b / T31b / T33b / T38b, OR
-  `_invocation` suffix as session 9 did for T33c, depending on
-  whether registration siblings T19b / T20b are also being
-  shipped).
-- Cap at ~2 specs total — don't try to land both if the first one
-  surfaces an unexpected issue.
+  running Claude is a great target for verification probes.
+- Cap re-spawns at 2-3 distinct approaches; if cwd schema doesn't
+  resolve, STOP AND REPORT. Pivot to Category B or C if budget
+  remains.
+- If schema is recoverable AND invocation lands cleanly with valid
+  args, second batch: ship `T21_runtime.spec.ts`.
+- Cap at ~1 spec total — T21 is single-suffix invocation, smaller
+  scope than T19/T20.
 
-For Category C (operon / Launch scope probe):
-- Single subagent writes the registry-walk probe modeled on
-  `eipc-registry-probe.ts`. User runs it (or you run via the
-  debugger if attached). Report findings; if a Tier 2 reframe is
+For Category B (T11 plugin install runtime upgrade):
+- Same shape as Category A — investigate read-side `LocalPlugins`
+  candidates, smoke-test, schema-rev, ship `T11_runtime.spec.ts`.
+
+For Category C (operon-mode navigation probe):
+- Single subagent does bundle-grep for operon URL routes + per-URL
+  registry re-probe. Report findings; if a Tier 2 reframe is
   tractable, ship one spec.
 
 #### Per-subagent prompt shape
@@ -459,16 +442,8 @@ If the target isn't reasonable to implement (anchors don't resolve
 to anything assertable, the test depends on state you can't
 construct, the existing primitives don't cover the surface), DO
 NOT write a stub. Report under Open questions and stop. Sessions
-1-9 had cumulative ~16 "stop and report" outcomes that were the
-right call (S20 deferral, T05 reshape, T07 needs seedFromHost,
-T08 needs setState('close'), S28 reclassification, T38 framing,
-session-3 eipc-registry finding, T37 fixture-readback deferral,
-S14 primitive-gap then primitive-build, T35/T36 Phase 2 deferrals,
-T18 Tier 1 reframe, T36 Phase 2 reclassification to Tier 3/4,
-session-6 lib/input-niri.ts shipped untested-on-niri, session-7
-per-wc IPC scope finding overturning the session-3 closure-local
-conclusion, session-8 renderer-wrapper-vs-main-side decision,
-session-9 schema-rev cross-check via dual investigation).
+1-10 had cumulative ~17 "stop and report" outcomes that were the
+right call.
 
 Report shape (~150 words):
 ## <TARGET> [runner | primitive | investigation]
@@ -501,7 +476,7 @@ After fan-out returns:
    - Primitives landed (with API shape)
    - Specs deferred (with the per-test rationale)
    - Specs reclassified (Tier 3 → Tier 2, Tier 2 → Tier 1, etc.)
-   - Updated coverage stat (was 70/76 = 92%, now N/76 = M%)
+   - Updated coverage stat (was 72/76 = 95%, now N/76 = M%)
 6. Don't commit. The user reviews and commits.
 7. Rotate this prompt: rewrite
    `docs/testing/runner-implementation-followup-prompt.md` for
@@ -509,7 +484,7 @@ After fan-out returns:
 
 ### Self-correction loop
 
-Same as sessions 1-9:
+Same as sessions 1-10:
 
 1. Subagent typecheck failure → re-spawn with explicit fix
    instruction.
@@ -521,19 +496,16 @@ Same as sessions 1-9:
 4. Spec passes locally but the assertion is actually trivial (e.g.
    an unauthenticated launch where the handler check vacuously
    passes because no handlers are registered) → re-examine the
-   assertion shape. The lesson from sessions 3 and 7: verify the
-   assertion is meaningful, not just that it passes.
-5. **Carry-over from session 5/6/7/8/9:** If pursuing Category A
-   and the read-side candidates turn up empty / require schema-rev
-   that exceeds budget after 2-3 approaches, STOP. Don't keep
-   digging — pivot to Category B or C. Document what was tried.
-6. **NEW for session 10:** If a Category A read-side reframe
-   surfaces a "registered but uninvocable" pattern (handler is on
-   the registry but the renderer-side wrapper isn't exposed for
-   the relevant scope), that's the same shape as session 8's
-   find_in_page / main_window observation — document it and
-   defer rather than building the main-side fallback
-   speculatively.
+   assertion shape.
+5. **Carry-over from session 5/6/7/8/9/10:** If pursuing Category A
+   and the cwd schema doesn't resolve / requires schema-rev that
+   exceeds budget after 2-3 approaches, STOP. Don't keep digging —
+   pivot to Category B or C. Document what was tried.
+6. **Carry-over from session 10:** If a registration probe surfaces
+   "registered but uninvocable" (handler is on the registry but the
+   renderer-side wrapper isn't exposed for the relevant scope or the
+   validator rejects every smoke-test arg shape), document and
+   defer rather than building the main-side fallback speculatively.
 
 Cap re-spawns at 2 per file. Past that, mark as needing human
 review and move on.
@@ -549,12 +521,12 @@ Stop and write the final report when one of:
 3. **Discovered a primitive gap that breaks 5+ Tier 2/Tier 3
    tests.** Stop, propose where the new primitive should live in
    `lib/`. Future session adds the primitive first, then resumes.
-4. **Session budget hits ~2 new specs OR one new primitive
+4. **Session budget hits ~1-2 new specs OR one new primitive
    landing.** Stop, synthesize, leave the rest for the next
    session.
-5. **Category A read-side candidates all turn up empty after 2-3
-   distinct attempts.** Document the dead-end as a finding, pivot
-   to Category B or C if budget remains.
+5. **Category A cwd schema doesn't resolve after 2-3 distinct
+   attempts.** Document the dead-end as a finding, pivot to
+   Category B or C if budget remains.
 
 ### What you should NOT do
 
@@ -563,8 +535,8 @@ Stop and write the final report when one of:
   fallback.
 - **Don't ship stubs.** If a runner can't actually assert what the
   spec says, mark it as Tier 3 / blocked / primitive-gap and
-  don't write a placeholder. The cumulative sixteen "stop and
-  report" outcomes from sessions 1-9 were the right call — every
+  don't write a placeholder. The cumulative seventeen "stop and
+  report" outcomes from sessions 1-10 were the right call — every
   one revealed a real constraint.
 - **Don't break existing runners.** H01-H05 are the canaries.
 - **Don't restructure `lib/`** beyond targeted additions.
@@ -585,11 +557,11 @@ Stop and write the final report when one of:
   `start*`, `set*`, `write*`, `run*`, `openIn*`, `delete*`,
   `cancel*`, `reset*`, `installPlugin`, `enablePlugin`. The
   primitive doesn't enforce a read-only allowlist; the safety
-  property is that case-doc-anchored suffixes are read-side.
-  Session 9 reframed T33's invocation through the read-side
-  `list*` methods specifically because of this. T19/T20 (Category
-  A) need the same treatment — case-doc anchors at write-side
-  handlers must be reframed through read-side equivalents.
+  property is that case-doc-anchored suffixes are read-side OR
+  case-doc-anchored write-side suffixes are tested via REGISTRATION
+  ONLY (`waitForEipcChannels`), never invoked. T19/T20 ship
+  registration probes over write-side suffixes — that's the safe
+  pattern.
 - **Don't bolt other compositors into `lib/input-niri.ts`.**
   Sway / Hyprland / River each get their own per-compositor file
   if a consumer surfaces.
@@ -600,8 +572,6 @@ Stop and write the final report when one of:
 - **Don't preemptively build `CodeTab.activateTopTab()` /
   `startNewSession()`.** Session 5 captured the AX anchors but
   T36 Phase 2 (the only known consumer) was reclassified out.
-  T19/T20 read-side reframes may not even need them if the
-  read-side path is purely IPC-driven.
 - **Don't add a main-side `invokeEipcChannel` fallback
   speculatively.** Build it only if a concrete consumer needs to
   invoke through a non-claude.ai webContents. Premature primitives
@@ -613,13 +583,13 @@ Stop and write the final report when one of:
 ### Final report format
 
 ```markdown
-## Runner implementation summary (session 10)
+## Runner implementation summary (session 11)
 
 - Main-bet category: A | B | C
 - Specs landed: N
 - Primitives landed: N
 - Reclassified mid-flight: N (with reasons)
-- Coverage: was 70/76 (92%), now <NEW>/76 (<PCT>%)
+- Coverage: was 72/76 (95%), now <NEW>/76 (<PCT>%)
 - Typecheck: clean | <errors>
 - KDE-W test run: <pass/skip/fail counts>
 
@@ -627,7 +597,7 @@ Stop and write the final report when one of:
 
 | Cat | Test ID | File | Assertion shape | Status |
 |---|---|---|---|---|
-| A | T19c | T19c_*.spec.ts | … | ✓ pass / skip / fail |
+| A | T21_runtime | T21_runtime.spec.ts | … | ✓ pass / skip / fail |
 | ... |
 
 ## Notable findings
@@ -682,14 +652,14 @@ git diff --stat
 - For eipc registry walking: `lib/eipc.ts` exports
   `getEipcChannels` / `findEipcChannel` / `findEipcChannels` /
   `waitForEipcChannel` / `waitForEipcChannels` against
-  `webContents.ipc._invokeHandlers`. See T22b / T31b / T33b /
-  T38b for end-to-end consumer patterns.
+  `webContents.ipc._invokeHandlers`. See T19 / T20 / T22b / T31b /
+  T33b / T38b for end-to-end consumer patterns.
 - For eipc invocation: `lib/eipc.ts` exports `invokeEipcChannel`
   (renderer-side wrapper at
-  `window['claude.<scope>'].<Iface>.<method>`). See T27 / T33c /
-  T35b / T37b for end-to-end consumer patterns. Only call read-
-  side suffixes; the primitive doesn't enforce a read-only
-  allowlist.
+  `window['claude.<scope>'].<Iface>.<method>`). See T19 / T20 /
+  T27 / T33c / T35b / T37b for end-to-end consumer patterns. Only
+  call read-side suffixes; the primitive doesn't enforce a read-
+  only allowlist.
 - **For arg validator schema-rev (session 9 finding):** when
   invocation rejects with `Argument "<name>" at position N ...
   failed to pass validation`, grep the bundled `index.js` for the
@@ -698,6 +668,12 @@ git diff --stat
   schema. See plan-doc session 9 status section for the byte
   offsets of the two CustomPlugins validators (5013601 / 5018821)
   as worked examples.
+- **For session-scoped Tier 2 reframes (session 10 finding):**
+  `LocalSessions/getAll` is the foundational read-side surrogate.
+  Pattern: `args = []`, returns `Array<Session>`, the case-doc
+  connection is "this surface binds to a LocalSession; getAll
+  proves the LocalSessions impl object is reachable through the
+  renderer wrapper". T19 and T20 are the templates.
 - **For asar fingerprints: ALWAYS grep the installed asar
   first.** Build-reference is beautified; the bundle is
   minified. Case-doc text may be the user-facing form, not the
