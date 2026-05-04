@@ -25,12 +25,21 @@ const exec = promisify(execFile);
 // retry budget, kill-then-respawn silently breaks and the user
 // sees "VM service not running" until they restart the app.
 //
-// Shape: same baseline + spawn detection as H04. Once a daemon
-// pid is captured, SIGKILL it and `retryUntil`-poll pgrep for a
-// distinct new pid (NOT in baseline AND NOT the killed pid)
-// within 20s — 10s cooldown + 10s slack for the renderer's next
-// retry tick to land. Fail with a pgrep-state attachment if no
-// new pid appears.
+// Trigger model: post-1.5354.0 the cowork client opens a
+// persistent pipe at boot (zI/E$i happy path) and uses it for
+// every subsequent RPC. After SIGKILL the persistent socket goes
+// dead but no client code is in steady-state RPC traffic, so
+// nothing fires the retry loop on its own. T10 has to drive
+// traffic itself: invoking ClaudeVM.getRunningStatus() through
+// the renderer wrapper forces the client to call zI() / kUe(),
+// which sees the dead socket, hits the cooldown gate, and
+// re-forks the daemon.
+//
+// Verification primitive: globalThis.__coworkDaemonPid is set
+// by the patched fork code after each successful spawn (Patch 6
+// in scripts/patches/cowork.sh). Polling that global is faster
+// and race-free vs. pgrep, but pgrep is also captured on
+// failure for cross-check.
 //
 // Row gate matches H04 — daemon is Linux-only, gating mirrors the
 // rest of the cowork lifecycle row set.
@@ -103,10 +112,16 @@ test('T10 — cowork daemon respawns after SIGKILL', async ({}, testInfo) => {
 	let daemonPid: number | null = null;
 
 	try {
-		// mainVisible — main shell up; the daemon spawn is gated on
-		// renderer activity (cowork.sh:262-362) which can begin
-		// asynchronously after the shell paints.
-		await app.waitForReady('mainVisible');
+		// userLoaded — main shell up AND the renderer has navigated
+		// to a post-login URL. The boot-time daemon spawn happens
+		// well before this (cowork.sh:262-362 gates on early renderer
+		// activity), but Phase 3's `window['claude.web'].ClaudeVM`
+		// invocation requires the renderer to be on a post-login URL
+		// where the eipc wrapper is exposed. Pre-login pages don't
+		// expose `claude.web`, so RPC attempts get "Cannot find
+		// context with specified id" errors. Waiting for userLoaded
+		// once at the top guarantees the wrapper is reachable.
+		const { inspector } = await app.waitForReady('userLoaded');
 
 		// Phase 1: capture the original daemon pid. Same 15s window
 		// as H04 — if the daemon never spawned in the first place,
@@ -191,19 +206,87 @@ test('T10 — cowork daemon respawns after SIGKILL', async ({}, testInfo) => {
 			contentType: 'application/json',
 		});
 
-		// Phase 3: poll up to 20s for a NEW daemon pid. The cooldown
-		// in cowork.sh:329-332 is 10s (`Date.now()-_lastSpawn>1e4`),
-		// so a respawn cannot fire earlier than 10s after the original
-		// spawn timestamp. We add 10s of slack for the renderer's
-		// retry tick to land after the cooldown elapses.
+		// Phase 3: drive the retry loop and poll for a NEW pid. The
+		// cooldown in cowork.sh:329-332 is 10s, so the new pid can't
+		// arrive earlier than 10s past the original `_lastSpawn`. The
+		// 30s budget gives 10s of cooldown headroom plus 20s for the
+		// renderer context to recover from any post-kill navigation
+		// (the dead VM service can trigger a re-render that throws
+		// "Cannot find context with specified id" on RPCs in flight),
+		// plus the fork + bind + exec round-trip for the new daemon.
 		//
-		// Predicate: a pid that's not in the original baseline AND
-		// not the killed pid. The killed pid is excluded explicitly
-		// so a kernel that hasn't yet reaped the zombie can't fool
-		// pgrep into reporting "respawned" with the dead pid.
+		// Each poll iteration: (1) fire ClaudeVM.getRunningStatus()
+		// via the renderer wrapper — best-effort, expect throws on
+		// post-kill navigations and on the first attempts before the
+		// cooldown gate opens — and (2) read globalThis.__coworkDaemonPid
+		// (set by the patched fork code after every successful spawn).
+		// pgrep is the cross-check.
 		const respawnStart = Date.now();
 		let respawnPid: number | null = null;
-		while (Date.now() - respawnStart < 20_000) {
+		let rpcAttempts = 0;
+		let rpcFailures = 0;
+		let lastRpcError: string | null = null;
+		while (Date.now() - respawnStart < 30_000) {
+			// Drive a daemon RPC by invoking the eipc handler from
+			// MAIN directly. The renderer-wrapper path
+			// (window['claude.web'].ClaudeVM.getRunningStatus) is
+			// unreliable here because the dead VM service triggers
+			// a renderer re-render that throws "Cannot find context
+			// with specified id" on most calls. Calling the handler
+			// from main bypasses the renderer entirely; the handler
+			// internally goes through zI()/VsA()/kUe(), the latter
+			// of which sees ECONNREFUSED/ENOENT and hits the
+			// cooldown-gated fork. We forge a senderFrame.url to
+			// satisfy any origin-gated handlers (claude.web scope).
+			rpcAttempts++;
+			try {
+				await inspector.evalInMain(`
+					const { webContents } = process.mainModule.require('electron');
+					const wc = webContents.getAllWebContents().find(w => {
+						try { return w.getURL().includes('claude.ai'); }
+						catch { return false; }
+					});
+					if (!wc) return null;
+					const handlers = wc.ipc && wc.ipc._invokeHandlers;
+					if (!handlers || typeof handlers.keys !== 'function') return null;
+					const channel = Array.from(handlers.keys())
+						.find(k => k.endsWith('_$_ClaudeVM_$_getRunningStatus'));
+					if (!channel) return null;
+					const handler = handlers.get(channel);
+					if (typeof handler !== 'function') return null;
+					const fakeEvent = {
+						senderFrame: { url: 'https://claude.ai/' },
+						sender: wc,
+					};
+					try { await handler(fakeEvent); } catch (e) { /* expected */ }
+					return null;
+				`);
+			} catch (err) {
+				rpcFailures++;
+				lastRpcError = err instanceof Error ? err.message : String(err);
+			}
+
+			// Primary signal: the global pid changed.
+			let currentGlobalPid: number | null = null;
+			try {
+				currentGlobalPid = await inspector.evalInMain<number | null>(
+					`return globalThis.__coworkDaemonPid ?? null;`,
+				);
+			} catch {
+				// inspector momentarily unavailable — keep polling
+			}
+			if (
+				currentGlobalPid !== null &&
+				currentGlobalPid !== daemonPid &&
+				!baselinePids.has(currentGlobalPid)
+			) {
+				respawnPid = currentGlobalPid;
+				break;
+			}
+
+			// Cross-check via pgrep (covers the corner where the global
+			// is set but pgrep hasn't observed the new pid yet, or the
+			// global never gets updated for some reason).
 			const pids = await pgrepPids(PGREP_PATTERN);
 			const candidates = Array.from(pids).filter(
 				(p) => !baselinePids.has(p) && p !== daemonPid,
@@ -219,21 +302,34 @@ test('T10 — cowork daemon respawns after SIGKILL', async ({}, testInfo) => {
 
 		if (respawnPid === null) {
 			const finalPids = await pgrepPids(PGREP_PATTERN);
+			let finalGlobalPid: number | null = null;
+			try {
+				finalGlobalPid = await inspector.evalInMain<number | null>(
+					`return globalThis.__coworkDaemonPid ?? null;`,
+				);
+			} catch {
+				// best-effort
+			}
 			await testInfo.attach('respawn-failure', {
 				body: JSON.stringify(
 					{
 						killedPid: daemonPid,
 						pgrepFinal: Array.from(finalPids),
+						globalDaemonPidFinal: finalGlobalPid,
+						rpcAttempts,
+						rpcFailures,
+						lastRpcError,
 						elapsedMs: respawnElapsedMs,
 						note:
-							'No new cowork-vm-service pid observed within 20s ' +
-							'of SIGKILL. Cooldown in cowork.sh:329-332 is 10s; ' +
-							'budget includes 10s of slack for the renderer retry ' +
-							'tick. Possible regressions: cooldown reverted to a ' +
-							'one-shot boolean (issue #408), retry loop no longer ' +
-							're-enters the auto-launch branch on ECONNREFUSED, ' +
-							'or the renderer stopped retrying VM connections ' +
-							'after the daemon dropped its socket.',
+							'No new cowork-vm-service pid observed within 30s ' +
+							'of SIGKILL despite firing ClaudeVM.getRunningStatus ' +
+							'each iteration. Cooldown in cowork.sh:329-332 is 10s. ' +
+							'Possible regressions: cooldown reverted to a one-shot ' +
+							'boolean (issue #408), the retry loop no longer enters ' +
+							'the auto-launch branch on ECONNREFUSED/ENOENT, the ' +
+							'patched fork no longer assigns __coworkDaemonPid, or ' +
+							'ClaudeVM eipc no longer routes through the daemon ' +
+							'RPC (the trigger surface).',
 					},
 					null,
 					2,
@@ -246,6 +342,8 @@ test('T10 — cowork daemon respawns after SIGKILL', async ({}, testInfo) => {
 					{
 						originalPid: daemonPid,
 						respawnPid,
+						rpcAttempts,
+						rpcFailures,
 						elapsedMs: respawnElapsedMs,
 					},
 					null,
@@ -257,7 +355,7 @@ test('T10 — cowork daemon respawns after SIGKILL', async ({}, testInfo) => {
 
 		expect(
 			respawnPid,
-			'cowork-vm-service respawns within 20s of SIGKILL',
+			'cowork-vm-service respawns within 30s of SIGKILL',
 		).not.toBeNull();
 		expect(
 			respawnPid,
