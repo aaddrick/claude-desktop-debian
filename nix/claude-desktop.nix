@@ -124,6 +124,7 @@ stdenvNoCC.mkDerivation {
     # Copy the ELF binary — MUST be a real copy (not symlink) so that
     # /proc/self/exe resolves to our tree
     cp ${electronDir}/electron $electron_tree/electron
+    chmod +x $electron_tree/electron
 
     # Symlink everything else from electron-unwrapped
     for item in ${electronDir}/*; do
