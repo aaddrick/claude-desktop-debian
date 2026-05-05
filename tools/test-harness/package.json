@@ -1,0 +1,26 @@
+{
+	"name": "claude-desktop-debian-test-harness",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Linux compatibility test harness for claude-desktop-debian",
+	"type": "module",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"test": "playwright test",
+		"sweep": "bash orchestrator/sweep.sh",
+		"typecheck": "tsc --noEmit",
+		"grounding-probe": "npx tsx grounding-probe.ts"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.48.0",
+		"@types/node": "^20.16.0",
+		"playwright": "^1.48.0",
+		"typescript": "^5.6.0"
+	},
+	"dependencies": {
+		"@electron/asar": "^3.2.10",
+		"dbus-next": "^0.10.2"
+	}
+}

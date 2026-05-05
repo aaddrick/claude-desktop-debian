@@ -2,5 +2,8 @@
 # Ref: https://github.com/codespell-project/codespell#using-a-config-file
 skip = .git*,.codespellrc
 check-hidden = true
-# ignore-regex = 
-# ignore-words-list =
+# ignore-regex =
+# openIn — substring of `openInEditor` IPC channel name (upstream).
+# YHe — minified function identifier in build-reference anchor.
+# hel — three-char literal in QE-13 example ("hel (3) submits").
+ignore-words-list = openIn,YHe,hel

@@ -15,6 +15,8 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 - [`tray-rebuild-race.md`](docs/learnings/tray-rebuild-race.md) — why destroy + recreate on `nativeTheme` updates briefly duplicates the tray icon on KDE Plasma, and the in-place `setImage` + `setContextMenu` fast-path that avoids the SNI re-registration race
 - [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when chat and Code/Agent panels are both active, root cause in upstream session managers, MCP-author workaround
 - [`linux-topbar-shim.md`](docs/learnings/linux-topbar-shim.md) — why claude.ai's in-app topbar is missing on Linux, the four gates that hide it, why the upstream `frame:false` + WCO config has unclickable buttons on X11 (Chromium-level implicit drag region), and the resolution: hybrid mode (system frame + UA-spoof shim → stacked layout, full button functionality)
+- [`test-harness-electron-hooks.md`](docs/learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps are silently bypassed by `frame-fix-wrapper`'s Proxy, and the prototype-method hook pattern that works (used by the Quick Entry test runners)
+- [`test-harness-ax-tree-walker.md`](docs/learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker after the AX-tree migration: AX-enable async lag, navigateTo-to-same-URL no-op, claude.ai's flat `dialog>button[]` lists, the `more options for X` per-row shape, and sidebar virtualization vs the lookup-failure threshold
 
 ## Code Style
 

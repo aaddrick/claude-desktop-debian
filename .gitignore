@@ -24,6 +24,13 @@ Thumbs.db
 # Test build output
 test-build/
 
+# Playwright stray output — the harness writes to
+# tools/test-harness/results/ per playwright.config.ts, but Playwright
+# also drops a default `test-results/.last-run.json` next to the cwd
+# it's invoked from. Ignore it at the repo root so an accidental run
+# from here doesn't dirty the tree.
+test-results/
+
 # Reference files for source inspection
 build-reference/
 
