@@ -5,10 +5,10 @@
 # Lines starting with '#' and blank lines are ignored.
 #
 # Each row names a post-patch fingerprint of patch_cowork_linux() in
-# scripts/patches/cowork.sh. Both verify-cowork-patches.sh and
-# tests/verify-cowork-patches.bats consume this file, so adding a
-# marker here adds it to the runtime check and the test matrix at
-# the same time.
+# scripts/patches/cowork.sh. Both verify-patches.sh and
+# tests/verify-patches.bats consume this file, so adding a marker
+# here adds it to the runtime check and the test matrix at the same
+# time.
 #
 # Columns:
 #   name     — kebab-case id; surfaces in verify output and BATS names.

@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 #
-# verify-cowork-patches.sh
+# verify-patches.sh
 #
-# Static-greps a patched index.js for the 9 cowork patch markers
-# defined in scripts/cowork-patch-markers.tsv. Exits non-zero on any
-# miss and names the missing markers in the output.
+# Static-greps a patched index.js for the patch markers defined in
+# a TSV (defaults to scripts/cowork-patch-markers.tsv). Exits non-zero
+# on any miss and names the missing markers in the output.
 #
 # Defends against silent half-patched asars (issue #559 D6, PR #555).
+# Reusable for non-cowork patch sets — pass any TSV of the same shape
+# via the second arg.
 #
 # Usage:
-#     verify-cowork-patches.sh <path>
+#     verify-patches.sh <path> [markers-tsv]
 #
 # <path> may be:
 #   * a JavaScript file (the index.js itself)
@@ -26,16 +28,20 @@ set -u
 IFS=$'\n\t'
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-markers_tsv="$script_dir/cowork-patch-markers.tsv"
+default_markers_tsv="$script_dir/cowork-patch-markers.tsv"
+markers_tsv="$default_markers_tsv"
 
 usage() {
 	cat <<-EOF >&2
-		Usage: $(basename "$0") <path>
+		Usage: $(basename "$0") <path> [markers-tsv]
 
 		<path> may be a .js file, an .asar archive, or a directory
 		containing app.asar.contents/.vite/build/index.js. The script
-		greps for cowork patch markers (PR #555 / issue #559 D6) and
-		exits non-zero if any are missing.
+		greps for patch markers (default: cowork, PR #555 / issue #559
+		D6) and exits non-zero if any are missing.
+
+		[markers-tsv] overrides the default TSV so the same script can
+		verify other patch sets.
 	EOF
 }
 
@@ -49,7 +55,7 @@ load_markers() {
 	marker_samples=()
 
 	if [[ ! -f $markers_tsv ]]; then
-		echo "verify-cowork-patches: marker file not found:" \
+		echo "verify-patches: marker file not found:" \
 			"$markers_tsv" >&2
 		return 1
 	fi
@@ -58,7 +64,7 @@ load_markers() {
 	while IFS=$'\t' read -r name pattern sample; do
 		[[ -z $name || $name == '#'* ]] && continue
 		if [[ -z ${pattern:-} || -z ${sample:-} ]]; then
-			echo "verify-cowork-patches: malformed row '$name'" \
+			echo "verify-patches: malformed row '$name'" \
 				'in markers file' >&2
 			return 1
 		fi
@@ -68,7 +74,7 @@ load_markers() {
 	done < "$markers_tsv"
 
 	if [[ ${#marker_names[@]} -eq 0 ]]; then
-		echo 'verify-cowork-patches: no markers loaded' >&2
+		echo 'verify-patches: no markers loaded' >&2
 		return 1
 	fi
 }
@@ -88,7 +94,7 @@ resolve_index_js() {
 	local input="$1"
 
 	if [[ ! -e $input ]]; then
-		echo "verify-cowork-patches: not found: $input" >&2
+		echo "verify-patches: not found: $input" >&2
 		return 1
 	fi
 
@@ -98,27 +104,27 @@ resolve_index_js() {
 			printf '%s\n' "$candidate"
 			return 0
 		fi
-		echo "verify-cowork-patches: directory does not contain" \
+		echo "verify-patches: directory does not contain" \
 			"app.asar.contents/.vite/build/index.js: $input" >&2
 		return 1
 	fi
 
 	if [[ $input == *.asar ]]; then
 		if ! command -v npx > /dev/null 2>&1; then
-			echo 'verify-cowork-patches: npx not found; install Node.js' \
+			echo 'verify-patches: npx not found; install Node.js' \
 				'or pre-extract the asar' >&2
 			return 1
 		fi
 		tmp_extract_dir="$(mktemp -d)"
 		if ! npx --yes @electron/asar extract "$input" \
 			"$tmp_extract_dir" > /dev/null 2>&1; then
-			echo "verify-cowork-patches: asar extraction failed:" \
+			echo "verify-patches: asar extraction failed:" \
 				"$input" >&2
 			return 1
 		fi
 		local extracted="$tmp_extract_dir/.vite/build/index.js"
 		if [[ ! -f $extracted ]]; then
-			echo 'verify-cowork-patches: extracted asar lacks' \
+			echo 'verify-patches: extracted asar lacks' \
 				'.vite/build/index.js' >&2
 			return 1
 		fi
@@ -132,7 +138,7 @@ resolve_index_js() {
 }
 
 main() {
-	if [[ $# -ne 1 ]]; then
+	if [[ $# -lt 1 || $# -gt 2 ]]; then
 		usage
 		return 1
 	fi
@@ -144,6 +150,10 @@ main() {
 			;;
 	esac
 
+	if [[ $# -eq 2 ]]; then
+		markers_tsv="$2"
+	fi
+
 	local index_js
 	if ! index_js="$(resolve_index_js "$1")"; then
 		return 1
@@ -153,7 +163,7 @@ main() {
 		return 1
 	fi
 
-	echo "Verifying cowork patch markers in: $index_js"
+	echo "Verifying patch markers in: $index_js"
 	echo "Marker source: $markers_tsv"
 
 	local i missing_names=()
@@ -169,12 +179,12 @@ main() {
 	if [[ ${#missing_names[@]} -gt 0 ]]; then
 		local joined
 		joined="$(IFS=','; printf '%s' "${missing_names[*]}")"
-		printf '\nverify-cowork-patches: %d/%d markers missing: %s\n' \
+		printf '\nverify-patches: %d/%d markers missing: %s\n' \
 			"${#missing_names[@]}" "${#marker_names[@]}" "$joined" >&2
 		return 2
 	fi
 
-	printf '\nAll %d cowork patch markers present.\n' \
+	printf '\nAll %d patch markers present.\n' \
 		"${#marker_names[@]}"
 	return 0
 }

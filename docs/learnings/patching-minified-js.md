@@ -269,8 +269,11 @@ Four layers: build log, syntactic validity, asar markers, runtime.
    ```
 
 3. Static-grep the shipped asar for the 9 cowork markers from PR
-   #555. A `verify-cowork-patches.sh` helper that automates this is
-   planned (issue #559 D6); prefer it once it lands.
+   #555. `scripts/verify-patches.sh` automates this (issue #559 D6)
+   and runs in CI on every `amd64-deb` build via the
+   `Verify cowork patches in shipped asar` step in
+   `.github/workflows/build-amd64.yml`. Reusable for non-cowork patch
+   sets — pass any same-shape TSV as the second arg.
 
 4. Launch the AppImage and check runtime state:
 

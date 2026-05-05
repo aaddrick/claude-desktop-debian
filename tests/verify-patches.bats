@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 #
-# verify-cowork-patches.bats
-# Tests for scripts/verify-cowork-patches.sh — the post-build static
-# grep that confirms the 9 cowork patch markers (issue #559 D6 / PR
+# verify-patches.bats
+# Tests for scripts/verify-patches.sh — the post-build static grep
+# that confirms patch markers (default: cowork, issue #559 D6 / PR
 # #555) are present in the shipped index.js.
 #
 # Both these tests and the verify script consume the marker list from
@@ -11,7 +11,7 @@
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-VERIFY_SH="$SCRIPT_DIR/../scripts/verify-cowork-patches.sh"
+VERIFY_SH="$SCRIPT_DIR/../scripts/verify-patches.sh"
 
 setup() {
 	TEST_TMP=$(mktemp -d)
@@ -19,7 +19,7 @@ setup() {
 
 	# Source the verify script in library mode and reuse its
 	# parser, so a TSV format change can't desync the two consumers.
-	# shellcheck source-path=SCRIPTDIR/.. source=scripts/verify-cowork-patches.sh
+	# shellcheck source-path=SCRIPTDIR/.. source=scripts/verify-patches.sh
 	source "$VERIFY_SH"
 	load_markers
 }
