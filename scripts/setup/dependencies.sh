@@ -215,16 +215,25 @@ setup_electron_asar() {
 
 	if [[ $install_needed == true ]]; then
 		echo "Installing Electron and Asar locally into $work_dir..."
-		# Pin to electron 41.x: electron@42.0.0 (2026-05-06) dropped the
-		# postinstall that fetches the prebuilt binary into dist/, leaving
-		# node_modules/electron/dist absent and the build aborting (#584).
-		# A durable fix using @electron/get is tracked separately.
-		if ! npm install --no-save 'electron@^41' @electron/asar; then
+		if ! npm install --no-save \
+			electron @electron/asar @electron/get extract-zip; then
 			echo 'Failed to install Electron and/or Asar locally.' >&2
 			cd "$project_root" || exit 1
 			exit 1
 		fi
 		echo 'Electron and Asar installation command finished.'
+
+		# electron@42+ no longer ships a postinstall script that fetches
+		# the prebuilt binary into dist/. If npm didn't populate it, fetch
+		# the matching binary explicitly via @electron/get. See #584.
+		if [[ ! -d $electron_dist_path ]]; then
+			echo 'Electron postinstall did not populate dist/; fetching binary explicitly...'
+			if ! node "$project_root/scripts/setup/fetch-electron-binary.js"; then
+				echo 'Failed to fetch Electron binary via @electron/get.' >&2
+				cd "$project_root" || exit 1
+				exit 1
+			fi
+		fi
 	else
 		echo 'Local Electron distribution and Asar binary already present.'
 	fi
