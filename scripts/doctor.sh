@@ -436,6 +436,66 @@ JSEOF
 	fi
 }
 
+# Surface a warning when systemd-coredump shows N+ recent Electron
+# crashes. The most common cause on Linux is the GPU process FATAL
+# exhaustion tracked in #583 — workaround for affected users is the
+# upstream Settings → disable hardware acceleration toggle, or
+# CLAUDE_DISABLE_GPU=1 in the environment for headless persistence.
+#
+# Arguments: $1 = electron path (e.g.,
+#   /usr/lib/claude-desktop/node_modules/electron/dist/electron)
+#   Used to filter results to claude-desktop's electron when possible;
+#   falls back to all-electron crashes when the path doesn't match
+#   (e.g., AppImage mount paths are transient).
+_doctor_check_recent_crashes() {
+	local electron_path="${1:-}"
+	command -v coredumpctl &>/dev/null || return 0
+
+	# `coredumpctl list electron` filters by COMM=electron. If the
+	# exact electron_path matches any entry's EXE column, prefer that
+	# tighter count; otherwise fall back to all-electron entries.
+	local listing total_count path_count
+	listing=$(coredumpctl list electron \
+		--since='7 days ago' --no-pager 2>/dev/null) || return 0
+	[[ -n $listing ]] || return 0
+
+	# Drop the header line; count remaining entries.
+	total_count=$(awk 'NR>1 && NF>0' <<< "$listing" | wc -l)
+	((total_count == 0)) && return 0
+
+	if [[ -n $electron_path ]]; then
+		path_count=$(awk -v p="$electron_path" \
+			'NR>1 && index($0, p)' <<< "$listing" | wc -l)
+	else
+		path_count=0
+	fi
+
+	# Use the path-matched count when available; else the unfiltered
+	# count with a footnote so the user knows it may include other
+	# Electron apps (Slack, VSCode, etc.).
+	local count footnote=''
+	if ((path_count > 0)); then
+		count=$path_count
+	else
+		count=$total_count
+		footnote=' (some entries may be from other Electron apps)'
+	fi
+
+	if ((count >= 3)); then
+		_warn "Recent Electron crashes: $count in last 7 days$footnote"
+		_info \
+			'Most common cause: Chromium GPU process FATAL (#583).' \
+			'Try one of:'
+		_info '  Settings → toggle hardware acceleration off → restart'
+		_info '  or set CLAUDE_DISABLE_GPU=1 in the environment'
+		_info \
+			'Tracking:' \
+			'https://github.com/aaddrick/claude-desktop-debian/issues/583'
+	elif ((count > 0)); then
+		_info "Recent Electron crashes: $count in last 7 days$footnote"
+	fi
+}
+
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
@@ -922,6 +982,11 @@ print(len(servers))
 			_pass 'Cowork daemon: running (parent alive)'
 		fi
 	fi
+
+	# -- Recent crashes --
+	# Surfaces the GPU process FATAL pattern (#583) before users
+	# notice the in-app "Claude crashed repeatedly" prompt.
+	_doctor_check_recent_crashes "$electron_path"
 
 	# -- Log file --
 	local log_path

@@ -229,3 +229,94 @@ _skip_gtk_query() {
 	[[ $output != *'[WARN]'* ]]
 	[[ $output != *'ibus-gtk3'* ]]
 }
+
+# =============================================================================
+# _doctor_check_recent_crashes: GPU FATAL crash counter (#583)
+# =============================================================================
+
+# Install a coredumpctl shim. $1 is the coredumpctl-list-style
+# multi-line output to emit (header + entry rows). The shim ignores
+# its arguments — tests don't exercise the filter syntax.
+_install_coredumpctl_shim() {
+	mkdir -p "$TEST_TMP/bin"
+	cat > "$TEST_TMP/bin/coredumpctl" <<SHIM
+#!/usr/bin/env bash
+cat <<'OUT'
+$1
+OUT
+SHIM
+	chmod +x "$TEST_TMP/bin/coredumpctl"
+	export PATH="$TEST_TMP/bin:$PATH"
+}
+
+@test "_doctor_check_recent_crashes: no coredumpctl on PATH — silent" {
+	# Force coredumpctl off PATH so the helper short-circuits.
+	# Restore PATH before returning so teardown's rm works.
+	local saved_path="$PATH"
+	export PATH="/no-such-dir-for-test"
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+	export PATH="$saved_path"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_recent_crashes: zero crashes — silent" {
+	# Listing has the header line only, no entry rows.
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE'
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_recent_crashes: 1 crash — info line, no warn" {
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M'
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+	[[ $status -eq 0 ]]
+	[[ $output == *'Recent Electron crashes: 1'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_recent_crashes: 3+ crashes — warn + #583 pointer" {
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M
+Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 22.8M
+Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 12.4M'
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'Recent Electron crashes: 3'* ]]
+	[[ $output == *'CLAUDE_DISABLE_GPU=1'* ]]
+	[[ $output == *'/issues/583'* ]]
+}
+
+@test "_doctor_check_recent_crashes: path mismatch falls back with footnote" {
+	# Three crashes from a DIFFERENT electron binary (e.g., Slack).
+	# Caller passes claude-desktop's electron path, which doesn't
+	# match — helper falls back to total count and adds the footnote
+	# so the user knows the count may be cross-app.
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
+Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
+Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
+Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M'
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'may be from other Electron apps'* ]]
+}
+
+@test "_doctor_check_recent_crashes: empty electron_path falls back" {
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M'
+	# Caller didn't pass an electron_path — helper still counts and
+	# emits the info line based on the unfiltered total.
+	run _doctor_check_recent_crashes ''
+	[[ $status -eq 0 ]]
+	[[ $output == *'Recent Electron crashes: 1'* ]]
+	[[ $output == *'may be from other Electron apps'* ]]
+}
