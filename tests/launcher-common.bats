@@ -107,6 +107,7 @@ teardown() {
 	CLAUDE_USE_WAYLAND='1'
 	CLAUDE_TITLEBAR_STYLE='hybrid'
 	CLAUDE_GTK_IM_MODULE='xim'
+	CLAUDE_DISABLE_GPU='1'
 	log_session_env
 
 	run cat "$log_file"
@@ -123,7 +124,8 @@ teardown() {
 	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=1' ]]
 	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=hybrid' ]]
 	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
-	[[ "${lines[11]}" == '}' ]]
+	[[ "${lines[11]}" == '  CLAUDE_DISABLE_GPU=1' ]]
+	[[ "${lines[12]}" == '}' ]]
 }
 
 @test "log_session_env: unset/empty values render as 'KEY=' (no value)" {
@@ -146,6 +148,7 @@ teardown() {
 	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=' ]]
 	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=' ]]
 	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=' ]]
+	[[ "${lines[11]}" == '  CLAUDE_DISABLE_GPU=' ]]
 }
 
 # =============================================================================
