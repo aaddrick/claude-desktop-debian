@@ -96,6 +96,79 @@ assert_contains "$appdir/AppRun" 'build_electron_args' \
 resources_dir="$appdir/usr/lib/node_modules/electron/dist/resources"
 validate_app_contents "$resources_dir" "${component_id}.desktop"
 
+# --- Doctor smoke test ---
+# --doctor checks system state; some checks will fail in CI (no display,
+# etc.) but the script itself should not crash with signal or 127.
+doctor_exit=0
+"$appimage_file" --doctor >/dev/null 2>&1 || doctor_exit=$?
+if [[ $doctor_exit -lt 127 ]]; then
+	pass "--doctor runs without crashing (exit: $doctor_exit)"
+else
+	fail "--doctor crashed (exit: $doctor_exit)"
+fi
+
+# --- Headless launch smoke test ---
+# Launch the AppImage under Xvfb and verify Electron stays alive briefly.
+# Catches startup-only regressions (e.g. asar/frame-fix-wrapper.js syntax
+# errors) that pure structure checks miss. AppRun execs electron with
+# stdout/stderr redirected to the launcher log, so on failure we tail
+# that log to surface the actual error.
+if command -v xvfb-run &>/dev/null \
+	&& command -v dbus-run-session &>/dev/null \
+	&& command -v setsid &>/dev/null; then
+
+	# Isolate launcher state so the test owns its own log file
+	cache_root=$(mktemp -d)
+	export XDG_CACHE_HOME="$cache_root"
+	launcher_log="$cache_root/claude-desktop-debian/launcher.log"
+
+	# setsid puts xvfb-run + Xvfb + dbus + AppRun + electron in a fresh
+	# process group, so a single kill -- -PGID tears the whole tree down
+	# (xvfb-run's EXIT trap alone leaves Xvfb behind on TERM).
+	# AppRun's exec redirects to launcher_log; capture xvfb-run's own
+	# stderr separately.
+	xvfb_log=$(mktemp)
+	setsid xvfb-run -a -s '-screen 0 1280x720x24' \
+		dbus-run-session -- "$appimage_file" \
+		>"$xvfb_log" 2>&1 &
+	launch_pid=$!
+
+	# Give Electron time to start. CI is slow; 10s is the floor.
+	sleep 10
+
+	if kill -0 "$launch_pid" 2>/dev/null; then
+		pass "AppImage stays alive under Xvfb for 10s"
+	else
+		wait "$launch_pid" 2>/dev/null
+		exit_code=$?
+		fail "AppImage exited within 10s (exit: $exit_code)"
+		if [[ -f $launcher_log ]]; then
+			echo '--- launcher.log (last 40 lines) ---' >&2
+			tail -40 "$launcher_log" >&2
+			echo '------------------------------------' >&2
+		fi
+		if [[ -s $xvfb_log ]]; then
+			echo '--- xvfb-run stderr (last 20 lines) ---' >&2
+			tail -20 "$xvfb_log" >&2
+			echo '---------------------------------------' >&2
+		fi
+	fi
+
+	# Tear down the whole process group (negative PID targets the PGID).
+	kill -TERM -- "-$launch_pid" 2>/dev/null || true
+	sleep 1
+	kill -KILL -- "-$launch_pid" 2>/dev/null || true
+	wait "$launch_pid" 2>/dev/null || true
+	# Belt-and-braces sweep for any electron child still bound to this
+	# AppImage path (e.g. zygote that escaped the group).
+	pkill -KILL -f "$appimage_file" 2>/dev/null || true
+
+	rm -rf "$cache_root" "$xvfb_log"
+	unset XDG_CACHE_HOME
+else
+	fail "xvfb-run/dbus-run-session/setsid missing; skipping launch test"
+fi
+
 # --- Cleanup ---
 rm -rf "$extract_dir"
 
