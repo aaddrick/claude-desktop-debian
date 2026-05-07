@@ -97,8 +97,8 @@ resources_dir="$appdir/usr/lib/node_modules/electron/dist/resources"
 validate_app_contents "$resources_dir" "${component_id}.desktop"
 
 # --- Doctor smoke test ---
-# --doctor checks system state; some checks will fail in CI (no display,
-# etc.) but the script itself should not crash with signal or 127.
+# Some --doctor checks fail in CI (no display, etc.); we only care that
+# the script itself didn't crash via signal or exec failure (>=127).
 doctor_exit=0
 "$appimage_file" --doctor >/dev/null 2>&1 || doctor_exit=$?
 if [[ $doctor_exit -lt 127 ]]; then
@@ -108,32 +108,29 @@ else
 fi
 
 # --- Headless launch smoke test ---
-# Launch the AppImage under Xvfb and verify Electron stays alive briefly.
-# Catches startup-only regressions (e.g. asar/frame-fix-wrapper.js syntax
-# errors) that pure structure checks miss. AppRun execs electron with
-# stdout/stderr redirected to the launcher log, so on failure we tail
-# that log to surface the actual error.
+# Catches startup-only regressions (asar/frame-fix-wrapper syntax errors)
+# that pure structure checks miss.
 if command -v xvfb-run &>/dev/null \
 	&& command -v dbus-run-session &>/dev/null \
 	&& command -v setsid &>/dev/null; then
 
-	# Isolate launcher state so the test owns its own log file
+	# XDG_CACHE_HOME redirect so the test owns the launcher log.
 	cache_root=$(mktemp -d)
 	export XDG_CACHE_HOME="$cache_root"
 	launcher_log="$cache_root/claude-desktop-debian/launcher.log"
 
 	# setsid puts xvfb-run + Xvfb + dbus + AppRun + electron in a fresh
-	# process group, so a single kill -- -PGID tears the whole tree down
-	# (xvfb-run's EXIT trap alone leaves Xvfb behind on TERM).
-	# AppRun's exec redirects to launcher_log; capture xvfb-run's own
-	# stderr separately.
+	# process group; xvfb-run's EXIT trap alone leaves Xvfb behind on
+	# TERM, so we need kill -- -PGID below.
+	# AppRun redirects electron's stdout/stderr into launcher_log;
+	# xvfb_log captures xvfb-run's own stderr.
 	xvfb_log=$(mktemp)
 	setsid xvfb-run -a -s '-screen 0 1280x720x24' \
 		dbus-run-session -- "$appimage_file" \
 		>"$xvfb_log" 2>&1 &
 	launch_pid=$!
 
-	# Give Electron time to start. CI is slow; 10s is the floor.
+	# CI is slow; 10s is the floor for Electron startup.
 	sleep 10
 
 	if kill -0 "$launch_pid" 2>/dev/null; then
@@ -154,13 +151,12 @@ if command -v xvfb-run &>/dev/null \
 		fi
 	fi
 
-	# Tear down the whole process group (negative PID targets the PGID).
+	# Negative PID targets the process group.
 	kill -TERM -- "-$launch_pid" 2>/dev/null || true
 	sleep 1
 	kill -KILL -- "-$launch_pid" 2>/dev/null || true
 	wait "$launch_pid" 2>/dev/null || true
-	# Belt-and-braces sweep for any electron child still bound to this
-	# AppImage path (e.g. zygote that escaped the group).
+	# Sweep any electron child that escaped the group (e.g. zygote).
 	pkill -KILL -f "$appimage_file" 2>/dev/null || true
 
 	rm -rf "$cache_root" "$xvfb_log"
