@@ -22,16 +22,30 @@ check_dependencies() {
 		rpm) all_deps="$all_deps rpmbuild" ;;
 	esac
 
+	# node-pty has a native C++ module compiled via node-gyp during
+	# `npm install`. Without gcc/g++/make/python3 the install silently
+	# emits a warning, leaves pty_src_dir empty, and the build ends up
+	# shipping the upstream Windows binaries (the #401 failure mode).
+	# Skip when --node-pty-dir is set (Nix and explicit overrides bring
+	# their own pre-built node-pty).
+	if [[ -z ${node_pty_dir:-} ]]; then
+		all_deps="$all_deps gcc g++ make python3"
+	fi
+
 	# Command-to-package mappings per distro family
 	declare -A debian_pkgs=(
 		[p7zip]='p7zip-full' [wget]='wget' [wrestool]='icoutils'
 		[icotool]='icoutils' [convert]='imagemagick'
 		[dpkg-deb]='dpkg-dev' [rpmbuild]='rpm'
+		[gcc]='build-essential' [g++]='build-essential'
+		[make]='build-essential' [python3]='python3'
 	)
 	declare -A rpm_pkgs=(
 		[p7zip]='p7zip p7zip-plugins' [wget]='wget' [wrestool]='icoutils'
 		[icotool]='icoutils' [convert]='ImageMagick'
 		[dpkg-deb]='dpkg' [rpmbuild]='rpm-build'
+		[gcc]='gcc' [g++]='gcc-c++'
+		[make]='make' [python3]='python3'
 	)
 
 	local cmd

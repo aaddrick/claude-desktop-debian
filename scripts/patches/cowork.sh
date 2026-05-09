@@ -807,12 +807,27 @@ install_node_pty() {
 		echo '{"name":"node-pty-build","version":"1.0.0","private":true}' > package.json
 
 		echo 'Installing node-pty (this compiles native module)...'
-		if npm install node-pty 2>&1; then
-			echo 'node-pty installed successfully'
-			pty_src_dir="$node_pty_build_dir/node_modules/node-pty"
-		else
-			echo 'Failed to install node-pty - terminal features may not work'
+		# Fail loudly on npm install failure rather than warn-and-continue.
+		# The previous behavior silently dropped pty_src_dir, skipped the
+		# entire copy block, and shipped the upstream Windows node-pty
+		# binaries (the #401 failure mode). check_dependencies should now
+		# install gcc/g++/make/python3 before we get here, so this branch
+		# is the last line of defense for build-tool gaps that auto-install
+		# couldn't fix (unknown distro, broken package mirror, etc.).
+		if ! npm install node-pty 2>&1; then
+			echo "Error: 'npm install node-pty' failed." >&2
+			echo 'node-pty has a native module compiled via node-gyp;' >&2
+			echo 'this usually means the build environment lacks a C/C++' >&2
+			echo 'compiler, make, or python3.' >&2
+			echo '' >&2
+			echo 'Install build tools and re-run:' >&2
+			echo '  Debian/Ubuntu: sudo apt install build-essential python3' >&2
+			echo '  Fedora/RHEL:   sudo dnf install gcc gcc-c++ make python3' >&2
+			cd "$project_root" || exit 1
+			exit 1
 		fi
+		echo 'node-pty installed successfully'
+		pty_src_dir="$node_pty_build_dir/node_modules/node-pty"
 	fi
 
 	if [[ -n $pty_src_dir && -d $pty_src_dir ]]; then
