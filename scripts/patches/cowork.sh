@@ -832,6 +832,15 @@ install_node_pty() {
 
 	if [[ -n $pty_src_dir && -d $pty_src_dir ]]; then
 		echo 'Copying node-pty JavaScript files into app.asar.contents...'
+		# Wipe the upstream-extracted node-pty before staging the Linux
+		# build. The Windows installer's app.asar ships node-pty with
+		# Windows binaries (winpty.dll, winpty-agent.exe, Windows
+		# build/Release/*.node files). `cp -r $pty_src_dir/build` only
+		# overwrites same-named files; orphan Windows binaries persist
+		# inside the asar, surface as PE32+ when users inspect with
+		# `asar list`, and pollute /tmp via Electron's lazy-extract on
+		# any spurious require() (#401).
+		rm -rf "$app_staging_dir/app.asar.contents/node_modules/node-pty"
 		mkdir -p "$app_staging_dir/app.asar.contents/node_modules/node-pty" || exit 1
 		# --no-preserve=mode so read-only bits from the Nix store
 		# (--node-pty-dir) don't propagate into the staging tree.
