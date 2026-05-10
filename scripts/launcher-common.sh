@@ -100,6 +100,104 @@ _resolve_titlebar_style() {
 	esac
 }
 
+# Apply MESA_LOADER_DRIVER_OVERRIDE=softpipe on Intel TigerLake / Iris Xe.
+#
+# On Fedora 44 (kernel 6.x) with Intel TigerLake / Iris Xe, Chromium's GPU
+# process issues DRM_IOCTL_MODE_CREATE_DUMB (a KMS ioctl for framebuffer
+# allocation) via Mesa's iris driver. That ioctl is denied under Fedora's
+# default security policy — Mesa cannot initialise and the main window
+# renders black. MESA_LOADER_DRIVER_OVERRIDE=softpipe forces Mesa's
+# pure-software rasteriser, bypassing DRM/KMS entirely.
+#
+# Detection is hardware-level (not log-based) so the override is active
+# on the very first launch of a clean install — before any log evidence
+# exists. An existing MESA_LOADER_DRIVER_OVERRIDE value is never clobbered.
+#
+# TigerLake-LP GT2 device IDs: 0x9a40 0x9a49 0x9a59 0x9a60 0x9a68 0x9a70
+# 0x9a78. Detection order:
+#   1. /sys/class/drm/card*/device/{vendor,device} (no extra tools needed)
+#   2. lspci -nn | grep -qi "iris.xe"
+#   3. lspci -nn | grep -qiE "8086:(9a40|9a49|...)"
+apply_softpipe_if_drm_blocked() {
+	# Honour an explicit user override; do not clobber it.
+	[[ -n ${MESA_LOADER_DRIVER_OVERRIDE:-} ]] && return 0
+
+	local card_dev vendor device found=0
+
+	for card_dev in /sys/class/drm/card*/device; do
+		[[ -d $card_dev ]] || continue
+		vendor=$(cat "$card_dev/vendor" 2>/dev/null) || continue
+		[[ $vendor == '0x8086' ]] || continue
+		device=$(cat "$card_dev/device" 2>/dev/null) || continue
+		case $device in
+			0x9a40|0x9a49|0x9a59|0x9a60|0x9a68|0x9a70|0x9a78)
+				found=1; break ;;
+		esac
+	done
+
+	if [[ $found -eq 0 ]] && command -v lspci &>/dev/null; then
+		if lspci -nn 2>/dev/null | grep -qi 'iris.xe'; then
+			found=1
+		elif lspci -nn 2>/dev/null | grep -qiE \
+			'8086:(9a40|9a49|9a59|9a60|9a68|9a70|9a78)'; then
+			found=1
+		fi
+	fi
+
+	if [[ $found -eq 1 ]]; then
+		export MESA_LOADER_DRIVER_OVERRIDE=softpipe
+		log_message \
+			'Intel TigerLake/Iris Xe — MESA_LOADER_DRIVER_OVERRIDE=softpipe'
+	fi
+}
+
+# Determine the best available Chromium password-store backend.
+#
+# Electron's safeStorage API and Chromium's cookie encryption both rely
+# on the OS credential store selected by --password-store. Without a
+# working store safeStorage.isEncryptionAvailable() returns false, OAuth
+# tokens are silently discarded on exit, and users must re-authenticate
+# on every launch (Cookies file stays 0 bytes). Fixes: #593
+#
+# Detection order (first match wins):
+#   CLAUDE_PASSWORD_STORE env var  — explicit user override
+#   kwallet6                        — KDE Plasma 6 keyring
+#   gnome-libsecret                 — GNOME Keyring / libsecret bridge
+#   basic                           — fixed internal key (always works)
+#
+# With 'basic' the stored data is encrypted with a fixed key. Tokens
+# remain protected by Linux filesystem permissions on ~/.config/Claude/.
+_detect_password_store() {
+	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
+		echo "$CLAUDE_PASSWORD_STORE"
+		return
+	fi
+
+	# kwallet6: KDE Plasma 6 keyring
+	if dbus-send --session --print-reply \
+		--dest=org.kde.kwalletd6 \
+		/modules/kwalletd6 \
+		org.kde.KWallet.isEnabled 2>/dev/null \
+		| grep -q 'boolean true'
+	then
+		echo 'kwallet6'
+		return
+	fi
+
+	# gnome-libsecret: GNOME Keyring, KWallet 5 compat bridge, etc.
+	if dbus-send --session \
+		--dest=org.freedesktop.secrets \
+		/org/freedesktop/secrets \
+		org.freedesktop.DBus.Peer.Ping 2>/dev/null
+	then
+		echo 'gnome-libsecret'
+		return
+	fi
+
+	# No keyring accessible — fall back to fixed-key provider.
+	echo 'basic'
+}
+
 # Build Electron arguments array based on display backend
 # Requires: is_wayland, use_x11_on_wayland to be set
 #           (call detect_display_backend first)
@@ -128,6 +226,19 @@ build_electron_args() {
 	else
 		electron_args+=('--disable-features=CustomTitlebar')
 	fi
+
+	# Chromium's safeStorage API and cookie encryption both require a
+	# system keyring selected by --password-store. Without an explicit
+	# value, Electron may silently report encryption unavailable even
+	# when a keyring daemon is running, discarding OAuth tokens on exit
+	# and forcing re-authentication on every launch. We probe for the
+	# best available store at startup and pass it before the app path
+	# so Chromium treats it as a Chromium flag (args after the app
+	# path go to the renderer, not Chromium). Fixes: #593
+	local pw_store
+	pw_store=$(_detect_password_store)
+	electron_args+=("--password-store=${pw_store}")
+	log_message "Password store: ${pw_store}"
 
 	# Remote XRDP sessions lack GPU acceleration and render a blank
 	# window when GPU compositing is enabled. Detect via XRDP_SESSION
@@ -324,6 +435,12 @@ setup_electron_env() {
 		log_message \
 			"GTK_IM_MODULE override: $prev -> $GTK_IM_MODULE (via CLAUDE_GTK_IM_MODULE)"
 	fi
+
+	# If the previous session's GPU process could not perform the
+	# DRM_IOCTL_MODE_CREATE_DUMB ioctl (e.g. Intel Iris Xe on
+	# Fedora 44 with kernel 6.x), enable software rendering so the
+	# main window is not black on relaunch. Fixes: #593
+	apply_softpipe_if_drm_blocked
 }
 
 #===============================================================================
