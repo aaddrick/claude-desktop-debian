@@ -43,8 +43,9 @@ assert_executable "$electron_path"
 
 # chrome-sandbox: setuid bit must be set by the rpm spec's %files
 # %attr(4755, ...) entry, not by a %post chmod (#539). The check
-# guards against regressing the spec to the old %post chmod pattern,
-# which leaves chrome-sandbox unsuid'd if the scriptlet is skipped.
+# guards against any regression that strips the suid bit — including
+# (but not limited to) reverting to a %post chmod, which silently
+# no-ops if the scriptlet is skipped (--noscripts, layered images).
 chrome_sandbox='/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
 assert_file_exists "$chrome_sandbox"
 assert_setuid "$chrome_sandbox"
