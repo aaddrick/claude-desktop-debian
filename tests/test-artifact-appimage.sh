@@ -130,6 +130,14 @@ if command -v xvfb-run &>/dev/null \
 		>"$xvfb_log" 2>&1 &
 	launch_pid=$!
 
+	# Safety net: covers Ctrl-C, CI timeout, or any earlier `exit` so we
+	# never leak Xvfb/electron between launch and the explicit kill below.
+	trap '
+		kill -KILL -- "-$launch_pid" 2>/dev/null
+		pkill -KILL -f "$appimage_file" 2>/dev/null
+		rm -rf "$cache_root" "$xvfb_log"
+	' EXIT INT TERM
+
 	# CI is slow; 10s is the floor for Electron startup.
 	sleep 10
 
@@ -162,7 +170,10 @@ if command -v xvfb-run &>/dev/null \
 	rm -rf "$cache_root" "$xvfb_log"
 	unset XDG_CACHE_HOME
 else
-	fail "xvfb-run/dbus-run-session/setsid missing; skipping launch test"
+	# Match the codebase convention (test-artifact-common.sh
+	# validate_app_contents): tool absence is a skip, not a failure.
+	# Loud failure on missing tools belongs at the workflow layer.
+	pass "Skipping launch smoke test (xvfb-run/dbus-run-session/setsid missing)"
 fi
 
 # --- Cleanup ---
