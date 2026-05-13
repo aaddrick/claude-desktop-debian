@@ -4,6 +4,12 @@ on:
   workflow_call: # Make this workflow reusable
   workflow_dispatch: # Allows manual triggering for testing
 
+concurrency:
+  group: test-flags-${{ github.ref }}
+  # Matches ci.yml: queue rather than cancel, so a reusable invocation
+  # from an in-flight CI run isn't killed mid-flight on the next push.
+  cancel-in-progress: false
+
 jobs:
   test-flags:
     runs-on: ubuntu-latest
