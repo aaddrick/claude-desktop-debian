@@ -16,6 +16,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { createRequire } = require('node:module');
 
 async function main() {
 	const cwd = process.cwd();
@@ -48,8 +49,12 @@ async function main() {
 		);
 	}
 
-	const { downloadArtifact } = require('@electron/get');
-	const extractZip = require('extract-zip');
+	// Resolve @electron/get and extract-zip from the work-dir's
+	// node_modules. The script lives at scripts/setup/ so a plain
+	// require() walks up from there and never sees work_dir/.
+	const workDirRequire = createRequire(path.join(cwd, 'package.json'));
+	const { downloadArtifact } = workDirRequire('@electron/get');
+	const extractZip = workDirRequire('extract-zip');
 
 	console.log(`Fetching electron@${version} for ${platform}-${arch}...`);
 	const zipPath = await downloadArtifact({
