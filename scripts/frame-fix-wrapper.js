@@ -117,6 +117,28 @@ const LINUX_CSS = `
   }
 `;
 
+// autoUpdater no-op: every property access returns a chainable function
+// so `.on(...).once(...).setFeedURL(...).checkForUpdates()` is harmless.
+// `getFeedURL` returns '' so any code that inspects the URL gets a
+// well-typed empty string rather than undefined. `then`/`catch`/`finally`
+// and `Symbol.toPrimitive`/`Symbol.iterator` resolve to `undefined` so the
+// Proxy is not mistaken for a thenable (which would call chainNoop as
+// `then(resolve, reject)` and never resolve — silent await hang) or
+// asked to coerce to a primitive. Writes land on the target but are
+// shadowed by the get-trap. Defined once and reused across all
+// require('electron') calls. Linux-only; macOS/Windows still see the
+// real autoUpdater. See #567.
+const autoUpdaterNoop = new Proxy({}, {
+  get(_target, prop) {
+    if (prop === 'getFeedURL') return () => '';
+    if (prop === 'then' || prop === 'catch' || prop === 'finally'
+      || prop === Symbol.toPrimitive || prop === Symbol.iterator) {
+      return undefined;
+    }
+    return function chainNoop() { return autoUpdaterNoop; };
+  },
+});
+
 // Build the patched BrowserWindow class and Menu interceptor once,
 // on first require('electron'), then reuse via Proxy on every access.
 let PatchedBrowserWindow = null;
@@ -740,6 +762,23 @@ X-GNOME-Autostart-enabled=true
               return Reflect.get(menuTarget, menuProp);
             }
           });
+        }
+        if (prop === 'autoUpdater' && process.platform === 'linux') {
+          // Force autoUpdater into a no-op on Linux. Upstream's bundled
+          // app code sets a feed URL of api.anthropic.com/api/desktop/linux/...
+          // when app.isPackaged is true (we set ELECTRON_FORCE_IS_PACKAGED=true
+          // unconditionally). Today this is a happy accident: Electron's Linux
+          // autoUpdater is unimplemented and logs "AutoUpdater is not supported
+          // on Linux", so the calls no-op. If a future Electron implements it,
+          // every install would start hitting that feed and would either 404
+          // or — worse — receive content the install wasn't prepared for.
+          // .deb/.rpm/AppImage updates flow through the OS package manager
+          // (or AppImageUpdate); the Anthropic feed has no Linux artifacts.
+          // We replace the entire autoUpdater object with a Proxy that
+          // no-ops every method and returns chainable stubs for EventEmitter
+          // calls so listener registration in the bundled code is harmless.
+          // See #567.
+          return autoUpdaterNoop;
         }
         return Reflect.get(target, prop, receiver);
       }
