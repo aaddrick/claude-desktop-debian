@@ -22,6 +22,7 @@ setup() {
 	unset CLAUDE_USE_WAYLAND
 	unset GTK_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
+	unset CLAUDE_PASSWORD_STORE
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -33,6 +34,11 @@ setup() {
 	# to stub it unless they're exercising the package-check branch.
 	# Override in-test for rc=0 (installed) or rc=1 (missing).
 	_pkg_installed() { return 2; }
+
+	# Default stub for _detect_password_store (defined in
+	# launcher-common.sh, not sourced here). Tests that exercise
+	# _doctor_check_password_store override this in-test if needed.
+	_detect_password_store() { echo 'basic'; }
 }
 
 teardown() {
@@ -319,4 +325,17 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 	[[ $status -eq 0 ]]
 	[[ $output == *'Recent Electron crashes: 1'* ]]
 	[[ $output == *'may be from other Electron apps'* ]]
+}
+
+# =============================================================================
+# _doctor_check_password_store
+# =============================================================================
+
+@test "_doctor_check_password_store: output contains 'Password store:' with a valid backend" {
+	# setup() already stubs _detect_password_store to return 'basic'.
+	run _doctor_check_password_store
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Password store:'* ]]
+	[[ $output == *'basic'* ]]
 }

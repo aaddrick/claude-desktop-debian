@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Doctor Diagnostics
 #
@@ -496,6 +497,28 @@ _doctor_check_recent_crashes() {
 	fi
 }
 
+# Report the active Chromium password-store backend.
+#
+# Calls _detect_password_store() (defined in launcher-common.sh, which
+# sources this file) to surface what keyring Electron will use for
+# safeStorage / cookie encryption. 'basic' is valid but means tokens
+# rely on filesystem permissions alone, so we note it for visibility.
+# Never fails — basic is an intentional fallback, not an error.
+_doctor_check_password_store() {
+	local store
+	store=$(_detect_password_store)
+	_pass "Password store: $store"
+	if [[ $store == 'basic' ]]; then
+		_info \
+			'  → using fixed-key fallback;' \
+			'tokens are protected by filesystem permissions only'
+	fi
+	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
+		_info \
+			"  → overridden by CLAUDE_PASSWORD_STORE=${CLAUDE_PASSWORD_STORE}"
+	fi
+}
+
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
@@ -667,6 +690,9 @@ run_doctor() {
 	else
 		_pass 'SingletonLock: no lock file (OK)'
 	fi
+
+	# -- Password store --
+	_doctor_check_password_store
 
 	# -- MCP config --
 	local mcp_config="$config_dir/claude_desktop_config.json"
