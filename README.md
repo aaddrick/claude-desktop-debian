@@ -260,6 +260,10 @@ Special thanks to:
 - **[sirfaber](https://github.com/sirfaber)** for fixing the `$`-in-minified-identifier breakage of cowork Patch 2b (vm module assignment) and Patch 6 step 2 (retry-delay auto-launch) on Claude Desktop 1.5354.0 (#555)
 - **[ProfFlow](https://github.com/ProfFlow)** for re-fixing the RPM repodata signing regression by appending `!` to the keyid passed to `gpg --default-key`, forcing `repomd.xml` to be signed by the primary key instead of the auto-selected signing subkey (#566)
 - **[jslatten](https://github.com/jslatten)** for fixing the KDE Plasma Wayland launcher-grouping bug by setting `pkg.desktopName` in the packaged `app.asar`'s `package.json`, format-conditional so deb/rpm get `claude-desktop.desktop` and AppImage gets `io.github.aaddrick.claude-desktop-debian.desktop` (#562)
+- **[JoshuaVlantis](https://github.com/JoshuaVlantis)**
+  - RPM `chrome-sandbox` SUID via `%attr(4755, ...)` instead of a `%post` chmod scriptlet so the bit survives `--noscripts` and layered images (#539)
+  - `autoUpdater` no-op Proxy on Linux that defends against future feed activation, with a thenable allowlist masking `then`/`catch`/`finally`/`Symbol.toPrimitive`/`Symbol.iterator` to `undefined` (#567)
+  - Failing loudly on `npm install node-pty` failures instead of silently shipping the upstream Windows binaries, plus auto-installing `gcc`/`g++`/`make`/`python3` on minimal build environments (#401)
 
 ## Sponsorship
 
