@@ -198,6 +198,13 @@ setup_nodejs() {
 setup_electron_asar() {
 	section_header 'Electron & Asar Handling'
 
+	# Pin Electron to the exact version upstream Claude Desktop ships
+	# (build-reference/app-extracted/package.json). The shipped app.asar
+	# binds to specific V8/NAPI ABI, Chromium pairing, and node-pty
+	# native surface — running a different Electron major against this
+	# asar is unsupported. Bump when upstream bumps.
+	local electron_version='41.5.0'
+
 	echo "Ensuring local Electron and Asar installation in $work_dir..."
 	cd "$work_dir" || exit 1
 
@@ -214,17 +221,34 @@ setup_electron_asar() {
 	[[ ! -f $asar_bin_path ]] && echo 'Asar binary not found.' && install_needed=true
 
 	if [[ $install_needed == true ]]; then
-		echo "Installing Electron and Asar locally into $work_dir..."
-		# Pin to electron 41.x: electron@42.0.0 (2026-05-06) dropped the
-		# postinstall that fetches the prebuilt binary into dist/, leaving
-		# node_modules/electron/dist absent and the build aborting (#584).
-		# A durable fix using @electron/get is tracked separately.
-		if ! npm install --no-save 'electron@^41' @electron/asar; then
+		echo "Installing electron@${electron_version} and Asar locally into $work_dir..."
+		if ! npm install --no-save \
+			"electron@${electron_version}" @electron/asar @electron/get extract-zip; then
 			echo 'Failed to install Electron and/or Asar locally.' >&2
 			cd "$project_root" || exit 1
 			exit 1
 		fi
 		echo 'Electron and Asar installation command finished.'
+
+		# electron@42+ no longer ships a postinstall script that fetches
+		# the prebuilt binary into dist/. If npm didn't populate it, fetch
+		# the matching binary explicitly via @electron/get. See #584.
+		# Retry once on transient CDN failures (503, network drops).
+		if [[ ! -d $electron_dist_path ]]; then
+			echo 'Electron postinstall did not populate dist/; fetching binary explicitly...'
+			local fetch_attempts=0
+			while ! node "$project_root/scripts/setup/fetch-electron-binary.js"; do
+				fetch_attempts=$((fetch_attempts + 1))
+				if (( fetch_attempts >= 2 )); then
+					echo 'Failed to fetch Electron binary via @electron/get after 2 attempts.' >&2
+					echo 'For air-gapped or mirrored builds set ELECTRON_MIRROR or ELECTRON_CUSTOM_DIR; see docs/BUILDING.md.' >&2
+					cd "$project_root" || exit 1
+					exit 1
+				fi
+				echo "Retrying Electron binary fetch (attempt $((fetch_attempts + 1))/2)..."
+				sleep 2
+			done
+		fi
 	else
 		echo 'Local Electron distribution and Asar binary already present.'
 	fi
