@@ -48,19 +48,24 @@ check_dependencies() {
 		[make]='make' [python3]='python3'
 	)
 
-	local cmd
+	local cmd pkg
 	for cmd in $all_deps; do
 		if ! check_command "$cmd"; then
 			case "$distro_family" in
-				debian)
-					deps_to_install="$deps_to_install ${debian_pkgs[$cmd]}"
-					;;
-				rpm)
-					deps_to_install="$deps_to_install ${rpm_pkgs[$cmd]}"
-					;;
+				debian) pkg="${debian_pkgs[$cmd]}" ;;
+				rpm)    pkg="${rpm_pkgs[$cmd]}" ;;
 				*)
 					echo "Warning: Cannot auto-install '$cmd' on unknown distro. Please install manually." >&2
+					continue
 					;;
+			esac
+			# Several commands map to the same package (gcc/g++/make
+			# -> build-essential, wrestool/icotool -> icoutils). Skip
+			# if the package is already queued so the log line stays
+			# readable.
+			case " $deps_to_install " in
+				*" $pkg "*) ;;
+				*) deps_to_install="$deps_to_install $pkg" ;;
 			esac
 		fi
 	done
