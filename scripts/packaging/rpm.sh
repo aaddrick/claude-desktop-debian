@@ -261,7 +261,7 @@ rpmbuild --define "_topdir $rpmbuild_dir" \
 	--target "$rpm_arch" \
 	-bb "$rpmbuild_dir/SPECS/$package_name.spec" 2>&1 |
 	tee "$rpmbuild_log"
-if (( ${PIPESTATUS[0]} != 0 )); then
+if (( PIPESTATUS[0] != 0 )); then
 	echo 'Failed to build RPM package' >&2
 	exit 1
 fi
