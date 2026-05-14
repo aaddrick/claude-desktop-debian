@@ -41,9 +41,14 @@ electron_path='/usr/lib/claude-desktop/node_modules/electron/dist/electron'
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
 
-# chrome-sandbox
-assert_file_exists \
-	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+# chrome-sandbox: setuid bit must be set by the rpm spec's %files
+# %attr(4755, ...) entry, not by a %post chmod (#539). The check
+# guards against any regression that strips the suid bit — including
+# (but not limited to) reverting to a %post chmod, which silently
+# no-ops if the scriptlet is skipped (--noscripts, layered images).
+chrome_sandbox='/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+assert_file_exists "$chrome_sandbox"
+assert_setuid "$chrome_sandbox"
 
 # --- Desktop entry validation ---
 desktop_file='/usr/share/applications/claude-desktop.desktop'

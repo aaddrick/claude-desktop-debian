@@ -233,14 +233,6 @@ install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
 # Update desktop database for MIME types
 update-desktop-database /usr/share/applications &> /dev/null || true
 
-# Set correct permissions for chrome-sandbox
-SANDBOX_PATH="/usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox"
-if [ -f "\$SANDBOX_PATH" ]; then
-    echo "Setting chrome-sandbox permissions..."
-    chown root:root "\$SANDBOX_PATH" || echo "Warning: Failed to chown chrome-sandbox"
-    chmod 4755 "\$SANDBOX_PATH" || echo "Warning: Failed to chmod chrome-sandbox"
-fi
-
 %postun
 # Update desktop database after removal
 update-desktop-database /usr/share/applications &> /dev/null || true
@@ -248,6 +240,7 @@ update-desktop-database /usr/share/applications &> /dev/null || true
 %files
 %defattr(-, root, root, 0755)
 %attr(755, root, root) /usr/bin/claude-desktop
+%attr(4755, root, root) /usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
 /usr/share/icons/hicolor/*/apps/claude-desktop.png

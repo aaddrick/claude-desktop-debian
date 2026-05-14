@@ -38,6 +38,14 @@ assert_executable() {
 	fi
 }
 
+assert_setuid() {
+	if [[ -u $1 ]]; then
+		pass "Setuid bit set: $1"
+	else
+		fail "Setuid bit not set: $1"
+	fi
+}
+
 assert_contains() {
 	local file="$1" pattern="$2" desc="${3:-}"
 	if grep -q "$pattern" "$file" 2>/dev/null; then
