@@ -41,6 +41,17 @@ The build script automatically detects your distribution and selects the appropr
 | Arch Linux | `.AppImage` (via AUR) | yay/paru |
 | Other | `.AppImage` | - |
 
+## Build Environment Variables
+
+The build pulls the Electron prebuilt binary from `github.com/electron/electron/releases` via `@electron/get`. Two upstream environment variables let you redirect that fetch:
+
+- `ELECTRON_MIRROR` — base URL to fetch Electron releases from instead of GitHub. Useful for mirrors or local proxies. Example: `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`.
+- `ELECTRON_CUSTOM_DIR` — overrides the path segment after the mirror. Defaults to `v{version}`.
+
+The cache location is fixed at `~/.cache/electron/` (resolved by `@electron/get` via `envPaths`) and is reused across builds. `ELECTRON_CACHE` is **not** read by `@electron/get` — set `ELECTRON_MIRROR` if you need to avoid the public CDN.
+
+The pinned Electron version lives in `scripts/setup/dependencies.sh` (`electron_version`) and must match `build-reference/app-extracted/package.json` — the upstream Claude Desktop `app.asar` is built against a specific Electron major and running a different one is unsupported.
+
 ## Installing the Built Package
 
 ### For .deb packages (Debian/Ubuntu)

@@ -40,6 +40,14 @@ async function main() {
 	// except 'arm' which electron publishes as 'armv7l'.
 	const arch = process.arch === 'arm' ? 'armv7l' : process.arch;
 
+	const supportedArchs = ['x64', 'arm64', 'armv7l', 'ia32'];
+	if (!supportedArchs.includes(arch)) {
+		throw new Error(
+			`Unsupported architecture: ${arch}. ` +
+			`Electron publishes Linux binaries for ${supportedArchs.join(', ')}.`,
+		);
+	}
+
 	const { downloadArtifact } = require('@electron/get');
 	const extractZip = require('extract-zip');
 
