@@ -256,21 +256,19 @@ echo 'RPM spec file created'
 echo 'Building RPM package...'
 
 rpmbuild_log="$work_dir/rpmbuild.log"
-rpmbuild_status=0
 rpmbuild --define "_topdir $rpmbuild_dir" \
 	--define "_rpmdir $work_dir" \
 	--target "$rpm_arch" \
 	-bb "$rpmbuild_dir/SPECS/$package_name.spec" 2>&1 |
 	tee "$rpmbuild_log"
-rpmbuild_status=${PIPESTATUS[0]}
-if (( rpmbuild_status != 0 )); then
+if (( ${PIPESTATUS[0]} != 0 )); then
 	echo 'Failed to build RPM package' >&2
 	exit 1
 fi
 
-# Guard against re-introducing #609: an overlap between %attr and the
-# parent dir glob emits this warning, and on modern rpmbuild it can
-# silently strip the file from the payload when %exclude is reached for.
+# Guard against re-introducing #609. The "File listed twice" warning
+# means %files has overlapping listings, and on modern rpmbuild any
+# %exclude workaround silently strips the file from the payload.
 if grep -qF 'File listed twice' "$rpmbuild_log"; then
 	echo 'rpmbuild emitted "File listed twice" — %files has overlapping listings (see #609)' >&2
 	grep -F 'File listed twice' "$rpmbuild_log" >&2
