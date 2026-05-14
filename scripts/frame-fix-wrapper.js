@@ -120,12 +120,21 @@ const LINUX_CSS = `
 // autoUpdater no-op: every property access returns a chainable function
 // so `.on(...).once(...).setFeedURL(...).checkForUpdates()` is harmless.
 // `getFeedURL` returns '' so any code that inspects the URL gets a
-// well-typed empty string rather than undefined. Defined once and reused
-// across all require('electron') calls. Linux-only; macOS/Windows still
-// see the real autoUpdater. See #567.
+// well-typed empty string rather than undefined. `then`/`catch`/`finally`
+// and `Symbol.toPrimitive`/`Symbol.iterator` resolve to `undefined` so the
+// Proxy is not mistaken for a thenable (which would call chainNoop as
+// `then(resolve, reject)` and never resolve — silent await hang) or
+// asked to coerce to a primitive. Writes land on the target but are
+// shadowed by the get-trap. Defined once and reused across all
+// require('electron') calls. Linux-only; macOS/Windows still see the
+// real autoUpdater. See #567.
 const autoUpdaterNoop = new Proxy({}, {
   get(_target, prop) {
     if (prop === 'getFeedURL') return () => '';
+    if (prop === 'then' || prop === 'catch' || prop === 'finally'
+      || prop === Symbol.toPrimitive || prop === Symbol.iterator) {
+      return undefined;
+    }
     return function chainNoop() { return autoUpdaterNoop; };
   },
 });
