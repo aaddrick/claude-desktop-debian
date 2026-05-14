@@ -42,7 +42,8 @@ log_session_env() {
 		QT_IM_MODULE \
 		CLAUDE_USE_WAYLAND \
 		CLAUDE_TITLEBAR_STYLE \
-		CLAUDE_GTK_IM_MODULE
+		CLAUDE_GTK_IM_MODULE \
+		CLAUDE_DISABLE_GPU
 	do
 		log_message "  $key=${!key:-}"
 	done
@@ -140,10 +141,24 @@ build_electron_args() {
 		loginctl show-session "$XDG_SESSION_ID" \
 			-p Type --value 2>/dev/null
 	)
+	# Track GPU-disable decision so XRDP and CLAUDE_DISABLE_GPU don't
+	# stack duplicate flags. Either signal is sufficient.
+	local _disable_gpu=false
 	if [[ -n ${XRDP_SESSION:-} || $rdp_session_type == xrdp ]]; then
-		electron_args+=('--disable-gpu' '--disable-software-rasterizer')
+		_disable_gpu=true
 		log_message 'XRDP session detected - GPU compositing disabled'
 	fi
+	# CLAUDE_DISABLE_GPU=1: opt-in workaround for users hitting the
+	# Chromium GPU process FATAL exhaustion (#583). The same upstream
+	# behaviour is reachable via Settings → disable hardware
+	# acceleration; this lets users persist it via the env without
+	# having to reach the Settings UI through repeated crashes.
+	if [[ ${CLAUDE_DISABLE_GPU:-} == '1' ]]; then
+		_disable_gpu=true
+		log_message 'CLAUDE_DISABLE_GPU=1 - hardware acceleration disabled'
+	fi
+	[[ $_disable_gpu == true ]] \
+		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')
 
 	# X11 session - no special flags needed
 	if [[ $is_wayland != true ]]; then
