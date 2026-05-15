@@ -320,3 +320,88 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 	[[ $output == *'Recent Electron crashes: 1'* ]]
 	[[ $output == *'may be from other Electron apps'* ]]
 }
+
+# =============================================================================
+# _doctor_check_filename_limit: NAME_MAX probe + eCryptfs hint (#590)
+# =============================================================================
+
+# Install a getconf shim that emits $1 on stdout. Empty $1 → shim exits 1
+# so callers can test the "getconf failed" path.
+_install_getconf_shim() {
+	mkdir -p "$TEST_TMP/bin"
+	local value="$1"
+	if [[ -z $value ]]; then
+		cat > "$TEST_TMP/bin/getconf" <<'SHIM'
+#!/usr/bin/env bash
+exit 1
+SHIM
+	else
+		cat > "$TEST_TMP/bin/getconf" <<SHIM
+#!/usr/bin/env bash
+echo ${value}
+SHIM
+	fi
+	chmod +x "$TEST_TMP/bin/getconf"
+	export PATH="$TEST_TMP/bin:$PATH"
+}
+
+# Install a df shim that emits a single-column fstype listing matching
+# the `df --output=fstype` shape the helper relies on.
+_install_df_shim() {
+	mkdir -p "$TEST_TMP/bin"
+	local fstype="$1"
+	cat > "$TEST_TMP/bin/df" <<SHIM
+#!/usr/bin/env bash
+cat <<'OUT'
+Type
+${fstype}
+OUT
+SHIM
+	chmod +x "$TEST_TMP/bin/df"
+	export PATH="$TEST_TMP/bin:$PATH"
+}
+
+@test "_doctor_check_filename_limit: silent when NAME_MAX >= 200" {
+	_install_getconf_shim '255'
+	run _doctor_check_filename_limit
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_filename_limit: warns when NAME_MAX < 200" {
+	_install_getconf_shim '143'
+	_install_df_shim 'ext4'
+	run _doctor_check_filename_limit
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'NAME_MAX=143'* ]]
+	[[ $output == *'#590'* ]]
+	# Non-ecryptfs fs: no LUKS hint
+	[[ $output != *'eCryptfs'* ]]
+	[[ $output != *'LUKS'* ]]
+}
+
+@test "_doctor_check_filename_limit: eCryptfs adds LUKS workaround hint" {
+	_install_getconf_shim '143'
+	_install_df_shim 'ecryptfs'
+	run _doctor_check_filename_limit
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'NAME_MAX=143'* ]]
+	[[ $output == *'eCryptfs'* ]]
+	[[ $output == *'LUKS'* ]]
+}
+
+@test "_doctor_check_filename_limit: silent on non-numeric getconf output" {
+	_install_getconf_shim 'undefined'
+	run _doctor_check_filename_limit
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_filename_limit: silent when getconf fails" {
+	_install_getconf_shim ''
+	run _doctor_check_filename_limit
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
