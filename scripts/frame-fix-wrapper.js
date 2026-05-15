@@ -81,15 +81,19 @@ const CLOSE_TO_TRAY = process.platform === 'linux'
   && process.env.CLAUDE_QUIT_ON_CLOSE !== '1';
 console.log(`[Frame Fix] Close-to-tray: ${CLOSE_TO_TRAY ? 'on' : 'off'}`);
 
-// Detect if a window intends to be frameless (popup/Quick Entry/About)
-// Quick Entry: titleBarStyle:"", skipTaskbar:true, transparent:true, resizable:false
-// About:       titleBarStyle:"", skipTaskbar:true, resizable:false
-// Main:        titleBarStyle:"", titleBarOverlay:false(linux), resizable (has minWidth)
-// The main window has minWidth set; popups do not.
+// Detect if a window intends to be frameless (popup/Quick Entry/About).
+// Window kinds — see build-reference/app-extracted/.vite/build/index.js:
+//   Quick Entry:    titleBarStyle:"hidden",      frame:false  (caught early)
+//   About:          titleBarStyle:"hiddenInset", no minWidth, no parent
+//   Main:           titleBarStyle:"hidden",      minWidth:600
+//   Hardware Buddy: titleBarStyle:"hiddenInset", parent set (child modal — keep frame)
+// minWidth excludes Main; the `parent` key excludes Hardware Buddy. About
+// went from "" to "hiddenInset" upstream, so the test matches either.
 function isPopupWindow(options) {
   if (!options) return false;
   if (options.frame === false) return true;
-  if (options.titleBarStyle === '' && !options.minWidth) return true;
+  if ('parent' in options) return false;
+  if ((options.titleBarStyle === '' || options.titleBarStyle === 'hiddenInset') && !options.minWidth) return true;
   return false;
 }
 
