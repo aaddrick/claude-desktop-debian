@@ -478,9 +478,11 @@ _doctor_check_filename_limit() {
 			'Detected eCryptfs (legacy Ubuntu/Mint encrypted home,' \
 			'NAME_MAX=143 due to filename-encryption overhead).'
 		_info \
-			'Workaround: move ~/.claude and ~/.config/Claude onto a' \
-			'separate LUKS-encrypted ext4 volume (NAME_MAX=255) and'
-		_info 'symlink them back. See #590 for a worked example.'
+			'Workaround: move ~/.config/Claude onto a separate' \
+			'LUKS-encrypted ext4 volume (NAME_MAX=255) and symlink it'
+		_info \
+			'back. See docs/TROUBLESHOOTING.md "Cowork: ENAMETOOLONG' \
+			'on encrypted home (eCryptfs)" for the worked steps.'
 	fi
 }
 
