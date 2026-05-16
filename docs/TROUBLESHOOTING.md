@@ -256,6 +256,10 @@ getconf NAME_MAX $HOME   # eCryptfs reports 143; ext4 reports 255
 
 **Workaround:** move Claude's data onto a separate LUKS-encrypted
 ext4 volume (NAME_MAX = 255) and symlink the original paths back.
+`~/.claude/` is the critical one — that's where Claude Code creates
+the long-named per-session dirs that overflow the limit — and
+`~/.config/Claude/` plus `~/.cache/claude-desktop-debian/` are
+relocated alongside it so all Claude state lives on the same volume.
 This keeps the data encrypted at rest while sidestepping the
 eCryptfs filename-length cap.
 
@@ -274,9 +278,17 @@ sudo chown "$USER:$USER" /mnt/claude-secure
 
 mv ~/.config/Claude /mnt/claude-secure/Claude-config
 mv ~/.cache/claude-desktop-debian /mnt/claude-secure/claude-cache
+# ~/.claude may not exist yet on a fresh install — create the target
+# either way so the symlink below resolves.
+if [ -e ~/.claude ]; then
+    mv ~/.claude /mnt/claude-secure/claude-home
+else
+    mkdir -p /mnt/claude-secure/claude-home
+fi
 
 ln -s /mnt/claude-secure/Claude-config ~/.config/Claude
 ln -s /mnt/claude-secure/claude-cache ~/.cache/claude-desktop-debian
+ln -s /mnt/claude-secure/claude-home ~/.claude
 
 # 3. Verify the filename limit
 getconf NAME_MAX /mnt/claude-secure   # should print 255
