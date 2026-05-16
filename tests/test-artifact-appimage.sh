@@ -96,6 +96,91 @@ assert_contains "$appdir/AppRun" 'build_electron_args' \
 resources_dir="$appdir/usr/lib/node_modules/electron/dist/resources"
 validate_app_contents "$resources_dir" "${component_id}.desktop"
 
+# --- Doctor smoke test ---
+# Some --doctor checks fail in CI (no display, etc.); we only care that
+# the script itself didn't crash via signal or exec failure (>=127).
+doctor_exit=0
+"$appimage_file" --doctor >/dev/null 2>&1 || doctor_exit=$?
+if [[ $doctor_exit -lt 127 ]]; then
+	pass "--doctor runs without crashing (exit: $doctor_exit)"
+else
+	fail "--doctor crashed (exit: $doctor_exit)"
+fi
+
+# --- Headless launch smoke test ---
+# Catches startup-only regressions (asar/frame-fix-wrapper syntax errors)
+# that pure structure checks miss.
+#
+# Scope: main-process startup failures only. GPU/renderer-process
+# crashes (e.g. #583-class) leave the main process alive and pass
+# this check — Xvfb has no GPU, so Electron falls back to SwiftShader
+# and the GPU-crash path isn't exercised here.
+if command -v xvfb-run &>/dev/null \
+	&& command -v dbus-run-session &>/dev/null \
+	&& command -v setsid &>/dev/null; then
+
+	# XDG_CACHE_HOME redirect so the test owns the launcher log.
+	cache_root=$(mktemp -d)
+	export XDG_CACHE_HOME="$cache_root"
+	launcher_log="$cache_root/claude-desktop-debian/launcher.log"
+
+	# setsid puts xvfb-run + Xvfb + dbus + AppRun + electron in a fresh
+	# process group; xvfb-run's EXIT trap alone leaves Xvfb behind on
+	# TERM, so we need kill -- -PGID below.
+	# AppRun redirects electron's stdout/stderr into launcher_log;
+	# xvfb_log captures xvfb-run's own stderr.
+	xvfb_log=$(mktemp)
+	setsid xvfb-run -a -s '-screen 0 1280x720x24' \
+		dbus-run-session -- "$appimage_file" \
+		>"$xvfb_log" 2>&1 &
+	launch_pid=$!
+
+	# Safety net: covers Ctrl-C, CI timeout, or any earlier `exit` so we
+	# never leak Xvfb/electron between launch and the explicit kill below.
+	trap '
+		kill -KILL -- "-$launch_pid" 2>/dev/null
+		pkill -KILL -f "$appimage_file" 2>/dev/null
+		rm -rf "$cache_root" "$xvfb_log"
+	' EXIT INT TERM
+
+	# CI is slow; 10s is the floor for Electron startup.
+	sleep 10
+
+	if kill -0 "$launch_pid" 2>/dev/null; then
+		pass "AppImage stays alive under Xvfb for 10s"
+	else
+		wait "$launch_pid" 2>/dev/null
+		exit_code=$?
+		fail "AppImage exited within 10s (exit: $exit_code)"
+		if [[ -f $launcher_log ]]; then
+			echo '--- launcher.log (last 40 lines) ---' >&2
+			tail -40 "$launcher_log" >&2
+			echo '------------------------------------' >&2
+		fi
+		if [[ -s $xvfb_log ]]; then
+			echo '--- xvfb-run stderr (last 20 lines) ---' >&2
+			tail -20 "$xvfb_log" >&2
+			echo '---------------------------------------' >&2
+		fi
+	fi
+
+	# Negative PID targets the process group.
+	kill -TERM -- "-$launch_pid" 2>/dev/null || true
+	sleep 1
+	kill -KILL -- "-$launch_pid" 2>/dev/null || true
+	wait "$launch_pid" 2>/dev/null || true
+	# Sweep any electron child that escaped the group (e.g. zygote).
+	pkill -KILL -f "$appimage_file" 2>/dev/null || true
+
+	rm -rf "$cache_root" "$xvfb_log"
+	unset XDG_CACHE_HOME
+else
+	# Match the codebase convention (test-artifact-common.sh
+	# validate_app_contents): tool absence is a skip, not a failure.
+	# Loud failure on missing tools belongs at the workflow layer.
+	pass "Skipping launch smoke test (xvfb-run/dbus-run-session/setsid missing)"
+fi
+
 # --- Cleanup ---
 rm -rf "$extract_dir"
 

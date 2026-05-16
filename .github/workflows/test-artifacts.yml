@@ -44,7 +44,8 @@ jobs:
         if: matrix.format != 'rpm'
         run: |
           sudo apt-get update
-          sudo apt-get install -y file libfuse2 nodejs npm
+          sudo apt-get install -y file libfuse2 nodejs npm \
+            xvfb dbus-x11 procps
 
       - name: Run artifact tests
         run: |
