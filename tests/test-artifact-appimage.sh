@@ -110,6 +110,11 @@ fi
 # --- Headless launch smoke test ---
 # Catches startup-only regressions (asar/frame-fix-wrapper syntax errors)
 # that pure structure checks miss.
+#
+# Scope: main-process startup failures only. GPU/renderer-process
+# crashes (e.g. #583-class) leave the main process alive and pass
+# this check — Xvfb has no GPU, so Electron falls back to SwiftShader
+# and the GPU-crash path isn't exercised here.
 if command -v xvfb-run &>/dev/null \
 	&& command -v dbus-run-session &>/dev/null \
 	&& command -v setsid &>/dev/null; then
