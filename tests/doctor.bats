@@ -346,17 +346,25 @@ SHIM
 }
 
 # Install a df shim that emits a single-column fstype listing matching
-# the `df --output=fstype` shape the helper relies on.
+# the `df --output=fstype` shape the helper relies on. Empty $1 → shim
+# exits 1 so callers can test the "df failed" path.
 _install_df_shim() {
 	mkdir -p "$TEST_TMP/bin"
 	local fstype="$1"
-	cat > "$TEST_TMP/bin/df" <<SHIM
+	if [[ -z $fstype ]]; then
+		cat > "$TEST_TMP/bin/df" <<'SHIM'
+#!/usr/bin/env bash
+exit 1
+SHIM
+	else
+		cat > "$TEST_TMP/bin/df" <<SHIM
 #!/usr/bin/env bash
 cat <<'OUT'
 Type
 ${fstype}
 OUT
 SHIM
+	fi
 	chmod +x "$TEST_TMP/bin/df"
 	export PATH="$TEST_TMP/bin:$PATH"
 }
@@ -404,4 +412,15 @@ SHIM
 	run _doctor_check_filename_limit
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
+}
+
+@test "_doctor_check_filename_limit: df failure suppresses eCryptfs hint, keeps warn" {
+	_install_getconf_shim '143'
+	_install_df_shim ''
+	run _doctor_check_filename_limit
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'NAME_MAX=143'* ]]
+	[[ $output != *'eCryptfs'* ]]
+	[[ $output != *'LUKS'* ]]
 }
