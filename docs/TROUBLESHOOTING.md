@@ -290,14 +290,22 @@ ln -s /mnt/claude-secure/Claude-config ~/.config/Claude
 ln -s /mnt/claude-secure/claude-cache ~/.cache/claude-desktop-debian
 ln -s /mnt/claude-secure/claude-home ~/.claude
 
-# 3. Verify the filename limit
+# 3. Verify the filename limit and the symlinks
 getconf NAME_MAX /mnt/claude-secure   # should print 255
+mountpoint /mnt/claude-secure         # confirms the volume is mounted
+readlink ~/.claude                    # /mnt/claude-secure/claude-home
+readlink ~/.config/Claude             # /mnt/claude-secure/Claude-config
 ```
 
+**If you've set `CLAUDE_CONFIG_DIR`** (or otherwise reconfigured
+Claude Code to use a directory other than `~/.claude/`), the
+`~/.claude` symlink above doesn't apply — adapt the path to wherever
+your Claude Code config actually lives. The constraint is the same:
+the directory tree where Claude Code creates per-session project
+dirs must sit on a filesystem with `NAME_MAX` ≥ ~200.
+
 **Auto-mount at login** with `pam_mount` so the volume unlocks
-transparently each session without a manual `cryptsetup open`. If
-your login password matches the LUKS passphrase, the unlock is
-silent:
+without a manual `cryptsetup open`:
 
 ```bash
 sudo apt install libpam-mount
@@ -318,8 +326,19 @@ Add a `<volume>` entry to `/etc/security/pam_mount.conf.xml`
 
 **Notes:**
 - Tested on Linux Mint with LightDM as the display manager.
-- The LUKS passphrase must match your login password for the
-  transparent unlock to work.
+- **LUKS passphrase tradeoff:** for `pam_mount` to unlock silently
+  at login the LUKS passphrase must match your login password. That
+  means one compromise unlocks both your session and the encrypted
+  volume — equivalent to the threat surface eCryptfs already had,
+  but worth a deliberate choice. Use a distinct LUKS passphrase if
+  you'd rather be prompted on each unlock.
+- **Confidentiality posture vs eCryptfs.** The LUKS image lives at
+  `/opt/claude-secure.img`, outside `$HOME` and outside whatever
+  encryption envelope eCryptfs gives you. If `pam_mount` ever fails
+  silently — wrong passphrase, mount race at login, profile error —
+  Claude won't start (the symlink targets won't exist), so writes
+  fail loudly rather than landing on plaintext disk. Verify with
+  `mountpoint /mnt/claude-secure` after login if you're unsure.
 - 2 GB is a conservative starting size; the Claude config
   directory can exceed 500 MB once cowork session history
   accumulates. Resize if needed.
