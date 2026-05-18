@@ -339,6 +339,32 @@ Module.prototype.require = function(id) {
                     this.hide();
                   }
                 });
+              } else {
+                // CLAUDE_QUIT_ON_CLOSE=1: the bundled main-process code
+                // (`.vite/build/index.js`) installs its own main-window
+                // close listener that hardcodes `preventDefault()` +
+                // `hide()` on every non-Windows platform, with no
+                // setting or env var to disable it. The wrapper's
+                // opt-out above only removes *this* file's hide handler;
+                // the bundled one still runs, so without this branch
+                // closing the window still leaves the app alive in the
+                // tray (in-app schedulers / single-instance lock /
+                // deleted-inode electron after dpkg upgrade-in-place).
+                //
+                // Approach: register a close listener that runs *first*
+                // and calls app.quit(). app.quit() emits 'before-quit'
+                // synchronously, which sets the bundled code's
+                // "quitting in progress" flag. The bundled close
+                // listener then runs second, sees that flag, and
+                // short-circuits via its own `if (lC()) return;` guard
+                // — so it never calls preventDefault, and the window
+                // closes normally during the quit flow. We ride the
+                // upstream's own quit-safety contract instead of trying
+                // to remove or splice their listener; robust to any
+                // refactor that preserves the quit-in-progress short-
+                // circuit (which they need for Ctrl+Q / tray Quit /
+                // SIGTERM anyway). Fixes: #623
+                this.on('close', () => { result.app.quit(); });
               }
 
               // Directly set child view bounds to match content size.
