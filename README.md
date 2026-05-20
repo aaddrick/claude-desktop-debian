@@ -185,6 +185,7 @@ Special thanks to:
   - Version update contributions
   - Close-to-tray on Linux to keep in-app schedulers, MCP servers, and the tray icon alive across window close
   - "Run on startup" persistence on Linux via XDG Autostart, fixing the toggle that would silently revert
+  - In-place package upgrade detection that watches `app.asar` for dpkg/rpm replacement and offers a click-to-restart notification, fixing the Quick Entry / About / Ctrl+Q symptom cluster from a running v(N) main process loading v(N+1) renderer assets (#564)
 - **[mathys-lopinto](https://github.com/mathys-lopinto)**
   - AUR package
   - Automated deployment
@@ -198,6 +199,9 @@ Special thanks to:
   - `--doctor` diagnostic command
   - SHA-256 checksum validation for downloads
   - Post-build integration tests for deb, rpm, and AppImage artifacts
+  - `tests.yml` CI workflow that runs the 186-test BATS suite on push and PR — the suite was inert in CI before this (#520)
+  - Isolating `cleanup_stale_cowork_socket` BATS from host `pgrep` state so the test passes on developer machines running Claude Desktop (#533, #534)
+  - Headless launch and `--doctor` smoke tests for the AppImage artifact, catching runtime regressions (frame-fix-wrapper syntax errors, asar patch breakage, `main` field mismatches) that the structural test missed (#592)
 - **[milog1994](https://github.com/milog1994)**
   - Popup detection
   - Functional stubs
@@ -227,6 +231,7 @@ Special thanks to:
   - node-pty derivation
   - CI auto-update
   - Fixing the flake package scoping regression
+  - Fixing the NixOS electron binary not being marked executable (#431, #581)
 - **[cbonnissent](https://github.com/cbonnissent)**
   - Reverse-engineering the Cowork VM guest RPC protocol
   - Fixing the KVM startup blocker
@@ -242,6 +247,8 @@ Special thanks to:
   - Detailed analysis of the self-referential `.mcpb-cache` symlink ELOOP bug
   - Fixing auto-memory path translation on HostBackend
   - Fixing the `ion-dist` static asset copy for the `app://` protocol handler
+  - `--doctor` diagnostic that detects the Ubuntu 24.04 AppArmor `apparmor_restrict_unprivileged_userns=1` block on bwrap, instead of letting it silently fall through to a hanging KVM probe (#351, #434)
+  - Documenting the upstream MCP double-spawn root-cause analysis in `docs/learnings/mcp-double-spawn.md` (#526, #527)
 - **[reinthal](https://github.com/reinthal)** for fixing the NixOS build breakage caused by the nixpkgs `nodePackages` removal
 - **[gianluca-peri](https://github.com/gianluca-peri)**
   - Reporting the GNOME quit accessibility issue
