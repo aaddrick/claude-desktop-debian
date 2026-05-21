@@ -4,6 +4,8 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 **Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
 
+**Documentation:** Full docs at [`docs/index.md`](docs/index.md). Release history in [`CHANGELOG.md`](CHANGELOG.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`SECURITY.md`](SECURITY.md).
+
 ---
 
 > **⚠️ APT migration notice (April 2026)**
@@ -135,7 +137,7 @@ Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](http
 
 ### Building from Source
 
-See [docs/BUILDING.md](docs/BUILDING.md) for detailed build instructions.
+See [docs/building.md](docs/building.md) for detailed build instructions.
 
 ## Configuration
 
@@ -144,13 +146,13 @@ Model Context Protocol settings are stored in:
 ~/.config/Claude/claude_desktop_config.json
 ```
 
-For additional configuration options including environment variables and Wayland support, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+For additional configuration options including environment variables and Wayland support, see [docs/configuration.md](docs/configuration.md).
 
 ## Troubleshooting
 
 Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
 
-For additional troubleshooting, uninstallation instructions, and log locations, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+For additional troubleshooting, uninstallation instructions, and log locations, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Acknowledgments
 
@@ -273,7 +275,7 @@ Special thanks to:
   - Failing loudly on `npm install node-pty` failures instead of silently shipping the upstream Windows binaries, plus auto-installing `gcc`/`g++`/`make`/`python3` on minimal build environments (#401)
 - **[Hayao0819](https://github.com/Hayao0819)** for diagnosing the upstream `titleBarStyle:""` → `titleBarStyle:"hiddenInset"` migration that broke the About window render on GNOME/X11 and contributing the `isPopupWindow()` match extension (#481, #489)
 - **[michelsfun](https://github.com/michelsfun)** for reporting the cowork `ENAMETOOLONG` failure on eCryptfs-encrypted home directories with detailed `--doctor` output that pinpointed the short-NAME_MAX filesystem as the cause (#590)
-- **[proffalken](https://github.com/proffalken)** for the LUKS-volume + `pam_mount` workaround documented in `TROUBLESHOOTING.md`, restoring cowork support on legacy eCryptfs-encrypted home directories (#590)
+- **[proffalken](https://github.com/proffalken)** for the LUKS-volume + `pam_mount` workaround documented in `docs/troubleshooting.md`, restoring cowork support on legacy eCryptfs-encrypted home directories (#590)
 
 ## Sponsorship
 

@@ -1,14 +1,39 @@
 # Contributing
 
+## Before you start
+
+A few minutes here saves a round-trip later. Match your task to the right channel:
+
+- **Found a bug?** File an [issue](https://github.com/aaddrick/claude-desktop-debian/issues/new/choose)
+  with the bug template. Paste full `claude-desktop --doctor` output;
+  include distro, DE, and session type (Wayland/X11). See
+  [Filing an issue](#filing-an-issue).
+- **Have a fix in hand?** PRs that fix existing behaviour, restore parity
+  with Windows/macOS, or improve packaging are always welcome. Open the
+  PR; an issue isn't strictly required if the fix is small.
+- **Want to add a new feature?** Open a [discussion](https://github.com/aaddrick/claude-desktop-debian/discussions)
+  or an issue first. We're a repackager; most net-new behaviour is
+  declined by default — see [What we accept](#what-we-accept).
+- **Security concern?** Don't file a public issue. Use
+  [SECURITY.md](SECURITY.md) — GitHub Security Advisories route to
+  @aaddrick privately.
+
 ## Where to find what
 
 - [CLAUDE.md](CLAUDE.md): conventions, build, patches, attribution.
-- [STYLEGUIDE.md](STYLEGUIDE.md): bash style ([style.ysap.sh](https://style.ysap.sh)).
-  Tabs, 80 cols, `[[ ]]`, no `set -e`.
+- [AGENTS.md](AGENTS.md): vendor-neutral mirror of CLAUDE.md for non-Claude AI tools.
+- [docs/index.md](docs/index.md): full docs entry point.
+- [docs/styleguides/bash_styleguide.md](docs/styleguides/bash_styleguide.md):
+  bash style ([style.ysap.sh](https://style.ysap.sh)). Tabs, 80 cols, `[[ ]]`, no `set -e`.
+- [docs/styleguides/docs_styleguide.md](docs/styleguides/docs_styleguide.md):
+  page anatomy and naming if you're adding a doc.
 - [docs/learnings/](docs/learnings/): subsystem deep-dives. Read the
   relevant entry first.
-- [docs/BUILDING.md](docs/BUILDING.md): local build setup.
-- [docs/DECISIONS.md](docs/DECISIONS.md): architectural choices.
+- [docs/building.md](docs/building.md): local build setup.
+- [docs/decisions.md](docs/decisions.md): architectural choices (ADR format).
+- [CHANGELOG.md](CHANGELOG.md): release-grouped history from v2.0.0 onward.
+- [RELEASING.md](RELEASING.md): how a release ships (tag-driven CI).
+- [SECURITY.md](SECURITY.md): private vulnerability reporting.
 - [.github/CODEOWNERS](.github/CODEOWNERS): auto-review routing.
 
 ## What we accept
@@ -117,5 +142,6 @@ reasons. No churn PRs. Background: [the learnings doc][pmj].
 ### Markdown prose wrapping
 
 Wrap prose at ~80 chars, matching the bash column rule in
-STYLEGUIDE.md. Tables, code blocks, URLs, alt text may exceed when
-breaking hurts readability.
+[docs/styleguides/bash_styleguide.md](docs/styleguides/bash_styleguide.md).
+Tables, code blocks, URLs, alt text may exceed when breaking hurts
+readability.
