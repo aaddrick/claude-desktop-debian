@@ -11,6 +11,8 @@ Tracks upstream Claude Desktop 1.8089.1.
 ### Added
 
 - `--doctor` flags filesystems with `NAME_MAX < 200` (eCryptfs, certain encrypted overlays) and surfaces the LUKS-symlink workaround for cowork. Thanks @RayCharlizard, @lizthegrey for the repro. ([#614](https://github.com/aaddrick/claude-desktop-debian/pull/614), fixes [#590](https://github.com/aaddrick/claude-desktop-debian/issues/590))
+- Top-level governance docs: this `CHANGELOG.md`, [`RELEASING.md`](RELEASING.md) (pre-release checklist + tag-driven CI flow), [`SECURITY.md`](SECURITY.md) (private GHSA reporting + in/out-of-scope), [`docs/index.md`](docs/index.md) (navigation hub), and [`docs/styleguides/docs_styleguide.md`](docs/styleguides/docs_styleguide.md) (page anatomy, naming, antipatterns). [`CLAUDE.md`](CLAUDE.md) gains explicit § Required reading, § Anti-patterns, and § Docs sections; [`AGENTS.md`](AGENTS.md) becomes a byte-identical mirror of the new body (was a 13-line stub) so non-Claude tools get the same instructions.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) "Before you start" triage section: where to go for a bug, a fix-in-hand, a new-feature ask, or a security report.
 
 ### Fixed
 
@@ -19,6 +21,8 @@ Tracks upstream Claude Desktop 1.8089.1.
 ### Changed
 
 - Troubleshooting: new "Repeated Electron Crashes / GPU Process FATAL" section documenting `CLAUDE_DISABLE_GPU=1`. Adds tuning-rationale comments around the `--doctor` 3-in-7-days threshold and the `coredumpctl` `COMM=electron` assumption. Thanks @sabiut. ([#615](https://github.com/aaddrick/claude-desktop-debian/pull/615), addresses [#608](https://github.com/aaddrick/claude-desktop-debian/issues/608))
+- Docs filenames are now lowercase kebab-case (`docs/building.md`, `docs/configuration.md`, `docs/decisions.md`, `docs/troubleshooting.md`); `STYLEGUIDE.md` moved to [`docs/styleguides/bash_styleguide.md`](docs/styleguides/bash_styleguide.md). Cross-references swept across README, CONTRIBUTING, CODEOWNERS, `.github/`, `.claude/`, `scripts/`, and `claude-desktop --doctor` user-facing output.
+- `[$\w]+` is the codified identifier-capture convention for patch-script regexes (CONTRIBUTING § Patch-script regexes; `patch-engineer` agent examples updated to match). Closes a docs-vs-code gap that left the rule only in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md) — the same `\w+` trap fixed in patches by [#555](https://github.com/aaddrick/claude-desktop-debian/pull/555) and [#627](https://github.com/aaddrick/claude-desktop-debian/pull/627).
 
 ## [v2.0.12] — 2026-05-19
 

@@ -62,6 +62,11 @@
 # ---- Docs & style ----
 /README.md                              @aaddrick
 /CLAUDE.md                              @aaddrick
+/AGENTS.md                              @aaddrick
+/CONTRIBUTING.md                        @aaddrick
+/CHANGELOG.md                           @aaddrick
+/RELEASING.md                           @aaddrick
+/SECURITY.md                            @aaddrick
 /docs/styleguides/                      @aaddrick
 /docs/                                  @aaddrick
 
