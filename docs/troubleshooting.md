@@ -80,7 +80,7 @@ If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in
 
 **Note:** Native Wayland mode doesn't support global hotkeys due to Electron/Chromium limitations with XDG GlobalShortcuts Portal.
 
-See [CONFIGURATION.md](CONFIGURATION.md) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
+See [configuration.md](configuration.md) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
 
 ### Keyboard Input Doesn't Work (IBus / GTK Input Method)
 
@@ -237,7 +237,7 @@ If Cowork fails with a VM timeout, the KVM backend is selected but the guest VM 
 COWORK_VM_BACKEND=bwrap claude-desktop
 ```
 
-See [CONFIGURATION.md](CONFIGURATION.md#cowork-backend) for how to make this permanent.
+See [configuration.md](configuration.md#cowork-backend) for how to make this permanent.
 
 ### Cowork: virtiofsd not found (Fedora/RHEL)
 
