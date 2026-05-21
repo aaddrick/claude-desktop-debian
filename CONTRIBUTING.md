@@ -126,16 +126,30 @@ Issues/comments:
 
 ### Patch-script regexes
 
-When a patch regex uses whitespace-tolerant constructs (`\s*`,
-`[ \t]*`) between tokens, add an intent comment with whitespace stripped:
+Two rules apply to regexes that target the minified upstream bundle.
+
+**Identifier captures use `[$\w]+`, not `\w+`.** Upstream's minifier
+emits `$` inside JS identifiers (`C$i`, `g$i`, `i$A`). `\w` is
+`[A-Za-z0-9_]` and does not match `$`, so a `\w+` capture against
+`$e` returns the suffix `e` instead of the whole identifier. PR #555
+and PR #627 closed two cohorts of patches with this exact bug. The
+learnings doc has the full background and the canonical character
+class is `[$\w]+` (the equivalent `[\w$]+` is fine; either form
+matches the same set, the order is convention only).
+
+**Intent comments accompany whitespace-tolerant patterns.** When a
+patch regex uses `\s*` or `[ \t]*` between tokens, add a one-line
+intent comment with whitespace stripped so the matched shape stays
+readable:
 
 ```js
 // Intent: VAR.code==="ENOENT"
-const enoentRe = /(\w+)\.code\s*===\s*"ENOENT"/g;
+const enoentRe = /([$\w]+)\.code\s*===\s*"ENOENT"/g;
 ```
 
-Apply to new patches and to existing regexes when editing for other
-reasons. No churn PRs. Background: [the learnings doc][pmj].
+Apply both rules to new patches and to existing regexes when you're
+editing them for other reasons. No churn PRs. Background:
+[the patching-minified-js learnings doc][pmj].
 
 [pmj]: docs/learnings/patching-minified-js.md
 
