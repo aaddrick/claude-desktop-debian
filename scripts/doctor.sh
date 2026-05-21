@@ -510,6 +510,12 @@ _doctor_check_recent_crashes() {
 	[[ -n $listing ]] || return 0
 
 	# Drop the header line; count remaining entries.
+	# Assumes `coredumpctl list electron`'s COMM=electron filter
+	# excludes `-- Reboot --` separator rows from the listing (true
+	# on systemd as of writing). The path-matched branch below uses
+	# index($0, p) so it's unaffected even if that ever changes;
+	# revisit this total-count branch if a future systemd version
+	# starts leaking reboot markers into per-COMM listings.
 	total_count=$(awk 'NR>1 && NF>0' <<< "$listing" | wc -l)
 	((total_count == 0)) && return 0
 
@@ -531,6 +537,9 @@ _doctor_check_recent_crashes() {
 		footnote=' (some entries may be from other Electron apps)'
 	fi
 
+	# Threshold tuned against the #583 repro (~10 crashes over 7 days
+	# on the affected laptop); a noisy session typically clears 3 in a
+	# week, so 3 is the floor for "worth surfacing the workaround".
 	if ((count >= 3)); then
 		_warn "Recent Electron crashes: $count in last 7 days$footnote"
 		_info \

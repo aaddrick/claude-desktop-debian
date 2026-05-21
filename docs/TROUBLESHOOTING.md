@@ -131,6 +131,45 @@ windows or rich compose-key sequences. Only reach for it if your
 real input method (IBus/Fcitx) is broken; if you depend on CJK or
 compose, prefer fixing the IBus/Fcitx integration instead.
 
+### Repeated Electron Crashes / GPU Process FATAL ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583))
+
+If Claude Desktop crashes repeatedly on launch or shortly after,
+the most common cause on Linux is the Chromium GPU process hitting
+a FATAL exhaustion path. `claude-desktop --doctor` surfaces this
+when `systemd-coredump` shows 3+ Electron crashes in the last 7
+days, pointing at this issue.
+
+Two ways to disable hardware acceleration as a workaround:
+
+1. **In-app:** Settings → toggle hardware acceleration off →
+   restart Claude Desktop. Persists in the upstream config.
+2. **Env var (headless / persists across reinstalls):** set
+   `CLAUDE_DISABLE_GPU=1` in the environment before launching.
+
+```bash
+# One-off:
+CLAUDE_DISABLE_GPU=1 claude-desktop
+
+# Persistent (shell profile):
+echo 'export CLAUDE_DISABLE_GPU=1' >> ~/.profile
+```
+
+When `CLAUDE_DISABLE_GPU=1` is set, the launcher passes
+`--disable-gpu --disable-software-rasterizer` to Electron (see
+`scripts/launcher-common.sh`). This is the same pair of flags
+applied automatically inside XRDP sessions, where software
+rendering is required regardless. Either signal is sufficient —
+the launcher won't stack duplicate flags.
+
+**When to prefer which:** the in-app toggle is friendlier if you
+can reach Settings without the app crashing. Reach for
+`CLAUDE_DISABLE_GPU=1` when the app crashes before you can open
+Settings, when running in environments with no GPU available
+(XRDP, headless CI smoke tests, some VMs), or when you want the
+behavior to persist across reinstalls and config resets.
+
+Tracking issue: [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583).
+
 ### AppImage Sandbox Warning
 
 AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
