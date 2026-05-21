@@ -1,0 +1,234 @@
+# Changelog
+
+All notable changes to `aaddrick/claude-desktop-debian` are documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — semantic versioning applies to `REPO_VERSION`; upstream Claude Desktop bumps (the `+claude{X.Y.Z}` suffix on the tag) are tracked separately by the `check-claude-version` workflow.
+
+## [Unreleased]
+
+Tracks upstream Claude Desktop 1.8089.1.
+
+### Added
+
+- `--doctor` flags filesystems with `NAME_MAX < 200` (eCryptfs, certain encrypted overlays) and surfaces the LUKS-symlink workaround for cowork. Thanks @RayCharlizard, @lizthegrey for the repro. ([#614](https://github.com/aaddrick/claude-desktop-debian/pull/614), fixes [#590](https://github.com/aaddrick/claude-desktop-debian/issues/590))
+
+### Fixed
+
+- Tray: extracted JS identifier captures now accept `$` so the 1.8089.1 minified bundle ('`i$A`' menu handler) matches. Switches `\w+` to `[\w$]+`. ([#627](https://github.com/aaddrick/claude-desktop-debian/pull/627), fixes [#625](https://github.com/aaddrick/claude-desktop-debian/issues/625))
+
+### Changed
+
+- Troubleshooting: new "Repeated Electron Crashes / GPU Process FATAL" section documenting `CLAUDE_DISABLE_GPU=1`. Adds tuning-rationale comments around the `--doctor` 3-in-7-days threshold and the `coredumpctl` `COMM=electron` assumption. Thanks @sabiut. ([#615](https://github.com/aaddrick/claude-desktop-debian/pull/615), addresses [#608](https://github.com/aaddrick/claude-desktop-debian/issues/608))
+
+## [v2.0.12] — 2026-05-19
+
+Tracks upstream Claude Desktop 1.7196.3.
+
+### Added
+
+- Headless launch + `--doctor` smoke tests for the AppImage artifact. ([#592](https://github.com/aaddrick/claude-desktop-debian/pull/592))
+
+### Changed
+
+- CI: add concurrency group to `test-flags` workflow. ([#606](https://github.com/aaddrick/claude-desktop-debian/pull/606))
+
+## [v2.0.11] — 2026-05-16
+
+Tracks upstream Claude Desktop 1.7196.1.
+
+### Fixed
+
+- Catch About window after upstream `titleBarStyle` change; guard Hardware Buddy. ([#481](https://github.com/aaddrick/claude-desktop-debian/pull/481), [#489](https://github.com/aaddrick/claude-desktop-debian/pull/489))
+- RPM `chrome-sandbox` SUID now set via `%attr` instead of `%post chmod`. ([#539](https://github.com/aaddrick/claude-desktop-debian/pull/539), [#595](https://github.com/aaddrick/claude-desktop-debian/pull/595))
+- No-op `autoUpdater` on Linux to defend against feed activation; mask thenable/coercion traps on the Proxy. ([#567](https://github.com/aaddrick/claude-desktop-debian/pull/567), [#596](https://github.com/aaddrick/claude-desktop-debian/pull/596))
+- `node-pty` install fails loudly on `npm install` failure; require `gcc`/`make`/`python3`. ([#401](https://github.com/aaddrick/claude-desktop-debian/pull/401), [#598](https://github.com/aaddrick/claude-desktop-debian/pull/598))
+- Fetch electron binary via `@electron/get`, drop `^41` pin; resolve from `work_dir` not script dir. ([#587](https://github.com/aaddrick/claude-desktop-debian/pull/587))
+- Dedupe packages mapped from multiple commands.
+
+## [v2.0.10] — 2026-05-06
+
+Tracks upstream Claude Desktop 1.6259.0, 1.6259.1, 1.6608.0, 1.6608.2, 1.7196.0.
+
+### Added
+
+- `--doctor` surfaces recent Electron crashes with a `#583` pointer; `CLAUDE_DISABLE_GPU=1` opt-in for GPU-process fatal crashes. ([#583](https://github.com/aaddrick/claude-desktop-debian/pull/583), [#585](https://github.com/aaddrick/claude-desktop-debian/pull/585))
+- `--doctor` detects IBus/GTK misconfigurations that break input. ([#572](https://github.com/aaddrick/claude-desktop-debian/pull/572))
+- Launcher: `CLAUDE_GTK_IM_MODULE` opt-in override. ([#571](https://github.com/aaddrick/claude-desktop-debian/pull/571))
+- Launcher: log session/IME env block at startup. ([#570](https://github.com/aaddrick/claude-desktop-debian/pull/570))
+- Linux compatibility test harness. ([#579](https://github.com/aaddrick/claude-desktop-debian/pull/579))
+- Lifecycle: notify and offer restart on in-place package upgrade. ([#564](https://github.com/aaddrick/claude-desktop-debian/pull/564))
+- `desktopName` set for Wayland window grouping. Thanks @jslatten. ([#562](https://github.com/aaddrick/claude-desktop-debian/pull/562))
+
+### Fixed
+
+- Pin electron to `^41` to restore postinstall binary fetch. ([#584](https://github.com/aaddrick/claude-desktop-debian/pull/584), [#586](https://github.com/aaddrick/claude-desktop-debian/pull/586))
+- Nix: make electron binary executable. ([#581](https://github.com/aaddrick/claude-desktop-debian/pull/581))
+- `cowork.sh`: emit WARNING on Patch 2a/2b inner anchor miss. ([#576](https://github.com/aaddrick/claude-desktop-debian/pull/576))
+- CI: force primary GPG key for `repomd.xml` signing. Thanks @ProfFlow. ([#566](https://github.com/aaddrick/claude-desktop-debian/pull/566))
+- DNF: set `metadata_expire=1h` on generated `.repo`. ([#551](https://github.com/aaddrick/claude-desktop-debian/pull/551))
+- BATS: isolate `cleanup_stale_cowork_socket` from host `pgrep` state. ([#534](https://github.com/aaddrick/claude-desktop-debian/pull/534))
+
+### Changed
+
+- Static-grep shipped asar for PR #555 markers as a verification step. ([#559](https://github.com/aaddrick/claude-desktop-debian/pull/559), [#575](https://github.com/aaddrick/claude-desktop-debian/pull/575))
+- New `patching-minified-js` learnings doc + `CONTRIBUTING`. ([#574](https://github.com/aaddrick/claude-desktop-debian/pull/574))
+- Refine `mcp-double-spawn` root cause and routing in learnings. ([#546](https://github.com/aaddrick/claude-desktop-debian/pull/546), [#547](https://github.com/aaddrick/claude-desktop-debian/pull/547))
+- Archive upstream report draft for #546 (filed as `anthropics/claude-code#55353`). ([#552](https://github.com/aaddrick/claude-desktop-debian/pull/552))
+
+## [v2.0.8] — 2026-05-02
+
+Tracks upstream Claude Desktop 1.5354.0 (unchanged from v2.0.7).
+
+### Fixed
+
+- Cowork starts again on Claude Desktop 1.5354.0. Upstream's minifier started emitting `$`-containing identifiers (`C$i`, `g$i`); two regex anchors in `scripts/patches/cowork.sh` used `\w+`, which doesn't match `$`. Patch 2b silently no-op'd, the Swift VM module assignment never landed, and you'd hit `Swift VM addon not available` at session init. Widens both anchors to `[\w$]+`. Patch 6 also moves from `indexOf` to `lastIndexOf` on the retry-delay anchor. Thanks @sirfaber, @HumboldtJoker, @zabka. ([#555](https://github.com/aaddrick/claude-desktop-debian/pull/555), fixes [#558](https://github.com/aaddrick/claude-desktop-debian/issues/558), likely fixes [#553](https://github.com/aaddrick/claude-desktop-debian/issues/553) and [#445](https://github.com/aaddrick/claude-desktop-debian/issues/445))
+
+## [v2.0.7] — 2026-05-01
+
+Tracks upstream Claude Desktop 1.5354.0 (unchanged from v2.0.6).
+
+### Added
+
+- Linux in-app topbar works now. New `hybrid` titlebar mode is the default: native OS frame plus a BrowserView preload shim that satisfies claude.ai's UA gate, so the hamburger, sidebar, search, and nav buttons render and are clickable. Layout is stacked (DE titlebar above the in-app topbar) rather than combined like Windows. Set `CLAUDE_TITLEBAR_STYLE=native` to opt out and hide the in-app topbar. The upstream `frame:false` + WCO config is preserved as `hidden` for investigation but still has unclickable buttons on Linux; `--doctor` warns when it's active. Verified on KDE Plasma X11/Wayland and Hyprland; GNOME, Sway, Niri, and NixOS pending. ([#538](https://github.com/aaddrick/claude-desktop-debian/pull/538))
+
+## [v2.0.6] — 2026-05-01
+
+Tracks upstream Claude Desktop 1.5354.0. Absorbs three upstream bumps from v2.0.5: 1.4758.0, 1.5220.0, 1.5354.0.
+
+### Added
+
+- Cowork bwrap mounts accept a `{src, dst}` form, so you can map a host directory under `$HOME` onto a different path inside the sandbox. Unlocks persistent-`/tmp` so Bash tool calls don't wipe state between invocations. String form unchanged. Thanks @cbonnissent. ([#531](https://github.com/aaddrick/claude-desktop-debian/pull/531))
+- `--doctor` warns when `COWORK_VM_BACKEND` is set to an unknown value instead of silently falling through to auto-detect; adds a `COWORK_VM_BACKEND` row and a Cowork Backend section to `docs/CONFIGURATION.md`. Thanks @CyPack. ([#324](https://github.com/aaddrick/claude-desktop-debian/issues/324))
+- `--doctor` warns when an additional bwrap mount destination shadows a default sandbox path like `/usr`, `/etc`, `/bin`, `/sbin`, `/lib`. ([#531](https://github.com/aaddrick/claude-desktop-debian/pull/531))
+- Troubleshooting entries for Cowork VM connection timeout, virtiofsd outside `$PATH` on Fedora/RHEL (`/usr/libexec/virtiofsd`), and Fedora tmpfs `EXDEV` errors. ([#324](https://github.com/aaddrick/claude-desktop-debian/issues/324))
+
+### Fixed
+
+- Closing the window no longer kills the app on Linux. The X button hides to tray, matching Windows and macOS. Quit explicitly with Ctrl+Q, the tray menu, or your DE's quit shortcut. Set `CLAUDE_QUIT_ON_CLOSE=1` to restore the old behavior. Fixes scheduled tasks and `/schedule` firings getting silently dropped overnight. Thanks @lizthegrey. ([#451](https://github.com/aaddrick/claude-desktop-debian/pull/451))
+- "Run on startup" toggle persists on Linux now. Electron's `setLoginItemSettings` isn't implemented on Linux; the wrapper backs the toggle with `~/.config/autostart/claude-desktop.desktop` per the XDG Autostart spec. Thanks @lizthegrey. ([#450](https://github.com/aaddrick/claude-desktop-debian/pull/450), fixes [#128](https://github.com/aaddrick/claude-desktop-debian/issues/128))
+- Tray icon updates in place on OS theme change instead of briefly duplicating on KDE Plasma. Uses `setImage` + `setContextMenu` rather than destroy + recreate. Thanks @IliyaBrook. ([#515](https://github.com/aaddrick/claude-desktop-debian/pull/515))
+- Window visibility check works again after an upstream minified-name change broke it. Thanks @Andrej730. ([#496](https://github.com/aaddrick/claude-desktop-debian/pull/496), fixes [#495](https://github.com/aaddrick/claude-desktop-debian/issues/495))
+
+### Changed
+
+- APT/DNF install instructions point at `pkg.claude-desktop-debian.dev` directly, bypassing the GitHub Pages 301. Pages serves the redirect over `http://` because it can't provision a cert for the `pkg.` subdomain (DNS belongs to the Cloudflare Worker), and `apt` refuses HTTPS→HTTP downgrades. DNF was unaffected. ([#510](https://github.com/aaddrick/claude-desktop-debian/pull/510), [#514](https://github.com/aaddrick/claude-desktop-debian/pull/514))
+
+## [v2.0.5] — 2026-04-23
+
+Wrapper/packaging update; upstream Claude Desktop unchanged at 1.3883.0.
+
+### Fixed
+
+- CI: smoke test accepts release-assets CDN hostname. ([#509](https://github.com/aaddrick/claude-desktop-debian/pull/509))
+- Strip CRLF from `cowork-plugin-shim.sh` during staging. ([#499](https://github.com/aaddrick/claude-desktop-debian/pull/499), [#505](https://github.com/aaddrick/claude-desktop-debian/pull/505))
+
+## [v2.0.4] — 2026-04-23
+
+Wrapper/packaging update; upstream Claude Desktop unchanged at 1.3883.0. No GitHub Release published.
+
+### Fixed
+
+- CI: smoke test accepts `http://` on Pages 301 hop. ([#506](https://github.com/aaddrick/claude-desktop-debian/pull/506))
+- Worker: use `raw.githubusercontent.com` as origin to avoid Pages 301 loop. ([#504](https://github.com/aaddrick/claude-desktop-debian/pull/504))
+
+### Changed
+
+- Worker: flip route from staging to production for Phase 4a. ([#503](https://github.com/aaddrick/claude-desktop-debian/pull/503))
+
+## [v2.0.3] — 2026-04-23
+
+Wrapper/packaging update; upstream Claude Desktop unchanged at 1.3883.0. No GitHub Release published.
+
+### Added
+
+- APT/DNF Worker scaffolding. ([#498](https://github.com/aaddrick/claude-desktop-debian/pull/498))
+
+### Fixed
+
+- CI: resolve DNF Worker chain blockers. ([#500](https://github.com/aaddrick/claude-desktop-debian/issues/500), [#501](https://github.com/aaddrick/claude-desktop-debian/issues/501), [#502](https://github.com/aaddrick/claude-desktop-debian/pull/502))
+
+### Changed
+
+- Plan APT/DNF distribution via Cloudflare Worker. ([#493](https://github.com/aaddrick/claude-desktop-debian/pull/493), [#494](https://github.com/aaddrick/claude-desktop-debian/pull/494))
+
+## [v2.0.2] — 2026-04-22
+
+Wrapper/packaging update; upstream Claude Desktop unchanged at 1.3883.0.
+
+### Added
+
+- BATS unit tests for `launcher-common.sh`. ([#395](https://github.com/aaddrick/claude-desktop-debian/pull/395))
+
+### Fixed
+
+- Copy `ion-dist` static assets for the `app://` protocol handler. ([#490](https://github.com/aaddrick/claude-desktop-debian/pull/490))
+
+## [v2.0.1] — 2026-04-21
+
+Wrapper/packaging update; tracks upstream Claude Desktop 1.3561.0, 1.3883.0.
+
+### Added
+
+- Triage Phase 4 sub-PRs: Stage 8c enhancement-design variant, suspicious-input tells, `regression_of` + edit-during-triage. ([#470](https://github.com/aaddrick/claude-desktop-debian/pull/470), [#471](https://github.com/aaddrick/claude-desktop-debian/pull/471), [#472](https://github.com/aaddrick/claude-desktop-debian/pull/472))
+- Triage Phase 3: Stage 6 adversarial reviewer + duplicate gate. ([#465](https://github.com/aaddrick/claude-desktop-debian/pull/465))
+- Decision log with D-001 (auto-update direction). ([#477](https://github.com/aaddrick/claude-desktop-debian/pull/477))
+- `@sabiut` added to CODEOWNERS for testing & release quality. ([#468](https://github.com/aaddrick/claude-desktop-debian/pull/468))
+
+### Fixed
+
+- Export `GDK_BACKEND=wayland` in native Wayland mode. Thanks @aJV99. ([#397](https://github.com/aaddrick/claude-desktop-debian/pull/397))
+- Scope Ctrl+Q to the focused window, not system-wide. ([#484](https://github.com/aaddrick/claude-desktop-debian/pull/484))
+- Cowork: forward `CLAUDE_CODE_OAUTH_TOKEN` to VM spawn env. ([#482](https://github.com/aaddrick/claude-desktop-debian/pull/482), [#485](https://github.com/aaddrick/claude-desktop-debian/pull/485))
+- Launcher: disable GPU compositing on XRDP sessions. ([#475](https://github.com/aaddrick/claude-desktop-debian/pull/475))
+- Triage: normalize `claimed_version` before drift compare. ([#483](https://github.com/aaddrick/claude-desktop-debian/pull/483))
+- Triage: drift-as-banner — demote drift from gate to modifier. ([#476](https://github.com/aaddrick/claude-desktop-debian/pull/476))
+- Triage: pull broken-expectation rule up into first-pass classify. ([#469](https://github.com/aaddrick/claude-desktop-debian/pull/469))
+- Triage: raise 8b comment word cap 150 → 300. ([#464](https://github.com/aaddrick/claude-desktop-debian/pull/464))
+
+### Changed
+
+- Triage v2 production cutover; README synced with shipped pipeline (drop plan + research). ([#478](https://github.com/aaddrick/claude-desktop-debian/pull/478), [#480](https://github.com/aaddrick/claude-desktop-debian/pull/480))
+- Rename `feature` classification to `enhancement` in triage. ([#466](https://github.com/aaddrick/claude-desktop-debian/pull/466))
+
+## [v2.0.0] — 2026-04-20
+
+First v2 wrapper release; tracks upstream Claude Desktop 1.3109.0, 1.3561.0.
+
+### Added
+
+- Always-on lifecycle logging for `cowork-vm-service`. ([#408](https://github.com/aaddrick/claude-desktop-debian/pull/408))
+- `cowork-vm-daemon` learnings doc and Anthropic & Partners plugin install flow doc. ([#439](https://github.com/aaddrick/claude-desktop-debian/pull/439))
+- `.github/CODEOWNERS` for per-subsystem review ownership.
+- `shellcheck -x` to follow sourced modules in CI.
+
+### Fixed
+
+- Restore `cowork-vm-service` daemon recovery after crash. ([#408](https://github.com/aaddrick/claude-desktop-debian/pull/408))
+- Forward `userSelectedFolders[0]` as `sharedCwdPath` on cowork spawn. ([#412](https://github.com/aaddrick/claude-desktop-debian/pull/412), [#436](https://github.com/aaddrick/claude-desktop-debian/pull/436))
+- Strip mode on `node-pty` cp at source; retire `chmod`. Chmod `node-pty` unpacked files before overwriting in Nix builds. ([#432](https://github.com/aaddrick/claude-desktop-debian/pull/432), [#438](https://github.com/aaddrick/claude-desktop-debian/pull/438))
+- Diagnose AppArmor userns block on bwrap probe. ([#351](https://github.com/aaddrick/claude-desktop-debian/issues/351), [#434](https://github.com/aaddrick/claude-desktop-debian/pull/434))
+- Suppress Cowork tab auto-select on every launch. ([#341](https://github.com/aaddrick/claude-desktop-debian/issues/341), [#433](https://github.com/aaddrick/claude-desktop-debian/pull/433))
+- `home --dir` before SDK `--ro-bind` in bwrap sandbox. ([#426](https://github.com/aaddrick/claude-desktop-debian/pull/426))
+- Only route `claude` commands through SDK binary in `cowork-vm-service`. ([#430](https://github.com/aaddrick/claude-desktop-debian/pull/430))
+- `launcher-common.sh` self-match and stale socket cleanup. ([#407](https://github.com/aaddrick/claude-desktop-debian/pull/407), [#425](https://github.com/aaddrick/claude-desktop-debian/pull/425))
+- Translate guest paths inside `--allowedTools` and `--disallowedTools`. ([#411](https://github.com/aaddrick/claude-desktop-debian/pull/411))
+- Resolve working directory from primary mount on HostBackend. ([#392](https://github.com/aaddrick/claude-desktop-debian/pull/392))
+
+### Changed
+
+- **BREAKING**: Split `build.sh` into topical modules under `scripts/`; relocate packaging scripts into `scripts/packaging/`; extract `--doctor` into `scripts/doctor.sh`. Patch files now live in `scripts/patches/*.sh` (one per subsystem); `build.sh` is just an orchestrator. CI paths updated to `scripts/setup/detect-host.sh`.
+- Simplify cowork daemon recovery patch. ([#408](https://github.com/aaddrick/claude-desktop-debian/pull/408))
+
+[Unreleased]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.12+claude1.7196.3...HEAD
+[v2.0.12]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.11+claude1.7196.1...v2.0.12+claude1.7196.3
+[v2.0.11]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.10+claude1.7196.0...v2.0.11+claude1.7196.1
+[v2.0.10]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.8+claude1.5354.0...v2.0.10+claude1.6259.0
+[v2.0.8]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.7+claude1.5354.0...v2.0.8+claude1.5354.0
+[v2.0.7]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.6+claude1.5354.0...v2.0.7+claude1.5354.0
+[v2.0.6]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.5+claude1.5354.0...v2.0.6+claude1.5354.0
+[v2.0.5]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.4+claude1.3883.0...v2.0.5+claude1.3883.0
+[v2.0.4]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.3+claude1.3883.0...v2.0.4+claude1.3883.0
+[v2.0.3]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.2+claude1.3883.0...v2.0.3+claude1.3883.0
+[v2.0.2]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.1+claude1.3883.0...v2.0.2+claude1.3883.0
+[v2.0.1]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.0+claude1.3561.0...v2.0.1+claude1.3883.0
+[v2.0.0]: https://github.com/aaddrick/claude-desktop-debian/releases/tag/v2.0.0+claude1.3109.0
