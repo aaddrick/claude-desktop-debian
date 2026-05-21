@@ -436,6 +436,56 @@ JSEOF
 	fi
 }
 
+# Diagnose short-filename-limit filesystems that break cowork session
+# initialization. Claude Code creates a per-session directory under
+# ~/.claude/projects/ whose name is the sanitized host CWD — for cowork
+# sessions that flattens to ~180 chars (the host CWD is the deeply
+# nested outputs dir under ~/.config/Claude/local-agent-mode-sessions/
+# <accountId>/<orgId>/local_<uuid>/outputs). On filesystems with a
+# short NAME_MAX — eCryptfs caps at 143 due to filename-encryption
+# overhead — that mkdir fails with ENAMETOOLONG and the session never
+# starts. Standard fs (ext4/btrfs/xfs/zfs) cap at 255 and are fine. See
+# #590.
+_doctor_check_filename_limit() {
+	# Walk up from ~/.claude/projects to the first dir that exists so
+	# getconf has something to query on a fresh install where the tree
+	# hasn't been created yet. $HOME is the floor — stop there rather
+	# than crossing into /.
+	local probe_dir="$HOME/.claude/projects"
+	while [[ ! -d $probe_dir ]]; do
+		probe_dir=$(dirname "$probe_dir")
+		[[ $probe_dir == "$HOME" || $probe_dir == / ]] && break
+	done
+	[[ -d $probe_dir ]] || return 0
+
+	local name_max
+	name_max=$(getconf NAME_MAX "$probe_dir" 2>/dev/null) || return 0
+	[[ $name_max =~ ^[0-9]+$ ]] || return 0
+
+	((name_max >= 200)) && return 0
+
+	_warn "Filename limit: NAME_MAX=$name_max on $probe_dir (< 200)"
+	_info \
+		'Cowork sessions create project-dir names up to ~180 chars' \
+		'under ~/.claude/projects/; short limits cause ENAMETOOLONG'
+	_info 'when Claude Code initializes a session inside cowork (#590).'
+
+	local fs_type
+	fs_type=$(df --output=fstype "$probe_dir" 2>/dev/null \
+		| awk 'NR==2 {print $1}')
+	if [[ $fs_type == 'ecryptfs' ]]; then
+		_info \
+			'Detected eCryptfs (legacy Ubuntu/Mint encrypted home,' \
+			'NAME_MAX=143 due to filename-encryption overhead).'
+		_info \
+			'Workaround: move ~/.config/Claude onto a separate' \
+			'LUKS-encrypted ext4 volume (NAME_MAX=255) and symlink it'
+		_info \
+			'back. See docs/TROUBLESHOOTING.md "Cowork: ENAMETOOLONG' \
+			'on encrypted home (eCryptfs)" for the worked steps.'
+	fi
+}
+
 # Surface a warning when systemd-coredump shows N+ recent Electron
 # crashes. The most common cause on Linux is the GPU process FATAL
 # exhaustion tracked in #583 — workaround for affected users is the
@@ -946,6 +996,10 @@ print(len(servers))
 
 	# Custom bwrap mount configuration
 	_doctor_check_bwrap_mounts
+
+	# Short NAME_MAX on the host's ~/.claude tree (eCryptfs etc.)
+	# blocks cowork session init with ENAMETOOLONG — see #590.
+	_doctor_check_filename_limit
 
 	# -- Orphaned cowork daemon --
 	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon

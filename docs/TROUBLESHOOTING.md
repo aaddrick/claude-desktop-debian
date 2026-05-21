@@ -228,6 +228,128 @@ TMPDIR=~/.config/Claude/tmp claude-desktop
 
 Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` file.
 
+### Cowork: ENAMETOOLONG on encrypted home (eCryptfs)
+
+Cowork sessions can fail with an opaque `ENAMETOOLONG` error when
+`$HOME` is on a filesystem with a short filename limit. The common
+case is **eCryptfs** — the legacy "encrypted home" option on older
+Ubuntu and Linux Mint installs, which caps individual filenames at
+143 chars because of filename-encryption overhead. Standard
+filesystems (ext4, btrfs, xfs, zfs) cap at 255 chars and are fine.
+
+**Why it happens:** Claude Code creates one directory per session
+under `~/.claude/projects/`, named after the sanitized host CWD. For
+cowork sessions the host CWD is the deeply nested outputs dir under
+`~/.config/Claude/local-agent-mode-sessions/<accountId>/<orgId>/local_<uuid>/outputs`,
+which sanitizes to ~180 chars — fits ext4 but exceeds the eCryptfs
+143-char ceiling.
+
+**Diagnosis:** `claude-desktop --doctor` detects this automatically
+and emits a `[WARN] Filename limit: NAME_MAX=143…` line, plus an
+eCryptfs-specific hint when the filesystem type matches. You can
+also check by hand:
+
+```bash
+df -T $HOME              # look for type "ecryptfs"
+getconf NAME_MAX $HOME   # eCryptfs reports 143; ext4 reports 255
+```
+
+**Workaround:** move Claude's data onto a separate LUKS-encrypted
+ext4 volume (NAME_MAX = 255) and symlink the original paths back.
+`~/.claude/` is the critical one — that's where Claude Code creates
+the long-named per-session dirs that overflow the limit — and
+`~/.config/Claude/` plus `~/.cache/claude-desktop-debian/` are
+relocated alongside it so all Claude state lives on the same volume.
+This keeps the data encrypted at rest while sidestepping the
+eCryptfs filename-length cap.
+
+```bash
+# 1. Create a 2 GB LUKS container
+sudo dd if=/dev/urandom of=/opt/claude-secure.img bs=1M count=2048 \
+    status=progress
+sudo cryptsetup luksFormat /opt/claude-secure.img
+sudo cryptsetup open /opt/claude-secure.img claude-secure
+sudo mkfs.ext4 /dev/mapper/claude-secure
+
+# 2. Mount and move Claude's data in
+sudo mkdir -p /mnt/claude-secure
+sudo mount /dev/mapper/claude-secure /mnt/claude-secure
+sudo chown "$USER:$USER" /mnt/claude-secure
+
+mv ~/.config/Claude /mnt/claude-secure/Claude-config
+mv ~/.cache/claude-desktop-debian /mnt/claude-secure/claude-cache
+# ~/.claude may not exist yet on a fresh install — create the target
+# either way so the symlink below resolves.
+if [ -e ~/.claude ]; then
+    mv ~/.claude /mnt/claude-secure/claude-home
+else
+    mkdir -p /mnt/claude-secure/claude-home
+fi
+
+ln -s /mnt/claude-secure/Claude-config ~/.config/Claude
+ln -s /mnt/claude-secure/claude-cache ~/.cache/claude-desktop-debian
+ln -s /mnt/claude-secure/claude-home ~/.claude
+
+# 3. Verify the filename limit and the symlinks
+getconf NAME_MAX /mnt/claude-secure   # should print 255
+mountpoint /mnt/claude-secure         # confirms the volume is mounted
+readlink ~/.claude                    # /mnt/claude-secure/claude-home
+readlink ~/.config/Claude             # /mnt/claude-secure/Claude-config
+```
+
+**If you've set `CLAUDE_CONFIG_DIR`** (or otherwise reconfigured
+Claude Code to use a directory other than `~/.claude/`), the
+`~/.claude` symlink above doesn't apply — adapt the path to wherever
+your Claude Code config actually lives. The constraint is the same:
+the directory tree where Claude Code creates per-session project
+dirs must sit on a filesystem with `NAME_MAX` ≥ ~200.
+
+**Auto-mount at login** with `pam_mount` so the volume unlocks
+without a manual `cryptsetup open`:
+
+```bash
+sudo apt install libpam-mount
+```
+
+Add a `<volume>` entry to `/etc/security/pam_mount.conf.xml`
+(replace `YOUR_USERNAME` with your login name):
+
+```xml
+<volume user="YOUR_USERNAME" fstype="crypt"
+        path="/opt/claude-secure.img"
+        mountpoint="/mnt/claude-secure"
+        options="" />
+```
+
+`libpam-mount` registers itself with `/etc/pam.d/common-auth` and
+`/etc/pam.d/common-session` automatically on install.
+
+**Notes:**
+- Tested on Linux Mint with LightDM as the display manager.
+- **LUKS passphrase tradeoff:** for `pam_mount` to unlock silently
+  at login the LUKS passphrase must match your login password. That
+  means one compromise unlocks both your session and the encrypted
+  volume — equivalent to the threat surface eCryptfs already had,
+  but worth a deliberate choice. Use a distinct LUKS passphrase if
+  you'd rather be prompted on each unlock.
+- **Confidentiality posture vs eCryptfs.** The LUKS image lives at
+  `/opt/claude-secure.img`, outside `$HOME` and outside whatever
+  encryption envelope eCryptfs gives you. If `pam_mount` ever fails
+  silently — wrong passphrase, mount race at login, profile error —
+  Claude won't start (the symlink targets won't exist), so writes
+  fail loudly rather than landing on plaintext disk. Verify with
+  `mountpoint /mnt/claude-secure` after login if you're unsure.
+- 2 GB is a conservative starting size; the Claude config
+  directory can exceed 500 MB once cowork session history
+  accumulates. Resize if needed.
+- This is a system-wide change that affects login flow — review
+  the pam_mount config against your threat model before applying.
+
+Credit: reported with detailed `--doctor` output by
+[@michelsfun](https://github.com/michelsfun); LUKS-volume workaround
+contributed by [@proffalken](https://github.com/proffalken) in
+[#590](https://github.com/aaddrick/claude-desktop-debian/issues/590).
+
 ### Authentication Errors (401)
 
 If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).
