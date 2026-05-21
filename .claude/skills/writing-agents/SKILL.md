@@ -107,7 +107,7 @@ Before writing the agent, gather domain knowledge and project context:
 Glob: "scripts/*.sh"
 Glob: ".github/workflows/*.yml"
 Grep: "function.*\(\)"  # in shell scripts
-Read: "CLAUDE.md", "README.md", "STYLEGUIDE.md"
+Read: "CLAUDE.md", "README.md", "docs/styleguides/bash_styleguide.md"
 
 # Find existing agent patterns
 Glob: ".claude/agents/*.md"

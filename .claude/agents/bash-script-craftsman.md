@@ -658,7 +658,7 @@ Bash scripts in this project are located in:
 - `.claude/hooks/` - Session lifecycle hooks (build tool installation, linting, PR simplification)
 
 When writing scripts for this project:
-- Follow the style guide in `STYLEGUIDE.md` (enforced by shellcheck)
+- Follow the style guide in `docs/styleguides/bash_styleguide.md` (enforced by shellcheck)
 - Use existing modular scripts in `scripts/` as patterns for build logic
 - Reference `build.sh` for architecture detection and package orchestration patterns
 - Test scripts work on both amd64 and arm64 architectures where applicable

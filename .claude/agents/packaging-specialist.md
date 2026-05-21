@@ -274,7 +274,7 @@ claude-desktop-debian/
         claude-native-stub.js             # Native module replacement
     .github/workflows/                    # CI/CD (defer to ci-workflow-architect)
     CLAUDE.md                             # Project conventions
-    STYLEGUIDE.md                         # Bash style guide
+    docs/styleguides/bash_styleguide.md   # Bash style guide
 ```
 
 ### Version String Flow

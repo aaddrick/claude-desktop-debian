@@ -482,7 +482,7 @@ _doctor_check_filename_limit() {
 			'Workaround: move ~/.config/Claude onto a separate' \
 			'LUKS-encrypted ext4 volume (NAME_MAX=255) and symlink it'
 		_info \
-			'back. See docs/TROUBLESHOOTING.md "Cowork: ENAMETOOLONG' \
+			'back. See docs/troubleshooting.md "Cowork: ENAMETOOLONG' \
 			'on encrypted home (eCryptfs)" for the worked steps.'
 	fi
 }
@@ -888,7 +888,7 @@ print(len(servers))
 					'  Common on Ubuntu 24.04+ where AppArmor sets' \
 					'apparmor_restrict_unprivileged_userns=1'
 				_info \
-					'  by default. See docs/TROUBLESHOOTING.md' \
+					'  by default. See docs/troubleshooting.md' \
 					'"Cowork on Ubuntu 24.04"'
 				_info '  for the AppArmor profile fix.'
 			fi

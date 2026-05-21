@@ -267,7 +267,7 @@ setup_electron_asar() {
 				fetch_attempts=$((fetch_attempts + 1))
 				if (( fetch_attempts >= 2 )); then
 					echo 'Failed to fetch Electron binary via @electron/get after 2 attempts.' >&2
-					echo 'For air-gapped or mirrored builds set ELECTRON_MIRROR or ELECTRON_CUSTOM_DIR; see docs/BUILDING.md.' >&2
+					echo 'For air-gapped or mirrored builds set ELECTRON_MIRROR or ELECTRON_CUSTOM_DIR; see docs/building.md.' >&2
 					break
 				fi
 				echo "Retrying Electron binary fetch (attempt $((fetch_attempts + 1))/2)..."

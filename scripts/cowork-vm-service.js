@@ -2420,7 +2420,7 @@ function detectBackend(emitEvent) {
                     + 'AppArmor blocks unprivileged user namespaces by '
                     + 'default (apparmor_restrict_unprivileged_userns=1). '
                     + 'See the "Cowork on Ubuntu 24.04" section in '
-                    + 'docs/TROUBLESHOOTING.md for the AppArmor profile '
+                    + 'docs/troubleshooting.md for the AppArmor profile '
                     + 'fix.');
             } else {
                 logError(`bwrap probe failed: ${e.message || '(no message)'}`);

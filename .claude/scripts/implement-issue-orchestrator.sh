@@ -759,7 +759,7 @@ IMPORTANT SCOPE CONSTRAINT: This is for issue #$ISSUE_NUMBER. Only simplify code
 
 If no relevant files were modified as part of this issue's implementation, make no changes and report 'No changes to simplify'.
 
-Simplify code for clarity and consistency without changing functionality. Follow STYLEGUIDE.md conventions for shell scripts.
+Simplify code for clarity and consistency without changing functionality. Follow docs/styleguides/bash_styleguide.md conventions for shell scripts.
 Output a summary of changes made."
 
         local simplify_result

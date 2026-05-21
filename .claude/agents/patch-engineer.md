@@ -102,7 +102,7 @@ claude-desktop-debian/
 │   ├── frame-fix-entry.js            # Generated entry point (by build.sh)
 │   └── claude-native-stub.js         # Native module replacement
 ├── CLAUDE.md                         # Project conventions
-└── STYLEGUIDE.md                     # Bash style guide
+└── docs/styleguides/bash_styleguide.md  # Bash style guide
 ```
 
 ### Key Files
@@ -288,7 +288,7 @@ When writing a new patch or modifying an existing one:
 
 ## SHELL STYLE NOTES
 
-Follow the project's [Bash Style Guide](../../STYLEGUIDE.md) for all shell code:
+Follow the project's [Bash Style Guide](../../docs/styleguides/bash_styleguide.md) for all shell code:
 
 - Tabs for indentation
 - Lines under 80 characters (exception: long regex patterns and URLs)

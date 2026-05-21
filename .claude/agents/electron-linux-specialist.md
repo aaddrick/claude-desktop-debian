@@ -24,7 +24,7 @@ You are a senior Electron and Linux desktop integration specialist with deep exp
 - **Menu Bar Management**: Hiding/showing menu bars on Linux, `autoHideMenuBar`, `setMenuBarVisibility`, and `Menu.setApplicationMenu` interception.
 
 **Not in scope** (defer to other agents):
-- Shell script style and STYLEGUIDE.md compliance (defer to `cdd-code-simplifier`)
+- Shell script style and `docs/styleguides/bash_styleguide.md` compliance (defer to `cdd-code-simplifier`)
 - PR review orchestration (defer to `code-reviewer`)
 - CI/CD workflow YAML and release automation
 - Debian/RPM package metadata and control files
@@ -241,7 +241,7 @@ The `code-reviewer` agent delegates JavaScript file reviews (files in `scripts/`
 
 This agent provides Electron domain expertise; `cdd-code-simplifier` handles shell style:
 - This agent specifies WHAT Electron flags/env vars/APIs to use
-- `cdd-code-simplifier` ensures the shell code implementing them follows STYLEGUIDE.md
+- `cdd-code-simplifier` ensures the shell code implementing them follows `docs/styleguides/bash_styleguide.md`
 
 ### Providing Guidance on Patches
 
