@@ -11,9 +11,9 @@ patch_tray_menu_handler() {
 	echo 'Patching tray menu handler...'
 	local index_js='app.asar.contents/.vite/build/index.js'
 
-	local tray_func tray_var first_const
+	local tray_func tray_func_re tray_var first_const
 	tray_func=$(grep -oP \
-		'on\("menuBarEnabled",\(\)=>\{\K\w+(?=\(\)\})' "$index_js")
+		'on\("menuBarEnabled",\(\)=>\{\K[\w$]+(?=\(\)\})' "$index_js")
 	if [[ -z $tray_func ]]; then
 		echo 'Failed to extract tray menu function name' >&2
 		cd "$project_root" || exit 1
@@ -21,8 +21,12 @@ patch_tray_menu_handler() {
 	fi
 	echo "  Found tray function: $tray_func"
 
+	# Escape `$` for PCRE / sed -E patterns where it would otherwise act
+	# as an end-of-line anchor. Minifier emits identifiers like `i$A`.
+	tray_func_re="${tray_func//\$/\\$}"
+
 	tray_var=$(grep -oP \
-		"\}\);let \K\w+(?==null;(?:async )?function ${tray_func})" \
+		"\}\);let \K\w+(?==null;(?:async )?function ${tray_func_re})" \
 		"$index_js")
 	if [[ -z $tray_var ]]; then
 		echo 'Failed to extract tray variable name' >&2
@@ -31,11 +35,17 @@ patch_tray_menu_handler() {
 	fi
 	echo "  Found tray variable: $tray_var"
 
-	sed -i "s/function ${tray_func}(){/async function ${tray_func}(){/g" \
-		"$index_js"
+	# Idempotent: upstream may already ship the function as `async`
+	# (1.8089.1 does). Re-applying the sed would produce
+	# `async async function`, which then breaks downstream patches that
+	# match `(?:async )?function NAME`.
+	if ! grep -q "async function ${tray_func}(){" "$index_js"; then
+		sed -i "s/function ${tray_func}(){/async function ${tray_func}(){/g" \
+			"$index_js"
+	fi
 
 	first_const=$(grep -oP \
-		"async function ${tray_func}\(\)\{.*?const \K\w+(?==)" \
+		"async function ${tray_func_re}\(\)\{.*?const \K\w+(?==)" \
 		"$index_js" | head -1)
 	if [[ -z $first_const ]]; then
 		echo 'Failed to extract first const in function' >&2
@@ -69,7 +79,7 @@ patch_tray_menu_handler() {
 			"s/(${electron_var_re}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" \
 			"$index_js"
 		sed -i -E \
-			"s/\((\w+\([^)]*\))\s*,\s*${tray_func}\(\)\s*,/(\1,Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
+			"s/\((\w+\([^)]*\))\s*,\s*${tray_func_re}\(\)\s*,/(\1,Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
 			"$index_js"
 		echo '  Added startup delay check (3 second window)'
 	fi
@@ -98,17 +108,19 @@ patch_tray_inplace_update() {
 
 	# Re-extract the tray variable name — `patch_tray_menu_handler`
 	# declares it `local` so it's not visible here. Same grep pattern.
-	local tray_func local_tray_var tray_var_re
+	local tray_func tray_func_re local_tray_var tray_var_re
 	local menu_func path_var enabled_var enabled_count
 	tray_func=$(grep -oP \
-		'on\("menuBarEnabled",\(\)=>\{\K\w+(?=\(\)\})' "$index_js")
+		'on\("menuBarEnabled",\(\)=>\{\K[\w$]+(?=\(\)\})' "$index_js")
 	if [[ -z $tray_func ]]; then
 		echo '  Could not find tray function — skipping'
 		echo '##############################################################'
 		return
 	fi
+	# Escape `$` for PCRE patterns; matches the `tray_var_re` trick below.
+	tray_func_re="${tray_func//\$/\\$}"
 	local_tray_var=$(grep -oP \
-		"\}\);let \K\w+(?==null;(?:async )?function ${tray_func})" \
+		"\}\);let \K\w+(?==null;(?:async )?function ${tray_func_re})" \
 		"$index_js")
 	if [[ -z $local_tray_var ]]; then
 		echo '  Could not extract tray variable name — skipping'
