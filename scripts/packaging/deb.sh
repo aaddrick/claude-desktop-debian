@@ -88,6 +88,13 @@ StartupWMClass=Claude
 EOF
 echo 'Desktop entry created'
 
+# --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
+echo 'Installing AppStream metainfo...'
+mkdir -p "$install_dir/share/metainfo" || exit 1
+cp "$script_dir/com.anthropic.Claude.metainfo.xml" \
+	"$install_dir/share/metainfo/com.anthropic.Claude.metainfo.xml" || exit 1
+echo 'AppStream metainfo installed'
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$install_dir/bin/claude-desktop" << EOF
