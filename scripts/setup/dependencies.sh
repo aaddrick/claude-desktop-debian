@@ -250,23 +250,59 @@ setup_electron_asar() {
 		echo 'Electron and Asar installation command finished.'
 
 		# electron@42+ no longer ships a postinstall script that fetches
-		# the prebuilt binary into dist/. If npm didn't populate it, fetch
-		# the matching binary explicitly via @electron/get. See #584.
-		# Retry once on transient CDN failures (503, network drops).
-		if [[ ! -d $electron_dist_path ]]; then
-			echo 'Electron postinstall did not populate dist/; fetching binary explicitly...'
+		# the prebuilt binary into dist/. If npm didn't populate it,
+		# fetch the matching binary explicitly via @electron/get. See
+		# #584. Retry once on transient CDN failures (503, network drops).
+		#
+		# Check for the binary itself (not just the dist/ directory),
+		# because under Node 24 the extract-zip step in both the npm
+		# postinstall (electron <42 path) and @electron/get can silently
+		# no-op — leaving an empty dist/locales/ behind, which would pass
+		# a bare `-d` check while no electron binary actually landed.
+		if [[ ! -f $electron_dist_path/electron ]]; then
+			echo 'Electron dist/electron missing; fetching binary explicitly...'
 			local fetch_attempts=0
 			while ! node "$project_root/scripts/setup/fetch-electron-binary.js"; do
 				fetch_attempts=$((fetch_attempts + 1))
 				if (( fetch_attempts >= 2 )); then
 					echo 'Failed to fetch Electron binary via @electron/get after 2 attempts.' >&2
 					echo 'For air-gapped or mirrored builds set ELECTRON_MIRROR or ELECTRON_CUSTOM_DIR; see docs/BUILDING.md.' >&2
-					cd "$project_root" || exit 1
-					exit 1
+					break
 				fi
 				echo "Retrying Electron binary fetch (attempt $((fetch_attempts + 1))/2)..."
 				sleep 2
 			done
+
+			# Final fallback: even when @electron/get reports success,
+			# extract-zip can leave dist/ empty under Node 24 (the
+			# unzip stream resolves without writing files). If we still
+			# have no binary, the cache zip was downloaded successfully
+			# — unpack it with system `unzip`.
+			if [[ ! -f $electron_dist_path/electron ]]; then
+				echo 'extract-zip path produced no binary; unpacking @electron/get cache with system unzip...'
+				local electron_cache_dir="${electron_config_cache:-$HOME/.cache/electron}"
+				local cached_zip
+				cached_zip=$(find "$electron_cache_dir" -name "electron-v${electron_version}-linux-${target_architecture:-x64}.zip" 2>/dev/null | head -1)
+				if [[ -z $cached_zip ]]; then
+					echo "No cached zip matching electron-v${electron_version}-linux-*.zip under $electron_cache_dir" >&2
+					cd "$project_root" || exit 1
+					exit 1
+				fi
+				if ! command -v unzip >/dev/null 2>&1; then
+					echo "unzip not installed; cannot apply final fallback. Install unzip and retry, or upgrade extract-zip upstream." >&2
+					cd "$project_root" || exit 1
+					exit 1
+				fi
+				mkdir -p "$electron_dist_path"
+				if ! unzip -oq "$cached_zip" -d "$electron_dist_path"; then
+					echo 'unzip fallback failed.' >&2
+					cd "$project_root" || exit 1
+					exit 1
+				fi
+				printf 'v%s\n' "$electron_version" > "$electron_dist_path/version"
+				printf 'electron\n' > "$work_dir/node_modules/electron/path.txt"
+				echo "unzip fallback populated $electron_dist_path ($(du -sh "$electron_dist_path" | awk '{print $1}'))"
+			fi
 		fi
 	else
 		echo 'Local Electron distribution and Asar binary already present.'
