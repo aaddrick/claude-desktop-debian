@@ -92,6 +92,11 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# Add Linux Claude Code support
 	patch_linux_claude_code
 
+	# Reject .asar paths in the directory-check helper so Electron's
+	# ASAR VFS shim doesn't misidentify app.asar as a folder and
+	# trigger false Cowork dispatch (#383, #622, #632).
+	patch_asar_path_filter
+
 	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
 	patch_cowork_linux
 

@@ -9,6 +9,95 @@
 # Modifies globals: node_pty_build_dir
 #===============================================================================
 
+# ---------------------------------------------------------------------------
+# Patch: reject .asar paths in the directory-check helper
+#
+# On Linux, app.asar is passed as an argv element to Electron. The
+# directory-check function (wFA in the current build) calls
+# fs.statSync(path).isDirectory(). Electron's ASAR virtual filesystem
+# shim makes .asar archives report isDirectory()===true, so app.asar
+# is dispatched to Cowork as a "folder drop". This causes:
+#   - Permission dialog on every launch (#383)
+#   - Forced Cowork mode (#622)
+#   - Fatal --add-dir error in Claude Code >=2.1.111 (#632)
+#
+# Fix: inject !PARAM.endsWith(".asar")&& before the statSync call.
+# This runs independently of the Cowork-mode guard (the function
+# exists even if Cowork code is absent).
+# ---------------------------------------------------------------------------
+patch_asar_path_filter() {
+	echo 'Patching directory check to reject .asar paths...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	if ! INDEX_JS="$index_js" node << 'ASAR_FILTER_PATCH'
+const fs = require('fs');
+const indexJs = process.env.INDEX_JS;
+let code = fs.readFileSync(indexJs, 'utf8');
+
+// Find the directory-check helper function.
+// Beautified form:
+//   function wFA(e) {
+//     try { return ee.statSync(e).isDirectory(); }
+//     catch { return !1; }
+//   }
+// Minified form:
+//   function wFA(e){try{return ee.statSync(e).isDirectory()}catch{return!1}}
+//
+// Stable anchors: .statSync( ).isDirectory() inside try/catch returning !1.
+// The function name, parameter, and fs variable are all minified.
+const dirCheckRe =
+    /function\s+([\w$]+)\s*\(\s*([\w$]+)\s*\)\s*\{\s*try\s*\{\s*return\s+([\w$]+)\.statSync\(\s*\2\s*\)\.isDirectory\(\)/;
+const match = code.match(dirCheckRe);
+
+if (!match) {
+    console.error('FATAL: Could not find directory-check function' +
+        ' (statSync+isDirectory pattern).');
+    console.error('This patch prevents .asar paths from triggering' +
+        ' false Cowork dispatch (#383, #622, #632).');
+    process.exit(1);
+}
+
+const [, funcName, paramName] = match;
+console.log('  Found directory-check function: ' + funcName +
+    '(' + paramName + ')');
+
+// Idempotency: check if already patched
+if (code.includes('.endsWith(".asar")')) {
+    console.log('  .asar path filter already applied');
+    process.exit(0);
+}
+
+// Insert the guard: !PARAM.endsWith(".asar")&&
+// Before: return FSVAR.statSync(PARAM).isDirectory()
+// After:  return!PARAM.endsWith(".asar")&&FSVAR.statSync(PARAM).isDirectory()
+//
+// The replacement is scoped to the matched function via the full
+// regex match, so it cannot accidentally hit other statSync calls.
+code = code.replace(dirCheckRe, (whole, fn, param, fsVar) => {
+    return 'function ' + fn + '(' + param + '){try{return!' +
+        param + '.endsWith(".asar")&&' +
+        fsVar + '.statSync(' + param + ').isDirectory()';
+});
+
+// Verify the patch landed
+if (!code.includes('.endsWith(".asar")')) {
+    console.error('FATAL: .asar path filter replacement failed.');
+    process.exit(1);
+}
+
+fs.writeFileSync(indexJs, code);
+console.log('  Added .asar path rejection to ' + funcName + '()');
+ASAR_FILTER_PATCH
+	then
+		echo 'FATAL: .asar path filter patch failed' >&2
+		echo 'The app will show permission dialogs and may crash' \
+			'without this patch (#383, #622, #632).' >&2
+		exit 1
+	fi
+
+	echo '##############################################################'
+}
+
 patch_cowork_linux() {
 	echo 'Patching Cowork mode for Linux...'
 	local index_js='app.asar.contents/.vite/build/index.js'
