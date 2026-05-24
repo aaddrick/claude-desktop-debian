@@ -24,7 +24,7 @@ There are two flavors of release:
    shellcheck scripts/**/*.sh build.sh
    ```
 
-   See [`docs/styleguides/bash_styleguide.md`](docs/styleguides/bash_styleguide.md#linting) for the canonical lint command.
+   See [`CLAUDE.md`](CLAUDE.md#linting) for the canonical lint command.
 
 4. **AppImage artifact boots on a clean system.** The `test-artifacts.yml` reusable workflow already runs a `--doctor` smoke test against each format in CI (#592), but if you've touched the launcher or patch surface, build locally and confirm:
 

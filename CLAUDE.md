@@ -79,7 +79,7 @@ Shell scripts are checked with `shellcheck` and GitHub Actions workflows with `a
 - **Subsystem deep-dives go under [`docs/learnings/`](docs/learnings/).** Surfacing knowledge there beats burying it in commit messages or in patch-script comments. Add an entry when you discover something non-obvious that would save the next contributor significant time.
 - **Decisions go in [`docs/decisions.md`](docs/decisions.md) (ADR format).** Don't relitigate a settled direction inside a how-to page; link the decision instead.
 - **Troubleshooting headings are the literal symptom**, not editorialized prose. `## Black screen on Fedora KDE under Wayland`, not `## Troubles with Wayland`. Search ranks headings.
-- **CHANGELOG follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).** Bullets grouped under Added / Changed / Deprecated / Removed / Fixed / Security; one bullet per change; PR link for the deep dive; inline **BREAKING** prefix for breaking changes. See [`CHANGELOG.md`](CHANGELOG.md) for the current state and [`RELEASING.md`](RELEASING.md) for when entries get promoted from `[Unreleased]`.
+- **CHANGELOG follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).** Bullets grouped under Added / Fixed / Changed / Deprecated / Removed / Security; one bullet per change; PR link for the deep dive; inline **BREAKING** prefix for breaking changes. See [`CHANGELOG.md`](CHANGELOG.md) for the current state and [`RELEASING.md`](RELEASING.md) for when entries get promoted from `[Unreleased]`.
 
 ## GitHub Workflow
 

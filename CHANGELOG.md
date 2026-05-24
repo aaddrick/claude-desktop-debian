@@ -104,7 +104,7 @@ Tracks upstream Claude Desktop 1.5354.0. Absorbs three upstream bumps from v2.0.
 ### Added
 
 - Cowork bwrap mounts accept a `{src, dst}` form, so you can map a host directory under `$HOME` onto a different path inside the sandbox. Unlocks persistent-`/tmp` so Bash tool calls don't wipe state between invocations. String form unchanged. Thanks @cbonnissent. ([#531](https://github.com/aaddrick/claude-desktop-debian/pull/531))
-- `--doctor` warns when `COWORK_VM_BACKEND` is set to an unknown value instead of silently falling through to auto-detect; adds a `COWORK_VM_BACKEND` row and a Cowork Backend section to `docs/CONFIGURATION.md`. Thanks @CyPack. ([#324](https://github.com/aaddrick/claude-desktop-debian/issues/324))
+- `--doctor` warns when `COWORK_VM_BACKEND` is set to an unknown value instead of silently falling through to auto-detect; adds a `COWORK_VM_BACKEND` row and a Cowork Backend section to `docs/configuration.md`. Thanks @CyPack. ([#324](https://github.com/aaddrick/claude-desktop-debian/issues/324))
 - `--doctor` warns when an additional bwrap mount destination shadows a default sandbox path like `/usr`, `/etc`, `/bin`, `/sbin`, `/lib`. ([#531](https://github.com/aaddrick/claude-desktop-debian/pull/531))
 - Troubleshooting entries for Cowork VM connection timeout, virtiofsd outside `$PATH` on Fedora/RHEL (`/usr/libexec/virtiofsd`), and Fedora tmpfs `EXDEV` errors. ([#324](https://github.com/aaddrick/claude-desktop-debian/issues/324))
 
