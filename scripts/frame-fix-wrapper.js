@@ -364,7 +364,14 @@ Module.prototype.require = function(id) {
                 // refactor that preserves the quit-in-progress short-
                 // circuit (which they need for Ctrl+Q / tray Quit /
                 // SIGTERM anyway). Fixes: #623
-                this.on('close', () => { result.app.quit(); });
+                let quitInitiated = false;
+                this.on('close', () => {
+                  if (!quitInitiated) {
+                    quitInitiated = true;
+                    console.log('[Frame Fix] Quit-on-close: calling app.quit()');
+                    result.app.quit();
+                  }
+                });
               }
 
               // Directly set child view bounds to match content size.
