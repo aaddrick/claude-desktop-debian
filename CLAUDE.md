@@ -5,7 +5,8 @@
   AGENTS.md (read by other AI tools per the agents.md standard) so that
   contributors using either receive the same instructions without needing
   to cross-reference. Keep CLAUDE.md and AGENTS.md byte-identical below
-  the H1 title — if you edit one, edit the other.
+  the H1 title (the sync-policy comment above is the one place they
+  intentionally differ) — if you edit one, edit the other.
 -->
 
 ## Required reading

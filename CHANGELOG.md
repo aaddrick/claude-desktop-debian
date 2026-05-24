@@ -6,7 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ## [Unreleased]
 
-Tracks upstream Claude Desktop 1.8089.1.
+Tracks upstream Claude Desktop 1.8555.2.
+<!-- Updated automatically by check-claude-version; will be current at release time. -->
 
 ### Added
 
@@ -20,6 +21,7 @@ Tracks upstream Claude Desktop 1.8089.1.
 
 ### Changed
 
+- Credit @lizthegrey, @sabiut, @typedrat, @RayCharlizard in README Acknowledgments. ([#626](https://github.com/aaddrick/claude-desktop-debian/pull/626))
 - Troubleshooting: new "Repeated Electron Crashes / GPU Process FATAL" section documenting `CLAUDE_DISABLE_GPU=1`. Adds tuning-rationale comments around the `--doctor` 3-in-7-days threshold and the `coredumpctl` `COMM=electron` assumption. Thanks @sabiut. ([#615](https://github.com/aaddrick/claude-desktop-debian/pull/615), addresses [#608](https://github.com/aaddrick/claude-desktop-debian/issues/608))
 - Docs filenames are now lowercase kebab-case (`docs/building.md`, `docs/configuration.md`, `docs/decisions.md`, `docs/troubleshooting.md`); `STYLEGUIDE.md` moved to [`docs/styleguides/bash_styleguide.md`](docs/styleguides/bash_styleguide.md). Cross-references swept across README, CONTRIBUTING, CODEOWNERS, `.github/`, `.claude/`, `scripts/`, and `claude-desktop --doctor` user-facing output.
 - `[$\w]+` is the codified identifier-capture convention for patch-script regexes (CONTRIBUTING § Patch-script regexes; `patch-engineer` agent examples updated to match). Closes a docs-vs-code gap that left the rule only in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md) — the same `\w+` trap fixed in patches by [#555](https://github.com/aaddrick/claude-desktop-debian/pull/555) and [#627](https://github.com/aaddrick/claude-desktop-debian/pull/627).
@@ -223,7 +225,7 @@ First v2 wrapper release; tracks upstream Claude Desktop 1.3109.0, 1.3561.0.
 - **BREAKING**: Split `build.sh` into topical modules under `scripts/`; relocate packaging scripts into `scripts/packaging/`; extract `--doctor` into `scripts/doctor.sh`. Patch files now live in `scripts/patches/*.sh` (one per subsystem); `build.sh` is just an orchestrator. CI paths updated to `scripts/setup/detect-host.sh`.
 - Simplify cowork daemon recovery patch. ([#408](https://github.com/aaddrick/claude-desktop-debian/pull/408))
 
-[Unreleased]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.12+claude1.7196.3...HEAD
+[Unreleased]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.12+claude1.8555.2...HEAD
 [v2.0.12]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.11+claude1.7196.1...v2.0.12+claude1.7196.3
 [v2.0.11]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.10+claude1.7196.0...v2.0.11+claude1.7196.1
 [v2.0.10]: https://github.com/aaddrick/claude-desktop-debian/compare/v2.0.8+claude1.5354.0...v2.0.10+claude1.6259.0
