@@ -19,6 +19,7 @@ Tracks upstream Claude Desktop 1.8555.2.
 
 ### Fixed
 
+- Sloppy/focus-follows-mouse: suppress redundant `webContents.focus()` calls that trigger X11 `_NET_ACTIVE_WINDOW` raise-on-hover. Grace window handles stale `isFocused()` on tray-restore and minimize-restore. Thanks @tkrag. ([#589](https://github.com/aaddrick/claude-desktop-debian/pull/589), fixes [#416](https://github.com/aaddrick/claude-desktop-debian/issues/416))
 - Tray: extracted JS identifier captures now accept `$` so the 1.8089.1 minified bundle ('`i$A`' menu handler) matches. Switches `\w+` to `[\w$]+`. ([#627](https://github.com/aaddrick/claude-desktop-debian/pull/627), fixes [#625](https://github.com/aaddrick/claude-desktop-debian/issues/625))
 - RPM: silence "File listed twice" warning on `chrome-sandbox` by moving `chmod 4755` into `%install` (replaces `%attr` in `%files`). Adds regression guard that fails the build if the warning reappears. Thanks @JoshuaVlantis. ([#610](https://github.com/aaddrick/claude-desktop-debian/pull/610), fixes [#609](https://github.com/aaddrick/claude-desktop-debian/issues/609))
 - Window close with `CLAUDE_QUIT_ON_CLOSE=1` now actively quits via `app.quit()` instead of relying on the bundled handler that hardcodes hide-to-tray on Linux. Rides upstream's own quit-in-progress guard. Thanks @phelps-matthew. ([#624](https://github.com/aaddrick/claude-desktop-debian/pull/624), fixes [#623](https://github.com/aaddrick/claude-desktop-debian/issues/623))

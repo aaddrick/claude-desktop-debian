@@ -260,6 +260,7 @@ Module.prototype.require = function(id) {
             // See #416 review notes.
             this._lastShownAt = 0;
             this.on('show', () => { this._lastShownAt = Date.now(); });
+            this.on('restore', () => { this._lastShownAt = Date.now(); });
 
             // Inject CSS for Linux scrollbar styling
             this.webContents.on('did-finish-load', () => {
@@ -655,6 +656,10 @@ Module.prototype.require = function(id) {
           // this is the best available trade against the constant-
           // raise UX. Genuine activations (no recent show + not
           // already focused) still go through end-to-end.
+          //
+          // Known: deferred setTimeout focus sites (e.g. find-bar
+          // dismiss) outside the grace window may lose renderer-focus
+          // direction on keyboard dismissal. See #416 review.
           //
           // Fixes: #416
           const SHOW_GRACE_MS = 1000;
