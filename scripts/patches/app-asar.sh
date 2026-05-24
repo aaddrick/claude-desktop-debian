@@ -100,6 +100,9 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
 	patch_cowork_linux
 
+	# Add Linux org-plugins path for MDM-managed plugin marketplace
+	patch_org_plugins_path
+
 	# Inject WCO shim into the BrowserView preload so claude.ai's
 	# desktop topbar renders on Linux. The shim spoofs the bundle's
 	# isWindows() UA check (load-bearing) plus matchMedia and

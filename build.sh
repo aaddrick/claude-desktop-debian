@@ -60,6 +60,8 @@ source "$script_dir/scripts/patches/quick-window.sh"
 source "$script_dir/scripts/patches/claude-code.sh"
 # shellcheck source=scripts/patches/cowork.sh
 source "$script_dir/scripts/patches/cowork.sh"
+# shellcheck source=scripts/patches/org-plugins.sh
+source "$script_dir/scripts/patches/org-plugins.sh"
 # shellcheck source=scripts/patches/wco-shim.sh
 source "$script_dir/scripts/patches/wco-shim.sh"
 # shellcheck source=scripts/staging/electron.sh
