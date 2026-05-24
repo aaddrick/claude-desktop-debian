@@ -28,6 +28,7 @@ mkdir -p "$package_root/DEBIAN" || exit 1
 mkdir -p "$install_dir/lib/$package_name" || exit 1
 mkdir -p "$install_dir/share/applications" || exit 1
 mkdir -p "$install_dir/share/icons" || exit 1
+mkdir -p "$install_dir/share/metainfo" || exit 1
 mkdir -p "$install_dir/bin" || exit 1
 
 # --- Icon Installation ---
@@ -90,9 +91,10 @@ echo 'Desktop entry created'
 
 # --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
 echo 'Installing AppStream metainfo...'
-mkdir -p "$install_dir/share/metainfo" || exit 1
 cp "$script_dir/com.anthropic.Claude.metainfo.xml" \
 	"$install_dir/share/metainfo/com.anthropic.Claude.metainfo.xml" || exit 1
+sed -i "s|</component>|  <releases>\n    <release version=\"$version\" date=\"$(date +%Y-%m-%d)\"/>\n  </releases>\n</component>|" \
+	"$install_dir/share/metainfo/com.anthropic.Claude.metainfo.xml"
 echo 'AppStream metainfo installed'
 
 # --- Create Launcher Script ---

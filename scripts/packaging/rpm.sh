@@ -72,8 +72,11 @@ StartupWMClass=Claude
 EOF
 
 # --- Stage AppStream metainfo (installed via %files block below) ---
+echo 'Staging AppStream metainfo...'
 cp "$script_dir/com.anthropic.Claude.metainfo.xml" \
 	"$staging_dir/com.anthropic.Claude.metainfo.xml" || exit 1
+sed -i "s|</component>|  <releases>\n    <release version=\"$version\" date=\"$(date +%Y-%m-%d)\"/>\n  </releases>\n</component>|" \
+	"$staging_dir/com.anthropic.Claude.metainfo.xml"
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
