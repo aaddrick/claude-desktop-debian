@@ -551,6 +551,27 @@ Module.prototype.require = function(id) {
       const originalSetAppMenu = OriginalMenu.setApplicationMenu.bind(OriginalMenu);
       patchedSetApplicationMenu = function(menu) {
         console.log('[Frame Fix] Intercepting setApplicationMenu');
+
+        // Append a hidden View submenu with F11 fullscreen toggle.
+        // Upstream has fullscreenable:true and persists isFullScreen
+        // across sessions; macOS provides the green traffic-light
+        // button; Linux has no equivalent OS-level trigger, so we
+        // register an accelerator here. visible:false keeps it out
+        // of the menu bar — it only registers the keybinding.
+        // Fixes: #580
+        if (process.platform === 'linux' && menu) {
+          const { MenuItem, Menu: MenuClass } = electronModule;
+          menu.append(new MenuItem({
+            label: 'View',
+            visible: false,
+            submenu: MenuClass.buildFromTemplate([{
+              label: 'Toggle Full Screen',
+              role: 'togglefullscreen',
+              accelerator: 'F11',
+            }]),
+          }));
+        }
+
         originalSetAppMenu(menu);
         if (process.platform === 'linux' && MENU_BAR_MODE === 'hidden') {
           for (const win of PatchedBrowserWindow.getAllWindows()) {
