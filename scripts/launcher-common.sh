@@ -128,7 +128,7 @@ _detect_password_store() {
 	fi
 
 	# kwallet6: KDE Plasma 6 keyring
-	if dbus-send --session --print-reply \
+	if dbus-send --session --print-reply --reply-timeout=1000 \
 		--dest=org.kde.kwalletd6 \
 		/modules/kwalletd6 \
 		org.kde.KWallet.isEnabled 2>/dev/null \
@@ -139,10 +139,10 @@ _detect_password_store() {
 	fi
 
 	# gnome-libsecret: GNOME Keyring, KWallet 5 compat bridge, etc.
-	if dbus-send --session \
+	if dbus-send --session --print-reply --reply-timeout=1000 \
 		--dest=org.freedesktop.secrets \
 		/org/freedesktop/secrets \
-		org.freedesktop.DBus.Peer.Ping 2>/dev/null
+		org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1
 	then
 		echo 'gnome-libsecret'
 		return

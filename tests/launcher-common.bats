@@ -74,6 +74,7 @@ setup() {
 	unset QT_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
+	CLAUDE_PASSWORD_STORE='basic'
 
 	# shellcheck source=scripts/launcher-common.sh
 	source "$SCRIPT_DIR/../scripts/launcher-common.sh"
@@ -165,6 +166,7 @@ teardown() {
 	# All vars unset by setup() except this one, which exercises the
 	# empty-string branch (must be indistinguishable from unset).
 	GTK_IM_MODULE=''
+	unset CLAUDE_PASSWORD_STORE
 	log_session_env
 
 	run cat "$log_file"
@@ -742,6 +744,7 @@ s.close()
 }
 
 @test "_detect_password_store: falls back to kwallet6 when kwallet6 dbus-send call succeeds" {
+	unset CLAUDE_PASSWORD_STORE
 	_stub_dbus_send kwallet6
 	run _detect_password_store
 	[[ $status -eq 0 ]]
@@ -749,6 +752,7 @@ s.close()
 }
 
 @test "_detect_password_store: falls back to gnome-libsecret when kwallet6 fails but secrets ping succeeds" {
+	unset CLAUDE_PASSWORD_STORE
 	_stub_dbus_send secrets-ok
 	run _detect_password_store
 	[[ $status -eq 0 ]]
@@ -756,6 +760,7 @@ s.close()
 }
 
 @test "_detect_password_store: falls back to basic when both dbus-send calls fail" {
+	unset CLAUDE_PASSWORD_STORE
 	_stub_dbus_send fail
 	run _detect_password_store
 	[[ $status -eq 0 ]]
