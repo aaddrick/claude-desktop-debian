@@ -273,7 +273,7 @@ unusable on Linux today.
   mode. Shim runtime behavior (className intercept, UA spoof) is
   not unit-tested — verified empirically via the click test in
   this doc
-- `docs/CONFIGURATION.md` — user-facing env-var docs
+- `docs/configuration.md` — user-facing env-var docs
 
 ## Diagnostic recipes
 

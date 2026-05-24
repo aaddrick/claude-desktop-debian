@@ -102,7 +102,7 @@ claude-desktop-debian/
 │   ├── frame-fix-entry.js            # Generated entry point (by build.sh)
 │   └── claude-native-stub.js         # Native module replacement
 ├── CLAUDE.md                         # Project conventions
-└── STYLEGUIDE.md                     # Bash style guide
+└── docs/styleguides/bash_styleguide.md  # Bash style guide
 ```
 
 ### Key Files
@@ -127,11 +127,11 @@ The electron module variable name changes every release. This extraction finds i
 
 ```bash
 # Primary: find the variable assigned from require("electron")
-electron_var=$(grep -oP '\b\w+(?=\s*=\s*require\("electron"\))' "$index_js" | head -1)
+electron_var=$(grep -oP '\b[$\w]+(?=\s*=\s*require\("electron"\))' "$index_js" | head -1)
 
 # Fallback: find it from Tray usage if require pattern doesn't match
 if [[ -z $electron_var ]]; then
-    electron_var=$(grep -oP '(?<=new )\w+(?=\.Tray\b)' "$index_js" | head -1)
+    electron_var=$(grep -oP '(?<=new )[$\w]+(?=\.Tray\b)' "$index_js" | head -1)
 fi
 
 # Always validate
@@ -149,13 +149,13 @@ Three connected extractions, each depending on the previous:
 
 ```bash
 # Step 1: Find the tray rebuild function name from event handler
-tray_func=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K\w+(?=\(\)\})' "$index_js")
+tray_func=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K[$\w]+(?=\(\)\})' "$index_js")
 
 # Step 2: Find the tray variable using the function name as anchor
-tray_var=$(grep -oP "\}\);let \K\w+(?==null;(?:async )?function ${tray_func})" "$index_js")
+tray_var=$(grep -oP "\}\);let \K[\$\w]+(?==null;(?:async )?function ${tray_func})" "$index_js")
 
 # Step 3: Find the first const inside the function for insertion point
-first_const=$(grep -oP "async function ${tray_func}\(\)\{.*?const \K\w+(?==)" "$index_js" | head -1)
+first_const=$(grep -oP "async function ${tray_func}\(\)\{.*?const \K[\$\w]+(?==)" "$index_js" | head -1)
 ```
 
 Each uses a stable string literal as anchor and captures the adjacent minified name.
@@ -206,7 +206,7 @@ Note: `e.hide()` uses a minified variable name `e`, but this is safe because it'
 ```bash
 # Find all variables used with .nativeTheme that aren't the correct electron var
 mapfile -t wrong_refs < <(
-    grep -oP '\b\w+(?=\.nativeTheme)' "$index_js" \
+    grep -oP '\b[$\w]+(?=\.nativeTheme)' "$index_js" \
         | sort -u \
         | grep -v "^${electron_var}$" || true
 )
@@ -288,7 +288,7 @@ When writing a new patch or modifying an existing one:
 
 ## SHELL STYLE NOTES
 
-Follow the project's [Bash Style Guide](../../STYLEGUIDE.md) for all shell code:
+Follow the project's [Bash Style Guide](../../docs/styleguides/bash_styleguide.md) for all shell code:
 
 - Tabs for indentation
 - Lines under 80 characters (exception: long regex patterns and URLs)

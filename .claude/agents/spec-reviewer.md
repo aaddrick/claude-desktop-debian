@@ -14,7 +14,7 @@ You are NOT a code quality reviewer. You do not evaluate:
 - Performance characteristics
 - Best practices or design patterns
 - Test coverage or test quality
-- Shell script conventions (STYLEGUIDE.md compliance)
+- Shell script conventions (`docs/styleguides/bash_styleguide.md` compliance)
 - Minified JS regex pattern quality
 
 Those concerns belong to the `code-reviewer` agent, which runs in parallel with you.
@@ -235,7 +235,7 @@ Written by Claude <model-name> via [Claude Code](https://claude.ai/code)
 
 Leave these concerns to the `code-reviewer` agent:
 - Code quality, style, and formatting
-- Shell script STYLEGUIDE.md compliance
+- Shell script `docs/styleguides/bash_styleguide.md` compliance
 - Regex pattern quality in sed commands
 - Performance implications
 - Security vulnerabilities

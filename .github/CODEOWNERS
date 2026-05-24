@@ -62,7 +62,12 @@
 # ---- Docs & style ----
 /README.md                              @aaddrick
 /CLAUDE.md                              @aaddrick
-/STYLEGUIDE.md                          @aaddrick
+/AGENTS.md                              @aaddrick
+/CONTRIBUTING.md                        @aaddrick
+/CHANGELOG.md                           @aaddrick
+/RELEASING.md                           @aaddrick
+/SECURITY.md                            @aaddrick
+/docs/styleguides/                      @aaddrick
 /docs/                                  @aaddrick
 
 # ---- Testing & release quality ----
@@ -76,9 +81,9 @@
 /.github/workflows/tests.yml            @sabiut
 
 # Shared review — either owner can approve.
-# TROUBLESHOOTING is mostly the --doctor user-facing guide; lint
+# troubleshooting.md is mostly the --doctor user-facing guide; lint
 # touches everything, so either maintainer can sign off.
-/docs/TROUBLESHOOTING.md                @aaddrick @sabiut
+/docs/troubleshooting.md                @aaddrick @sabiut
 /.github/workflows/shellcheck.yml       @aaddrick @sabiut
 
 #===============================================================================
