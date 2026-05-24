@@ -261,6 +261,7 @@ setup_electron_asar() {
 		# a bare `-d` check while no electron binary actually landed.
 		if [[ ! -f $electron_dist_path/electron ]]; then
 			echo 'Electron dist/electron missing; fetching binary explicitly...'
+			local fetch_ok=false
 			local fetch_attempts=0
 			while ! node "$project_root/scripts/setup/fetch-electron-binary.js"; do
 				fetch_attempts=$((fetch_attempts + 1))
@@ -272,6 +273,9 @@ setup_electron_asar() {
 				echo "Retrying Electron binary fetch (attempt $((fetch_attempts + 1))/2)..."
 				sleep 2
 			done
+			if (( fetch_attempts < 2 )); then
+				fetch_ok=true
+			fi
 
 			# Final fallback: even when @electron/get reports success,
 			# extract-zip can leave dist/ empty under Node 24 (the
@@ -279,10 +283,21 @@ setup_electron_asar() {
 			# have no binary, the cache zip was downloaded successfully
 			# — unpack it with system `unzip`.
 			if [[ ! -f $electron_dist_path/electron ]]; then
+				if [[ $fetch_ok == false ]]; then
+					echo 'Electron download failed; no cached zip to fall back on.' >&2
+					cd "$project_root" || exit 1
+					exit 1
+				fi
 				echo 'extract-zip path produced no binary; unpacking @electron/get cache with system unzip...'
-				local electron_cache_dir="${electron_config_cache:-$HOME/.cache/electron}"
+				local electron_cache_dir="$HOME/.cache/electron"
+				local electron_arch
+				case $architecture in
+					amd64) electron_arch='x64' ;;
+					arm64) electron_arch='arm64' ;;
+					*)     electron_arch='x64' ;;
+				esac
 				local cached_zip
-				cached_zip=$(find "$electron_cache_dir" -name "electron-v${electron_version}-linux-${target_architecture:-x64}.zip" 2>/dev/null | head -1)
+				cached_zip=$(find "$electron_cache_dir" -name "electron-v${electron_version}-linux-${electron_arch}.zip" 2>/dev/null | head -1)
 				if [[ -z $cached_zip ]]; then
 					echo "No cached zip matching electron-v${electron_version}-linux-*.zip under $electron_cache_dir" >&2
 					cd "$project_root" || exit 1
@@ -308,8 +323,8 @@ setup_electron_asar() {
 		echo 'Local Electron distribution and Asar binary already present.'
 	fi
 
-	if [[ -d $electron_dist_path ]]; then
-		echo "Found Electron distribution directory at $electron_dist_path."
+	if [[ -f $electron_dist_path/electron ]]; then
+		echo "Found Electron binary at $electron_dist_path."
 		chosen_electron_module_path="$(realpath "$work_dir/node_modules/electron")"
 		echo "Setting Electron module path for copying to $chosen_electron_module_path."
 	else
