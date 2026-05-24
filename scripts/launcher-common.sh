@@ -42,6 +42,7 @@ log_session_env() {
 		QT_IM_MODULE \
 		CLAUDE_USE_WAYLAND \
 		CLAUDE_TITLEBAR_STYLE \
+		CLAUDE_PASSWORD_STORE \
 		CLAUDE_GTK_IM_MODULE \
 		CLAUDE_DISABLE_GPU
 	do
@@ -101,6 +102,56 @@ _resolve_titlebar_style() {
 	esac
 }
 
+# Determine the best available Chromium password-store backend.
+#
+# Electron's safeStorage API and Chromium's cookie encryption both rely
+# on the OS credential store selected by --password-store. Without a
+# working store safeStorage.isEncryptionAvailable() returns false, OAuth
+# tokens are silently discarded on exit, and users must re-authenticate
+# on every launch (Cookies file stays 0 bytes). Fixes: #593
+#
+# Detection order (first match wins):
+#   CLAUDE_PASSWORD_STORE env var  — explicit user override
+#   kwallet6                        — KDE Plasma 6 keyring
+#   gnome-libsecret                 — GNOME Keyring / libsecret bridge
+#   basic                           — fixed internal key (always works)
+#
+# With 'basic' the stored data is encrypted with a fixed key. Tokens
+# remain protected by Linux filesystem permissions on ~/.config/Claude/.
+#
+# Assumes a D-Bus session bus is available; this is true for any
+# graphical login session.
+_detect_password_store() {
+	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
+		echo "$CLAUDE_PASSWORD_STORE"
+		return
+	fi
+
+	# kwallet6: KDE Plasma 6 keyring
+	if dbus-send --session --print-reply --reply-timeout=1000 \
+		--dest=org.kde.kwalletd6 \
+		/modules/kwalletd6 \
+		org.kde.KWallet.isEnabled 2>/dev/null \
+		| grep -q 'boolean true'
+	then
+		echo 'kwallet6'
+		return
+	fi
+
+	# gnome-libsecret: GNOME Keyring, KWallet 5 compat bridge, etc.
+	if dbus-send --session --print-reply --reply-timeout=1000 \
+		--dest=org.freedesktop.secrets \
+		/org/freedesktop/secrets \
+		org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1
+	then
+		echo 'gnome-libsecret'
+		return
+	fi
+
+	# No keyring accessible — fall back to fixed-key provider.
+	echo 'basic'
+}
+
 # Build Electron arguments array based on display backend
 # Requires: is_wayland, use_x11_on_wayland to be set
 #           (call detect_display_backend first)
@@ -129,6 +180,19 @@ build_electron_args() {
 	else
 		electron_args+=('--disable-features=CustomTitlebar')
 	fi
+
+	# Chromium's safeStorage API and cookie encryption both require a
+	# system keyring selected by --password-store. Without an explicit
+	# value, Electron may silently report encryption unavailable even
+	# when a keyring daemon is running, discarding OAuth tokens on exit
+	# and forcing re-authentication on every launch. We probe for the
+	# best available store at startup and pass it before the app path
+	# so Chromium treats it as a Chromium flag (args after the app
+	# path go to the renderer, not Chromium). Fixes: #593
+	local pw_store
+	pw_store=$(_detect_password_store)
+	electron_args+=("--password-store=${pw_store}")
+	log_message "Password store: ${pw_store}"
 
 	# Remote XRDP sessions lack GPU acceleration and render a blank
 	# window when GPU compositing is enabled. Detect via XRDP_SESSION
