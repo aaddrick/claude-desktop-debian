@@ -246,6 +246,22 @@ Module.prototype.require = function(id) {
               this.setMenuBarVisibility(false);
             }
 
+            // Track the most recent 'show' event timestamp on the
+            // window. Read by the webContents.focus() guard below to
+            // distinguish a genuine post-show activation (which must
+            // pass through to send _NET_ACTIVE_WINDOW and actually
+            // give the window WM focus) from a sloppy-focus
+            // reassertion (which is what we want to skip). Required
+            // because Electron's isFocused() returns stale-true after
+            // hide() on Cinnamon/KDE/Wayland — a freshly-restored
+            // window reports focused=true even though the WM never
+            // activated it, and skipping the focus() call leaves the
+            // window visible-but-inert until the user clicks it.
+            // See #416 review notes.
+            this._lastShownAt = 0;
+            this.on('show', () => { this._lastShownAt = Date.now(); });
+            this.on('restore', () => { this._lastShownAt = Date.now(); });
+
             // Inject CSS for Linux scrollbar styling
             this.webContents.on('did-finish-load', () => {
               this.webContents.insertCSS(LINUX_CSS).catch(() => {});
@@ -594,6 +610,70 @@ Module.prototype.require = function(id) {
             event.preventDefault();
             result.app.quit();
           });
+
+          // Suppress redundant webContents.focus() calls that would
+          // re-trigger Chromium's X11Window::Activate() and send a
+          // _NET_ACTIVE_WINDOW client message — EWMH defines that as
+          // focus-AND-raise, so under sloppy / focus-follows-mouse
+          // WMs (Cinnamon Muffin, Mutter, i3 with focus_follows_mouse)
+          // every BrowserWindow 'focus' event causes a raise on
+          // mouse-enter, undoing the user's "no auto-raise" config.
+          // Tracks electron/electron#38184.
+          //
+          // Hooked at app.on('web-contents-created') so child views
+          // are covered too — the BrowserWindow-class wrap only
+          // touches the window's own webContents, but the upstream
+          // call site lives on a child WebContentsView (the claude.ai
+          // host view) whose webContents is a different object.
+          //
+          // Skip is gated on the *owning toplevel*'s isFocused(),
+          // not the webContents'. wc.isFocused() returns false on a
+          // freshly-attached child view even when the window is
+          // focused — that's exactly the state on every sloppy hover,
+          // so guarding on it would never skip and the raise loop
+          // would continue.
+          //
+          // The post-'show' grace window is the second half of the
+          // story. Electron's isFocused() returns stale-true after
+          // hide() on Cinnamon/KDE/Wayland (the same trap that
+          // drives the KDE-only patches in scripts/patches/
+          // quick-window.sh); a tray-restore hide → show then sees
+          // ownerFocused=true and a naive guard would skip, leaving
+          // the window visible-but-inert (no _NET_ACTIVE_WINDOW, no
+          // keyboard focus until the user clicks). Within
+          // SHOW_GRACE_MS of a 'show' event we pass through
+          // unconditionally, so the post-restore activation actually
+          // lands. 1000 ms covers the synchronous show → focus
+          // sequence with margin for slow restores.
+          //
+          // Trade-off: in sloppy mode, hover-induced focus events
+          // are SKIPped, which suppresses both the X11 raise (the
+          // bug we're fixing) and the renderer-focus direction that
+          // webContents.focus() would also do. Net effect: hover
+          // gives WM focus (frame highlight) but renderer focus
+          // doesn't follow until the user clicks. The Electron API
+          // doesn't expose a renderer-focus-only path on X11, so
+          // this is the best available trade against the constant-
+          // raise UX. Genuine activations (no recent show + not
+          // already focused) still go through end-to-end.
+          //
+          // Known: deferred setTimeout focus sites (e.g. find-bar
+          // dismiss) outside the grace window may lose renderer-focus
+          // direction on keyboard dismissal. See #416 review.
+          //
+          // Fixes: #416
+          const SHOW_GRACE_MS = 1000;
+          const origFocus = wc.focus.bind(wc);
+          wc.focus = (...args) => {
+            const owner = result.BrowserWindow.fromWebContents(wc);
+            if (!owner || owner.isDestroyed()) return origFocus(...args);
+            if (!owner.isFocused()) return origFocus(...args);
+            const shownAt = owner._lastShownAt || 0;
+            if (Date.now() - shownAt < SHOW_GRACE_MS) {
+              return origFocus(...args);
+            }
+            return;
+          };
         });
       }
 
