@@ -35,6 +35,7 @@ STUB
 			cat > "$TEST_TMP/bin/dbus-send" <<'STUB'
 #!/usr/bin/env bash
 [[ "$*" == *kwalletd6* ]] && exit 1
+[[ "$*" == *--print-reply* ]] || exit 1
 exit 0
 STUB
 			;;

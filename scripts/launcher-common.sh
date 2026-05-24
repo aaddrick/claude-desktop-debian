@@ -128,22 +128,20 @@ _detect_password_store() {
 	fi
 
 	# kwallet6: KDE Plasma 6 keyring
-	if dbus-send --session --print-reply \
+	if dbus-send --session --print-reply --reply-timeout=500 \
 		--dest=org.kde.kwalletd6 \
 		/modules/kwalletd6 \
 		org.kde.KWallet.isEnabled 2>/dev/null \
-		| grep -q 'boolean true'
-	then
+		| grep -q 'boolean true'; then
 		echo 'kwallet6'
 		return
 	fi
 
 	# gnome-libsecret: GNOME Keyring, KWallet 5 compat bridge, etc.
-	if dbus-send --session \
+	if dbus-send --session --print-reply --reply-timeout=500 \
 		--dest=org.freedesktop.secrets \
 		/org/freedesktop/secrets \
-		org.freedesktop.DBus.Peer.Ping 2>/dev/null
-	then
+		org.freedesktop.DBus.Peer.Ping 2>/dev/null; then
 		echo 'gnome-libsecret'
 		return
 	fi
@@ -191,8 +189,8 @@ build_electron_args() {
 	# path go to the renderer, not Chromium). Fixes: #593
 	local pw_store
 	pw_store=$(_detect_password_store)
-	electron_args+=("--password-store=${pw_store}")
-	log_message "Password store: ${pw_store}"
+	electron_args+=("--password-store=$pw_store")
+	log_message "Password store: $pw_store"
 
 	# Remote XRDP sessions lack GPU acceleration and render a blank
 	# window when GPU compositing is enabled. Detect via XRDP_SESSION
