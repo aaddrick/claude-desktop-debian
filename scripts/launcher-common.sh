@@ -182,10 +182,10 @@ build_electron_args() {
 	fi
 
 	# Explicitly set the X11 WM_CLASS to match StartupWMClass=Claude in
-	# the .desktop file. Without this, Electron can pick an unpredictable
-	# class name (e.g. "electron", "AdwaitaHandy"), which breaks taskbar
-	# grouping and can crash GNOME extensions that filter by WM_CLASS.
-	# Ref: #635
+	# the .desktop file. Without this, Electron may derive an
+	# unpredictable class name, which breaks taskbar grouping and can
+	# trigger crashes in third-party GNOME extensions that filter by
+	# WM_CLASS. Ref: #635
 	electron_args+=('--class=Claude')
 
 	# Chromium's safeStorage API and cookie encryption both require a
