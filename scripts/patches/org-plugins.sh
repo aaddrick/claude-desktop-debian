@@ -30,7 +30,7 @@ patch_org_plugins_path() {
 	local anchor='Application Support/Claude/org-plugins'
 	if ! grep -q "$anchor" "$index_js"; then
 		echo 'Warning: org-plugins path resolver not found' \
-			'in this version, skipping'
+			'in this version, skipping' >&2
 		return
 	fi
 
@@ -52,6 +52,6 @@ patch_org_plugins_path() {
 		echo 'Added Linux org-plugins path (/etc/claude/org-plugins)'
 	else
 		echo 'Warning: org-plugins switch pattern not matched,' \
-			'skipping'
+			'skipping' >&2
 	fi
 }
