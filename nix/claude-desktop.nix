@@ -265,12 +265,10 @@ build_electron_args 'nix'
 # Add app path
 electron_args+=("$app_path")
 
-# Execute Electron
+# Execute Electron (exec replaces the shell process so signals
+# like SIGINT, SIGTERM, and SIGHUP reach Electron directly)
 log_message "Executing: $electron_exec ''${electron_args[*]} $*"
-"$electron_exec" "''${electron_args[@]}" "$@" >> "$log_file" 2>&1
-exit_code=$?
-log_message "Electron exited with code: $exit_code"
-exit $exit_code
+exec "$electron_exec" "''${electron_args[@]}" "$@" >> "$log_file" 2>&1
 LAUNCHER
     # Substitute placeholders — electron_exec points to our custom
     # wrapper (which sets GTK/GIO env then execs our merged binary)
