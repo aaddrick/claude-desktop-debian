@@ -233,11 +233,11 @@ chmod 4755 %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/chrome-
 
 %post
 # Update desktop database for MIME types
-update-desktop-database /usr/share/applications &> /dev/null || true
+update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
 %postun
 # Update desktop database after removal
-update-desktop-database /usr/share/applications &> /dev/null || true
+update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
 %files
 %defattr(-, root, root, 0755)

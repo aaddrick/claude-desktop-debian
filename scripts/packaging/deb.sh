@@ -203,7 +203,7 @@ set -e
 
 # Update desktop database for MIME types
 echo "Updating desktop database..."
-update-desktop-database /usr/share/applications &> /dev/null || true
+update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
 # Set correct permissions for chrome-sandbox if electron is installed globally
 # or locally packaged
