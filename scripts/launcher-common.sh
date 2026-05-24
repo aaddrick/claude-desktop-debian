@@ -181,6 +181,13 @@ build_electron_args() {
 		electron_args+=('--disable-features=CustomTitlebar')
 	fi
 
+	# Explicitly set the X11 WM_CLASS to match StartupWMClass=Claude in
+	# the .desktop file. Without this, Electron can pick an unpredictable
+	# class name (e.g. "electron", "AdwaitaHandy"), which breaks taskbar
+	# grouping and can crash GNOME extensions that filter by WM_CLASS.
+	# Ref: #635
+	electron_args+=('--class=Claude')
+
 	# Chromium's safeStorage API and cookie encryption both require a
 	# system keyring selected by --password-store. Without an explicit
 	# value, Electron may silently report encryption unavailable even
