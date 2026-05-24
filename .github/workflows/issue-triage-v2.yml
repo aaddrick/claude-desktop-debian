@@ -215,6 +215,7 @@ jobs:
         if: steps.classify.outputs.classification == 'bug' || steps.classify.outputs.classification == 'enhancement'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FIRST_PASS: ${{ steps.classify.outputs.classification }}
         run: |
           schema=$(cat .claude/scripts/schemas/classify-doublecheck-bug-vs-enhancement.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
@@ -249,7 +250,7 @@ jobs:
           printf '%s' "${structured}" \
             > /tmp/triage/classification-doublecheck.json
 
-          first_pass="${{ steps.classify.outputs.classification }}"
+          first_pass="${FIRST_PASS}"
           verdict=$(jq -r '.verdict' \
             /tmp/triage/classification-doublecheck.json)
 
@@ -271,10 +272,14 @@ jobs:
       # classifier entirely.
       - name: Decide route
         id: route
+        env:
+          SUSPICIOUS: ${{ steps.suspicious.outputs.suspicious }}
+          CLASSIFICATION: ${{ steps.classify.outputs.classification }}
+          DISAGREED: ${{ steps.doublecheck.outputs.disagreed }}
         run: |
-          suspicious="${{ steps.suspicious.outputs.suspicious }}"
-          classification="${{ steps.classify.outputs.classification }}"
-          disagreed="${{ steps.doublecheck.outputs.disagreed }}"
+          suspicious="${SUSPICIOUS}"
+          classification="${CLASSIFICATION}"
+          disagreed="${DISAGREED}"
 
           if [[ "${suspicious}" == "true" ]]; then
             echo "route=deferral" >> "$GITHUB_OUTPUT"
@@ -484,6 +489,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLASSIFICATION_NAME: ${{ steps.classify.outputs.classification }}
+          HAS_REGRESSION: ${{ steps.regression.outputs.has_regression }}
         run: |
           schema=$(cat .claude/scripts/schemas/investigate.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
@@ -530,7 +536,7 @@ jobs:
             # the PR. The reporter named a culprit; the diff is a
             # primary input for Stage 4 because the defect site is
             # almost always inside the named PR's changed files.
-            if [[ "${{ steps.regression.outputs.has_regression }}" == "true" ]]; then
+            if [[ "${HAS_REGRESSION}" == "true" ]]; then
               echo "## Regression context (PR named by reporter)"
               echo ""
               reg_title=$(jq -r '.title' /tmp/triage/regression-of.json)
@@ -763,6 +769,7 @@ jobs:
               || steps.dup_fetch.outputs.dup_fetched == 'true')
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HAS_REGRESSION: ${{ steps.regression.outputs.has_regression }}
           CLASSIFICATION_NAME: ${{ steps.classify.outputs.classification }}
         run: |
           schema=$(cat .claude/scripts/schemas/review.json)
@@ -867,7 +874,7 @@ jobs:
             # regression_of diff block — only when Stage 3b validated.
             # Lets the reviewer check whether a finding's citation
             # actually lands inside the named PR's changed files.
-            if [[ "${{ steps.regression.outputs.has_regression }}" == "true" ]]; then
+            if [[ "${HAS_REGRESSION}" == "true" ]]; then
               echo "## regression_of PR diff (reporter-named culprit)"
               echo ""
               reg_num=$(jq -r '.pr_number' /tmp/triage/regression-of.json)
@@ -1027,25 +1034,37 @@ jobs:
       # low-confidence cause).
       - name: Decide comment variant
         id: decide
+        env:
+          ROUTE: ${{ steps.route.outputs.route }}
+          DEFERRAL_REASON_ID: ${{ steps.route.outputs.deferral_reason_id }}
+          CLASSIFICATION: ${{ steps.classify.outputs.classification }}
+          FETCH_OK: ${{ steps.fetch.outputs.fetch_ok }}
+          INVEST_OK: ${{ steps.investigate.outputs.investigate_ok }}
+          DRIFT: ${{ steps.drift.outputs.drift_detected }}
+          REVIEW_OK: ${{ steps.review.outputs.review_ok }}
+          FINDINGS_PASSED: ${{ steps.validate.outputs.findings_passed }}
+          KEPT: ${{ steps.filter.outputs.review_findings_kept }}
+          AVG: ${{ steps.filter.outputs.review_avg_confidence }}
+          DUP_RATING: ${{ steps.filter.outputs.duplicate_of_rating }}
         run: |
-          route="${{ steps.route.outputs.route }}"
+          route="${ROUTE}"
 
           if [[ "${route}" == "deferral" ]]; then
             echo "variant=8b" >> "$GITHUB_OUTPUT"
-            echo "reason_id=${{ steps.route.outputs.deferral_reason_id }}" \
+            echo "reason_id=${DEFERRAL_REASON_ID}" \
               >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          classification="${{ steps.classify.outputs.classification }}"
-          fetch_ok="${{ steps.fetch.outputs.fetch_ok }}"
-          invest_ok="${{ steps.investigate.outputs.investigate_ok }}"
-          drift="${{ steps.drift.outputs.drift_detected }}"
-          review_ok="${{ steps.review.outputs.review_ok }}"
-          findings_passed="${{ steps.validate.outputs.findings_passed }}"
-          kept="${{ steps.filter.outputs.review_findings_kept }}"
-          avg="${{ steps.filter.outputs.review_avg_confidence }}"
-          dup_rating="${{ steps.filter.outputs.duplicate_of_rating }}"
+          classification="${CLASSIFICATION}"
+          fetch_ok="${FETCH_OK}"
+          invest_ok="${INVEST_OK}"
+          drift="${DRIFT}"
+          review_ok="${REVIEW_OK}"
+          findings_passed="${FINDINGS_PASSED}"
+          kept="${KEPT}"
+          avg="${AVG}"
+          dup_rating="${DUP_RATING}"
 
           # Shared gates that apply to every investigate route.
           if [[ "${fetch_ok}" != "true" ]]; then
@@ -1735,9 +1754,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REASON_ID: ${{ steps.decide.outputs.reason_id }}
+          CLASSIFICATION: ${{ steps.classify.outputs.classification }}
+          VARIANT: ${{ steps.decide.outputs.variant }}
         run: |
-          classification="${{ steps.classify.outputs.classification }}"
-          variant="${{ steps.decide.outputs.variant }}"
+          classification="${CLASSIFICATION}"
+          variant="${VARIANT}"
 
           if [[ "${variant}" == "8a" ]]; then
             triage_label="triage: investigated"

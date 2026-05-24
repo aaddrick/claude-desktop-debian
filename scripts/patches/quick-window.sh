@@ -61,7 +61,7 @@ const focusedPropRe = /isWindowFocused:\s*\(\)\s*=>\s*!!(\w+)\(\)/;
 const focusedMatch = code.match(focusedPropRe);
 if (!focusedMatch) {
     console.log('  WARNING: Could not find isWindowFocused function');
-    process.exit(0);
+    process.exit(1);
 }
 const focusFn = focusedMatch[1];
 console.log('  Found focus check function: ' + focusFn);
@@ -79,7 +79,7 @@ const visMatch = nearbyCode.match(visFnRe);
 if (!visMatch) {
     console.log('  WARNING: Could not find visibility function near ' +
         focusFn);
-    process.exit(0);
+    process.exit(1);
 }
 const visFn = visMatch[1];
 console.log('  Found visibility check function: ' + visFn);
