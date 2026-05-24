@@ -167,7 +167,7 @@
                             Copy
                         </button>
                     </div>
-                    <pre><code>curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg</code></pre>
+                    <pre><code>curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg</code></pre>
                 </div>
             </div>
 
@@ -182,7 +182,7 @@
                             Copy
                         </button>
                     </div>
-                    <pre><code>echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list</code></pre>
+                    <pre><code>echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list</code></pre>
                 </div>
             </div>
 
