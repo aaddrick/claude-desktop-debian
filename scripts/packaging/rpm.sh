@@ -229,6 +229,11 @@ install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/appli
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
 
+# Set the chrome-sandbox suid bit in the buildroot so the /usr/lib
+# directory walk in %files records 4755 in the payload (preserves #539
+# without the "File listed twice" warning #609 — see %files block).
+chmod 4755 %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox
+
 %post
 # Update desktop database for MIME types
 update-desktop-database /usr/share/applications &> /dev/null || true
@@ -240,7 +245,6 @@ update-desktop-database /usr/share/applications &> /dev/null || true
 %files
 %defattr(-, root, root, 0755)
 %attr(755, root, root) /usr/bin/claude-desktop
-%attr(4755, root, root) /usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
 /usr/share/icons/hicolor/*/apps/claude-desktop.png
@@ -251,11 +255,23 @@ echo 'RPM spec file created'
 # --- Build RPM Package ---
 echo 'Building RPM package...'
 
-if ! rpmbuild --define "_topdir $rpmbuild_dir" \
+rpmbuild_log="$work_dir/rpmbuild.log"
+rpmbuild --define "_topdir $rpmbuild_dir" \
 	--define "_rpmdir $work_dir" \
 	--target "$rpm_arch" \
-	-bb "$rpmbuild_dir/SPECS/$package_name.spec"; then
+	-bb "$rpmbuild_dir/SPECS/$package_name.spec" 2>&1 |
+	tee "$rpmbuild_log"
+if (( PIPESTATUS[0] != 0 )); then
 	echo 'Failed to build RPM package' >&2
+	exit 1
+fi
+
+# Guard against re-introducing #609. The "File listed twice" warning
+# means %files has overlapping listings, and on modern rpmbuild any
+# %exclude workaround silently strips the file from the payload.
+if grep -qF 'File listed twice' "$rpmbuild_log"; then
+	echo 'rpmbuild emitted "File listed twice" — %files has overlapping listings (see #609)' >&2
+	grep -F 'File listed twice' "$rpmbuild_log" >&2
 	exit 1
 fi
 
