@@ -178,10 +178,7 @@ Module.prototype.require = function(id) {
             } else if (TITLEBAR_STYLE === 'native') {
               // Main window, native mode: force system frame.
               options.frame = true;
-              // Menu bar behavior depends on CLAUDE_MENU_BAR mode:
-              // 'auto' (default): hidden, Alt toggles
-              // 'visible'/'hidden': no Alt toggle
-              options.autoHideMenuBar = (MENU_BAR_MODE === 'auto');
+              options.autoHideMenuBar = false;
               delete options.titleBarStyle;
               delete options.titleBarOverlay;
               console.log(`[Frame Fix] Modified frame from ${originalFrame} to true`);
@@ -211,7 +208,7 @@ Module.prototype.require = function(id) {
               // CSS rule still applying within the framed
               // window's content area.
               options.frame = true;
-              options.autoHideMenuBar = (MENU_BAR_MODE === 'auto');
+              options.autoHideMenuBar = false;
               delete options.titleBarStyle;
               delete options.titleBarOverlay;
               console.log('[Frame Fix] Hybrid mode: native frame + in-app topbar shim');
@@ -332,8 +329,7 @@ Module.prototype.require = function(id) {
             });
 
             // In 'hidden' mode, suppress Alt toggle by re-hiding
-            // on every show event. In 'auto' mode, let
-            // autoHideMenuBar handle the toggle natively.
+            // on every show event.
             if (MENU_BAR_MODE === 'hidden') {
               this.on('show', () => {
                 this.setMenuBarVisibility(false);
@@ -381,6 +377,18 @@ Module.prototype.require = function(id) {
                 // circuit (which they need for Ctrl+Q / tray Quit /
                 // SIGTERM anyway). Fixes: #623
                 this.on('close', () => { result.app.quit(); });
+              }
+
+              // Alt-keyup menu bar toggle state (auto mode). Tracked
+              // per-window so chords spanning multiple webContents
+              // (main window + BrowserView) share one state machine.
+              // Reset on blur to avoid stale state after Alt-Tab.
+              if (MENU_BAR_MODE === 'auto') {
+                this._altMenuTracker = { pressed: false, chorded: false };
+                this.on('blur', () => {
+                  this._altMenuTracker.pressed = false;
+                  this._altMenuTracker.chorded = false;
+                });
               }
 
               // Directly set child view bounds to match content size.
@@ -546,8 +554,8 @@ Module.prototype.require = function(id) {
 
       // Intercept Menu.setApplicationMenu to hide menu bar on Linux.
       // In 'hidden' mode, force-hide after every menu update.
-      // In 'auto' mode, only hide initially (autoHideMenuBar handles
-      // Alt toggle — re-hiding here would break that). Fixes: #321
+      // In 'auto' mode, only hide initially (the before-input-event
+      // Alt-keyup handler manages toggle). Fixes: #321
       const originalSetAppMenu = OriginalMenu.setApplicationMenu.bind(OriginalMenu);
       patchedSetApplicationMenu = function(menu) {
         console.log('[Frame Fix] Intercepting setApplicationMenu');
@@ -624,12 +632,40 @@ Module.prototype.require = function(id) {
             });
           }
           wc.on('before-input-event', (event, input) => {
-            if (input.type !== 'keyDown') return;
-            if (!input.control) return;
-            if (input.alt || input.shift || input.meta) return;
-            if (input.key !== 'q' && input.key !== 'Q') return;
-            event.preventDefault();
-            result.app.quit();
+            if (input.type === 'keyDown' && input.control
+              && !input.alt && !input.shift && !input.meta
+              && (input.key === 'q' || input.key === 'Q')) {
+              event.preventDefault();
+              result.app.quit();
+              return;
+            }
+
+            // Alt-keyup menu bar toggle (auto mode). Chromium's
+            // autoHideMenuBar fires on keydown, grabbing focus
+            // before Alt+Shift (language switch) or Alt+F4 can
+            // complete. We suppress the keydown and toggle on
+            // keyup only when Alt was released without any
+            // intervening key. Fixes: #630
+            if (MENU_BAR_MODE !== 'auto') return;
+            const owner = result.BrowserWindow.fromWebContents(wc);
+            if (!owner || owner.isDestroyed()) return;
+            const tracker = owner._altMenuTracker;
+            if (!tracker) return;
+
+            if (input.key === 'Alt') {
+              if (input.type === 'keyDown') {
+                tracker.pressed = true;
+                tracker.chorded = false;
+                event.preventDefault();
+              } else if (input.type === 'keyUp') {
+                if (tracker.pressed && !tracker.chorded) {
+                  owner.setMenuBarVisibility(!owner.isMenuBarVisible());
+                }
+                tracker.pressed = false;
+              }
+            } else if (tracker.pressed && input.type === 'keyDown') {
+              tracker.chorded = true;
+            }
           });
 
           // Suppress redundant webContents.focus() calls that would
