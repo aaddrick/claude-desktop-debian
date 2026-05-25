@@ -143,15 +143,39 @@ if command -v xvfb-run &>/dev/null \
 		rm -rf "$cache_root" "$xvfb_log"
 	' EXIT INT TERM
 
-	# CI is slow; 10s is the floor for Electron startup.
-	sleep 10
+	# Wait up to 30s for the frame-fix readiness marker, or early
+	# process death. The marker is the last log line emitted by
+	# scripts/frame-fix-wrapper.js after all patches are installed,
+	# so reaching it means main-process startup finished without
+	# crashing. Replaces a flat 10s sleep that was both slow on
+	# healthy startups and a flake risk on noisy runners.
+	readiness_marker='[Frame Fix] Patches built successfully'
+	readiness_timeout=30
+	deadline=$((SECONDS + readiness_timeout))
+	saw_marker=0
+	while ((SECONDS < deadline)); do
+		if [[ -f $launcher_log ]] \
+			&& grep -qF "$readiness_marker" \
+				"$launcher_log"; then
+			saw_marker=1
+			break
+		fi
+		if ! kill -0 "$launch_pid" 2>/dev/null; then
+			break
+		fi
+		sleep 0.5
+	done
 
-	if kill -0 "$launch_pid" 2>/dev/null; then
-		pass "AppImage stays alive under Xvfb for 10s"
+	if ((saw_marker == 1)); then
+		pass "AppImage reached ready state under Xvfb"
 	else
-		wait "$launch_pid" 2>/dev/null
-		exit_code=$?
-		fail "AppImage exited within 10s (exit: $exit_code)"
+		if kill -0 "$launch_pid" 2>/dev/null; then
+			fail "AppImage did not reach ready state within ${readiness_timeout}s"
+		else
+			wait "$launch_pid" 2>/dev/null
+			exit_code=$?
+			fail "AppImage exited before reaching ready state (exit: $exit_code)"
+		fi
 		if [[ -f $launcher_log ]]; then
 			echo '--- launcher.log (last 40 lines) ---' >&2
 			tail -40 "$launcher_log" >&2
