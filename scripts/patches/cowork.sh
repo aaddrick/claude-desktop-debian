@@ -368,7 +368,7 @@ if (serviceErrorIdx !== -1) {
     // Step 1: Find the ENOENT check and expand it to include ECONNREFUSED
     // Pattern: VAR.code==="ENOENT"
     // Search backwards from the error string to find it
-    if (code.includes('"ECONNREFUSED"')) {
+    if (/process\.platform==="linux"&&[\w$]+\.code==="ECONNREFUSED"/.test(code)) {
         console.log('  ENOENT/ECONNREFUSED expansion already applied');
     } else {
         const searchStart = Math.max(0, serviceErrorIdx - 300);
