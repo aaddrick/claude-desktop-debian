@@ -11,7 +11,7 @@ patch_tray_menu_handler() {
 	echo 'Patching tray menu handler...'
 	local index_js='app.asar.contents/.vite/build/index.js'
 
-	local tray_func tray_func_re tray_var first_const
+	local tray_func tray_func_re tray_var
 	tray_func=$(grep -oP \
 		'on\("menuBarEnabled",\(\)=>\{\K[\w$]+(?=\(\)\})' "$index_js")
 	if [[ -z $tray_func ]]; then
@@ -26,7 +26,7 @@ patch_tray_menu_handler() {
 	tray_func_re="${tray_func//\$/\\$}"
 
 	tray_var=$(grep -oP \
-		"\}\);let \K\w+(?==null;(?:async )?function ${tray_func_re})" \
+		"\}\);let \K[\$\w]+(?==null;(?:async )?function ${tray_func_re})" \
 		"$index_js")
 	if [[ -z $tray_var ]]; then
 		echo 'Failed to extract tray variable name' >&2
@@ -40,31 +40,21 @@ patch_tray_menu_handler() {
 	# `async async function`, which then breaks downstream patches that
 	# match `(?:async )?function NAME`.
 	if ! grep -q "async function ${tray_func}(){" "$index_js"; then
-		sed -i "s/function ${tray_func}(){/async function ${tray_func}(){/g" \
+		sed -i -E "s/function\s+${tray_func_re}\s*\(\s*\)\s*\{/async function ${tray_func}(){/g" \
 			"$index_js"
 	fi
 
-	first_const=$(grep -oP \
-		"async function ${tray_func_re}\(\)\{.*?const \K\w+(?==)" \
-		"$index_js" | head -1)
-	if [[ -z $first_const ]]; then
-		echo 'Failed to extract first const in function' >&2
-		cd "$project_root" || exit 1
-		exit 1
-	fi
-	echo "  Found first const variable: $first_const"
-
 	# Add mutex guard to prevent concurrent tray rebuilds
 	if ! grep -q "${tray_func}._running" "$index_js"; then
-		sed -i "s/async function ${tray_func}(){/async function ${tray_func}(){if(${tray_func}._running)return;${tray_func}._running=true;setTimeout(()=>${tray_func}._running=false,1500);/g" \
+		sed -i -E "s/async\s+function\s+${tray_func_re}\s*\(\s*\)\s*\{/async function ${tray_func}(){if(${tray_func}._running)return;${tray_func}._running=true;setTimeout(()=>${tray_func}._running=false,1500);/g" \
 			"$index_js"
 		echo "  Added mutex guard to ${tray_func}()"
 	fi
 
 	# Add DBus cleanup delay after tray destroy
-	if ! grep -q "await new Promise.*setTimeout" "$index_js" \
-		| grep -q "$tray_var"; then
-		sed -i "s/${tray_var}\&\&(${tray_var}\.destroy(),${tray_var}=null)/${tray_var}\&\&(${tray_var}.destroy(),${tray_var}=null,await new Promise(r=>setTimeout(r,250)))/g" \
+	tray_var_re="${tray_var//\$/\\$}"
+	if ! grep -q "await new Promise.*setTimeout.*${tray_var_re}" "$index_js"; then
+		sed -i -E "s/${tray_var_re}\s*\&\&\s*\(\s*${tray_var_re}\.destroy\(\)\s*,\s*${tray_var_re}\s*=\s*null\s*\)/${tray_var}\&\&(${tray_var}.destroy(),${tray_var}=null,await new Promise(r=>setTimeout(r,250)))/g" \
 			"$index_js"
 		echo "  Added DBus cleanup delay after $tray_var.destroy()"
 	fi
@@ -79,9 +69,12 @@ patch_tray_menu_handler() {
 			"s/(${electron_var_re}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" \
 			"$index_js"
 		sed -i -E \
-			"s/\((\w+\([^)]*\))\s*,\s*${tray_func_re}\(\)\s*,/(\1,Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
+			"s/\(([[:alnum:]_\$]+\([^)]*\))\s*,\s*${tray_func_re}\(\)\s*,/(\1,Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
 			"$index_js"
 		echo '  Added startup delay check (3 second window)'
+		if ! grep -q "Date.now()-_trayStartTime>3e3" "$index_js"; then
+			echo 'WARNING: Startup delay conditional not injected' >&2
+		fi
 	fi
 	echo '##############################################################'
 }
@@ -91,9 +84,9 @@ patch_tray_icon_selection() {
 	local index_js='app.asar.contents/.vite/build/index.js'
 	local dark_check="${electron_var_re}.nativeTheme.shouldUseDarkColors"
 
-	if grep -qP ':\$?\w+="TrayIconTemplate\.png"' "$index_js"; then
+	if grep -qP ':[$\w]+="TrayIconTemplate\.png"' "$index_js"; then
 		sed -i -E \
-			"s/:(\\\$?\w+)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
+			"s/:([[:alnum:]_\$]+)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
 			"$index_js"
 		echo 'Patched tray icon selection for Linux theme support'
 	else
@@ -120,7 +113,7 @@ patch_tray_inplace_update() {
 	# Escape `$` for PCRE patterns; matches the `tray_var_re` trick below.
 	tray_func_re="${tray_func//\$/\\$}"
 	local_tray_var=$(grep -oP \
-		"\}\);let \K\w+(?==null;(?:async )?function ${tray_func_re})" \
+		"\}\);let \K[\$\w]+(?==null;(?:async )?function ${tray_func_re})" \
 		"$index_js")
 	if [[ -z $local_tray_var ]]; then
 		echo '  Could not extract tray variable name — skipping'
@@ -131,7 +124,7 @@ patch_tray_inplace_update() {
 
 	tray_var_re="${local_tray_var//\$/\\$}"
 
-	menu_func=$(grep -oP "${tray_var_re}\.setContextMenu\(\K\w+(?=\(\))" \
+	menu_func=$(grep -oP "${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\(\))" \
 		"$index_js" | head -1)
 	if [[ -z $menu_func ]]; then
 		echo '  Could not extract menu function name — skipping'
@@ -146,7 +139,7 @@ patch_tray_inplace_update() {
 	# suffix)` earlier in the function; minifier renames it between
 	# releases, so it needs to be extracted (not hardcoded).
 	path_var=$(grep -oP \
-		"${tray_var_re}=new ${electron_var_re}\.Tray\(${electron_var_re}\.nativeImage\.createFromPath\(\K\w+(?=\))" \
+		"${tray_var_re}=new ${electron_var_re}\.Tray\(${electron_var_re}\.nativeImage\.createFromPath\(\K[\$\w]+(?=\))" \
 		"$index_js" | head -1)
 	if [[ -z $path_var ]]; then
 		echo '  Could not extract icon-path var — skipping'
@@ -160,8 +153,8 @@ patch_tray_inplace_update() {
 	# tests, so binding to the wrong site is silently broken. Bail if
 	# upstream ever ships >1 declaration site instead of taking the
 	# first one.
-	enabled_count=$(grep -cE \
-		'const \w+\s*=\s*\w+\("menuBarEnabled"\)' "$index_js")
+	enabled_count=$(grep -cP \
+		'const [$\w]+\s*=\s*[$\w]+\("menuBarEnabled"\)' "$index_js")
 	if [[ $enabled_count -ne 1 ]]; then
 		echo "  Expected 1 menuBarEnabled declaration, found" \
 			"${enabled_count} — skipping"
@@ -169,7 +162,7 @@ patch_tray_inplace_update() {
 		return
 	fi
 	enabled_var=$(grep -oP \
-		'const \K\w+(?=\s*=\s*\w+\("menuBarEnabled"\))' "$index_js")
+		'const \K[$\w]+(?=\s*=\s*[$\w]+\("menuBarEnabled"\))' "$index_js")
 	if [[ -z $enabled_var ]]; then
 		echo '  Could not extract menuBarEnabled var — skipping'
 		echo '##############################################################'
@@ -248,7 +241,7 @@ patch_menu_bar_default() {
 
 	local menu_bar_var
 	menu_bar_var=$(grep -oP \
-		'const \K\w+(?=\s*=\s*\w+\("menuBarEnabled"\))' \
+		'const \K[$\w]+(?=\s*=\s*[$\w]+\("menuBarEnabled"\))' \
 		"$index_js" | head -1)
 	if [[ -z $menu_bar_var ]]; then
 		echo '  Could not extract menuBarEnabled variable name'

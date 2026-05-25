@@ -11,10 +11,10 @@ extract_electron_variable() {
 	echo 'Extracting electron module variable name...'
 	local index_js='app.asar.contents/.vite/build/index.js'
 
-	electron_var=$(grep -oP '\$?\w+(?=\s*=\s*require\("electron"\))' \
+	electron_var=$(grep -oP '[$\w]+(?=\s*=\s*require\("electron"\))' \
 		"$index_js" | head -1)
 	if [[ -z $electron_var ]]; then
-		electron_var=$(grep -oP '(?<=new )\$?\w+(?=\.Tray\b)' \
+		electron_var=$(grep -oP '(?<=new )[$\w]+(?=\.Tray\b)' \
 			"$index_js" | head -1)
 	fi
 	if [[ -z $electron_var ]]; then
@@ -33,7 +33,7 @@ fix_native_theme_references() {
 
 	local wrong_refs
 	mapfile -t wrong_refs < <(
-		grep -oP '\$?\w+(?=\.nativeTheme)' "$index_js" \
+		grep -oP '[$\w]+(?=\.nativeTheme)' "$index_js" \
 			| sort -u \
 			| grep -Fxv "$electron_var" || true
 	)
