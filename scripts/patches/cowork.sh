@@ -140,7 +140,7 @@ function extractBlock(str, startIdx, open = '{') {
 // Pattern: VAR!=="darwin"&&VAR!=="win32" (unique in platform gate)
 // Anchor: appears near 'unsupported_platform' code value
 // ============================================================
-const platformGateRe = /(\w+)(\s*!==\s*"darwin"\s*&&\s*)\1(\s*!==\s*"win32")/g;
+const platformGateRe = /([\w$]+)(\s*!==\s*"darwin"\s*&&\s*)\1(\s*!==\s*"win32")/g;
 const origCode = code;
 code = code.replace(platformGateRe, (match, varName, mid, end) => {
     // Only patch the instance near the "unsupported_platform" code value
@@ -156,10 +156,10 @@ if (code !== origCode) {
     patchCount++;
 } else {
     // Try without backreference (in case minifier uses different var names)
-    const simpleRe = /(!=="darwin"\s*&&\s*\w+\s*!=="win32")([\s\S]{0,200}unsupported_platform)/;
+    const simpleRe = /(!=="darwin"\s*&&\s*[\w$]+\s*!=="win32")([\s\S]{0,200}unsupported_platform)/;
     const simpleMatch = code.match(simpleRe);
     if (simpleMatch) {
-        const varMatch = simpleMatch[0].match(/(\w+)\s*!==\s*"win32"/);
+        const varMatch = simpleMatch[0].match(/([\w$]+)\s*!==\s*"win32"/);
         if (varMatch) {
             code = code.replace(simpleMatch[1],
                 simpleMatch[1] + '&&' + varMatch[1] + '!=="linux"');
@@ -180,7 +180,7 @@ if (code === origCode) {
 // Anchor: unique string "vmClient (TypeScript)"
 // Extracts the win32 platform variable, adds Linux OR condition
 // ============================================================
-const vmClientLogMatch = code.match(/(\w+)(\s*\?\s*"vmClient \(TypeScript\)")/);
+const vmClientLogMatch = code.match(/([\w$]+)(\s*\?\s*"vmClient \(TypeScript\)")/);
 if (vmClientLogMatch) {
     const win32Var = vmClientLogMatch[1];
 
@@ -236,7 +236,7 @@ if (vmClientLogMatch) {
 // Patch 3: Socket path - use Unix domain socket on Linux
 // Anchor: unique string "cowork-vm-service" in pipe path
 // ============================================================
-const pipeMatch = code.match(/(\w+)(\s*=\s*)"([^"]*\\\\[^"]*cowork-vm-service[^"]*)"/);
+const pipeMatch = code.match(/([\w$]+)(\s*=\s*)"([^"]*\\\\[^"]*cowork-vm-service[^"]*)"/);
 if (pipeMatch) {
     const pipeVar = pipeMatch[1];
     const assign = pipeMatch[2];
@@ -315,7 +315,7 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
 // calls download() which returns success immediately).
 // ============================================================
 {
-    const statusRe = /getDownloadStatus\(\)\{return\s+(\w+\(\)\?(\w+)\.Downloading:\w+\(\)\?\2\.Ready:\2\.NotDownloaded)\}/;
+    const statusRe = /getDownloadStatus\(\)\{return\s+([\w$]+\(\)\?([\w$]+)\.Downloading:[\w$]+\(\)\?\2\.Ready:\2\.NotDownloaded)\}/;
     const statusMatch = code.match(statusRe);
     if (statusMatch) {
         const [whole, origExpr, enumVar] = statusMatch;
@@ -368,96 +368,104 @@ if (serviceErrorIdx !== -1) {
     // Step 1: Find the ENOENT check and expand it to include ECONNREFUSED
     // Pattern: VAR.code==="ENOENT"
     // Search backwards from the error string to find it
-    const searchStart = Math.max(0, serviceErrorIdx - 300);
-    const beforeRegion = code.substring(searchStart, serviceErrorIdx);
-    const enoentRe = /(\w+)\.code\s*===\s*"ENOENT"/g;
-    let enoentMatch;
-    let lastEnoent = null;
-    while ((enoentMatch = enoentRe.exec(beforeRegion)) !== null) {
-        lastEnoent = enoentMatch;
-    }
-    if (lastEnoent) {
-        const enoentStr = lastEnoent[0];
-        const errVar = lastEnoent[1];
-        const enoentAbsIdx = searchStart + lastEnoent.index;
-        // Replace: VAR.code==="ENOENT"
-        // With:    (VAR.code==="ENOENT"||process.platform==="linux"&&VAR.code==="ECONNREFUSED")
-        const expanded =
-            '(' + enoentStr +
-            '||process.platform==="linux"&&' + errVar + '.code==="ECONNREFUSED")';
-        code = code.substring(0, enoentAbsIdx) +
-            expanded +
-            code.substring(enoentAbsIdx + enoentStr.length);
-        console.log('  Expanded ENOENT check to include ECONNREFUSED on Linux');
+    if (/process\.platform==="linux"&&[\w$]+\.code==="ECONNREFUSED"/.test(code)) {
+        console.log('  ENOENT/ECONNREFUSED expansion already applied');
     } else {
-        console.log('  WARNING: Could not find ENOENT check for ECONNREFUSED expansion');
+        const searchStart = Math.max(0, serviceErrorIdx - 300);
+        const beforeRegion = code.substring(searchStart, serviceErrorIdx);
+        const enoentRe = /([\w$]+)\.code\s*===\s*"ENOENT"/g;
+        let enoentMatch;
+        let lastEnoent = null;
+        while ((enoentMatch = enoentRe.exec(beforeRegion)) !== null) {
+            lastEnoent = enoentMatch;
+        }
+        if (lastEnoent) {
+            const enoentStr = lastEnoent[0];
+            const errVar = lastEnoent[1];
+            const enoentAbsIdx = searchStart + lastEnoent.index;
+            // Replace: VAR.code==="ENOENT"
+            // With:    (VAR.code==="ENOENT"||process.platform==="linux"&&VAR.code==="ECONNREFUSED")
+            const expanded =
+                '(' + enoentStr +
+                '||process.platform==="linux"&&' + errVar + '.code==="ECONNREFUSED")';
+            code = code.substring(0, enoentAbsIdx) +
+                expanded +
+                code.substring(enoentAbsIdx + enoentStr.length);
+            console.log('  Expanded ENOENT check to include ECONNREFUSED on Linux');
+        } else {
+            console.log('  WARNING: Could not find ENOENT check for ECONNREFUSED expansion');
+        }
     }
 
     // Step 2: Inject auto-launch before the retry delay
-    // Re-find serviceErrorStr since indices shifted after step 1
-    const newServiceErrorIdx = code.lastIndexOf(serviceErrorStr);
-    const searchEnd = Math.min(code.length, newServiceErrorIdx + 300);
-    const searchRegion = code.substring(newServiceErrorIdx, searchEnd);
-    const retryMatch = searchRegion.match(
-        /await new Promise\(([\w$]+)=>\s*setTimeout\(\1,\s*([\w$]+)\)\)/
-    );
-    if (retryMatch) {
-        const retryStr = retryMatch[0];
-        const retryOffset = searchRegion.indexOf(retryStr);
-        const retryAbsIdx = newServiceErrorIdx + retryOffset;
-        // Inject auto-launch before the retry delay
-        // Service script is in app.asar.unpacked/ (not inside asar, since
-        // child_process cannot execute scripts from inside an asar).
-        // Uses fork() instead of spawn() because process.execPath in Electron
-        // is the Electron binary - spawn would trigger "file open" handling
-        // instead of executing the script as Node.js.
-        const svcPath = process.env.SVC_PATH || 'cowork-vm-service.js';
-        // Extract the enclosing function name (Ma or whatever it's
-        // minified to) so the dedup guard attaches to it
-        const funcSearchStart = Math.max(0, newServiceErrorIdx - 2000);
-        const funcRegion = code.substring(funcSearchStart, newServiceErrorIdx);
-        // The function is defined as: async function NAME(t,e){...for(let r=0;r<=LIMIT;r++)
-        const funcNameRe = /async function (\w+)\s*\(\s*\w+\s*,\s*\w+\s*\)\s*\{[\s\S]*?for\s*\(\s*let/g;
-        let funcMatch;
-        let retryFuncName = null;
-        while ((funcMatch = funcNameRe.exec(funcRegion)) !== null) {
-            retryFuncName = funcMatch[1];
-        }
-        const spawnGuard = retryFuncName
-            ? retryFuncName + '._lastSpawn'
-            : '_globalLastSpawn';
-        // Cooldown in ms — long enough to avoid fork storms, short enough
-        // that the retry loop can re-spawn after a mid-session daemon death.
-        const autoLaunch =
-            'process.platform==="linux"&&' +
-            '(!' + spawnGuard + '||Date.now()-' + spawnGuard + '>1e4)' +
-            '&&(' + spawnGuard + '=Date.now(),' +
-            '(()=>{try{' +
-            'const _p=require("path"),_fs=require("fs");' +
-            'const _d=_p.join(process.resourcesPath,' +
-            '"app.asar.unpacked","' + svcPath + '");' +
-            'if(_fs.existsSync(_d)){' +
-            // Open daemon log for append; fall back to ignoring stdio.
-            'let _stdio="ignore";' +
-            'try{' +
-            'const _ld=_p.join(process.env.HOME||"/tmp",' +
-            '".config/Claude/logs");' +
-            '_fs.mkdirSync(_ld,{recursive:true});' +
-            'const _fd=_fs.openSync(' +
-            '_p.join(_ld,"cowork_vm_daemon.log"),"a");' +
-            '_stdio=["ignore",_fd,_fd,"ipc"]' +
-            '}catch(_){}' +
-            'const _c=require("child_process").fork(_d,[],' +
-            '{detached:true,stdio:_stdio,env:{...process.env,' +
-            'ELECTRON_RUN_AS_NODE:"1"}});' +
-            'global.__coworkDaemonPid=_c.pid;_c.unref()}' +
-            '}catch(_e){console.error("[cowork-autolaunch]",_e)}})()),';
-        code = code.substring(0, retryAbsIdx) +
-            autoLaunch + code.substring(retryAbsIdx);
-        console.log('  Added service daemon auto-launch on Linux');
-        patchCount++;
+    if (code.includes('cowork-autolaunch')) {
+        console.log('  Service daemon auto-launch already applied');
     } else {
-        console.log('  WARNING: Could not find retry delay for auto-launch patch');
+        // Re-find serviceErrorStr since indices shifted after step 1
+        const newServiceErrorIdx = code.lastIndexOf(serviceErrorStr);
+        const searchEnd = Math.min(code.length, newServiceErrorIdx + 300);
+        const searchRegion = code.substring(newServiceErrorIdx, searchEnd);
+        const retryMatch = searchRegion.match(
+            /await new Promise\(([\w$]+)=>\s*setTimeout\(\1,\s*([\w$]+)\)\)/
+        );
+        if (retryMatch) {
+            const retryStr = retryMatch[0];
+            const retryOffset = searchRegion.indexOf(retryStr);
+            const retryAbsIdx = newServiceErrorIdx + retryOffset;
+            // Inject auto-launch before the retry delay
+            // Service script is in app.asar.unpacked/ (not inside asar, since
+            // child_process cannot execute scripts from inside an asar).
+            // Uses fork() instead of spawn() because process.execPath in Electron
+            // is the Electron binary - spawn would trigger "file open" handling
+            // instead of executing the script as Node.js.
+            const svcPath = process.env.SVC_PATH || 'cowork-vm-service.js';
+            // Extract the enclosing function name (Ma or whatever it's
+            // minified to) so the dedup guard attaches to it
+            const funcSearchStart = Math.max(0, newServiceErrorIdx - 2000);
+            const funcRegion = code.substring(funcSearchStart, newServiceErrorIdx);
+            // The function is defined as: async function NAME(t,e){...for(let r=0;r<=LIMIT;r++)
+            const funcNameRe = /async function (\w+)\s*\(\s*\w+\s*,\s*\w+\s*\)\s*\{[\s\S]*?for\s*\(\s*let/g;
+            let funcMatch;
+            let retryFuncName = null;
+            while ((funcMatch = funcNameRe.exec(funcRegion)) !== null) {
+                retryFuncName = funcMatch[1];
+            }
+            const spawnGuard = retryFuncName
+                ? retryFuncName + '._lastSpawn'
+                : '_globalLastSpawn';
+            // Cooldown in ms — long enough to avoid fork storms, short enough
+            // that the retry loop can re-spawn after a mid-session daemon death.
+            const autoLaunch =
+                'process.platform==="linux"&&' +
+                '(!' + spawnGuard + '||Date.now()-' + spawnGuard + '>1e4)' +
+                '&&(' + spawnGuard + '=Date.now(),' +
+                '(()=>{try{' +
+                'const _p=require("path"),_fs=require("fs");' +
+                'const _d=_p.join(process.resourcesPath,' +
+                '"app.asar.unpacked","' + svcPath + '");' +
+                'if(_fs.existsSync(_d)){' +
+                // Open daemon log for append; fall back to ignoring stdio.
+                'let _stdio="ignore";' +
+                'try{' +
+                'const _ld=_p.join(process.env.HOME||"/tmp",' +
+                '".config/Claude/logs");' +
+                '_fs.mkdirSync(_ld,{recursive:true});' +
+                'const _fd=_fs.openSync(' +
+                '_p.join(_ld,"cowork_vm_daemon.log"),"a");' +
+                '_stdio=["ignore",_fd,_fd,"ipc"]' +
+                '}catch(_){}' +
+                'const _c=require("child_process").fork(_d,[],' +
+                '{detached:true,stdio:_stdio,env:{...process.env,' +
+                'ELECTRON_RUN_AS_NODE:"1"}});' +
+                'global.__coworkDaemonPid=_c.pid;_c.unref()}' +
+                '}catch(_e){console.error("[cowork-autolaunch]",_e)}})()),';
+            code = code.substring(0, retryAbsIdx) +
+                autoLaunch + code.substring(retryAbsIdx);
+            console.log('  Added service daemon auto-launch on Linux');
+            patchCount++;
+        } else {
+            console.log('  WARNING: Could not find retry delay for auto-launch patch');
+        }
     }
 } else {
     console.log('  WARNING: Could not find VM service error string for auto-launch');
@@ -477,7 +485,7 @@ if (serviceErrorIdx !== -1) {
 // toward recovery over re-download avoidance is correct.
 // ============================================================
 {
-    const reinstallArrRe = /const (\w+)=\[("rootfs\.img"[^\]]*)\];/;
+    const reinstallArrRe = /const ([\w$]+)=\[("rootfs\.img"[^\]]*)\];/;
     const arrMatch = code.match(reinstallArrRe);
     if (arrMatch) {
         const [whole, name, contents] = arrMatch;
@@ -523,7 +531,7 @@ if (serviceErrorIdx !== -1) {
 {
     // Find: MKDTEMP(PATH.join(OS.tmpdir(), "wvm-"))
     // The bundle dir var is used in mkdir(VAR, ...) just before
-    const mkdtempRe = /(\w+)\.mkdtemp\(\s*(\w+)\.join\(\s*(\w+)\.tmpdir\(\)\s*,\s*"wvm-"\s*\)\s*\)/;
+    const mkdtempRe = /([\w$]+)\.mkdtemp\(\s*([\w$]+)\.join\(\s*([\w$]+)\.tmpdir\(\)\s*,\s*"wvm-"\s*\)\s*\)/;
     const mkdtempMatch = code.match(mkdtempRe);
     if (mkdtempMatch) {
         const [fullMatch, fsVar, pathVar, osVar] = mkdtempMatch;
@@ -532,7 +540,7 @@ if (serviceErrorIdx !== -1) {
         const searchStart = Math.max(0, mkdtempIdx - 2000);
         const before = code.substring(searchStart, mkdtempIdx);
         // Look for: mkdir(VARNAME, { recursive
-        const mkdirRe = /(\w+)\.mkdir\(\s*(\w+)\s*,\s*\{\s*recursive/g;
+        const mkdirRe = /([\w$]+)\.mkdir\(\s*([\w$]+)\s*,\s*\{\s*recursive/g;
         let bundleVar = null;
         let lastMkdir;
         while ((lastMkdir = mkdirRe.exec(before)) !== null) {
@@ -567,118 +575,122 @@ if (serviceErrorIdx !== -1) {
 // since minified names change between releases (#344).
 // ============================================================
 {
-    const anchor = '"[VM:start] Windows VM service configured"';
-    const anchorIdx = code.indexOf(anchor);
-    if (anchorIdx !== -1) {
-        // Find the "}" closing the win32 if-block after the anchor
-        const closingBrace = code.indexOf('}', anchorIdx + anchor.length);
-        if (closingBrace !== -1) {
-            // Extract minified variable names from the win32 block
-            // Search backwards from anchor to find the win32 block
-            const regionStart = Math.max(0, anchorIdx - 1000);
-            const region = code.substring(regionStart, anchorIdx);
+    if (code.includes('[VM:start] Copying smol-bin') && code.includes('process.platform==="linux"')) {
+        console.log('  Linux smol-bin copy block already present');
+    } else {
+        const anchor = '"[VM:start] Windows VM service configured"';
+        const anchorIdx = code.indexOf(anchor);
+        if (anchorIdx !== -1) {
+            // Find the "}" closing the win32 if-block after the anchor
+            const closingBrace = code.indexOf('}', anchorIdx + anchor.length);
+            if (closingBrace !== -1) {
+                // Extract minified variable names from the win32 block
+                // Search backwards from anchor to find the win32 block
+                const regionStart = Math.max(0, anchorIdx - 1000);
+                const region = code.substring(regionStart, anchorIdx);
 
-            // JS identifier may start with $, _, or letter; \w doesn't
-            // match $ so use [$\w]+ to capture vars like `$e` (Claude
-            // >= 1.3109.0 uses $e for the fs module to avoid collision
-            // with the parameter `e`). See issue #418.
-            // path var: VAR.join(process.resourcesPath,
-            const pathMatch = region.match(
-                /([$\w]+)\.join\(\s*process\.resourcesPath\s*,/
-            );
-            // fs var: VAR.existsSync(
-            const fsMatch = region.match(/([$\w]+)\.existsSync\(/);
-            // logger var: VAR.info("[VM:start]
-            const logMatch = region.match(
-                /([$\w]+)\.info\(\s*[`"]\[VM:start\]/
-            );
-            // stream/pipeline var: VAR.pipeline(
-            const streamMatch = region.match(/([$\w]+)\.pipeline\(/);
-            // arch function: const VAR=FUNC(), used in smol-bin
-            const archMatch = region.match(
-                /const\s+([$\w]+)\s*=\s*([$\w]+)\(\)\s*,\s*[$\w]+\s*=\s*[$\w]+\.join/
-            );
-            // bundlePath var: PATH.join(VAR,"smol-bin.vhdx")
-            const bundleMatch = region.match(
-                /\.join\(\s*([$\w]+)\s*,\s*"smol-bin\.vhdx"\s*\)/
-            );
+                // JS identifier may start with $, _, or letter; \w doesn't
+                // match $ so use [$\w]+ to capture vars like `$e` (Claude
+                // >= 1.3109.0 uses $e for the fs module to avoid collision
+                // with the parameter `e`). See issue #418.
+                // path var: VAR.join(process.resourcesPath,
+                const pathMatch = region.match(
+                    /([$\w]+)\.join\(\s*process\.resourcesPath\s*,/
+                );
+                // fs var: VAR.existsSync(
+                const fsMatch = region.match(/([$\w]+)\.existsSync\(/);
+                // logger var: VAR.info("[VM:start]
+                const logMatch = region.match(
+                    /([$\w]+)\.info\(\s*[`"]\[VM:start\]/
+                );
+                // stream/pipeline var: VAR.pipeline(
+                const streamMatch = region.match(/([$\w]+)\.pipeline\(/);
+                // arch function: const VAR=FUNC(), used in smol-bin
+                const archMatch = region.match(
+                    /const\s+([$\w]+)\s*=\s*([$\w]+)\(\)\s*,\s*[$\w]+\s*=\s*[$\w]+\.join/
+                );
+                // bundlePath var: PATH.join(VAR,"smol-bin.vhdx")
+                const bundleMatch = region.match(
+                    /\.join\(\s*([$\w]+)\s*,\s*"smol-bin\.vhdx"\s*\)/
+                );
 
-            if (pathMatch && fsMatch && logMatch &&
-                streamMatch && archMatch && bundleMatch) {
-                const pathVar = pathMatch[1];
-                const fsVar = fsMatch[1];
-                const logVar = logMatch[1];
-                const streamVar = streamMatch[1];
-                const archFunc = archMatch[2];
-                const bundleVar = bundleMatch[1];
+                if (pathMatch && fsMatch && logMatch &&
+                    streamMatch && archMatch && bundleMatch) {
+                    const pathVar = pathMatch[1];
+                    const fsVar = fsMatch[1];
+                    const logVar = logMatch[1];
+                    const streamVar = streamMatch[1];
+                    const archFunc = archMatch[2];
+                    const bundleVar = bundleMatch[1];
 
-                const linuxBlock =
-                    'if(process.platform==="linux"){' +
-                    'const _la=' + archFunc + '(),' +
-                    '_ls=' + pathVar + '.join(process.resourcesPath,' +
-                        '`smol-bin.${_la}.vhdx`),' +
-                    '_ld=' + pathVar + '.join(' + bundleVar +
-                        ',"smol-bin.vhdx");' +
-                    fsVar + '.existsSync(_ls)?' +
-                    '(' + logVar + '.info(' +
-                        '`[VM:start] Copying smol-bin.${_la}' +
-                        '.vhdx to bundle (Linux)`),' +
-                    'await ' + streamVar + '.pipeline(' +
-                        fsVar + '.createReadStream(_ls),' +
-                        fsVar + '.createWriteStream(_ld)),' +
-                    logVar + '.info(' +
-                        '`[VM:start] smol-bin.${_la}' +
-                        '.vhdx copied successfully`))' +
-                    ':' + logVar + '.warn(' +
-                        '`[VM:start] smol-bin.${_la}' +
-                        '.vhdx not found at ${_ls}`)' +
-                    '}';
-                // Defensive: if a future upstream emits its own
-                // if(process.platform==="linux"){...} block right
-                // after the win32 close brace, strip it before
-                // injecting our correctly-wired linuxBlock so we
-                // don't end up with two competing blocks.
-                const insertPos = closingBrace + 1;
-                let stripUntil = insertPos;
-                const afterWin32 = code.substring(insertPos);
-                const upstreamRe = /^\s*if\s*\(\s*process\.platform\s*===\s*"linux"\s*\)\s*\{/;
-                const upstreamMatch = afterWin32.match(upstreamRe);
-                if (upstreamMatch) {
-                    const matchEnd = insertPos + upstreamMatch[0].length;
-                    let depth = 1, pos = matchEnd;
-                    while (depth > 0 && pos < code.length) {
-                        if (code[pos] === '{') depth++;
-                        else if (code[pos] === '}') depth--;
-                        pos++;
+                    const linuxBlock =
+                        'if(process.platform==="linux"){' +
+                        'const _la=' + archFunc + '(),' +
+                        '_ls=' + pathVar + '.join(process.resourcesPath,' +
+                            '`smol-bin.${_la}.vhdx`),' +
+                        '_ld=' + pathVar + '.join(' + bundleVar +
+                            ',"smol-bin.vhdx");' +
+                        fsVar + '.existsSync(_ls)?' +
+                        '(' + logVar + '.info(' +
+                            '`[VM:start] Copying smol-bin.${_la}' +
+                            '.vhdx to bundle (Linux)`),' +
+                        'await ' + streamVar + '.pipeline(' +
+                            fsVar + '.createReadStream(_ls),' +
+                            fsVar + '.createWriteStream(_ld)),' +
+                        logVar + '.info(' +
+                            '`[VM:start] smol-bin.${_la}' +
+                            '.vhdx copied successfully`))' +
+                        ':' + logVar + '.warn(' +
+                            '`[VM:start] smol-bin.${_la}' +
+                            '.vhdx not found at ${_ls}`)' +
+                        '}';
+                    // Defensive: if a future upstream emits its own
+                    // if(process.platform==="linux"){...} block right
+                    // after the win32 close brace, strip it before
+                    // injecting our correctly-wired linuxBlock so we
+                    // don't end up with two competing blocks.
+                    const insertPos = closingBrace + 1;
+                    let stripUntil = insertPos;
+                    const afterWin32 = code.substring(insertPos);
+                    const upstreamRe = /^\s*if\s*\(\s*process\.platform\s*===\s*"linux"\s*\)\s*\{/;
+                    const upstreamMatch = afterWin32.match(upstreamRe);
+                    if (upstreamMatch) {
+                        const matchEnd = insertPos + upstreamMatch[0].length;
+                        let depth = 1, pos = matchEnd;
+                        while (depth > 0 && pos < code.length) {
+                            if (code[pos] === '{') depth++;
+                            else if (code[pos] === '}') depth--;
+                            pos++;
+                        }
+                        if (depth === 0) {
+                            stripUntil = pos;
+                            console.log('  Stripped pre-existing upstream Linux block');
+                        } else {
+                            console.log('  WARNING: Upstream Linux block found but braces unbalanced; not stripping');
+                        }
                     }
-                    if (depth === 0) {
-                        stripUntil = pos;
-                        console.log('  Stripped pre-existing upstream Linux block');
-                    } else {
-                        console.log('  WARNING: Upstream Linux block found but braces unbalanced; not stripping');
-                    }
+                    code = code.substring(0, insertPos) +
+                        linuxBlock +
+                        code.substring(stripUntil);
+                    console.log('  Injected Linux smol-bin copy block (skips _.configure)');
+                    console.log(`    vars: path=${pathVar} fs=${fsVar} log=${logVar} stream=${streamVar} arch=${archFunc} bundle=${bundleVar}`);
+                    patchCount++;
+                } else {
+                    const missing = [];
+                    if (!pathMatch) missing.push('path');
+                    if (!fsMatch) missing.push('fs');
+                    if (!logMatch) missing.push('logger');
+                    if (!streamMatch) missing.push('stream');
+                    if (!archMatch) missing.push('arch');
+                    if (!bundleMatch) missing.push('bundlePath');
+                    console.log(`  WARNING: Could not extract minified variable(s): ${missing.join(', ')}`);
                 }
-                code = code.substring(0, insertPos) +
-                    linuxBlock +
-                    code.substring(stripUntil);
-                console.log('  Injected Linux smol-bin copy block (skips _.configure)');
-                console.log(`    vars: path=${pathVar} fs=${fsVar} log=${logVar} stream=${streamVar} arch=${archFunc} bundle=${bundleVar}`);
-                patchCount++;
             } else {
-                const missing = [];
-                if (!pathMatch) missing.push('path');
-                if (!fsMatch) missing.push('fs');
-                if (!logMatch) missing.push('logger');
-                if (!streamMatch) missing.push('stream');
-                if (!archMatch) missing.push('arch');
-                if (!bundleMatch) missing.push('bundlePath');
-                console.log(`  WARNING: Could not extract minified variable(s): ${missing.join(', ')}`);
+                console.log('  WARNING: Could not find closing brace after Windows VM service anchor');
             }
         } else {
-            console.log('  WARNING: Could not find closing brace after Windows VM service anchor');
+            console.log('  WARNING: Could not find Windows VM service anchor for smol-bin patch');
         }
-    } else {
-        console.log('  WARNING: Could not find Windows VM service anchor for smol-bin patch');
     }
 }
 
@@ -688,49 +700,53 @@ if (serviceErrorIdx !== -1) {
 // on Linux. Register our own to SIGTERM the daemon on app quit.
 // ============================================================
 {
-    const quitFnRe = /registerQuitHandler:\s*(\w+)/;
-    const quitFnMatch = code.match(quitFnRe);
-    if (quitFnMatch) {
-        const quitFn = quitFnMatch[1];
-        console.log('  Found registerQuitHandler function: ' + quitFn);
+    if (code.includes('cowork-linux-daemon-shutdown')) {
+        console.log('  Linux cowork daemon quit handler already registered');
+    } else {
+        const quitFnRe = /registerQuitHandler:\s*([\w$]+)/;
+        const quitFnMatch = code.match(quitFnRe);
+        if (quitFnMatch) {
+            const quitFn = quitFnMatch[1];
+            console.log('  Found registerQuitHandler function: ' + quitFn);
 
-        const quitFnDef = 'function ' + quitFn + '(';
-        const quitFnDefIdx = code.indexOf(quitFnDef);
-        if (quitFnDefIdx !== -1) {
-            const fnBlock = extractBlock(code, quitFnDefIdx, '{');
-            if (fnBlock) {
-                const insertIdx = code.indexOf(fnBlock, quitFnDefIdx) +
-                    fnBlock.length;
-                const shutdownHandler =
-                    'process.platform==="linux"&&' + quitFn + '({' +
-                    'name:"cowork-linux-daemon-shutdown",' +
-                    'fn:async()=>{' +
-                    'const _p=global.__coworkDaemonPid;' +
-                    'if(!_p)return;' +
-                    'try{const _cmd=require("fs").readFileSync(' +
-                    '"/proc/"+_p+"/cmdline","utf8");' +
-                    'if(!_cmd.includes("cowork-vm-service"))return' +
-                    '}catch(_e){return}' +
-                    'try{process.kill(_p,"SIGTERM")}catch(_e){return}' +
-                    'for(let _i=0;_i<50;_i++){' +
-                    'await new Promise(_r=>setTimeout(_r,200));' +
-                    'try{process.kill(_p,0)}catch(_e){return}' +
-                    '}}});';
-                code = code.substring(0, insertIdx) +
-                    shutdownHandler + code.substring(insertIdx);
-                console.log('  Registered Linux cowork daemon quit handler');
-                patchCount++;
+            const quitFnDef = 'function ' + quitFn + '(';
+            const quitFnDefIdx = code.indexOf(quitFnDef);
+            if (quitFnDefIdx !== -1) {
+                const fnBlock = extractBlock(code, quitFnDefIdx, '{');
+                if (fnBlock) {
+                    const insertIdx = code.indexOf(fnBlock, quitFnDefIdx) +
+                        fnBlock.length;
+                    const shutdownHandler =
+                        'process.platform==="linux"&&' + quitFn + '({' +
+                        'name:"cowork-linux-daemon-shutdown",' +
+                        'fn:async()=>{' +
+                        'const _p=global.__coworkDaemonPid;' +
+                        'if(!_p)return;' +
+                        'try{const _cmd=require("fs").readFileSync(' +
+                        '"/proc/"+_p+"/cmdline","utf8");' +
+                        'if(!_cmd.includes("cowork-vm-service"))return' +
+                        '}catch(_e){return}' +
+                        'try{process.kill(_p,"SIGTERM")}catch(_e){return}' +
+                        'for(let _i=0;_i<50;_i++){' +
+                        'await new Promise(_r=>setTimeout(_r,200));' +
+                        'try{process.kill(_p,0)}catch(_e){return}' +
+                        '}}});';
+                    code = code.substring(0, insertIdx) +
+                        shutdownHandler + code.substring(insertIdx);
+                    console.log('  Registered Linux cowork daemon quit handler');
+                    patchCount++;
+                } else {
+                    console.log('  WARNING: Could not find ' + quitFn +
+                        ' function body for quit handler');
+                }
             } else {
                 console.log('  WARNING: Could not find ' + quitFn +
-                    ' function body for quit handler');
+                    ' function definition');
             }
         } else {
-            console.log('  WARNING: Could not find ' + quitFn +
-                ' function definition');
+            console.log('  WARNING: Could not find registerQuitHandler' +
+                ' export for quit handler');
         }
-    } else {
-        console.log('  WARNING: Could not find registerQuitHandler' +
-            ' export for quit handler');
     }
 }
 
@@ -766,7 +782,7 @@ if (serviceErrorIdx !== -1) {
             // 'sessionId:VAR' in the config itself — cheap, scoped, and
             // immune to unrelated *.userSelectedFolders references (e.g.
             // loop variables) that wander into the enclosing scope.
-            const sidMatch = cfgBlock.match(/\{sessionId:(\w+)\b/);
+            const sidMatch = cfgBlock.match(/\{sessionId:([\w$]+)\b/);
             if (!sidMatch) {
                 console.log('  WARNING: #412 no sessionId field in config');
             } else {
@@ -791,7 +807,7 @@ if (serviceErrorIdx !== -1) {
     // --- 12c: accept a 13th param in spawn() method body ---
     let site3Done = false;
     const spawnIdempotent =
-        /async spawn\([^)]+\)\{const \w+=\{id:[^}]+\};[^{}]*\.sharedCwdPath=/;
+        /async spawn\([^)]+\)\{const [\w$]+=\{id:[^}]+\};[^{}]*\.sharedCwdPath=/;
     if (spawnIdempotent.test(code)) {
         console.log('  #412 spawn method already accepts sharedCwdPath');
         site3Done = true;
@@ -799,7 +815,7 @@ if (serviceErrorIdx !== -1) {
         // Match the spawn body with the trailing mountConda setter and the
         // IPC call. Captures: arg list, payload var, setter chain, IPC tail.
         const spawnRe =
-            /async spawn\(([^)]+)\)\{const (\w+)=\{id:[^}]+\};([^{}]*?\w+&&\(\2\.mountConda=\w+\)),(await \w+\("spawn",\2\)\})/;
+            /async spawn\(([^)]+)\)\{const ([\w$]+)=\{id:[^}]+\};([^{}]*?[\w$]+&&\(\2\.mountConda=[\w$]+\)),(await [\w$]+\("spawn",\2\)\})/;
         const spawnMatch = code.match(spawnRe);
         if (!spawnMatch) {
             console.log('  WARNING: #412 spawn method body regex did not match');
@@ -836,11 +852,11 @@ if (serviceErrorIdx !== -1) {
     // the uniqueness so a second upstream caller wouldn't silently take
     // only the first hit.
     let site2Done = false;
-    if (/,\w+\.mountConda,\w+\.sharedCwdPath\)/.test(code)) {
+    if (/,[\w$]+\.mountConda,[\w$]+\.sharedCwdPath\)/.test(code)) {
         console.log('  #412 caller already forwards sharedCwdPath');
         site2Done = true;
     } else {
-        const callMatches = [...code.matchAll(/,(\w+)\.mountConda\)/g)];
+        const callMatches = [...code.matchAll(/,([\w$]+)\.mountConda\)/g)];
         if (callMatches.length === 0) {
             console.log('  WARNING: #412 no ",VAR.mountConda)" pattern found');
         } else if (callMatches.length > 1) {

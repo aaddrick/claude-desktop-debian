@@ -14,7 +14,7 @@ patch_quick_window() {
 	# Extract the quick window variable name from the unique "pop-up-menu"
 	# setAlwaysOnTop call, e.g.: Sa.setAlwaysOnTop(!0,"pop-up-menu")
 	local quick_var
-	quick_var=$(grep -oP '\w+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))' \
+	quick_var=$(grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))' \
 		"$index_js" | head -1)
 	if [[ -z $quick_var ]]; then
 		echo 'WARNING: Could not extract quick window variable name'
@@ -35,9 +35,9 @@ patch_quick_window() {
 	de_check+='.toLowerCase().includes("kde")'
 	if grep -qF "${quick_var}.blur(),${quick_var}.hide()" "$index_js"; then
 		echo '  Quick window blur already patched'
-	elif grep -qP "\|\|${quick_var_re}\.hide\(\)" "$index_js"; then
-		sed -i \
-			"s/||${quick_var_re}\.hide()/||(${de_check}?(${quick_var}.blur(),${quick_var}.hide()):${quick_var}.hide())/g" \
+	elif grep -qP "\|\|\s*${quick_var_re}\.hide\(\)" "$index_js"; then
+		sed -i -E \
+			"s/\|\|\s*${quick_var_re}\.hide\(\)/||(${de_check}?(${quick_var}.blur(),${quick_var}.hide()):${quick_var}.hide())/g" \
 			"$index_js"
 		echo '  Added KDE-gated blur() before hide() on quick window'
 	else
@@ -57,7 +57,7 @@ let patchCount = 0;
 
 // Find the minified isWindowFocused function via its named property
 // export: isWindowFocused: () => !!NAME()
-const focusedPropRe = /isWindowFocused:\s*\(\)\s*=>\s*!!(\w+)\(\)/;
+const focusedPropRe = /isWindowFocused:\s*\(\)\s*=>\s*!!([\w$]+)\(\)/;
 const focusedMatch = code.match(focusedPropRe);
 if (!focusedMatch) {
     console.log('  WARNING: Could not find isWindowFocused function');
@@ -74,7 +74,7 @@ console.log('  Found focus check function: ' + focusFn);
 // group keeps the prefix optional in either case.
 const focusFnIdx = code.indexOf('function ' + focusFn + '(');
 const nearbyCode = code.substring(focusFnIdx, focusFnIdx + 500);
-const visFnRe = /function (\w+)\(\)\{(?:var \w+(?:,\w+)*;)?return!\w+\|\|\w+\.isDestroyed\(\)\?!1:\w+\.isVisible\(\)/;
+const visFnRe = /function (\w+)\(\)\{(?:var [\w$]+(?:,[\w$]+)*;)?return![\w$]+\|\|[\w$]+\.isDestroyed\(\)\?!1:[\w$]+\.isVisible\(\)/;
 const visMatch = nearbyCode.match(visFnRe);
 if (!visMatch) {
     console.log('  WARNING: Could not find visibility function near ' +
@@ -106,7 +106,7 @@ for (const anchor of anchors) {
     }
     // matches: <focusFn>()||(someVar).show()
     const showRe = new RegExp(
-        escapeRegExp(focusFn) + String.raw`\(\)\|\|(\w+)\.show\(\)`
+        escapeRegExp(focusFn) + String.raw`\(\)\|\|([\w$]+)\.show\(\)`
     );
     const showMatch = region.match(showRe);
     if (showMatch) {

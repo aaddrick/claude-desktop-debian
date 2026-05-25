@@ -16,12 +16,12 @@ patch_linux_claude_code() {
 
 	# New format (Claude >= 1.1.3541): getHostPlatform includes arch detection for win32
 	# Pattern: if(process.platform==="win32")return e==="arm64"?"win32-arm64":"win32-x64";throw new Error(...)
-	if grep -qP 'if\(process\.platform==="win32"\)return \w+==="arm64"\?"win32-arm64":"win32-x64";throw' "$index_js"; then
-		sed -i -E 's/if\(process\.platform==="win32"\)return (\w+)==="arm64"\?"win32-arm64":"win32-x64";throw/if(process.platform==="win32")return \1==="arm64"?"win32-arm64":"win32-x64";if(process.platform==="linux")return \1==="arm64"?"linux-arm64":"linux-x64";throw/' "$index_js"
+	if grep -qP 'if\s*\(\s*process\.platform\s*===\s*"win32"\s*\)\s*return\s+[$\w]+\s*===\s*"arm64"\s*\?\s*"win32-arm64"\s*:\s*"win32-x64"\s*;\s*throw' "$index_js"; then
+		sed -i -E 's/if\s*\(\s*process\.platform\s*===\s*"win32"\s*\)\s*return\s+([[:alnum:]_$]+)\s*===\s*"arm64"\s*\?\s*"win32-arm64"\s*:\s*"win32-x64"\s*;\s*throw/if(process.platform==="win32")return \1==="arm64"?"win32-arm64":"win32-x64";if(process.platform==="linux")return \1==="arm64"?"linux-arm64":"linux-x64";throw/' "$index_js"
 		echo 'Added linux claude code support (new arch-aware format)'
 	# Old format (Claude <= 1.1.3363): no arch detection for win32
-	elif grep -q 'if(process.platform==="win32")return"win32-x64";' "$index_js"; then
-		sed -i 's/if(process.platform==="win32")return"win32-x64";/if(process.platform==="win32")return"win32-x64";if(process.platform==="linux")return process.arch==="arm64"?"linux-arm64":"linux-x64";/' "$index_js"
+	elif grep -qP 'if\s*\(\s*process\.platform\s*===\s*"win32"\s*\)\s*return\s*"win32-x64"\s*;' "$index_js"; then
+		sed -i -E 's/if\s*\(\s*process\.platform\s*===\s*"win32"\s*\)\s*return\s*"win32-x64"\s*;/if(process.platform==="win32")return"win32-x64";if(process.platform==="linux")return process.arch==="arm64"?"linux-arm64":"linux-x64";/' "$index_js"
 		echo 'Added linux claude code support (legacy format)'
 	else
 		echo 'Warning: Could not find getHostPlatform pattern to patch for Linux claude code support'
