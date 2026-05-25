@@ -8,11 +8,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/test-artifact-common.sh"
 
 # Single point of cleanup, set at script scope so any interruption
-# between resource allocation and normal exit is covered. Each check
-# is defensive because the trap fires regardless of how far execution
-# got — leaked $extract_dir (~200MB squashfs-root) used to slip out
-# when the script was Ctrl-C'd before reaching the smoke-test block
-# (where the trap previously lived).
+# between resource alloc and normal exit is covered.
 _cleanup() {
 	if [[ -n ${launch_pid:-} ]]; then
 		kill -KILL -- "-$launch_pid" 2>/dev/null
