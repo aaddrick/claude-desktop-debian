@@ -793,9 +793,8 @@ Module.prototype.require = function(id) {
           return { exec: 'claude-desktop', icon: 'claude-desktop' };
         };
 
-        // StartupWMClass matches the value set by scripts/packaging/{deb,rpm}.sh
-        // so DEs group an autostarted window with user-launched instances
-        // under the same taskbar / dock entry.
+        // StartupWMClass matches --class= and desktopName so DEs group
+        // an autostarted window with user-launched instances.
         const buildAutostartContent = () => {
           const { exec, icon } = resolveAutostartTarget();
           return `[Desktop Entry]
@@ -803,7 +802,7 @@ Type=Application
 Name=Claude
 Exec=${exec}
 Icon=${icon}
-StartupWMClass=Claude
+StartupWMClass=claude-desktop
 Terminal=false
 X-GNOME-Autostart-enabled=true
 `;
