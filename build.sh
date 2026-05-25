@@ -159,7 +159,7 @@ Type=Application
 Terminal=false
 Categories=Office;Utility;Network;
 MimeType=x-scheme-handler/claude;
-StartupWMClass=Claude
+StartupWMClass=claude-desktop
 X-AppImage-Version=$version
 X-AppImage-Name=Claude Desktop (AppImage)
 EOF

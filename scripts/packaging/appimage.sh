@@ -133,7 +133,7 @@ Terminal=false
 Categories=Network;Utility;
 Comment=Claude Desktop for Linux
 MimeType=x-scheme-handler/claude;
-StartupWMClass=Claude
+StartupWMClass=claude-desktop
 X-AppImage-Version=$version
 X-AppImage-Name=Claude Desktop
 EOF
