@@ -940,8 +940,9 @@ X-GNOME-Autostart-enabled=true
           });
         }
         if (prop === 'powerSaveBlocker' && process.platform === 'linux') {
-          const origPSB = target.powerSaveBlocker;
-          return new Proxy(origPSB, {
+          // Wrap powerSaveBlocker with logging and optional suppression
+          const originalPSB = target.powerSaveBlocker;
+          return new Proxy(originalPSB, {
             get(psTarget, psProp) {
               if (psProp === 'start') {
                 return function(type) {
