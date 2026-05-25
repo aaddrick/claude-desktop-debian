@@ -20,7 +20,7 @@ patch_config_write_merge() {
 
 	# Extract variable names from the unique anchor:
 	#   await WRITE_FN(PATH_VAR, CONFIG_VAR), LOGGER.info("Config file written")
-	local write_fn path_var config_var
+	local write_fn path_var config_var write_fn_re path_var_re
 
 	write_fn=$(grep -oP \
 		'await \K[$\w]+(?=\([$\w]+,\s*[$\w]+\)\s*,\s*[$\w]+\.info\("Config file written"\))' \
@@ -31,7 +31,7 @@ patch_config_write_merge() {
 		return
 	fi
 
-	local write_fn_re="${write_fn//\$/\\$}"
+	write_fn_re="${write_fn//\$/\\$}"
 
 	path_var=$(grep -oP \
 		"await ${write_fn_re}\\(\\K[\$\\w]+(?=,\\s*[\$\\w]+\\)\\s*,\\s*[\$\\w]+\\.info\\(\"Config file written\"\\))" \
@@ -42,7 +42,7 @@ patch_config_write_merge() {
 		return
 	fi
 
-	local path_var_re="${path_var//\$/\\$}"
+	path_var_re="${path_var//\$/\\$}"
 
 	config_var=$(grep -oP \
 		"await ${write_fn_re}\\(${path_var_re},\\s*\\K[\$\\w]+(?=\\)\\s*,\\s*[\$\\w]+\\.info\\(\"Config file written\"\\))" \
