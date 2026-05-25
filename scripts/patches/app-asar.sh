@@ -110,6 +110,13 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# docs/learnings/linux-topbar-shim.md.
 	patch_wco_shim
 
+	# Preserve externally-added mcpServers across config writes (#400)
+	patch_config_write_merge
+
+	# Reject .asar paths in addTrustedFolder to reduce spurious config
+	# writes that amplify the stale-cache overwrite bug (#400)
+	patch_asar_trusted_folder_guard
+
 	# Copy cowork VM service daemon for Linux Cowork mode
 	echo 'Installing cowork VM service daemon...'
 	cp "$source_dir/scripts/cowork-vm-service.js" \
