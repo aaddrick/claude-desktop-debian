@@ -7,6 +7,23 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/test-artifact-common.sh
 source "$script_dir/test-artifact-common.sh"
 
+# Single point of cleanup, set at script scope so any interruption
+# between resource allocation and normal exit is covered. Each check
+# is defensive because the trap fires regardless of how far execution
+# got — leaked $extract_dir (~200MB squashfs-root) used to slip out
+# when the script was Ctrl-C'd before reaching the smoke-test block
+# (where the trap previously lived).
+_cleanup() {
+	if [[ -n ${launch_pid:-} ]]; then
+		kill -KILL -- "-$launch_pid" 2>/dev/null
+		pkill -KILL -f "$appimage_file" 2>/dev/null
+	fi
+	[[ -n ${cache_root:-} ]] && rm -rf "$cache_root"
+	[[ -n ${xvfb_log:-} ]] && rm -rf "$xvfb_log"
+	[[ -n ${extract_dir:-} ]] && rm -rf "$extract_dir"
+}
+trap _cleanup EXIT INT TERM
+
 component_id='io.github.aaddrick.claude-desktop-debian'
 
 # Find the AppImage file (exclude .zsync)
@@ -134,14 +151,6 @@ if command -v xvfb-run &>/dev/null \
 		dbus-run-session -- "$appimage_file" \
 		>"$xvfb_log" 2>&1 &
 	launch_pid=$!
-
-	# Safety net: covers Ctrl-C, CI timeout, or any earlier `exit` so we
-	# never leak Xvfb/electron between launch and the explicit kill below.
-	trap '
-		kill -KILL -- "-$launch_pid" 2>/dev/null
-		pkill -KILL -f "$appimage_file" 2>/dev/null
-		rm -rf "$cache_root" "$xvfb_log"
-	' EXIT INT TERM
 
 	# Wait up to 30s for the frame-fix readiness marker, or early
 	# process death. The marker is the last log line emitted by
