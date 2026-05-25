@@ -81,6 +81,15 @@ const CLOSE_TO_TRAY = process.platform === 'linux'
   && process.env.CLAUDE_QUIT_ON_CLOSE !== '1';
 console.log(`[Frame Fix] Close-to-tray: ${CLOSE_TO_TRAY ? 'on' : 'off'}`);
 
+// Power save blocker behavior, controlled by CLAUDE_KEEP_AWAKE env var:
+//   unset / '1' - pass through with diagnostic logging
+//   '0'         - suppress powerSaveBlocker.start() calls entirely
+// Upstream's keepAwakeEnabled has no lifecycle management on Linux (the
+// darwin-only wake scheduler never runs), so the inhibitor fires at init
+// and never releases — preventing suspend and screensaver. See #605.
+const KEEP_AWAKE = process.env.CLAUDE_KEEP_AWAKE !== '0';
+console.log(`[Frame Fix] Keep awake: ${KEEP_AWAKE ? 'on (default)' : 'suppressed (CLAUDE_KEEP_AWAKE=0)'}`);
+
 // Detect if a window intends to be frameless (popup/Quick Entry/About).
 // Window kinds — see build-reference/app-extracted/.vite/build/index.js:
 //   Quick Entry:    titleBarStyle:"hidden",      frame:false  (caught early)
@@ -927,6 +936,39 @@ X-GNOME-Autostart-enabled=true
             get(menuTarget, menuProp) {
               if (menuProp === 'setApplicationMenu') return patchedSetApplicationMenu;
               return Reflect.get(menuTarget, menuProp);
+            }
+          });
+        }
+        if (prop === 'powerSaveBlocker' && process.platform === 'linux') {
+          // Wrap powerSaveBlocker with logging and optional suppression
+          const originalPSB = target.powerSaveBlocker;
+          return new Proxy(originalPSB, {
+            get(psTarget, psProp) {
+              if (psProp === 'start') {
+                return function(type) {
+                  if (!KEEP_AWAKE) {
+                    console.log(`[Power] powerSaveBlocker.start('${type}') suppressed (CLAUDE_KEEP_AWAKE=0)`);
+                    return -1;
+                  }
+                  const id = psTarget.start(type);
+                  console.log(`[Power] powerSaveBlocker.start('${type}') -> id=${id}`);
+                  return id;
+                };
+              }
+              if (psProp === 'stop') {
+                return function(id) {
+                  if (id < 0) return;
+                  console.log(`[Power] powerSaveBlocker.stop(${id})`);
+                  return psTarget.stop(id);
+                };
+              }
+              if (psProp === 'isStarted') {
+                return function(id) {
+                  if (id < 0) return false;
+                  return psTarget.isStarted(id);
+                };
+              }
+              return Reflect.get(psTarget, psProp);
             }
           });
         }
