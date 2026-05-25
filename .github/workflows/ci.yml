@@ -880,6 +880,7 @@ jobs:
             -e "s/%%PKGVER%%/${PKGVER}/" \
             -e "s/%%APPIMAGE_NAME%%/${APPIMAGE_NAME}/" \
             -e "s/%%SHA256_APPIMAGE%%/${SHA256}/" \
+            -e "s/StartupWMClass=claude-desktop/StartupWMClass=Claude/" \
             PKGBUILD.template > PKGBUILD
 
       - name: Generate .SRCINFO
