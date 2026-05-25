@@ -677,6 +677,14 @@ run_doctor() {
 		_info 'Titlebar style: hybrid (default, native frame + in-app topbar)'
 	fi
 
+	# -- Keep awake override --
+	local keep_awake="${CLAUDE_KEEP_AWAKE:-}"
+	if [[ $keep_awake == '0' ]]; then
+		_pass 'Keep awake: suppressed (CLAUDE_KEEP_AWAKE=0)'
+	elif [[ -n $keep_awake ]]; then
+		_info "Keep awake: CLAUDE_KEEP_AWAKE=$keep_awake (default behavior)"
+	fi
+
 	# -- Electron binary --
 	# Version is read from the file next to the binary rather than
 	# launching Electron, which can hang (see #371).

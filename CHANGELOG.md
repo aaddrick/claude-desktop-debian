@@ -11,6 +11,7 @@ Tracks upstream Claude Desktop 1.8555.2.
 
 ### Added
 
+- `CLAUDE_KEEP_AWAKE=0` env var to suppress `powerSaveBlocker` sleep inhibitor that upstream holds indefinitely on Linux (no lifecycle management). Adds diagnostic logging for all `powerSaveBlocker` calls and `--doctor` visibility. ([#605](https://github.com/aaddrick/claude-desktop-debian/issues/605))
 - `--doctor` flags filesystems with `NAME_MAX < 200` (eCryptfs, certain encrypted overlays) and surfaces the LUKS-symlink workaround for cowork. Thanks @RayCharlizard, @lizthegrey for the repro. ([#614](https://github.com/aaddrick/claude-desktop-debian/pull/614), fixes [#590](https://github.com/aaddrick/claude-desktop-debian/issues/590))
 - Top-level governance docs: this `CHANGELOG.md`, [`RELEASING.md`](RELEASING.md) (pre-release checklist + tag-driven CI flow), [`SECURITY.md`](SECURITY.md) (private GHSA reporting + in/out-of-scope), [`docs/index.md`](docs/index.md) (navigation hub), and [`docs/styleguides/docs_styleguide.md`](docs/styleguides/docs_styleguide.md) (page anatomy, naming, antipatterns). [`CLAUDE.md`](CLAUDE.md) gains explicit § Required reading, § Anti-patterns, and § Docs sections; [`AGENTS.md`](AGENTS.md) becomes a byte-identical mirror of the new body (was a 13-line stub) so non-Claude tools get the same instructions.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) "Before you start" triage section: where to go for a bug, a fix-in-hand, a new-feature ask, or a security report.
