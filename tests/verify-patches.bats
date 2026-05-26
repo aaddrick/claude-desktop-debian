@@ -64,9 +64,9 @@ write_fixture() {
 	done
 }
 
-@test "markers file: at least 9 markers loaded" {
-	[[ "${#marker_names[@]}" -ge 9 ]] || {
-		echo "expected >= 9 markers, got ${#marker_names[@]}"
+@test "markers file: at least 10 markers loaded" {
+	[[ "${#marker_names[@]}" -ge 10 ]] || {
+		echo "expected >= 10 markers, got ${#marker_names[@]}"
 		return 1
 	}
 }
