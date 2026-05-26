@@ -193,9 +193,9 @@ let patchCount = 0;
         variant = 'forEach';
     }
     if (!match) {
-        console.error('FATAL: Could not find --add-dir dispatch loop.');
-        console.error('Tried: for(let X of Y) Z.push("--add-dir", X)');
-        console.error('Tried: Y.forEach(X=>Z.push("--add-dir", X))');
+        console.error('FATAL: --add-dir dispatch loop not found.');
+        console.error('  for(let X of Y) Z.push("--add-dir", X)');
+        console.error('  Y.forEach(X=>Z.push("--add-dir", X))');
         process.exit(1);
     }
 
@@ -222,7 +222,7 @@ let patchCount = 0;
             '.push("--add-dir",' + iterVar + '))';
     }
     code = code.replace(match[0], filtered);
-    console.log('  Filtered .asar entries from --add-dir dispatch (' +
+    console.log('  Filtered --add-dir dispatch (' +
         variant + ' variant)');
     patchCount++;
 }
@@ -235,45 +235,40 @@ let patchCount = 0;
 // Insert: .filter(l=>!l.endsWith(".asar")) before existing .filter(
 // ================================================================
 {
-    const anchor = 'Filtering out deleted folder from session';
-    const anchorIdx = code.indexOf(anchor);
+    const warn = (msg) => console.log('  WARNING: ' + msg +
+        ' (primary --add-dir filter still protects)');
+
+    const anchorIdx = code.indexOf(
+        'Filtering out deleted folder from session');
     if (anchorIdx === -1) {
-        console.log('  WARNING: Session restore anchor not found — ' +
-            'self-healing will not work (primary --add-dir filter ' +
-            'still protects against the fatal error)');
+        warn('session restore anchor not found');
     } else {
         const searchStart = Math.max(0, anchorIdx - 500);
         const region = code.substring(searchStart, anchorIdx);
         const usIdx = region.lastIndexOf('userSelectedFolders');
         if (usIdx === -1) {
-            console.log('  WARNING: userSelectedFolders not found ' +
-                'near anchor');
+            warn('userSelectedFolders not found near anchor');
         } else {
             const absUsIdx = searchStart + usIdx;
             const afterUs = code.substring(absUsIdx, anchorIdx);
-            const bracketRe = /\|\|\s*\[\s*\]\s*\)/;
-            const bracketMatch = afterUs.match(bracketRe);
+            const bracketMatch = afterUs.match(/\|\|\s*\[\s*\]\s*\)/);
             if (!bracketMatch) {
-                console.log('  WARNING: ||[]) pattern not found ' +
-                    'after userSelectedFolders');
+                warn('||[]) pattern not found');
             } else {
-                const insertOffset = absUsIdx + bracketMatch.index +
+                const insertAt = absUsIdx + bracketMatch.index +
                     bracketMatch[0].length;
-                const afterBracket = code.substring(
-                    insertOffset, insertOffset + 20);
-                if (!afterBracket.match(/^\s*\.filter\s*\(/)) {
-                    console.log('  WARNING: .filter( not found ' +
-                        'after ||[])');
+                const peek = code.substring(insertAt, insertAt + 20);
+                if (!peek.match(/^\s*\.filter\s*\(/)) {
+                    warn('.filter( not found after ||[])');
                 } else if (code.substring(
-                    insertOffset - 50, insertOffset + 50
+                    insertAt - 50, insertAt + 50
                 ).includes('!l.endsWith(".asar")')) {
-                    console.log('  Session restore .asar filter ' +
+                    console.log('  Session restore filter ' +
                         'already present');
                 } else {
-                    const injection =
-                        '.filter(l=>!l.endsWith(".asar"))';
-                    code = code.substring(0, insertOffset) +
-                        injection + code.substring(insertOffset);
+                    code = code.substring(0, insertAt) +
+                        '.filter(l=>!l.endsWith(".asar"))' +
+                        code.substring(insertAt);
                     console.log('  Injected .asar filter in ' +
                         'session restore');
                     patchCount++;
@@ -287,8 +282,8 @@ fs.writeFileSync(indexJs, code);
 console.log('  Applied ' + patchCount +
     ' .asar additionalDirectories patch(es)');
 if (patchCount < 1) {
-    console.error('FATAL: No patches applied — at minimum the ' +
-        '--add-dir filter must succeed (#649).');
+    console.error('FATAL: No patches applied — --add-dir filter ' +
+        'must succeed (#649).');
     process.exit(1);
 }
 ASAR_ADDDIR_PATCH
