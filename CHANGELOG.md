@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v2.0.14] — 2026-05-25
+
+Tracks upstream Claude Desktop 1.8555.2.
+
+### Fixed
+
+- `WM_CLASS` and `StartupWMClass` aligned to `claude-desktop` across all formats (deb, RPM, AppImage, autostart). Resolves ambiguity with the Claude Code CLI (`claude`) and ensures consistent taskbar grouping on KDE/GNOME. ([#648](https://github.com/aaddrick/claude-desktop-debian/pull/648), fixes [#647](https://github.com/aaddrick/claude-desktop-debian/issues/647))
+
+### Changed
+
+- AppImage smoke test: replaced flat 10s sleep with readiness-marker poll (30s ceiling, 0.5s tick), unified cleanup trap to prevent 190MB `squashfs-root` leaks on interrupt. ([#646](https://github.com/aaddrick/claude-desktop-debian/pull/646))
+
 ## [v2.0.13] — 2026-05-24
 
 Tracks upstream Claude Desktop 1.8555.2.
