@@ -117,6 +117,10 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# writes that amplify the stale-cache overwrite bug (#400)
 	patch_asar_trusted_folder_guard
 
+	# Filter .asar paths from --add-dir dispatch and session restore
+	# so corrupted pre-#640 sessions cannot crash local agent mode (#649)
+	patch_asar_additional_dirs_guard
+
 	# Copy cowork VM service daemon for Linux Cowork mode
 	echo 'Installing cowork VM service daemon...'
 	cp "$source_dir/scripts/cowork-vm-service.js" \
