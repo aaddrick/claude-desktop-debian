@@ -26,8 +26,7 @@ patch_tray_menu_handler() {
 	tray_func_re="${tray_func//\$/\\$}"
 
 	tray_var=$(grep -oP \
-		"\}\);let \K[\$\w]+(?==null;(?:async )?function ${tray_func_re})" \
-		"$index_js")
+		'[$\w]+(?=\s*=\s*new\s+[$\w]+\.Tray\()' "$index_js" | head -1)
 	if [[ -z $tray_var ]]; then
 		echo 'Failed to extract tray variable name' >&2
 		cd "$project_root" || exit 1
@@ -113,8 +112,7 @@ patch_tray_inplace_update() {
 	# Escape `$` for PCRE patterns; matches the `tray_var_re` trick below.
 	tray_func_re="${tray_func//\$/\\$}"
 	local_tray_var=$(grep -oP \
-		"\}\);let \K[\$\w]+(?==null;(?:async )?function ${tray_func_re})" \
-		"$index_js")
+		'[$\w]+(?=\s*=\s*new\s+[$\w]+\.Tray\()' "$index_js" | head -1)
 	if [[ -z $local_tray_var ]]; then
 		echo '  Could not extract tray variable name — skipping'
 		echo '##############################################################'
