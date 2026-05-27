@@ -2,6 +2,11 @@
 # Common launcher functions for Claude Desktop (AppImage and deb)
 # This file is sourced by both launchers to avoid code duplication
 
+# X11 WM_CLASS / .desktop StartupWMClass — must match upstream Electron's
+# productName (which drives the actual window class). Build-time
+# substitution replaces @@WM_CLASS@@; see build.sh for the source of truth.
+readonly WM_CLASS='@@WM_CLASS@@'
+
 # Setup logging directory and file
 # Sets: log_dir, log_file
 setup_logging() {
@@ -181,12 +186,11 @@ build_electron_args() {
 		electron_args+=('--disable-features=CustomTitlebar')
 	fi
 
-	# Explicitly set the X11 WM_CLASS to match StartupWMClass in the
-	# .desktop file and the Wayland app_id from desktopName. Without
-	# this, Electron may derive an unpredictable class name, which
-	# breaks taskbar grouping and can trigger crashes in third-party
-	# GNOME extensions that filter by WM_CLASS. Ref: #635, #561
-	electron_args+=('--class=claude-desktop')
+	# Set X11 WM_CLASS to match StartupWMClass in the .desktop file.
+	# Electron derives WM_CLASS from productName in package.json and
+	# ignores --class when they conflict, so this value must match
+	# upstream's productName ("Claude"). Ref: #647, #652
+	electron_args+=("--class=$WM_CLASS")
 
 	# Chromium's safeStorage API and cookie encryption both require a
 	# system keyring selected by --password-store. Without an explicit

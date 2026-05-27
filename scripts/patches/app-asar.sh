@@ -53,6 +53,19 @@ fs.writeFileSync('./app.asar.contents/package.json', JSON.stringify(pkg, null, 2
 console.log('Updated package.json: main entry, desktopName, and node-pty dependency');
 " "$desktop_name"
 
+	# Verify upstream productName matches the WM_CLASS we advertise in
+	# .desktop files. If Anthropic changes productName, the build fails
+	# here rather than silently shipping a broken StartupWMClass.
+	local product_name
+	product_name=$(node -e \
+		"console.log(require('./app.asar.contents/package.json').productName)")
+	if [[ $product_name != "$WM_CLASS" ]]; then
+		echo "Error: upstream productName '${product_name}' != expected" \
+			"WM_CLASS '${WM_CLASS}'" >&2
+		echo 'Update WM_CLASS in build.sh to match the new productName.' >&2
+		exit 1
+	fi
+
 	# Create stub native module
 	echo 'Creating stub native module...'
 	mkdir -p app.asar.contents/node_modules/@ant/claude-native || exit 1

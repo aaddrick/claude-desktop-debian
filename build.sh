@@ -36,6 +36,8 @@ final_output_path=''
 
 # Package metadata (constants)
 readonly PACKAGE_NAME='claude-desktop'
+readonly WM_CLASS='Claude'
+export WM_CLASS
 readonly MAINTAINER='Claude Desktop Linux Maintainers'
 readonly DESCRIPTION='Claude Desktop for Linux'
 
@@ -159,7 +161,7 @@ Type=Application
 Terminal=false
 Categories=Office;Utility;Network;
 MimeType=x-scheme-handler/claude;
-StartupWMClass=claude-desktop
+StartupWMClass=$WM_CLASS
 X-AppImage-Version=$version
 X-AppImage-Name=Claude Desktop (AppImage)
 EOF
