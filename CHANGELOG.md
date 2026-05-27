@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v2.0.15] — 2026-05-27
+
+Tracks upstream Claude Desktop 1.9255.0.
+
+### Fixed
+
+- `StartupWMClass` aligned to `Claude` to match what Electron actually advertises via `productName`. The v2.0.14 value `claude-desktop` was silently ignored by Electron, causing orphan windows and duplicate gear icons on GNOME/KDE. Value centralized from 6 hardcoded locations to one source of truth in `build.sh`, with build-time substitution and a `productName` assertion guard. ([#655](https://github.com/aaddrick/claude-desktop-debian/pull/655), fixes [#652](https://github.com/aaddrick/claude-desktop-debian/issues/652))
+
 ## [v2.0.14] — 2026-05-25
 
 Tracks upstream Claude Desktop 1.8555.2.
