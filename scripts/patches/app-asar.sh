@@ -53,6 +53,17 @@ fs.writeFileSync('./app.asar.contents/package.json', JSON.stringify(pkg, null, 2
 console.log('Updated package.json: main entry, desktopName, and node-pty dependency');
 " "$desktop_name"
 
+	# Fail fast if upstream changed productName — a mismatch silently
+	# breaks StartupWMClass in every .desktop file we ship.
+	local product_name
+	product_name=$(node -e \
+		"console.log(require('./app.asar.contents/package.json').productName)")
+	if [[ $product_name != "$WM_CLASS" ]]; then
+		echo "Error: upstream productName '$product_name' != WM_CLASS" \
+			"'$WM_CLASS' — update WM_CLASS in build.sh" >&2
+		exit 1
+	fi
+
 	# Create stub native module
 	echo 'Creating stub native module...'
 	mkdir -p app.asar.contents/node_modules/@ant/claude-native || exit 1

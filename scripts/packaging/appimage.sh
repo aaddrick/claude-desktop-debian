@@ -48,6 +48,7 @@ echo 'Application files copied to Electron resources directory'
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$appdir_path/usr/lib/claude-desktop" || exit 1
 cp "$(dirname "$script_dir")/launcher-common.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
+sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "$appdir_path/usr/lib/claude-desktop/launcher-common.sh"
 cp "$(dirname "$script_dir")/doctor.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
 echo 'Shared launcher library + doctor copied'
 
@@ -133,7 +134,7 @@ Terminal=false
 Categories=Network;Utility;
 Comment=Claude Desktop for Linux
 MimeType=x-scheme-handler/claude;
-StartupWMClass=claude-desktop
+StartupWMClass=$WM_CLASS
 X-AppImage-Version=$version
 X-AppImage-Name=Claude Desktop
 EOF

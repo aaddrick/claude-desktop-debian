@@ -793,8 +793,8 @@ Module.prototype.require = function(id) {
           return { exec: 'claude-desktop', icon: 'claude-desktop' };
         };
 
-        // StartupWMClass matches --class= and desktopName so DEs group
-        // an autostarted window with user-launched instances.
+        // StartupWMClass derived from Electron's app.name (upstream
+        // productName) so DEs group autostarted and launched instances.
         const buildAutostartContent = () => {
           const { exec, icon } = resolveAutostartTarget();
           return `[Desktop Entry]
@@ -802,7 +802,7 @@ Type=Application
 Name=Claude
 Exec=${exec}
 Icon=${icon}
-StartupWMClass=claude-desktop
+StartupWMClass=${result.app.name}
 Terminal=false
 X-GNOME-Autostart-enabled=true
 `;

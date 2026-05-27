@@ -70,6 +70,7 @@ echo 'Application files copied to Electron resources directory'
 # at runtime, so both must live in the same directory)
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cp "$(dirname "$script_dir")/launcher-common.sh" "$install_dir/lib/$package_name/" || exit 1
+sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "$install_dir/lib/$package_name/launcher-common.sh"
 cp "$(dirname "$script_dir")/doctor.sh" "$install_dir/lib/$package_name/" || exit 1
 echo 'Shared launcher library + doctor copied'
 
@@ -84,7 +85,7 @@ Type=Application
 Terminal=false
 Categories=Office;Utility;
 MimeType=x-scheme-handler/claude;
-StartupWMClass=claude-desktop
+StartupWMClass=$WM_CLASS
 EOF
 echo 'Desktop entry created'
 

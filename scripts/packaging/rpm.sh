@@ -68,7 +68,7 @@ Type=Application
 Terminal=false
 Categories=Office;Utility;
 MimeType=x-scheme-handler/claude;
-StartupWMClass=claude-desktop
+StartupWMClass=$WM_CLASS
 EOF
 
 # --- Create Launcher Script ---
@@ -218,6 +218,7 @@ cp -r $app_staging_dir/app.asar.unpacked %{buildroot}/usr/lib/$package_name/node
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)
 cp $(dirname "$script_dir")/launcher-common.sh %{buildroot}/usr/lib/$package_name/
+sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "%{buildroot}/usr/lib/$package_name/launcher-common.sh"
 cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 
 # Install desktop entry

@@ -76,8 +76,13 @@ setup() {
 	unset CLAUDE_PASSWORD_STORE
 	CLAUDE_PASSWORD_STORE='basic'
 
+	# Copy to temp dir so we can substitute the build-time placeholder
+	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
+	cp "$SCRIPT_DIR/../scripts/launcher-common.sh" "$TEST_TMP/launcher-common.sh"
+	cp "$SCRIPT_DIR/../scripts/doctor.sh" "$TEST_TMP/doctor.sh"
+	sed -i 's/@@WM_CLASS@@/Claude/' "$TEST_TMP/launcher-common.sh"
 	# shellcheck source=scripts/launcher-common.sh
-	source "$SCRIPT_DIR/../scripts/launcher-common.sh"
+	source "$TEST_TMP/launcher-common.sh"
 }
 
 teardown() {
@@ -304,6 +309,13 @@ teardown() {
 # =============================================================================
 # build_electron_args
 # =============================================================================
+
+@test "build_electron_args: includes --class matching upstream productName" {
+	is_wayland=false
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--class=Claude'
+}
 
 @test "build_electron_args: X11 deb - only CustomTitlebar disabled" {
 	is_wayland=false
