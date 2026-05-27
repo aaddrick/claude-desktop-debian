@@ -424,7 +424,7 @@ if (serviceErrorIdx !== -1) {
             const funcSearchStart = Math.max(0, newServiceErrorIdx - 2000);
             const funcRegion = code.substring(funcSearchStart, newServiceErrorIdx);
             // The function is defined as: async function NAME(t,e){...for(let r=0;r<=LIMIT;r++)
-            const funcNameRe = /async function (\w+)\s*\(\s*\w+\s*,\s*\w+\s*\)\s*\{[\s\S]*?for\s*\(\s*let/g;
+            const funcNameRe = /async function ([$\w]+)\s*\(\s*[$\w]+\s*,\s*[$\w]+\s*\)\s*\{[\s\S]*?for\s*\(\s*let/g;
             let funcMatch;
             let retryFuncName = null;
             while ((funcMatch = funcNameRe.exec(funcRegion)) !== null) {
@@ -432,7 +432,7 @@ if (serviceErrorIdx !== -1) {
             }
             const spawnGuard = retryFuncName
                 ? retryFuncName + '._lastSpawn'
-                : '_globalLastSpawn';
+                : 'globalThis._lastSpawn';
             // Cooldown in ms — long enough to avoid fork storms, short enough
             // that the retry loop can re-spawn after a mid-session daemon death.
             const autoLaunch =
