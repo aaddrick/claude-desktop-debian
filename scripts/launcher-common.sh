@@ -2,9 +2,8 @@
 # Common launcher functions for Claude Desktop (AppImage and deb)
 # This file is sourced by both launchers to avoid code duplication
 
-# X11 WM_CLASS / .desktop StartupWMClass — must match upstream Electron's
-# productName (which drives the actual window class). Build-time
-# substitution replaces @@WM_CLASS@@; see build.sh for the source of truth.
+# WM_CLASS / StartupWMClass — must match upstream productName.
+# @@WM_CLASS@@ is replaced at build time; see build.sh.
 readonly WM_CLASS='@@WM_CLASS@@'
 
 # Setup logging directory and file
@@ -186,10 +185,8 @@ build_electron_args() {
 		electron_args+=('--disable-features=CustomTitlebar')
 	fi
 
-	# Set X11 WM_CLASS to match StartupWMClass in the .desktop file.
-	# Electron derives WM_CLASS from productName in package.json and
-	# ignores --class when they conflict, so this value must match
-	# upstream's productName ("Claude"). Ref: #647, #652
+	# WM_CLASS must match the .desktop StartupWMClass and upstream's
+	# productName. Ref: #647, #652
 	electron_args+=("--class=$WM_CLASS")
 
 	# Chromium's safeStorage API and cookie encryption both require a

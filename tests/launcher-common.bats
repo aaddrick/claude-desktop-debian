@@ -76,10 +76,8 @@ setup() {
 	unset CLAUDE_PASSWORD_STORE
 	CLAUDE_PASSWORD_STORE='basic'
 
-	# Replace the @@WM_CLASS@@ build-time placeholder before sourcing
-	# (mirrors what the packaging scripts do at build time).
-	# doctor.sh must be co-located (launcher-common.sh sources it via
-	# BASH_SOURCE dirname).
+	# Copy to temp dir so we can substitute the build-time placeholder
+	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
 	cp "$SCRIPT_DIR/../scripts/launcher-common.sh" "$TEST_TMP/launcher-common.sh"
 	cp "$SCRIPT_DIR/../scripts/doctor.sh" "$TEST_TMP/doctor.sh"
 	sed -i 's/@@WM_CLASS@@/Claude/' "$TEST_TMP/launcher-common.sh"
