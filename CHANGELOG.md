@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v2.0.16] — 2026-05-27
+
+Tracks upstream Claude Desktop 1.9255.0.
+
+### Fixed
+
+- Cowork spawn guard now captures `$`-prefixed minified function names (e.g. `$Be`) and uses `globalThis._lastSpawn` instead of a bare `_globalLastSpawn` identifier, fixing `ReferenceError: _globalLastSpawn is not defined` that broke Cowork on all platforms with upstream 1.9255.0. ([#660](https://github.com/aaddrick/claude-desktop-debian/pull/660), fixes [#658](https://github.com/aaddrick/claude-desktop-debian/issues/658), [#659](https://github.com/aaddrick/claude-desktop-debian/issues/659), [#661](https://github.com/aaddrick/claude-desktop-debian/issues/661))
+
 ## [v2.0.15] — 2026-05-27
 
 Tracks upstream Claude Desktop 1.9255.0.
