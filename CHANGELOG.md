@@ -15,6 +15,7 @@ Tracks upstream Claude Desktop 1.9255.0.
 ### Fixed
 
 - `StartupWMClass` aligned to `Claude` to match what Electron actually advertises via `productName`. The v2.0.14 value `claude-desktop` was silently ignored by Electron, causing orphan windows and duplicate gear icons on GNOME/KDE. Value centralized from 6 hardcoded locations to one source of truth in `build.sh`, with build-time substitution and a `productName` assertion guard. ([#655](https://github.com/aaddrick/claude-desktop-debian/pull/655), fixes [#652](https://github.com/aaddrick/claude-desktop-debian/issues/652))
+- Tray variable extraction re-anchored on `.Tray()` literal instead of minifier-dependent syntax that upstream 1.9255.0 reshuffled. ([#657](https://github.com/aaddrick/claude-desktop-debian/pull/657), fixes [#656](https://github.com/aaddrick/claude-desktop-debian/issues/656))
 
 ## [v2.0.14] — 2026-05-25
 
