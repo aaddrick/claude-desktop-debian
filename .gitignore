@@ -40,3 +40,7 @@ result-*
 
 # Wrangler (Cloudflare Worker dev/deploy cache)
 worker/.wrangler/
+
+# Graphify outputs and temporary files
+graphify-out/
+.graphify_*
