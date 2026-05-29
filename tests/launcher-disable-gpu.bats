@@ -142,3 +142,33 @@ args_count() {
 	run args_contain '--disable-gpu'
 	[[ "$status" -ne 0 ]]
 }
+
+@test "disable-gpu: prior GPU fatal auto-disables on next launch" {
+	cat > "$log_file" <<'LOG'
+--- Claude Desktop Launcher Start ---
+GPU process launch failed: error_code=1002
+GPU process isn't usable. Goodbye.
+--- Claude Desktop Launcher Start ---
+LOG
+
+	build_electron_args deb
+
+	args_contain '--disable-gpu'
+	args_contain '--disable-software-rasterizer'
+	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
+}
+
+@test "disable-gpu: CLAUDE_DISABLE_GPU=0 suppresses auto fallback" {
+	cat > "$log_file" <<'LOG'
+--- Claude Desktop Launcher Start ---
+GPU process launch failed: error_code=1002
+GPU process isn't usable. Goodbye.
+--- Claude Desktop Launcher Start ---
+LOG
+	export CLAUDE_DISABLE_GPU=0
+
+	build_electron_args deb
+
+	run args_contain '--disable-gpu'
+	[[ "$status" -ne 0 ]]
+}
