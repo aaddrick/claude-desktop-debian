@@ -6,6 +6,16 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/test-artifact-common.sh
 source "$script_dir/test-artifact-common.sh"
 
+# Reap an interrupted launch smoke test, then remove the throwaway
+# unprivileged user the launch drops to (see below / test-artifact-
+# common.sh).
+_rpm_cleanup() {
+	_launch_smoke_cleanup
+	[[ -n ${smoke_user:-} ]] \
+		&& userdel -r "$smoke_user" 2>/dev/null
+}
+trap _rpm_cleanup EXIT INT TERM
+
 # Find the .rpm file
 rpm_file=$(find "$artifact_dir" -name '*.rpm' -type f | head -1)
 if [[ -z $rpm_file ]]; then
@@ -93,5 +103,23 @@ if [[ $doctor_exit -lt 127 ]]; then
 else
 	fail "--doctor crashed (exit: $doctor_exit)"
 fi
+
+# --- Headless launch smoke test ---
+# The container runs as root; Electron aborts as root without
+# --no-sandbox (which the launcher only adds on Wayland/deb), so drop to
+# a throwaway unprivileged user. The install is world-readable and
+# chrome-sandbox is setuid root, so this exercises the real sandbox path
+# a Fedora user hits. The user is removed by the EXIT trap.
+# In a non-root env or without useradd, smoke_user stays empty and the
+# helper runs the launch as-is rather than dropping privileges.
+smoke_user=''
+if [[ $(id -u) -eq 0 ]] && command -v useradd &>/dev/null; then
+	smoke_user='claude-smoke'
+	useradd -m "$smoke_user" 2>/dev/null \
+		|| smoke_user=''
+fi
+
+run_launch_smoke_test 'rpm package' '/usr/lib/claude-desktop' \
+	"$smoke_user" /usr/bin/claude-desktop
 
 print_summary

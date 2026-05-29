@@ -38,7 +38,9 @@ jobs:
 
       - name: Install test dependencies (Fedora)
         if: matrix.format == 'rpm'
-        run: dnf install -y findutils file nodejs npm
+        run: |
+          dnf install -y findutils file nodejs npm \
+            xorg-x11-server-Xvfb dbus-daemon util-linux procps-ng
 
       - name: Install test dependencies (Ubuntu)
         if: matrix.format != 'rpm'
