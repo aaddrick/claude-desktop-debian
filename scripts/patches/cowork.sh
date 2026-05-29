@@ -881,6 +881,65 @@ if (serviceErrorIdx !== -1) {
     }
 }
 
+// ============================================================
+// Patch 11: Shorten local-session "no-stream" watchdog 10min -> 5min
+//
+// The local-agent health monitor (wRr.startTimeoutDetection) marks
+// a session "timed out" only after coworkMessageTimeoutMs of stdout
+// inactivity. Default is 6e5 ms = 10 minutes.
+//
+// When the Claude Code CLI subprocess wedges mid-stream (observed:
+// an AbortError thrown in a hook callback / control_request inside
+// cli.js sendRequest), it stops emitting stdout. The renderer then
+// shows a live elapsed-time counter with no tokens and NO error for
+// a full 10 minutes. The recovery path itself already works: on
+// timeout the manager emits
+//   {type:"error", error:"The session stopped responding. Send your
+//    message again to resume with a fresh process."}
+// and tears the query down. It is simply gated behind a 10-minute
+// threshold, so users hard-stop manually and effectively never see
+// it (it fires ~once per 100k log lines in real usage).
+//
+// Mitigation (until the upstream CLI hook-abort bug is fixed —
+// reported to anthropics/claude-code): lower the default to
+// 3e5 ms = 5 minutes so the existing, working watchdog surfaces the
+// recoverable error ~2x sooner. 5 minutes stays well above any
+// legitimate single-tool silence (a long Bash/build emits no stdout
+// messages while it runs), so this must not falsely time out long
+// tool turns.
+//
+// Anchored on the stable config-key string so it survives Claude
+// version bumps; the numeric default is matched generically and we
+// only ever SHORTEN it (never lengthen), which keeps the patch
+// idempotent and safe to re-run.
+//
+// NOTE: coworkMessageTimeoutMs is read through a remote-config
+// getter; a remote value, if ever pushed, would override this local
+// default. None is observed in current builds.
+// ============================================================
+{
+    const STALL_NEW_TIMEOUT = '3e5'; // 5 minutes
+    const stallTimeoutRe = /("coworkMessageTimeoutMs",)(\d+(?:\.\d+)?(?:e\d+)?)/;
+    const stallMatch = code.match(stallTimeoutRe);
+    if (stallMatch) {
+        const current = stallMatch[2];
+        const currentMs = Number(current);
+        const newMs = Number(STALL_NEW_TIMEOUT);
+        if (Number.isFinite(currentMs) && currentMs > newMs) {
+            code = code.replace(stallTimeoutRe, '$1' + STALL_NEW_TIMEOUT);
+            console.log('  Shortened coworkMessageTimeoutMs ' + current +
+                ' -> ' + STALL_NEW_TIMEOUT + ' (stream-stall watchdog)');
+            patchCount++;
+        } else {
+            console.log('  coworkMessageTimeoutMs already <= ' +
+                STALL_NEW_TIMEOUT + ' (' + current + '), skipping');
+        }
+    } else {
+        console.log('  WARNING: coworkMessageTimeoutMs anchor not found ' +
+            '- stream-stall watchdog still 10min');
+    }
+}
+
 fs.writeFileSync(indexJs, code);
 console.log(`  Applied ${patchCount} cowork patches`);
 if (patchCount < 5) {
