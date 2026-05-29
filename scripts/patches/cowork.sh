@@ -881,6 +881,73 @@ if (serviceErrorIdx !== -1) {
     }
 }
 
+// ============================================================
+// Patch 13: Shorten local-session "no-stream" watchdog 10min -> 5min
+//
+// The local-agent health monitor (wRr.startTimeoutDetection) marks
+// a session "timed out" only after coworkMessageTimeoutMs of stdout
+// inactivity. Default is 6e5 ms = 10 minutes.
+//
+// When the Claude Code CLI subprocess wedges mid-stream (observed:
+// an AbortError thrown in a hook callback / control_request inside
+// cli.js sendRequest), it stops emitting stdout. The renderer then
+// shows a live elapsed-time counter with no tokens and NO error for
+// a full 10 minutes. The recovery path itself already works: on
+// timeout the manager emits
+//   {type:"error", error:"The session stopped responding. Send your
+//    message again to resume with a fresh process."}
+// and tears the query down. It is simply gated behind a 10-minute
+// threshold, so users hard-stop manually and effectively never see
+// it (it fires ~once per 100k log lines in real usage).
+//
+// Mitigation (until the upstream CLI hook-abort bug is fixed —
+// reported to anthropics/claude-code): lower the default to
+// 3e5 ms = 5 minutes so the existing, working watchdog surfaces the
+// recoverable error ~2x sooner. 5 minutes stays well above any
+// legitimate single-tool silence (a long Bash/build emits no stdout
+// messages while it runs), so this must not falsely time out long
+// tool turns.
+//
+// Anchored on the stable config-key string (with whitespace
+// tolerance after the comma per CONTRIBUTING.md) so it survives
+// Claude version bumps; the numeric default is matched generically.
+// We assert a single match site, only ever SHORTEN the value (never
+// lengthen), and skip if already low — so the patch is idempotent
+// and safe to re-run. A marker is registered in
+// scripts/cowork-patch-markers.tsv so CI flags a silent no-op if the
+// anchor moves on a future upstream version.
+//
+// NOTE: coworkMessageTimeoutMs is read through a remote-config
+// getter; a remote value, if ever pushed, would override this local
+// default. None is observed in current builds.
+// ============================================================
+{
+    const STALL_NEW_TIMEOUT = '3e5'; // 5 minutes
+    const stallTimeoutRe = /("coworkMessageTimeoutMs",[ \t]*)(\d+(?:\.\d+)?(?:e\d+)?)/;
+    const stallAll = code.match(new RegExp(stallTimeoutRe.source, 'g')) || [];
+    if (stallAll.length === 0) {
+        console.log('  WARNING: coworkMessageTimeoutMs anchor not found ' +
+            '- stream-stall watchdog still 10min');
+    } else if (stallAll.length > 1) {
+        console.log('  WARNING: coworkMessageTimeoutMs matched ' +
+            stallAll.length + ' sites - skipping to avoid a wrong rewrite');
+    } else {
+        const stallMatch = code.match(stallTimeoutRe);
+        const current = stallMatch[2];
+        const currentMs = Number(current);
+        const newMs = Number(STALL_NEW_TIMEOUT);
+        if (Number.isFinite(currentMs) && currentMs > newMs) {
+            code = code.replace(stallTimeoutRe, '$1' + STALL_NEW_TIMEOUT);
+            console.log('  Shortened coworkMessageTimeoutMs ' + current +
+                ' -> ' + STALL_NEW_TIMEOUT + ' (stream-stall watchdog)');
+            patchCount++;
+        } else {
+            console.log('  coworkMessageTimeoutMs already <= ' +
+                STALL_NEW_TIMEOUT + ' (' + current + '), skipping');
+        }
+    }
+}
+
 fs.writeFileSync(indexJs, code);
 console.log(`  Applied ${patchCount} cowork patches`);
 if (patchCount < 5) {

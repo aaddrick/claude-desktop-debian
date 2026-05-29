@@ -28,3 +28,4 @@ cowork-daemon-pid	global\.__coworkDaemonPid	global.__coworkDaemonPid=_c.pid
 cowork-linux-daemon-shutdown	cowork-linux-daemon-shutdown	name:"cowork-linux-daemon-shutdown"
 sharedcwdpath-threadthrough	sharedCwdPath:this\.sessions\.get\(	sharedCwdPath:this.sessions.get(t)?.userSelectedFolders?.[0]
 asar-adddir-filter	\.filter\(_d=>!_d\.endsWith\("\.asar"\)\).*"--add-dir"	.filter(_d=>!_d.endsWith(".asar")))Y.push("--add-dir"
+cowork-message-timeout-shortened	"coworkMessageTimeoutMs",\s*3e5	"coworkMessageTimeoutMs",3e5
