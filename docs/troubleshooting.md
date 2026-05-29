@@ -161,6 +161,11 @@ applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
 
+If the previous launch already died with the GPU-process FATAL
+signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
+auto-applies the same flags. `CLAUDE_DISABLE_GPU=0` suppresses that
+auto-fallback if you need to retest hardware acceleration.
+
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for
 `CLAUDE_DISABLE_GPU=1` when the app crashes before you can open
