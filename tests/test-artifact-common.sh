@@ -273,7 +273,9 @@ run_launch_smoke_test() {
 	kill -KILL -- "-$_smoke_launch_pid" 2>/dev/null || true
 	wait "$_smoke_launch_pid" 2>/dev/null || true
 	# Sweep any electron child that escaped the group (e.g. zygote).
-	[[ -n $pkill_match ]] && pkill -KILL -f "$pkill_match" 2>/dev/null || true
+	if [[ -n $pkill_match ]]; then
+		pkill -KILL -f "$pkill_match" 2>/dev/null || true
+	fi
 
 	rm -rf "$cache_root" "$xvfb_log"
 	_smoke_launch_pid=''
