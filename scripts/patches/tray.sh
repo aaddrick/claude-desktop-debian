@@ -101,7 +101,7 @@ patch_tray_inplace_update() {
 	# Re-extract the tray variable name — `patch_tray_menu_handler`
 	# declares it `local` so it's not visible here. Same grep pattern.
 	local tray_func tray_func_re local_tray_var tray_var_re
-	local menu_func path_var enabled_var enabled_count
+	local menu_func menu_var path_var enabled_var enabled_count
 	tray_func=$(grep -oP \
 		'on\("menuBarEnabled",\(\)=>\{\K[\w$]+(?=\(\)\})' "$index_js")
 	if [[ -z $tray_func ]]; then
@@ -124,12 +124,34 @@ patch_tray_inplace_update() {
 
 	menu_func=$(grep -oP "${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\(\))" \
 		"$index_js" | head -1)
-	if [[ -z $menu_func ]]; then
-		echo '  Could not extract menu function name — skipping'
-		echo '##############################################################'
-		return
+	if [[ -n $menu_func ]]; then
+		echo "  Found menu function: $menu_func"
+	else
+		menu_var=$(grep -oP \
+			"${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\))" \
+			"$index_js" | head -1)
+		if [[ -z $menu_var ]]; then
+			echo '  Could not extract tray menu variable — skipping'
+			echo '##############################################################'
+			return
+		fi
+		echo "  Found menu variable: $menu_var"
+
+		menu_func=$(grep -oP \
+			"${menu_var}=\K[\$\w]+(?=\(\),${tray_var_re}\.setContextMenu\(${menu_var}\))" \
+			"$index_js" | head -1)
+		if [[ -z $menu_func ]]; then
+			menu_func=$(grep -oP \
+				"${menu_var}=\K[\$\w]+(?=\(\),${tray_var_re}\.on\(\"click\")" \
+				"$index_js" | head -1)
+		fi
+		if [[ -z $menu_func ]]; then
+			echo '  Could not extract tray menu builder — skipping'
+			echo '##############################################################'
+			return
+		fi
+		echo "  Found menu function via ${menu_var}: $menu_func"
 	fi
-	echo "  Found menu function: $menu_func"
 
 	# Extract the icon-path local used in the original
 	#   Nh = new pA.Tray(pA.nativeImage.createFromPath(X))
@@ -189,7 +211,7 @@ patch_tray_inplace_update() {
 	# and the new StatusNotifierItem. Slow path is kept for initial
 	# creation and tray-disable.
 	if ! TRAY_VAR="$local_tray_var" EL_VAR="$electron_var" \
-		MENU_FUNC="$menu_func" PATH_VAR="$path_var" \
+		MENU_FUNC="$menu_func" MENU_VAR="$menu_var" PATH_VAR="$path_var" \
 		ENABLED_VAR="$enabled_var" \
 		node -e "
 const fs = require('fs');
@@ -197,6 +219,7 @@ const p = 'app.asar.contents/.vite/build/index.js';
 const T = process.env.TRAY_VAR;
 const E = process.env.EL_VAR;
 const M = process.env.MENU_FUNC;
+const MV = process.env.MENU_VAR;
 const P = process.env.PATH_VAR;
 const V = process.env.ENABLED_VAR;
 let code = fs.readFileSync(p, 'utf8');
@@ -212,10 +235,14 @@ if (!anchor.test(code)) {
   process.exit(1);
 }
 
+const menuRefresh = MV
+  ? MV + '=' + M + '();process.platform!==\"darwin\"&&' +
+      T + '.setContextMenu(' + MV + ');'
+  : 'process.platform!==\"darwin\"&&' + T + '.setContextMenu(' + M + '());';
 const fastPath =
   'if(' + T + '&&' + V + '!==false){' +
     T + '.setImage(' + E + '.nativeImage.createFromPath(' + P + '));' +
-    'process.platform!==\"darwin\"&&' + T + '.setContextMenu(' + M + '());' +
+    menuRefresh +
     'return' +
   '}';
 
