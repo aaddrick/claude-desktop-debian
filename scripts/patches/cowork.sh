@@ -882,7 +882,7 @@ if (serviceErrorIdx !== -1) {
 }
 
 // ============================================================
-// Patch 11: Shorten local-session "no-stream" watchdog 10min -> 5min
+// Patch 13: Shorten local-session "no-stream" watchdog 10min -> 5min
 //
 // The local-agent health monitor (wRr.startTimeoutDetection) marks
 // a session "timed out" only after coworkMessageTimeoutMs of stdout
@@ -908,10 +908,14 @@ if (serviceErrorIdx !== -1) {
 // messages while it runs), so this must not falsely time out long
 // tool turns.
 //
-// Anchored on the stable config-key string so it survives Claude
-// version bumps; the numeric default is matched generically and we
-// only ever SHORTEN it (never lengthen), which keeps the patch
-// idempotent and safe to re-run.
+// Anchored on the stable config-key string (with whitespace
+// tolerance after the comma per CONTRIBUTING.md) so it survives
+// Claude version bumps; the numeric default is matched generically.
+// We assert a single match site, only ever SHORTEN the value (never
+// lengthen), and skip if already low — so the patch is idempotent
+// and safe to re-run. A marker is registered in
+// scripts/cowork-patch-markers.tsv so CI flags a silent no-op if the
+// anchor moves on a future upstream version.
 //
 // NOTE: coworkMessageTimeoutMs is read through a remote-config
 // getter; a remote value, if ever pushed, would override this local
@@ -919,9 +923,16 @@ if (serviceErrorIdx !== -1) {
 // ============================================================
 {
     const STALL_NEW_TIMEOUT = '3e5'; // 5 minutes
-    const stallTimeoutRe = /("coworkMessageTimeoutMs",)(\d+(?:\.\d+)?(?:e\d+)?)/;
-    const stallMatch = code.match(stallTimeoutRe);
-    if (stallMatch) {
+    const stallTimeoutRe = /("coworkMessageTimeoutMs",[ \t]*)(\d+(?:\.\d+)?(?:e\d+)?)/;
+    const stallAll = code.match(new RegExp(stallTimeoutRe.source, 'g')) || [];
+    if (stallAll.length === 0) {
+        console.log('  WARNING: coworkMessageTimeoutMs anchor not found ' +
+            '- stream-stall watchdog still 10min');
+    } else if (stallAll.length > 1) {
+        console.log('  WARNING: coworkMessageTimeoutMs matched ' +
+            stallAll.length + ' sites - skipping to avoid a wrong rewrite');
+    } else {
+        const stallMatch = code.match(stallTimeoutRe);
         const current = stallMatch[2];
         const currentMs = Number(current);
         const newMs = Number(STALL_NEW_TIMEOUT);
@@ -934,9 +945,6 @@ if (serviceErrorIdx !== -1) {
             console.log('  coworkMessageTimeoutMs already <= ' +
                 STALL_NEW_TIMEOUT + ' (' + current + '), skipping');
         }
-    } else {
-        console.log('  WARNING: coworkMessageTimeoutMs anchor not found ' +
-            '- stream-stall watchdog still 10min');
     }
 }
 
