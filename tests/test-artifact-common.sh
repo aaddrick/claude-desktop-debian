@@ -191,13 +191,14 @@ run_launch_smoke_test() {
 	local label="$1" pkill_match="$2" run_as="$3"
 	shift 3
 
+	local skip="Skipping launch smoke test for $label"
 	if ! { command -v xvfb-run && command -v dbus-run-session \
 		&& command -v setsid; } &>/dev/null; then
-		pass "Skipping launch smoke test for $label (xvfb-run/dbus-run-session/setsid missing)"
+		pass "$skip (xvfb-run/dbus-run-session/setsid missing)"
 		return
 	fi
 	if [[ -n $run_as ]] && ! command -v runuser &>/dev/null; then
-		pass "Skipping launch smoke test for $label (runuser missing)"
+		pass "$skip (runuser missing)"
 		return
 	fi
 

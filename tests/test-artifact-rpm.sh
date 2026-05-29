@@ -110,6 +110,8 @@ fi
 # a throwaway unprivileged user. The install is world-readable and
 # chrome-sandbox is setuid root, so this exercises the real sandbox path
 # a Fedora user hits. The user is removed by the EXIT trap.
+# In a non-root env or without useradd, smoke_user stays empty and the
+# helper runs the launch as-is rather than dropping privileges.
 smoke_user=''
 if [[ $(id -u) -eq 0 ]] && command -v useradd &>/dev/null; then
 	smoke_user='claude-smoke'
@@ -117,13 +119,7 @@ if [[ $(id -u) -eq 0 ]] && command -v useradd &>/dev/null; then
 		|| smoke_user=''
 fi
 
-if [[ -n $smoke_user ]]; then
-	run_launch_smoke_test 'rpm package' '/usr/lib/claude-desktop' \
-		"$smoke_user" /usr/bin/claude-desktop
-else
-	# Non-root env or no useradd: run as-is rather than skip.
-	run_launch_smoke_test 'rpm package' '/usr/lib/claude-desktop' '' \
-		/usr/bin/claude-desktop
-fi
+run_launch_smoke_test 'rpm package' '/usr/lib/claude-desktop' \
+	"$smoke_user" /usr/bin/claude-desktop
 
 print_summary
