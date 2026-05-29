@@ -108,6 +108,11 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# trigger false Cowork dispatch (#383, #622, #632).
 	patch_asar_path_filter
 
+	# Reject .asar paths in the argv file-drop collector so the
+	# existsSync branch doesn't dispatch app.asar as a file drop,
+	# triggering a permission prompt on every window reopen (#383, #622).
+	patch_asar_argv_file_drop_guard
+
 	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
 	patch_cowork_linux
 

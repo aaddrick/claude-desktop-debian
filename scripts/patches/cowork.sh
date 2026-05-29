@@ -98,6 +98,113 @@ ASAR_FILTER_PATCH
 	echo '##############################################################'
 }
 
+# ---------------------------------------------------------------------------
+# Patch: reject .asar paths in the argv file-drop collector
+#
+# PR #640 patched the directory-check helper (isDirectory path) so
+# app.asar is no longer dispatched as a "folder drop".  However, the
+# argv collector function (lKr in the current build) has a separate
+# branch:
+#
+#   if (!i.startsWith("-") && FSVAR.existsSync(i)) { A.push(i); }
+#
+# Electron's ASAR VFS shim makes existsSync return true for .asar
+# paths, so app.asar passes this check and is dispatched to the
+# "file drop" handler (cCA), triggering a permission prompt on every
+# window close+reopen (#383, #622 regression in v2.0.16+).
+#
+# Fix: inject !PARAM.endsWith(".asar")&& before the existsSync call.
+# ---------------------------------------------------------------------------
+patch_asar_argv_file_drop_guard() {
+	echo 'Patching argv file-drop collector to reject .asar paths...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	# Idempotency: check for the guard in context — specifically
+	# !PARAM.startsWith("-")&&!PARAM.endsWith(".asar") — anchored to
+	# startsWith to avoid false-positive matches from other .asar guards
+	# (e.g. the statSync patch or the --add-dir filter).
+	if grep -qP '\.startsWith\("-"\)&&![\w$]+\.endsWith\("\.asar"\)' \
+		"$index_js"; then
+		echo '  .asar file-drop guard already present (idempotent)'
+		echo '##############################################################'
+		return
+	fi
+
+	if ! INDEX_JS="$index_js" node << 'ASAR_FILE_DROP_PATCH'
+const fs = require('fs');
+const indexJs = process.env.INDEX_JS;
+let code = fs.readFileSync(indexJs, 'utf8');
+
+// Find the argv file-drop collector branch.
+// Beautified form:
+//   if (!i.startsWith("-") && ee.existsSync(i)) {
+//     A.push(i);
+//     continue;
+//   }
+// Minified form:
+//   if(!i.startsWith("-")&&ee.existsSync(i)){A.push(i);continue}
+//
+// Anchor: !PARAM.startsWith("-")&&FSVAR.existsSync(PARAM) — unique in
+// the bundle (verified). The .push() suffix is intentionally omitted
+// to avoid brittleness if the minifier reorders the if-body.
+// The param variable and fs variable are both minified and captured.
+const re =
+    /(![\w$]+\.startsWith\s*\(\s*"-"\s*\)\s*&&\s*)([\w$]+)\.existsSync\(\s*([\w$]+)\s*\)/;
+const match = code.match(re);
+
+if (!match) {
+    console.error('FATAL: argv file-drop collector branch not found.');
+    console.error('  Expected: !PARAM.startsWith("-")&&FSVAR.existsSync(PARAM)');
+    console.error(
+        '  This patch prevents app.asar file-drop prompts (#383, #622).');
+    process.exit(1);
+}
+
+// Verify uniqueness — startsWith("-")&&existsSync must appear exactly
+// once; multiple matches would mean we cannot safely target this site.
+const escaped = match[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const allMatches = code.match(new RegExp(escaped, 'g'));
+if (allMatches && allMatches.length > 1) {
+    console.error('FATAL: file-drop pattern matched ' +
+        allMatches.length + ' times (expected 1).');
+    process.exit(1);
+}
+
+const [, startsPart, fsVar, param] = match;
+console.log(
+    '  Found collector: param=' + param + ', fsVar=' + fsVar);
+
+// Insert guard: !PARAM.endsWith(".asar")&&
+// Before: !PARAM.startsWith("-")&&FSVAR.existsSync(PARAM)
+// After:  !PARAM.startsWith("-")&&!PARAM.endsWith(".asar")&&FSVAR.existsSync(PARAM)
+//
+// Replace the full outer match directly — no nested replace — to avoid
+// any risk of $ in minified identifiers being misread as replacement
+// pattern metacharacters.
+const patched = startsPart + '!' + param + '.endsWith(".asar")&&' +
+    fsVar + '.existsSync(' + param + ')';
+code = code.replace(match[0], patched);
+
+// Verify the patch landed with the correct context
+if (!code.match(/\.startsWith\("-"\)&&![\w$]+\.endsWith\("\.asar"\)/)) {
+    console.error('FATAL: .asar file-drop guard replacement failed.');
+    process.exit(1);
+}
+
+fs.writeFileSync(indexJs, code);
+console.log('  Added .asar guard to argv file-drop collector');
+ASAR_FILE_DROP_PATCH
+	then
+		echo 'FATAL: .asar argv file-drop guard patch failed' >&2
+		echo 'The app will show file-drop prompts on window reopen' \
+			'without this patch (#383, #622).' >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+
+	echo '##############################################################'
+}
+
 patch_cowork_linux() {
 	echo 'Patching Cowork mode for Linux...'
 	local index_js='app.asar.contents/.vite/build/index.js'
