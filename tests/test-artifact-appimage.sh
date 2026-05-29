@@ -8,14 +8,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/test-artifact-common.sh"
 
 # Single point of cleanup, set at script scope so any interruption
-# between resource alloc and normal exit is covered.
+# between resource alloc and normal exit is covered. _launch_smoke_cleanup
+# (test-artifact-common.sh) reaps an interrupted launch and its temp dirs;
+# extract_dir is AppImage-specific so it's torn down here.
 _cleanup() {
-	if [[ -n ${launch_pid:-} ]]; then
-		kill -KILL -- "-$launch_pid" 2>/dev/null
-		pkill -KILL -f "$appimage_file" 2>/dev/null
-	fi
-	[[ -n ${cache_root:-} ]] && rm -rf "$cache_root"
-	[[ -n ${xvfb_log:-} ]] && rm -rf "$xvfb_log"
+	_launch_smoke_cleanup
 	[[ -n ${extract_dir:-} ]] && rm -rf "$extract_dir"
 }
 trap _cleanup EXIT INT TERM
@@ -121,94 +118,8 @@ else
 fi
 
 # --- Headless launch smoke test ---
-# Catches startup-only regressions (asar/frame-fix-wrapper syntax errors)
-# that pure structure checks miss.
-#
-# Scope: main-process startup failures only. GPU/renderer-process
-# crashes (e.g. #583-class) leave the main process alive and pass
-# this check — Xvfb has no GPU, so Electron falls back to SwiftShader
-# and the GPU-crash path isn't exercised here.
-if command -v xvfb-run &>/dev/null \
-	&& command -v dbus-run-session &>/dev/null \
-	&& command -v setsid &>/dev/null; then
-
-	# XDG_CACHE_HOME redirect so the test owns the launcher log.
-	cache_root=$(mktemp -d)
-	export XDG_CACHE_HOME="$cache_root"
-	launcher_log="$cache_root/claude-desktop-debian/launcher.log"
-
-	# setsid puts xvfb-run + Xvfb + dbus + AppRun + electron in a fresh
-	# process group; xvfb-run's EXIT trap alone leaves Xvfb behind on
-	# TERM, so we need kill -- -PGID below.
-	# AppRun redirects electron's stdout/stderr into launcher_log;
-	# xvfb_log captures xvfb-run's own stderr.
-	xvfb_log=$(mktemp)
-	setsid xvfb-run -a -s '-screen 0 1280x720x24' \
-		dbus-run-session -- "$appimage_file" \
-		>"$xvfb_log" 2>&1 &
-	launch_pid=$!
-
-	# Wait up to 30s for the frame-fix readiness marker, or early
-	# process death. The marker is the last log line emitted by
-	# scripts/frame-fix-wrapper.js after all patches are installed,
-	# so reaching it means main-process startup finished without
-	# crashing. Replaces a flat 10s sleep that was both slow on
-	# healthy startups and a flake risk on noisy runners.
-	readiness_marker='[Frame Fix] Patches built successfully'
-	readiness_timeout=30
-	deadline=$((SECONDS + readiness_timeout))
-	saw_marker=0
-	while ((SECONDS < deadline)); do
-		if [[ -f $launcher_log ]] \
-			&& grep -qF "$readiness_marker" \
-				"$launcher_log"; then
-			saw_marker=1
-			break
-		fi
-		if ! kill -0 "$launch_pid" 2>/dev/null; then
-			break
-		fi
-		sleep 0.5
-	done
-
-	if ((saw_marker == 1)); then
-		pass "AppImage reached ready state under Xvfb"
-	else
-		if kill -0 "$launch_pid" 2>/dev/null; then
-			fail "AppImage did not reach ready state within ${readiness_timeout}s"
-		else
-			wait "$launch_pid" 2>/dev/null
-			exit_code=$?
-			fail "AppImage exited before reaching ready state (exit: $exit_code)"
-		fi
-		if [[ -f $launcher_log ]]; then
-			echo '--- launcher.log (last 40 lines) ---' >&2
-			tail -40 "$launcher_log" >&2
-			echo '------------------------------------' >&2
-		fi
-		if [[ -s $xvfb_log ]]; then
-			echo '--- xvfb-run stderr (last 20 lines) ---' >&2
-			tail -20 "$xvfb_log" >&2
-			echo '---------------------------------------' >&2
-		fi
-	fi
-
-	# Negative PID targets the process group.
-	kill -TERM -- "-$launch_pid" 2>/dev/null || true
-	sleep 1
-	kill -KILL -- "-$launch_pid" 2>/dev/null || true
-	wait "$launch_pid" 2>/dev/null || true
-	# Sweep any electron child that escaped the group (e.g. zygote).
-	pkill -KILL -f "$appimage_file" 2>/dev/null || true
-
-	rm -rf "$cache_root" "$xvfb_log"
-	unset XDG_CACHE_HOME
-else
-	# Match the codebase convention (test-artifact-common.sh
-	# validate_app_contents): tool absence is a skip, not a failure.
-	# Loud failure on missing tools belongs at the workflow layer.
-	pass "Skipping launch smoke test (xvfb-run/dbus-run-session/setsid missing)"
-fi
+# The AppImage runs as the (non-root) CI user, so no privilege drop.
+run_launch_smoke_test 'AppImage' "$appimage_file" '' "$appimage_file"
 
 # --- Cleanup ---
 rm -rf "$extract_dir"

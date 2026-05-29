@@ -6,6 +6,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tests/test-artifact-common.sh
 source "$script_dir/test-artifact-common.sh"
 
+# Reap an interrupted launch smoke test (see test-artifact-common.sh).
+trap _launch_smoke_cleanup EXIT INT TERM
+
 # Find the .deb file
 deb_file=$(find "$artifact_dir" -name '*.deb' -type f | head -1)
 if [[ -z $deb_file ]]; then
@@ -109,5 +112,10 @@ if [[ $doctor_exit -lt 127 ]]; then
 else
 	fail "--doctor crashed (exit: $doctor_exit)"
 fi
+
+# --- Headless launch smoke test ---
+# ubuntu-latest runs as a non-root user, so no privilege drop needed.
+run_launch_smoke_test 'deb package' '/usr/lib/claude-desktop' '' \
+	/usr/bin/claude-desktop
 
 print_summary
