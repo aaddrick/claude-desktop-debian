@@ -179,10 +179,10 @@ _previous_launch_hit_gpu_fatal() {
 				exit 1
 			}
 			text = sections[target]
-			if (
-				index(text, "GPU process launch failed: error_code=") &&
-				index(text, "GPU process isn'\''t usable. Goodbye.")
-			) {
+			if (index(text,
+				"GPU process launch failed: error_code=") &&
+				index(text,
+				"GPU process isn'\''t usable. Goodbye.")) {
 				exit 0
 			}
 			exit 1
