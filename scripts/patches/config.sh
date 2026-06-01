@@ -121,7 +121,7 @@ const p = 'app.asar.contents/.vite/build/index.js';
 const F = process.env.FOLDER_PARAM;
 let code = fs.readFileSync(p, 'utf8');
 
-const anchor = 'LocalAgentModeSessions.addTrustedFolder: \${' + F + '}\`);';
+const anchor = 'async addTrustedFolder(' + F + '){';
 const idx = code.indexOf(anchor);
 if (idx === -1) {
   console.error('  [FAIL] addTrustedFolder anchor not found');
