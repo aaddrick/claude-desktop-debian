@@ -71,6 +71,10 @@ MimeType=x-scheme-handler/claude;
 StartupWMClass=$WM_CLASS
 EOF
 
+# --- Stage AppStream metainfo (installed via %files block below) ---
+cp "$script_dir/com.anthropic.Claude.metainfo.xml" \
+	"$staging_dir/com.anthropic.Claude.metainfo.xml" || exit 1
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$staging_dir/claude-desktop" << EOF
@@ -224,6 +228,9 @@ cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 # Install desktop entry
 install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
 
+# Install AppStream metainfo (GNOME Software / KDE Discover)
+install -Dm 644 $staging_dir/com.anthropic.Claude.metainfo.xml %{buildroot}/usr/share/metainfo/com.anthropic.Claude.metainfo.xml
+
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
 
@@ -245,6 +252,7 @@ update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 %attr(755, root, root) /usr/bin/claude-desktop
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
+/usr/share/metainfo/com.anthropic.Claude.metainfo.xml
 /usr/share/icons/hicolor/*/apps/claude-desktop.png
 SPECEOF
 

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo for the claude-desktop package.
+  Indexed by GNOME Software / Ubuntu App Center / KDE Discover under the
+  Installed tab so users can see the package with name, summary, icon, and
+  release history rather than as an unidentified entry.
+
+  See: https://www.freedesktop.org/software/appstream/docs/
+-->
+<component type="desktop-application">
+  <id>com.anthropic.Claude</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+
+  <name>Claude</name>
+  <summary>Anthropic's AI assistant — desktop client</summary>
+
+  <description>
+    <p>
+      Claude Desktop is Anthropic's official desktop client for Claude, an AI
+      assistant trained to be helpful, harmless, and honest. This Linux build
+      is a community repack of the upstream Windows binary, patched for Linux
+      compatibility (frame, tray, Cowork mode, MCP stdio, Quick Entry, etc.).
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Conversations with the Claude model family (Sonnet, Opus, Haiku)</li>
+      <li>Projects with persistent context and file uploads</li>
+      <li>Cowork mode — local agent VM for sandboxed code tasks</li>
+      <li>MCP (Model Context Protocol) stdio servers for tool integration</li>
+      <li>System tray, Quick Entry hotkey, and tab system</li>
+    </ul>
+    <p>
+      The Linux packaging is community-maintained and is not affiliated with
+      Anthropic. See the packaging source and issue tracker linked below.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">claude-desktop.desktop</launchable>
+
+  <url type="homepage">https://claude.ai</url>
+  <url type="bugtracker">https://github.com/aaddrick/claude-desktop-debian/issues</url>
+  <url type="help">https://github.com/aaddrick/claude-desktop-debian</url>
+  <url type="vcs-browser">https://github.com/aaddrick/claude-desktop-debian</url>
+
+  <developer id="com.anthropic">
+    <name>Anthropic (Linux packaging by aaddrick)</name>
+  </developer>
+
+  <categories>
+    <category>Office</category>
+    <category>Chat</category>
+  </categories>
+
+  <content_rating type="oars-1.1" />
+
+  <provides>
+    <binary>claude-desktop</binary>
+  </provides>
+</component>
