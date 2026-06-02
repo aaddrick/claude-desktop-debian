@@ -115,20 +115,20 @@ patch_asar_trusted_folder_guard() {
 	fi
 	echo "  Found folder parameter: $folder_param"
 
-	if ! FOLDER_PARAM="$folder_param" node -e "
+if ! FOLDER_PARAM="$folder_param" node -e "
 const fs = require('fs');
 const p = 'app.asar.contents/.vite/build/index.js';
 const F = process.env.FOLDER_PARAM;
 let code = fs.readFileSync(p, 'utf8');
 
-const anchor = 'LocalAgentModeSessions.addTrustedFolder: \${' + F + '}\`);';
-const idx = code.indexOf(anchor);
+const fnAnchor = 'async addTrustedFolder(' + F + '){';
+const idx = code.indexOf(fnAnchor);
 if (idx === -1) {
-  console.error('  [FAIL] addTrustedFolder anchor not found');
+  console.error('  [FAIL] addTrustedFolder function anchor not found');
   process.exit(1);
 }
 
-const insertPoint = idx + anchor.length;
+const insertPoint = idx + fnAnchor.length;
 const guard = 'if(' + F + '.endsWith(\".asar\"))return;';
 code = code.slice(0, insertPoint) + guard + code.slice(insertPoint);
 fs.writeFileSync(p, code);
