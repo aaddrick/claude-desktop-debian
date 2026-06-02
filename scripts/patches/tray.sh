@@ -43,11 +43,19 @@ patch_tray_menu_handler() {
 			"$index_js"
 	fi
 
-	# Add mutex guard to prevent concurrent tray rebuilds
+	# Trailing-edge mutex guard. Still prevents concurrent/reentrant
+	# rebuilds (the slow path's 250ms DBus await can interleave), but —
+	# unlike a plain leading-edge drop — it remembers a request that
+	# arrives while a rebuild is in flight and re-runs once when the
+	# window clears, so the FINAL nativeTheme value wins. At startup
+	# shouldUseDarkColors reads false for ~50ms, then a burst of
+	# "updated" events flips it true; a dropping mutex latches the
+	# initial (wrong) value and leaves the tray icon stuck black on a
+	# dark panel. See docs/learnings/tray-rebuild-race.md.
 	if ! grep -q "${tray_func}._running" "$index_js"; then
-		sed -i -E "s/async\s+function\s+${tray_func_re}\s*\(\s*\)\s*\{/async function ${tray_func}(){if(${tray_func}._running)return;${tray_func}._running=true;setTimeout(()=>${tray_func}._running=false,1500);/g" \
+		sed -i -E "s/async\s+function\s+${tray_func_re}\s*\(\s*\)\s*\{/async function ${tray_func}(){if(${tray_func}._running){${tray_func}._pending=true;return}${tray_func}._running=true;setTimeout(()=>{${tray_func}._running=false;if(${tray_func}._pending){${tray_func}._pending=false;${tray_func}()}},1500);/g" \
 			"$index_js"
-		echo "  Added mutex guard to ${tray_func}()"
+		echo "  Added trailing-edge mutex guard to ${tray_func}()"
 	fi
 
 	# Add DBus cleanup delay after tray destroy
@@ -59,22 +67,6 @@ patch_tray_menu_handler() {
 	fi
 
 	echo 'Tray menu handler patched'
-	echo '##############################################################'
-
-	# Skip tray updates during startup (3 second window)
-	echo 'Patching nativeTheme handler for startup delay...'
-	if ! grep -q '_trayStartTime' "$index_js"; then
-		sed -i -E \
-			"s/(${electron_var_re}\.nativeTheme\.on\(\s*\"updated\"\s*,\s*\(\)\s*=>\s*\{)/let _trayStartTime=Date.now();\1/g" \
-			"$index_js"
-		sed -i -E \
-			"s/\(([[:alnum:]_\$]+\([^)]*\))\s*,\s*${tray_func_re}\(\)\s*,/(\1,Date.now()-_trayStartTime>3e3\&\&${tray_func}(),/g" \
-			"$index_js"
-		echo '  Added startup delay check (3 second window)'
-		if ! grep -q "Date.now()-_trayStartTime>3e3" "$index_js"; then
-			echo 'WARNING: Startup delay conditional not injected' >&2
-		fi
-	fi
 	echo '##############################################################'
 }
 
@@ -101,7 +93,7 @@ patch_tray_inplace_update() {
 	# Re-extract the tray variable name — `patch_tray_menu_handler`
 	# declares it `local` so it's not visible here. Same grep pattern.
 	local tray_func tray_func_re local_tray_var tray_var_re
-	local menu_func path_var enabled_var enabled_count
+	local menu_func menu_var menu_var_re path_var enabled_var enabled_count
 	tray_func=$(grep -oP \
 		'on\("menuBarEnabled",\(\)=>\{\K[\w$]+(?=\(\)\})' "$index_js")
 	if [[ -z $tray_func ]]; then
@@ -122,8 +114,24 @@ patch_tray_inplace_update() {
 
 	tray_var_re="${local_tray_var//\$/\\$}"
 
+	# Two upstream shapes wire the context menu differently:
+	#   old: ${tray_var}.setContextMenu(BUILDER())     — builder called inline
+	#   new: M=BUILDER(); ${tray_var}.setContextMenu(M) — prebuilt menu object
+	# Resolve the BUILDER name in both. The injected fast-path emits
+	# setContextMenu(BUILDER()), so landing on the menu *object* (M) instead
+	# of its builder would emit setContextMenu(M()) and throw at runtime —
+	# M is a Menu instance, not a function.
 	menu_func=$(grep -oP "${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\(\))" \
 		"$index_js" | head -1)
+	if [[ -z $menu_func ]]; then
+		menu_var=$(grep -oP "${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\))" \
+			"$index_js" | head -1)
+		if [[ -n $menu_var ]]; then
+			menu_var_re="${menu_var//\$/\\$}"
+			menu_func=$(grep -oP "[,;(]${menu_var_re}=\K[\$\w]+(?=\(\))" \
+				"$index_js" | head -1)
+		fi
+	fi
 	if [[ -z $menu_func ]]; then
 		echo '  Could not extract menu function name — skipping'
 		echo '##############################################################'

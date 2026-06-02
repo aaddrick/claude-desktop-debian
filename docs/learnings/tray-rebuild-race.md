@@ -80,7 +80,7 @@ releases. All five are extracted dynamically in `tray.sh`:
 | `tray_func` | `on("menuBarEnabled",()=>{ … })` |
 | `tray_var` | `});let X=null;(async )?function ${tray_func}` |
 | `electron_var` | already extracted earlier in `_common.sh` |
-| `menu_func` | `${tray_var}.setContextMenu(X(`  |
+| `menu_func` | `${tray_var}.setContextMenu(X(` — or, when upstream prebuilds the menu (`M=X(); setContextMenu(M)`), resolved one hop back via `M=X(` |
 | `path_var` | `${tray_var}=new ${electron_var}.Tray(${electron_var}.nativeImage.createFromPath(X))` |
 | `enabled_var` | `const X = fn("menuBarEnabled")` |
 
@@ -110,13 +110,54 @@ cd claude-desktop-debian
 After the patch: one SNI stays registered for the app's lifetime,
 icon updates in place on every theme change.
 
+## Startup icon-colour race (leading-edge mutex drop)
+
+A subtler bug lives in the same rebuild function. On a *dark* desktop
+(e.g. GNOME `color-scheme=prefer-dark`),
+`nativeTheme.shouldUseDarkColors` reads **`false` for the first
+~50 ms** of the process, then a burst of `nativeTheme "updated"`
+events flips it to `true`. Measured with a standalone Electron probe:
+
+```
+[ready+0ms]     shouldUseDarkColors=false   <- tray created -> black icon
+[UPDATED-EVENT] shouldUseDarkColors=true    <- ~50-100 ms later
+[ready+500ms]   shouldUseDarkColors=true     (stays true)
+```
+
+The tray is created with the transient `false` (black). The
+correction never lands because the rebuild mutex was a *leading-edge*
+throttle (`if(f._running)return;f._running=true;setTimeout(...,1500)`):
+the first `"updated"` (false) takes the lock and renders black; the
+follow-up `"updated"` (true) events all arrive inside the 1500 ms
+window and are **dropped**. No further event fires on its own, so the
+icon stays black until a manual theme change forces a new `"updated"`.
+
+The fix makes the mutex *trailing-edge* — a request that arrives while
+a rebuild is in flight is remembered and re-run once when the window
+clears, so the final value wins:
+
+```js
+if (f._running) { f._pending = true; return; }
+f._running = true;
+setTimeout(() => {
+  f._running = false;
+  if (f._pending) { f._pending = false; f(); }
+}, 1500);
+```
+
+The startup-suppression `_trayStartTime > 3e3` guard was removed at
+the same time: it gated the very `"updated"` → rebuild call the
+correction now depends on. Trade-off: a ~1.5 s black flash at startup
+before the trailing re-run lands (vs. permanently black before).
+See [#679](https://github.com/aaddrick/claude-desktop-debian/issues/679).
+
 ## Pitfalls to watch for
 
-- **Fast-path runs inside the 3 s startup window too.** The
-  existing `_trayStartTime > 3e3` guard only gates the
-  `nativeTheme.on('updated')` → `tray_func()` call; once
-  `tray_func()` is running for any reason, our fast-path executes.
-  Fine — it's cheaper than the slow path even at startup.
+- **No startup window gates the rebuild any more.** An earlier
+  `_trayStartTime > 3e3` guard suppressed `tray_func()` for the first
+  3 s; it was removed because it also swallowed the startup colour
+  correction (see the section above). The trailing-edge mutex bounds
+  rebuild frequency instead.
 - **macOS path is left untouched.** The condition
   `process.platform !== 'darwin' && …setContextMenu` keeps the
   Electron macOS tray model (right-click pops up a menu via
