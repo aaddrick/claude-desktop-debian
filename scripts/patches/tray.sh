@@ -128,7 +128,11 @@ patch_tray_inplace_update() {
 			"$index_js" | head -1)
 		if [[ -n $menu_var ]]; then
 			menu_var_re="${menu_var//\$/\\$}"
-			menu_func=$(grep -oP "[,;(]${menu_var_re}=\K[\$\w]+(?=\(\))" \
+			# Word-boundary lookbehind, not a fixed [,;({] class, so the
+			# assignment resolves whether it follows a separator or a
+			# declarator (`let `/`const ` leaves a space before the var).
+			# First assignment site wins, matching the inline-form grep.
+			menu_func=$(grep -oP "(?<![\$\w])${menu_var_re}=\K[\$\w]+(?=\(\))" \
 				"$index_js" | head -1)
 		fi
 	fi
