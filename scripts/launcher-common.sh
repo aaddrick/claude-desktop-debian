@@ -322,7 +322,7 @@ _claude_desktop_ui_is_alive() {
 	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
-		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
+		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
 		_claude_desktop_ui_cmdline_matches "$cmdline" || continue
 		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
@@ -430,21 +430,23 @@ _pid_in_claude_desktop_scope() {
 		"/proc/$pid/cgroup" 2>/dev/null
 }
 
+_desktop_helper_candidate_pids() {
+	pgrep -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/|[[:space:]]mcp([[:space:]]|$)|@modelcontextprotocol/|-mcp' 2>/dev/null
+}
+
 cleanup_stale_desktop_helpers() {
 	if _claude_desktop_ui_is_alive; then
 		return 0
 	fi
 
 	local pids pid cmdline
-	pids=$(
-		pgrep -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/' 2>/dev/null
-	) || return 0
+	pids=$(_desktop_helper_candidate_pids) || return 0
 
 	local matched=()
 	for pid in $pids; do
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		[[ ${_electron_child_pid:-} == "$pid" ]] && continue
-		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
+		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
 		if ! _desktop_helper_cmdline_matches "$cmdline"; then
 			if ! _pid_in_claude_desktop_scope "$pid" \

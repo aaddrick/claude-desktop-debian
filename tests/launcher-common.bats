@@ -910,6 +910,16 @@ s.close()
 	[[ $status -ne 0 ]]
 }
 
+@test "_desktop_helper_candidate_pids: includes MCP-like commands" {
+	pgrep() {
+		[[ $1 == '-f' ]] || return 1
+		[[ $2 == *'[[:space:]]mcp([[:space:]]|$)'* ]]
+	}
+
+	run _desktop_helper_candidate_pids
+	[[ $status -eq 0 ]]
+}
+
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
 	local marker="$TEST_TMP/cleanup-ran"
 	local electron="$TEST_TMP/electron"
