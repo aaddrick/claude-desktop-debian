@@ -888,6 +888,28 @@ s.close()
 	[[ $status -ne 0 ]]
 }
 
+@test "_desktop_scoped_mcp_cmdline_matches: matches MCP commands only" {
+	run _desktop_scoped_mcp_cmdline_matches \
+		"/usr/bin/node /home/scott/dev/dude/core/agent-dude/dist/index.js mcp"
+	[[ $status -eq 0 ]]
+
+	run _desktop_scoped_mcp_cmdline_matches \
+		"npx -y @modelcontextprotocol/server-filesystem /home/scott"
+	[[ $status -eq 0 ]]
+
+	run _desktop_scoped_mcp_cmdline_matches \
+		"uvx computer-control-mcp@latest"
+	[[ $status -eq 0 ]]
+
+	run _desktop_scoped_mcp_cmdline_matches \
+		"xed /home/scott/.config/Claude/logs/mcp-server-agent-dude.log"
+	[[ $status -ne 0 ]]
+
+	run _desktop_scoped_mcp_cmdline_matches \
+		"termium daemon-server"
+	[[ $status -ne 0 ]]
+}
+
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
 	local marker="$TEST_TMP/cleanup-ran"
 	local electron="$TEST_TMP/electron"

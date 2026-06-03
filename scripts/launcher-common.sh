@@ -411,6 +411,25 @@ _desktop_helper_cmdline_matches() {
 	return 1
 }
 
+_desktop_scoped_mcp_cmdline_matches() {
+	local cmdline="$1"
+
+	case "$cmdline" in
+		*' mcp'|*' mcp '*|*@modelcontextprotocol/*|*-mcp*)
+			return 0
+			;;
+	esac
+
+	return 1
+}
+
+_pid_in_claude_desktop_scope() {
+	local pid="$1"
+
+	grep -q '/app-claude-desktop-[^/]*\.scope' \
+		"/proc/$pid/cgroup" 2>/dev/null
+}
+
 cleanup_stale_desktop_helpers() {
 	if _claude_desktop_ui_is_alive; then
 		return 0
@@ -427,7 +446,13 @@ cleanup_stale_desktop_helpers() {
 		[[ ${_electron_child_pid:-} == "$pid" ]] && continue
 		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
 			|| continue
-		_desktop_helper_cmdline_matches "$cmdline" || continue
+		if ! _desktop_helper_cmdline_matches "$cmdline"; then
+			if ! _pid_in_claude_desktop_scope "$pid" \
+				|| ! _desktop_scoped_mcp_cmdline_matches "$cmdline"
+			then
+				continue
+			fi
+		fi
 		matched+=("$pid")
 	done
 
