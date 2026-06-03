@@ -88,6 +88,7 @@ fi
 setup_logging || exit 1
 setup_electron_env
 cleanup_orphaned_cowork_daemon
+cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
 
@@ -114,9 +115,11 @@ electron_args+=("$app_path")
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
 cd "$HOME" || exit 1
 
-# Execute Electron
+# Execute Electron and keep AppRun alive so explicit quit can clean up
+# Desktop-owned helpers that outlive the Electron main process.
 log_message "Executing: $electron_exec ${electron_args[*]} $*"
-exec "$electron_exec" "${electron_args[@]}" "$@" >> "$log_file" 2>&1
+run_electron_and_cleanup "$electron_exec" "${electron_args[@]}" "$@"
+exit $?
 EOF
 chmod +x "$appdir_path/AppRun" || exit 1
 echo 'AppRun script created'

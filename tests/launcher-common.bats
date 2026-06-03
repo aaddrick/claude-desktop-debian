@@ -841,6 +841,61 @@ s.close()
 }
 
 # =============================================================================
+# cleanup_stale_desktop_helpers
+# =============================================================================
+
+@test "_desktop_helper_cmdline_matches: matches known Desktop helpers only" {
+	local config_dir="$XDG_CONFIG_HOME/Claude"
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$config_dir"
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js"
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"node $config_dir/Claude Extensions/ant.dir.example/server.js"
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron /usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"claude --dangerously-skip-permissions"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/home/scott/dev/dude/core/agent-dude/dist/index.js mcp"
+	[[ $status -ne 0 ]]
+}
+
+@test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
+	local marker="$TEST_TMP/cleanup-ran"
+	local electron="$TEST_TMP/electron"
+
+	cat > "$electron" <<'STUB'
+#!/usr/bin/env bash
+echo "electron argv: $*"
+exit 7
+STUB
+	chmod +x "$electron"
+
+	cleanup_after_electron_exit() {
+		touch "$marker"
+	}
+
+	setup_logging
+	run run_electron_and_cleanup "$electron" '--flag' 'value'
+	[[ $status -eq 7 ]]
+	[[ -f $marker ]]
+	run cat "$log_file"
+	[[ $output == *'electron argv: --flag value'* ]]
+}
+
+# =============================================================================
 # Doctor helper functions
 # =============================================================================
 

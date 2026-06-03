@@ -302,6 +302,27 @@ build_electron_args() {
 	fi
 }
 
+_claude_desktop_ui_is_alive() {
+	local pid cmdline state
+	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
+		# Skip our own launcher bash and its parent.
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
+		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
+			|| continue
+		# Skip the cowork daemon (matches app.asar.unpacked path).
+		[[ $cmdline == *cowork-vm-service* ]] && continue
+		# Skip Chromium helpers: zygote, renderer, gpu, utility, etc.
+		[[ $cmdline == *--type=* ]] && continue
+		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
+		state=$(awk '/^State:/ {print $2; exit}' \
+			"/proc/$pid/status" 2>/dev/null) || continue
+		[[ $state == T || $state == t || $state == Z ]] && continue
+		# Found a genuine live Electron UI — daemon is expected
+		return 0
+	done
+	return 1
+}
+
 # Kill orphaned cowork-vm-service daemon processes.
 # After a crash or unclean shutdown the cowork daemon may outlive the
 # main Electron UI process.  The orphaned daemon holds LevelDB locks
@@ -329,23 +350,9 @@ cleanup_orphaned_cowork_daemon() {
 	# process whose cmdline references app.asar and is NOT a Chromium
 	# helper (--type=...) and NOT the cowork daemon, and is actually
 	# runnable (not stopped/zombie).
-	local pid cmdline state
-	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
-		# Skip our own launcher bash and its parent.
-		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
-		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
-			|| continue
-		# Skip the cowork daemon (matches app.asar.unpacked path).
-		[[ $cmdline == *cowork-vm-service* ]] && continue
-		# Skip Chromium helpers: zygote, renderer, gpu, utility, etc.
-		[[ $cmdline == *--type=* ]] && continue
-		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
-		state=$(awk '/^State:/ {print $2; exit}' \
-			"/proc/$pid/status" 2>/dev/null) || continue
-		[[ $state == T || $state == t || $state == Z ]] && continue
-		# Found a genuine live Electron UI — daemon is expected
+	if _claude_desktop_ui_is_alive; then
 		return 0
-	done
+	fi
 
 	# No UI process found — daemon is orphaned, terminate it.
 	# Escalate to SIGKILL if a daemon is stuck and does not exit
@@ -367,6 +374,79 @@ cleanup_orphaned_cowork_daemon() {
 		log_message "Killed orphaned cowork-vm-service daemon (SIGKILL, PIDs: $cowork_pids)"
 	else
 		log_message "Killed orphaned cowork-vm-service daemon (PIDs: $cowork_pids)"
+	fi
+}
+
+_desktop_helper_cmdline_matches() {
+	local cmdline="$1"
+	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
+
+	case "$cmdline" in
+		*cowork-vm-service.js*)
+			return 0
+			;;
+		*"--user-data-dir=$config_dir"*)
+			return 0
+			;;
+		*"$config_dir/Claude Extensions/"*)
+			return 0
+			;;
+		*/usr/lib/claude-desktop/*--type=*)
+			return 0
+			;;
+	esac
+
+	return 1
+}
+
+cleanup_stale_desktop_helpers() {
+	if _claude_desktop_ui_is_alive; then
+		return 0
+	fi
+
+	local pids pid cmdline
+	pids=$(
+		pgrep -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/' 2>/dev/null
+	) || return 0
+
+	local matched=()
+	for pid in $pids; do
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
+		[[ ${_electron_child_pid:-} == "$pid" ]] && continue
+		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
+			|| continue
+		_desktop_helper_cmdline_matches "$cmdline" || continue
+		matched+=("$pid")
+	done
+
+	[[ ${#matched[@]} -gt 0 ]] || return 0
+
+	for pid in "${matched[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+
+	local wait_count=0 alive
+	while ((wait_count < 20)); do
+		alive=false
+		for pid in "${matched[@]}"; do
+			if kill -0 "$pid" 2>/dev/null; then
+				alive=true
+				break
+			fi
+		done
+		[[ $alive == false ]] && break
+		sleep 0.1
+		((wait_count++))
+	done
+
+	if [[ $alive == true ]]; then
+		for pid in "${matched[@]}"; do
+			kill -KILL "$pid" 2>/dev/null || true
+		done
+		log_message \
+			"Killed stale Claude Desktop helpers (SIGKILL, PIDs: ${matched[*]})"
+	else
+		log_message "Killed stale Claude Desktop helpers (PIDs: ${matched[*]})"
 	fi
 }
 
@@ -428,6 +508,44 @@ cleanup_stale_cowork_socket() {
 	# No daemon — the socket file is left over from a crash.
 	rm -f "$sock"
 	log_message "Removed stale cowork-vm-service socket (no daemon running)"
+}
+
+cleanup_after_electron_exit() {
+	cleanup_orphaned_cowork_daemon
+	cleanup_stale_desktop_helpers
+	cleanup_stale_lock
+	cleanup_stale_cowork_socket
+}
+
+_electron_launcher_forward_signal() {
+	local signal="$1"
+
+	if [[ -n ${_electron_child_pid:-} ]]; then
+		kill "-$signal" "$_electron_child_pid" 2>/dev/null || true
+	fi
+}
+
+run_electron_and_cleanup() {
+	local status
+
+	"$@" >> "$log_file" 2>&1 &
+	_electron_child_pid=$!
+
+	trap '_electron_launcher_forward_signal TERM' TERM
+	trap '_electron_launcher_forward_signal INT' INT
+	trap '_electron_launcher_forward_signal HUP' HUP
+
+	wait "$_electron_child_pid"
+	status=$?
+
+	trap - TERM INT HUP
+	_electron_child_pid=''
+
+	log_message "Electron exited with code: $status"
+	cleanup_after_electron_exit
+	log_message '--- Claude Desktop Launcher End ---'
+
+	return "$status"
 }
 
 # Set common environment variables
