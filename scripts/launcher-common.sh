@@ -302,6 +302,21 @@ build_electron_args() {
 	fi
 }
 
+_claude_desktop_ui_cmdline_matches() {
+	local cmdline="$1"
+	local app_path="${claude_desktop_app_path:-}"
+
+	[[ $cmdline == *cowork-vm-service* ]] && return 1
+	[[ $cmdline == *--type=* ]] && return 1
+
+	if [[ -n $app_path ]]; then
+		[[ $cmdline == *"$app_path"* ]] && return 0
+		return 1
+	fi
+
+	[[ $cmdline == */usr/lib/claude-desktop/*/resources/app.asar* ]]
+}
+
 _claude_desktop_ui_is_alive() {
 	local pid cmdline state
 	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
@@ -309,10 +324,7 @@ _claude_desktop_ui_is_alive() {
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
 			|| continue
-		# Skip the cowork daemon (matches app.asar.unpacked path).
-		[[ $cmdline == *cowork-vm-service* ]] && continue
-		# Skip Chromium helpers: zygote, renderer, gpu, utility, etc.
-		[[ $cmdline == *--type=* ]] && continue
+		_claude_desktop_ui_cmdline_matches "$cmdline" || continue
 		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
 		state=$(awk '/^State:/ {print $2; exit}' \
 			"/proc/$pid/status" 2>/dev/null) || continue

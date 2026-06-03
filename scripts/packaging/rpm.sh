@@ -89,6 +89,11 @@ fi
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
+
+# App path
+app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
+claude_desktop_app_path="\$app_path"
+
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
@@ -135,9 +140,6 @@ else
 		exit 1
 	fi
 fi
-
-# App path
-app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
 
 # Build electron args - use 'deb' type (same sandbox behavior)
 build_electron_args 'deb'

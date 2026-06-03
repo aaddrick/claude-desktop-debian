@@ -87,6 +87,12 @@ fi
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
+
+# Path to the bundled Electron executable and app
+electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
+app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
+claude_desktop_app_path="$app_path"
+
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
@@ -101,10 +107,6 @@ log_message "Timestamp: $(date)"
 log_message "Arguments: $@"
 log_message "APPDIR: $appdir"
 log_session_env
-
-# Path to the bundled Electron executable and app
-electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
-app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
 
 # Build electron args (appimage mode adds --no-sandbox)
 build_electron_args 'appimage'

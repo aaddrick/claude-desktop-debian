@@ -872,6 +872,22 @@ s.close()
 	[[ $status -ne 0 ]]
 }
 
+@test "_claude_desktop_ui_cmdline_matches: ignores other Electron apps" {
+	claude_desktop_app_path='/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar'
+
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron $claude_desktop_app_path"
+	[[ $status -eq 0 ]]
+
+	run _claude_desktop_ui_cmdline_matches \
+		"/opt/other-electron-app/resources/app.asar"
+	[[ $status -ne 0 ]]
+
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude"
+	[[ $status -ne 0 ]]
+}
+
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
 	local marker="$TEST_TMP/cleanup-ran"
 	local electron="$TEST_TMP/electron"

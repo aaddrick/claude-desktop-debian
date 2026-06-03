@@ -226,6 +226,7 @@ stdenvNoCC.mkDerivation {
 
 electron_exec="ELECTRON_PLACEHOLDER"
 app_path="RESOURCES_PLACEHOLDER/app.asar"
+claude_desktop_app_path="$app_path"
 
 source "LAUNCHER_LIB_PLACEHOLDER"
 
