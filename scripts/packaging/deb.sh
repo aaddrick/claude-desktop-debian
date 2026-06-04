@@ -268,6 +268,47 @@ APPARMOR_EOF
     fi
 fi
 
+# --- AppArmor profile for the Cowork bwrap sandbox helper ---
+# Cowork's "bwrap backend" runs the agent's Claude Code process inside a
+# bubblewrap sandbox, which itself needs unprivileged user namespaces — the
+# same thing Ubuntu 24.04+ blocks (apparmor_restrict_unprivileged_userns=1).
+# bwrap is a SEPARATE binary from the Electron app, so the claude-desktop
+# profile above (which scopes the Electron binary) does not cover it; it
+# needs its own profile on /usr/bin/bwrap. Without this, Cowork silently
+# falls back to host-direct (no isolation).
+#
+# Discovery-led, not distro-led: install when AppArmor can parse the userns
+# rule (4.0+) AND bwrap is present AND no other profile already owns bwrap.
+# This also covers a hardened Debian (restriction enabled) and is a harmless
+# no-op where the restriction is off. Static checks only: postinst runs as
+# root, which is exempt from the unprivileged-userns restriction, so a
+# behavioral bwrap probe here would falsely pass — the behavioral probe
+# lives in 'claude-desktop --doctor' instead (runs as the user).
+BWRAP_PROFILE="/etc/apparmor.d/${package_name}-bwrap"
+if command -v apparmor_parser >/dev/null 2>&1 \
+    && [ -x /usr/bin/bwrap ] \
+    && [ ! -e /etc/apparmor.d/bwrap ]; then
+    echo "Configuring AppArmor profile for the Cowork bwrap sandbox..."
+    mkdir -p /etc/apparmor.d
+    cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile ${package_name}-bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+
+    include if exists <local/${package_name}-bwrap>
+}
+BWRAP_APPARMOR_EOF
+    if apparmor_parser -Q "\$BWRAP_PROFILE" >/dev/null 2>&1; then
+        apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || echo "Note: bwrap AppArmor profile staged but not loaded now; it will apply on the next AppArmor reload or reboot."
+        echo "Cowork bwrap AppArmor profile installed at \$BWRAP_PROFILE"
+    else
+        rm -f "\$BWRAP_PROFILE"
+        echo "AppArmor on this system does not support the userns rule; skipping bwrap profile (not required here)."
+    fi
+fi
+
 exit 0
 EOF
 chmod +x "$package_root/DEBIAN/postinst" || exit 1
