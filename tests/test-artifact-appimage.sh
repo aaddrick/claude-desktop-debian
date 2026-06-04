@@ -119,7 +119,11 @@ fi
 
 # --- Headless launch smoke test ---
 # The AppImage runs as the (non-root) CI user, so no privilege drop.
-run_launch_smoke_test 'AppImage' "$appimage_file" '' "$appimage_file"
+# The pkill sweep matches 'mount_claude', not the .AppImage path: a running
+# AppImage execs Electron from its FUSE mount (/tmp/.mount_claudeXXXX), so
+# the escaped zygote/electron children live there. Matching the artifact
+# path would sweep nothing. See CLAUDE.md (`pkill -9 -f "mount_claude"`).
+run_launch_smoke_test 'AppImage' 'mount_claude' '' "$appimage_file"
 
 # --- Cleanup ---
 rm -rf "$extract_dir"
