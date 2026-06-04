@@ -13,24 +13,39 @@ Model Context Protocol settings are stored in:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_USE_WAYLAND` | unset | Set to `1` to use native Wayland instead of XWayland. Note: Global hotkeys won't work in native Wayland mode. |
+| `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (GNOME and Niri default to native Wayland). See [Wayland Support](#wayland-support) below. |
 | `CLAUDE_MENU_BAR` | unset (`auto`) | Controls menu bar behavior: `auto` (hidden, Alt toggles), `visible` / `1` (always shown), `hidden` / `0` (always hidden, Alt disabled). See [Menu Bar](#menu-bar) below. |
 | `CLAUDE_TITLEBAR_STYLE` | unset (`hybrid`) | Controls window decoration style: `hybrid` (system frame + in-app topbar), `native` (system frame, no in-app topbar), `hidden` (frameless WCO — broken on X11, kept for diagnostics). See [Titlebar Style](#titlebar-style) below. |
 | `COWORK_VM_BACKEND` | unset (auto-detect) | Force a specific Cowork isolation backend: `kvm` (full VM), `bwrap` (bubblewrap namespace sandbox), or `host` (no isolation). See [Cowork Backend](#cowork-backend) below. |
 
 ### Wayland Support
 
-By default, Claude Desktop uses X11 mode (via XWayland) on Wayland sessions to ensure global hotkeys work. If you prefer native Wayland and don't need global hotkeys:
+On Wayland sessions the launcher picks a display backend per compositor:
+
+| Compositor | Backend | Why |
+|------------|---------|-----|
+| GNOME (mutter) | native Wayland | mutter no longer honours XWayland global key grabs ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)); global shortcuts route through the XDG GlobalShortcuts portal instead (works on GNOME ≤ 49; see the GNOME 50 note below) |
+| Niri | native Wayland | no XWayland support at all |
+| KDE, Sway, Hyprland, others | XWayland | XWayland global key grabs still work; gives the broadest compatibility |
+
+The Quick Entry global shortcut (`Ctrl+Alt+Space`) is meant to work in both backends — via an X11 key grab under XWayland, and via the XDG GlobalShortcuts portal under native Wayland (requires Electron ≥ 35; we bundle 41). On GNOME the first time the shortcut is registered the portal shows a one-time permission dialog — accept it to bind the shortcut.
+
+**GNOME 50 / xdg-desktop-portal ≥ 1.20 limitation:** the portal path does not work yet on these versions. The newer portal requires apps to declare their identity via `org.freedesktop.host.portal.Registry.Register`, which Electron/Chromium does not yet do, so `globalShortcut.register()` fails and Quick Entry stays focus-bound. Tracked upstream at [electron/electron#51875](https://github.com/electron/electron/issues/51875). On GNOME ≤ 49 (the current mainstream releases) the portal path works.
+
+Override the auto-detection with `CLAUDE_USE_WAYLAND`:
 
 ```bash
-# One-time launch
+# Force native Wayland (e.g. on Sway/Hyprland)
 CLAUDE_USE_WAYLAND=1 claude-desktop
 
-# Or add to your environment permanently
+# Force XWayland (e.g. if native Wayland regresses rendering on GNOME)
+CLAUDE_USE_WAYLAND=0 claude-desktop
+
+# Or persist either choice
 export CLAUDE_USE_WAYLAND=1
 ```
 
-**Important:** Native Wayland mode doesn't support global hotkeys due to Electron/Chromium limitations with XDG GlobalShortcuts Portal. If global hotkeys (Ctrl+Alt+Space) are important to your workflow, keep the default X11 mode.
+**Note:** the XDG GlobalShortcuts portal needs a compositor backend that implements it (GNOME and KDE do). wlroots compositors (Sway, Hyprland, Niri) currently ship no GlobalShortcuts backend, so portal-routed global shortcuts are a no-op there until their portal gains one.
 
 ### Menu Bar
 

@@ -130,10 +130,10 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 
 **Diagnostics on failure:** Launcher log (note `Using X11 backend via XWayland (for global hotkey support)`), `XDG_CURRENT_DESKTOP`, mutter version (`gnome-shell --version`), the active patch set.
 
-**Currently:** Fedora 43 GNOME Wayland reproduces [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404) — mutter doesn't honour the XWayland-side key grab, so the shortcut is focus-bound. On Ubuntu 24.04 GNOME, the [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406) KDE-only gate prevents the regressing patch from running, leaving the older (working) code path active — hence `🔧` on Ubu. The unsolved fix path is [S12](#s12----enable-featuresglobalshortcutsportal-launcher-flag-wired-up-for-gnome-wayland).
+**Currently:** Fedora 43 GNOME Wayland previously reproduced [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404) — mutter doesn't honour the XWayland-side key grab, so the shortcut was focus-bound. Fixed via [S12](#s12----enable-featuresglobalshortcutsportal-launcher-flag-wired-up-for-gnome-wayland): the launcher now forces GNOME Wayland to native Wayland and routes the shortcut through the XDG GlobalShortcuts portal (mutter honours that). Re-verify on a GNOME Wayland host.
 
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404), [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406)
-**Code anchors:** project `scripts/launcher-common.sh:96-99` (XWayland-default `--ozone-platform=x11`); upstream `index.js:499416` (`globalShortcut.register`).
+**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (GNOME → native Wayland) and `build_electron_args` (native-Wayland `GlobalShortcutsPortal` feature); upstream `index.js:499416` (`globalShortcut.register`).
 
 ## S12 — `--enable-features=GlobalShortcutsPortal` launcher flag wired up for GNOME Wayland
 
@@ -147,16 +147,14 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 2. Inspect the Electron command line via `pgrep -af claude-desktop` — look for `--enable-features=GlobalShortcutsPortal`.
 3. Test Quick Entry shortcut from unfocused state (see [T06](#t06--quick-entry-global-shortcut-unfocused)).
 
-**Expected:** Launcher detects GNOME Wayland and appends `--enable-features=GlobalShortcutsPortal` to Electron's argv, routing global shortcuts through XDG Desktop Portal instead of X11 key grabs. Once wired, [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404) is closeable.
+**Expected:** Launcher detects GNOME Wayland, forces native Wayland, and emits `GlobalShortcutsPortal` inside a single merged `--enable-features=…` switch, routing global shortcuts through XDG Desktop Portal instead of X11 key grabs. Closes [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404). Note the flag is comma-joined with `UseOzonePlatform,WaylandWindowDecorations`, so match the `GlobalShortcutsPortal` subkey, not an exact `--enable-features=GlobalShortcutsPortal` token.
 
-**Diagnostics on failure:** Full process argv (`cat /proc/$(pgrep -f electron)/cmdline | tr '\0' ' '`), launcher log, `XDG_CURRENT_DESKTOP`.
+**Diagnostics on failure:** Full process argv (`cat /proc/$(pgrep -f 'app\.asar')/cmdline | tr '\0' ' '`), launcher log (expect `GNOME Wayland detected - forcing native Wayland for global shortcuts portal (#404)`), `XDG_CURRENT_DESKTOP`.
 
-**Currently:** Not yet implemented. Tracking under [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404).
-
-> **⚠ Missing in build 1.5354.0** — `--enable-features=GlobalShortcutsPortal` is not appended by `scripts/launcher-common.sh` for any GNOME Wayland variant. Re-verify after next upstream bump and after #404 lands.
+**Currently:** Launcher side implemented — `detect_display_backend` forces GNOME Wayland to native Wayland and `build_electron_args` adds `GlobalShortcutsPortal` to the native-Wayland feature set; the flag is verified present in argv (this case passes). Functional global-from-unfocused works on **GNOME ≤ 49** (first registration shows a one-time portal permission dialog). On **GNOME 50 / xdg-desktop-portal ≥ 1.20** it does not yet fire: Electron/Chromium never performs the portal's host `Registry.Register` app-id handshake, so `globalShortcut.register()` returns `false` and the portal is never contacted. Proven via D-Bus capture + a Python portal client; filed upstream as [electron/electron#51875](https://github.com/electron/electron/issues/51875).
 
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)
-**Code anchors:** project `scripts/launcher-common.sh:59-112` (`build_electron_args` — no `GlobalShortcutsPortal` branch present).
+**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (GNOME branch) + `build_electron_args` (merged `enable_features` array). See [`wayland-global-shortcuts-portal.md`](../../learnings/wayland-global-shortcuts-portal.md).
 
 ## S14 — Global shortcuts via XDG portal work on Niri
 
@@ -177,7 +175,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** `Failed to call BindShortcuts (error code 5)` — portal global shortcuts fail on Niri. Different root cause from [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404), same user-visible symptom (Quick Entry shortcut doesn't fire). Not yet filed.
 
 **References:** —
-**Code anchors:** project `scripts/launcher-common.sh:41-44` (Niri force-native-Wayland branch); upstream `index.js:499416` (`globalShortcut.register`, which on native Wayland routes through Electron's `xdg-desktop-portal` `BindShortcuts` path inside Chromium).
+**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (Niri force-native-Wayland branch) + `build_electron_args` (native-Wayland `GlobalShortcutsPortal` feature, which Niri now also receives); upstream `index.js:499416` (`globalShortcut.register`, which on native Wayland routes through Electron's `xdg-desktop-portal` `BindShortcuts` path inside Chromium). wlroots' portal ships no GlobalShortcuts backend, so `BindShortcuts` still fails until that lands — this stays a known-failing detector.
 
 ## S29 — Quick Entry popup is created lazily on first shortcut press (closed-to-tray sanity)
 

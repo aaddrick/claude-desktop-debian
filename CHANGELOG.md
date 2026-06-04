@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Changed
+
+- Quick Entry's global shortcut (`Ctrl+Alt+Space`) now routes through the XDG GlobalShortcuts portal on GNOME Wayland instead of a focus-bound XWayland key grab. mutter (GNOME ≥ 49) no longer honours XWayland-side global key grabs, so the shortcut was silently focus-bound; the launcher now forces GNOME Wayland to native Wayland and adds `--enable-features=GlobalShortcutsPortal` (merged into a single `--enable-features=` switch, since Chromium honours only the last one). This restores fire-from-any-focus on GNOME ≤ 49. **On GNOME 50 / xdg-desktop-portal ≥ 1.20 it does not yet work** — Electron/Chromium doesn't perform the portal's new host `Registry.Register` app-id handshake, so `globalShortcut.register()` fails (filed upstream as [electron/electron#51875](https://github.com/electron/electron/issues/51875)). `CLAUDE_USE_WAYLAND=0` forces the old XWayland path. ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404))
+
 ## [v2.0.18] — 2026-06-04
 
 Tracks upstream Claude Desktop 1.10628.2.
