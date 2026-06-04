@@ -38,7 +38,19 @@ jobs:
 
       - name: Install test dependencies (Fedora)
         if: matrix.format == 'rpm'
-        run: dnf install -y findutils file nodejs npm
+        # Electron's shared libraries (nss/nspr/gtk3/X11/etc.) must be
+        # installed explicitly: the rpm is installed with `rpm -ivh --nodeps`
+        # and its spec sets `AutoReqProv: no`, so the package declares no
+        # runtime Requires and nothing pulls these in. Without them the
+        # launch smoke test dies with `libnspr4.so: cannot open shared
+        # object file` (exit 127). The Ubuntu runner already carries them.
+        run: |
+          dnf install -y findutils file nodejs npm \
+            xorg-x11-server-Xvfb dbus-daemon util-linux procps-ng \
+            nss nspr atk at-spi2-atk at-spi2-core cups-libs gtk3 \
+            libdrm mesa-libgbm alsa-lib libX11 libXcomposite libXdamage \
+            libXext libXfixes libXrandr libxcb libxkbcommon pango cairo \
+            libXScrnSaver libXtst libxshmfence
 
       - name: Install test dependencies (Ubuntu)
         if: matrix.format != 'rpm'
@@ -46,6 +58,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y file libfuse2 nodejs npm \
             xvfb dbus-x11 procps
+
+      # Fail loud if a smoke-test tool is missing. Without this guard a
+      # missing/renamed tool turns run_launch_smoke_test into a silent
+      # green skip (it does `pass "$skip"; return`), masking the test.
+      - name: Verify smoke-test tools are present (Ubuntu)
+        if: matrix.format != 'rpm'
+        run: |
+          for t in xvfb-run dbus-run-session setsid; do
+            command -v "$t" >/dev/null || { echo "::error::missing $t"; exit 1; }
+          done
+
+      - name: Verify smoke-test tools are present (Fedora)
+        if: matrix.format == 'rpm'
+        run: |
+          for t in xvfb-run dbus-run-session setsid runuser; do
+            command -v "$t" >/dev/null || { echo "::error::missing $t"; exit 1; }
+          done
 
       - name: Run artifact tests
         run: |
