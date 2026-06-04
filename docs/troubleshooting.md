@@ -288,8 +288,10 @@ You only need to act if the app still crashes on launch with:
   Electron version), and
 - a `Trace/breakpoint trap` / core dump (exit code 133).
 
-Run `claude-desktop --doctor` first — the **User namespaces** check reports
-whether the profile is present. To (re)install it manually:
+Run `sudo claude-desktop --doctor` first — the **User namespaces** check
+reports whether the profile is actually loaded into the kernel (reading the
+loaded set needs root; without `sudo` it can only confirm the profile is
+present on disk). To (re)install it manually:
 
 ```bash
 sudo tee /etc/apparmor.d/claude-desktop <<'EOF'

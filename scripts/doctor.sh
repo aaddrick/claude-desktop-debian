@@ -782,27 +782,53 @@ run_doctor() {
 	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
 	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
 	# blocks the user namespaces Chromium's sandbox needs and crashes the
-	# app on launch (credentials.cc FATAL, exit 133). The deb installs a
-	# scoped AppArmor profile to permit them for Claude only.
+	# app on launch (credentials.cc FATAL, exit 133). A scoped AppArmor
+	# profile permits them for Claude only. Only report when the
+	# restriction is actually in force — on other distros the knob is
+	# absent and this check stays silent.
 	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
 	local _userns_val=''
 	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
 	if [[ $_userns_val == 1 ]]; then
 		local _aa_profile='/etc/apparmor.d/claude-desktop'
-		if [[ -e $_aa_profile ]]; then
-			_pass 'User namespaces: restricted, AppArmor profile present'
+		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
+		# securityfs marks this file world-readable (0444), but the kernel
+		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
+		# passes for non-root yet the read returns nothing. Attempt the read
+		# and judge by whether we actually got data, not by the mode bits.
+		local _loaded_set=''
+		_loaded_set=$(cat "$_aa_loaded" 2>/dev/null)
+		if [[ -n $_loaded_set ]]; then
+			# Authoritative: we actually read the kernel's loaded profile
+			# set (needs root), so report the real load state — not
+			# mere presence on disk.
+			if printf '%s\n' "$_loaded_set" | grep -q '^claude-desktop '; then
+				_pass 'User namespaces: restricted, AppArmor profile loaded'
+			else
+				_warn 'User namespaces: restricted by AppArmor,' \
+					'Claude profile not loaded'
+				if [[ -e $_aa_profile ]]; then
+					_info '  Profile is on disk but not loaded. Load it:'
+					_info '  sudo apparmor_parser -r /etc/apparmor.d/claude-desktop'
+				else
+					_info '  No profile found. See docs/troubleshooting.md'
+					_info '  "Claude Desktop crashes immediately on launch".'
+				fi
+			fi
+		elif [[ -e $_aa_profile ]]; then
+			# Non-root: the loaded set is unreadable, so we cannot
+			# confirm the profile is active. Report presence on disk
+			# only — never a definitive PASS.
+			_info 'User namespaces: AppArmor profile present on disk' \
+				'(re-run with sudo to confirm it is loaded)'
 		else
 			_warn 'User namespaces: restricted by AppArmor,' \
 				'no Claude profile found'
 			_info '  Unprivileged user namespaces are blocked, which'
 			_info '  crashes the app on launch (credentials.cc FATAL).'
-			_info '  The .deb normally installs an AppArmor profile to'
-			_info '  permit them for Claude only.'
-			_info '  Fix: reinstall the .deb, or see docs/troubleshooting.md'
-			_info '  "Claude Desktop crashes immediately on launch".'
+			_info '  See docs/troubleshooting.md "Claude Desktop crashes'
+			_info '  immediately on launch" for the profile to install.'
 		fi
-	else
-		_pass 'User namespaces: unrestricted or N/A (OK)'
 	fi
 
 	# -- SingletonLock --
