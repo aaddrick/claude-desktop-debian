@@ -13,6 +13,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 - Tray icon no longer stuck black at startup on dark desktops. `nativeTheme.shouldUseDarkColors` reads `false` for the first ~50 ms then flips `true`, but the leading-edge rebuild mutex latched the transient `false` and dropped the corrective `"updated"` events; the mutex is now trailing-edge (re-applies the final value) and the obsolete 3 s startup-suppression window was removed. ([#680](https://github.com/aaddrick/claude-desktop-debian/pull/680), fixes [#679](https://github.com/aaddrick/claude-desktop-debian/issues/679))
 - Restored the in-place tray `setImage` fast-path ([#515](https://github.com/aaddrick/claude-desktop-debian/pull/515)), which silently stopped applying after upstream changed the context-menu wiring from `setContextMenu(BUILDER())` to a prebuilt `setContextMenu(MENU)` object — `patch_tray_inplace_update` now resolves the builder in both shapes, so the duplicate-icon SNI race no longer regresses. ([#680](https://github.com/aaddrick/claude-desktop-debian/pull/680))
 
+## [v2.0.17] — 2026-06-04
+
+Tracks upstream Claude Desktop 1.10628.2.
+
+### Fixed
+
+- `addTrustedFolder` `.asar` guard re-anchored on the `async addTrustedFolder(…)` method declaration. Upstream Claude Desktop 1.10628.x folded the `LocalAgentModeSessions.addTrustedFolder: ${i}` log call into a comma-expression inside an `if`, removing the trailing `` `); `` the old anchor matched — `./build.sh` aborted with `[FAIL] addTrustedFolder anchor not found`. Both the parameter extraction and the injection point now key off the unminified method name, so they can't drift apart if upstream drops the log line. ([#685](https://github.com/aaddrick/claude-desktop-debian/pull/685))
+
 ## [v2.0.16] — 2026-05-27
 
 Tracks upstream Claude Desktop 1.9255.0.
