@@ -283,6 +283,9 @@ Special thanks to:
 - **[JustinJLeopard](https://github.com/JustinJLeopard)** for detecting missing electron binaries after Node 24's `extract-zip` silently no-ops, with an `unzip` fallback that recovers from the `@electron/get` cache (#631, #584)
 - **[tkrag](https://github.com/tkrag)** for diagnosing and fixing the X11 window-raise-on-hover bug under sloppy/focus-follows-mouse WMs, tracing the upstream `webContents.focus()` → `_NET_ACTIVE_WINDOW` path through three iterations of review (#589, #416)
 - **[maplefater](https://github.com/maplefater)** for re-anchoring the `addTrustedFolder` `.asar` guard on the `async addTrustedFolder(…)` method declaration after upstream 1.10628.x folded the log call into a comma-expression, keying both the parameter extraction and the injection point off the unminified method name so they can't drift apart (#685)
+- **[MitchSchwartz](https://github.com/MitchSchwartz)** for finding the second `app.asar` file-drop path — the `existsSync()` branch in the second-instance argv collector that #640 never guarded — and rejecting `.asar` paths there so the app no longer prompts to attach its own bundle on every taskbar reopen (#669, #668)
+- **[LiukScot](https://github.com/LiukScot)** for making the tray rebuild mutex trailing-edge so the startup dark-theme icon no longer latches black, and restoring the in-place `setImage` fast-path after upstream changed the context-menu wiring to a prebuilt menu object (#680, #679)
+- **[sabiut](https://github.com/sabiut)** for extending the headless launch smoke test to the deb and rpm artifacts — previously only the AppImage actually booted in CI — with a shared `run_launch_smoke_test` helper that catches startup-only regressions on the formats they break (#671, #670)
 
 ## Sponsorship
 
