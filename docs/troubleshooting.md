@@ -182,61 +182,19 @@ For enhanced security, consider:
 
 ### Cowork on Ubuntu 24.04+ (AppArmor Blocks User Namespaces)
 
-Ubuntu 24.04 ships with `apparmor_restrict_unprivileged_userns=1`
-by default, which blocks the unprivileged user namespaces that
-Cowork's bubblewrap sandbox relies on. Symptoms:
+**Cause:** Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`. This blocks the user namespaces Cowork's bubblewrap sandbox needs.
 
-- `claude-desktop --doctor` reports `bubblewrap: sandbox probe failed`
-  with `Operation not permitted` in stderr, and
-  `Cowork isolation: host-direct (bwrap probe failed)`.
-- `~/.config/Claude/logs/cowork_vm_daemon.log` contains
-  `bwrap is installed but cannot create a user namespace`.
-- Cowork sessions hang at "Starting VM..." or loop on reconnect.
+**Symptom:** `claude-desktop --doctor` shows `Cowork isolation: host-direct (bwrap probe failed)`.
 
-**The `.deb` handles this automatically.** Its `postinst` installs a
-scoped AppArmor profile (`/etc/apparmor.d/claude-desktop-bwrap`)
-granting `userns` to `/usr/bin/bwrap` — separate from the
-`/etc/apparmor.d/claude-desktop` profile that keeps the main app's
-Chromium sandbox working. A normal install needs no action. If the
-probe still fails, reinstall the package, or apply the profile
-manually (requires sudo):
+**Fix:** None needed. The `.deb` `postinst` installs `/etc/apparmor.d/claude-desktop-bwrap`, granting `userns` to `/usr/bin/bwrap`.
 
-```bash
-sudo tee /etc/apparmor.d/claude-desktop-bwrap <<'EOF'
-abi <abi/4.0>,
-include <tunables/global>
+**Still failing:** Reinstall the package. The `postinst` recreates the profile.
 
-profile claude-desktop-bwrap /usr/bin/bwrap flags=(unconfined) {
-    userns,
+**Pre-existing manual fix:** A hand-made `/etc/apparmor.d/bwrap` still works. The `postinst` detects and defers to it.
 
-    include if exists <local/claude-desktop-bwrap>
-}
-EOF
+**Security:** The profile grants `userns` to `/usr/bin/bwrap` host-wide. Bubblewrap's own sandbox does the confining. Review against your threat model.
 
-sudo apparmor_parser -r /etc/apparmor.d/claude-desktop-bwrap
-```
-
-After applying the profile, run `claude-desktop --doctor` — the
-bubblewrap probe should pass, and Cowork should start without
-falling back to host-direct.
-
-If you previously applied an earlier version of this fix by creating
-`/etc/apparmor.d/bwrap`, that still works — the package detects an
-existing `/etc/apparmor.d/bwrap` and defers to it rather than
-installing its own profile.
-
-**Security note:** this grants `/usr/bin/bwrap` the unconfined
-profile plus the `userns` capability. It matches the behavior
-bwrap had on Ubuntu 22.04 and earlier, and on most other distros,
-but is a system-wide change that affects every program invoking
-`/usr/bin/bwrap` (not just Claude Desktop). The profile only permits
-the namespace; the actual confinement comes from bubblewrap's own
-sandbox (empty root, read-only system dirs, your project dirs bound
-in explicitly). Review against your threat model before applying.
-
-Credit: this workaround was contributed by
-[@hfyeh](https://github.com/hfyeh) in
-[#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
+**Credit:** [@hfyeh](https://github.com/hfyeh), [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
 
 ### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
 
