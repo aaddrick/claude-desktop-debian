@@ -104,9 +104,16 @@ patch_asar_trusted_folder_guard() {
 		return
 	fi
 
+	# Anchor on the method declaration itself — the method name
+	# `addTrustedFolder` is not minified and is unique in the bundle.
+	# Earlier releases let us anchor on the trailing `${param}`);` of the
+	# log line, but upstream now folds that log call into the comma
+	# expression `if(D.info(`…${i}`),await ZOe(i)===null){…}`, so the
+	# `);` no longer exists. Injecting at the function body head is both
+	# more robust and semantically earlier (reject .asar on entry).
 	local folder_param
 	folder_param=$(grep -oP \
-		'LocalAgentModeSessions\.addTrustedFolder: \$\{\K[$\w]+(?=\})' \
+		'async addTrustedFolder\(\K[$\w]+(?=\)\{)' \
 		"$index_js")
 	if [[ -z $folder_param ]]; then
 		echo '  Could not extract folder parameter — skipping' >&2
@@ -121,7 +128,7 @@ const p = 'app.asar.contents/.vite/build/index.js';
 const F = process.env.FOLDER_PARAM;
 let code = fs.readFileSync(p, 'utf8');
 
-const anchor = 'LocalAgentModeSessions.addTrustedFolder: \${' + F + '}\`);';
+const anchor = 'async addTrustedFolder(' + F + '){';
 const idx = code.indexOf(anchor);
 if (idx === -1) {
   console.error('  [FAIL] addTrustedFolder anchor not found');

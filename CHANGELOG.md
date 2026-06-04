@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `addTrustedFolder` `.asar` guard re-anchored on the `async addTrustedFolder(…)` method declaration. Upstream Claude Desktop 1.10628.x folded the `LocalAgentModeSessions.addTrustedFolder: ${i}` log call into a comma-expression inside an `if`, removing the trailing `` `); `` the old anchor matched — `./build.sh` aborted with `[FAIL] addTrustedFolder anchor not found`. Both the parameter extraction and the injection point now key off the unminified method name, so they can't drift apart if upstream drops the log line. ([#685](https://github.com/aaddrick/claude-desktop-debian/pull/685))
+
 ## [v2.0.16] — 2026-05-27
 
 Tracks upstream Claude Desktop 1.9255.0.
