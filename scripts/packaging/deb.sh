@@ -289,8 +289,10 @@ if command -v apparmor_parser >/dev/null 2>&1 \
     && [ -x /usr/bin/bwrap ] \
     && [ ! -e /etc/apparmor.d/bwrap ]; then
     echo "Configuring AppArmor profile for the Cowork bwrap sandbox..."
-    mkdir -p /etc/apparmor.d
-    cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
+    # Writing the profile is best-effort: a read-only or atypical /etc must
+    # never abort the install (this postinst runs under set -e). Keeping the
+    # mkdir + heredoc in the if-condition exempts them from errexit.
+    if mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
 abi <abi/4.0>,
 include <tunables/global>
 
@@ -300,12 +302,16 @@ profile ${package_name}-bwrap /usr/bin/bwrap flags=(unconfined) {
     include if exists <local/${package_name}-bwrap>
 }
 BWRAP_APPARMOR_EOF
-    if apparmor_parser -Q "\$BWRAP_PROFILE" >/dev/null 2>&1; then
-        apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || echo "Note: bwrap AppArmor profile staged but not loaded now; it will apply on the next AppArmor reload or reboot."
-        echo "Cowork bwrap AppArmor profile installed at \$BWRAP_PROFILE"
+    then
+        if apparmor_parser -Q "\$BWRAP_PROFILE" >/dev/null 2>&1; then
+            apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || echo "Note: bwrap AppArmor profile staged but not loaded now; it will apply on the next AppArmor reload or reboot."
+            echo "Cowork bwrap AppArmor profile installed at \$BWRAP_PROFILE"
+        else
+            rm -f "\$BWRAP_PROFILE"
+            echo "AppArmor on this system does not support the userns rule; skipping bwrap profile (not required here)."
+        fi
     else
-        rm -f "\$BWRAP_PROFILE"
-        echo "AppArmor on this system does not support the userns rule; skipping bwrap profile (not required here)."
+        echo "Warning: could not write \$BWRAP_PROFILE; skipping bwrap AppArmor profile."
     fi
 fi
 
