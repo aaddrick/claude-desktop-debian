@@ -224,6 +224,58 @@ Credit: this workaround was contributed by
 [@hfyeh](https://github.com/hfyeh) in
 [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
 
+### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
+
+The same `apparmor_restrict_unprivileged_userns=1` default that breaks
+Cowork (above) also kills the **main app's** Chromium sandbox during
+startup, so the window never appears. This is a distinct failure: it
+affects the bundled Electron binary, not `bwrap`, so the
+`/etc/apparmor.d/bwrap` profile above does **not** fix it. Symptoms:
+
+- The launcher log (`~/.cache/claude-desktop-debian/launcher.log`) ends
+  with `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: .
+  : Permission denied (13)` (the line number varies by Electron version).
+- The process dies with a `Trace/breakpoint trap` / core dump (exit
+  code 133).
+- `claude-desktop --no-sandbox` launches fine, which confirms the
+  namespace sandbox is the culprit. Don't keep `--no-sandbox` as the
+  fix — it disables the Chromium sandbox entirely.
+
+The `.deb` `postinst` already sets `chrome-sandbox` SUID root (`4755`),
+so the SUID helper is not the problem — Chromium still spins up an
+unprivileged user-namespace zygote that AppArmor denies.
+
+Permit user namespaces for the bundled Electron binary via a scoped
+AppArmor profile (one-time setup, requires sudo):
+
+```bash
+sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile claude-desktop /usr/lib/claude-desktop/node_modules/electron/dist/electron flags=(unconfined) {
+    userns,
+
+    include if exists <local/claude-desktop>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
+```
+
+After loading the profile, launch Claude Desktop normally — the window
+should appear with the Chromium sandbox intact (no `--no-sandbox`
+needed).
+
+**Security note:** this grants the unconfined profile plus the `userns`
+capability to the bundled Electron binary only, not system-wide. It is
+narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
+globally, which would lift the restriction for every program on the
+host. Review against your threat model before applying.
+
+To revert: `sudo rm /etc/apparmor.d/claude-desktop && sudo
+apparmor_parser -R /etc/apparmor.d/claude-desktop`.
+
 ### Cowork: "VM connection timeout after 60 seconds"
 
 If Cowork fails with a VM timeout, the KVM backend is selected but the guest VM cannot connect back to the host via vsock within the timeout window. Common causes:
