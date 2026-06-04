@@ -576,12 +576,15 @@ run_electron_and_cleanup() {
 
 	wait "$_electron_child_pid"
 	status=$?
+	while kill -0 "$_electron_child_pid" 2>/dev/null; do
+		wait "$_electron_child_pid"  # reap only; keep status
+	done
 
 	trap - TERM INT HUP
-	_electron_child_pid=''
 
 	log_message "Electron exited with code: $status"
 	cleanup_after_electron_exit
+	_electron_child_pid=''
 	log_message '--- Claude Desktop Launcher End ---'
 
 	return "$status"
