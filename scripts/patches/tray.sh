@@ -137,7 +137,15 @@ patch_tray_inplace_update() {
 		fi
 	fi
 	if [[ -z $menu_func ]]; then
-		echo '  Could not extract menu function name — skipping'
+		# Both the inline grep and the menu_var fallback came up empty.
+		# A silent skip here is how the #515 duplicate-icon race
+		# regressed before — make it loud on stderr so the next silent
+		# regression surfaces in CI logs. Still skip gracefully so the
+		# build completes.
+		echo "WARNING: could not resolve tray menu function" \
+			"(inline + fallback both failed) — in-place" \
+			"fast-path NOT applied; duplicate-icon race" \
+			"(#515) may regress" >&2
 		echo '##############################################################'
 		return
 	fi
