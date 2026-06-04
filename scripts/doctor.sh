@@ -562,10 +562,16 @@ _doctor_check_recent_crashes() {
 # sources this file) to surface what keyring Electron will use for
 # safeStorage / cookie encryption. 'basic' is valid but means tokens
 # rely on filesystem permissions alone, so we note it for visibility.
-# Never fails — basic is an intentional fallback, not an error.
+# 'basic' is an intentional fallback, not an error; an empty result
+# means detection itself failed (e.g. a sourcing-order regression) and
+# warns rather than emitting a green PASS with a blank value.
 _doctor_check_password_store() {
 	local store
 	store=$(_detect_password_store)
+	if [[ -z $store ]]; then
+		_warn 'Password store: unable to detect backend'
+		return
+	fi
 	_pass "Password store: $store"
 	if [[ $store == 'basic' ]]; then
 		_info \
@@ -575,6 +581,28 @@ _doctor_check_password_store() {
 	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
 		_info \
 			"  → overridden by CLAUDE_PASSWORD_STORE=${CLAUDE_PASSWORD_STORE}"
+	fi
+}
+
+# Report free space on the partition holding the Claude config dir.
+# Arguments: $1 = config directory to check.
+#
+# Skips silently when df is unavailable or yields a non-numeric value:
+# better no line than a green PASS reporting space we could not read.
+_doctor_check_disk_space() {
+	local config_dir="$1"
+	local avail
+	avail=$(df -BM --output=avail "$config_dir" 2>/dev/null \
+		| tail -1 | tr -d ' M') || true
+	[[ $avail =~ ^[0-9]+$ ]] || return 0
+	if ((avail < 100)); then
+		_fail "Disk space: ${avail}MB free on config partition"
+		_info 'Fix: Free up disk space'
+	elif ((avail < 500)); then
+		_warn "Disk space: ${avail}MB free" \
+			"on config partition (low)"
+	else
+		_pass "Disk space: ${avail}MB free"
 	fi
 }
 
@@ -828,20 +856,7 @@ print(len(servers))
 	fi
 
 	# -- Disk space --
-	local config_disk_avail
-	config_disk_avail=$(df -BM --output=avail "$config_dir" 2>/dev/null \
-		| tail -1 | tr -d ' M') || true
-	if [[ -n $config_disk_avail ]]; then
-		if ((config_disk_avail < 100)); then
-			_fail "Disk space: ${config_disk_avail}MB free on config partition"
-			_info 'Fix: Free up disk space'
-		elif ((config_disk_avail < 500)); then
-			_warn "Disk space: ${config_disk_avail}MB free" \
-				"on config partition (low)"
-		else
-			_pass "Disk space: ${config_disk_avail}MB free"
-		fi
-	fi
+	_doctor_check_disk_space "$config_dir"
 
 	# -- Cowork Mode --
 	echo
