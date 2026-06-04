@@ -620,6 +620,115 @@ s.close()
 }
 
 # =============================================================================
+# cleanup_orphaned_cowork_daemon
+#
+# Reaps a cowork-vm-service daemon left behind by a crashed UI, but only
+# when no live Claude UI is running. pgrep/kill/sleep are stubbed; the
+# "live UI" case uses a real background process so the /proc cmdline and
+# status reads resolve naturally without faking /proc.
+# =============================================================================
+
+@test "cleanup_orphaned_cowork_daemon: no daemon running — no action, no log" {
+	# Daemon pgrep finds nothing, so the function returns before any
+	# UI scan or kill.
+	pgrep() { return 1; }
+	kill() { echo "kill $*" >> "$TEST_TMP/kills"; }
+
+	setup_logging
+	run cleanup_orphaned_cowork_daemon
+	[[ $status -eq 0 ]]
+	[[ ! -f "$TEST_TMP/kills" ]]
+	[[ ! -f $log_file ]]
+}
+
+@test "cleanup_orphaned_cowork_daemon: live UI present — daemon left running" {
+	# A real background process stands in for the live Electron UI: its
+	# cmdline ('sleep ...') is neither the cowork daemon nor a --type=
+	# helper, and its state is sleeping (not T/t/Z), so the function
+	# treats it as a live UI and must NOT kill the daemon.
+	sleep 300 &
+	ui_pid=$!
+
+	pgrep() {
+		if [[ $2 == *cowork-vm-service* ]]; then
+			echo 4242
+		elif [[ $2 == *app* ]]; then
+			echo "$ui_pid"
+		fi
+	}
+	kill() { echo "kill $*" >> "$TEST_TMP/kills"; }
+
+	setup_logging
+	cleanup_orphaned_cowork_daemon
+	local rc=$?
+	builtin kill "$ui_pid" 2>/dev/null
+
+	[[ $rc -eq 0 ]]
+	# Daemon kill must never have been attempted.
+	[[ ! -f "$TEST_TMP/kills" ]]
+}
+
+@test "cleanup_orphaned_cowork_daemon: orphan exits on SIGTERM — no SIGKILL" {
+	# Daemon present, no live UI. The daemon disappears once SIGTERM is
+	# sent, so the escalation to SIGKILL must not fire.
+	local term_sent="$TEST_TMP/term_sent"
+	pgrep() {
+		if [[ $2 == *cowork-vm-service* ]]; then
+			[[ -f $term_sent ]] && return 1
+			echo 4242
+		else
+			return 1
+		fi
+	}
+	kill() {
+		echo "kill $*" >> "$TEST_TMP/kills"
+		# A plain SIGTERM ($1 is the PID, not -KILL) reaps the daemon.
+		[[ $1 == -KILL ]] || : > "$term_sent"
+	}
+	sleep() { :; }
+
+	setup_logging
+	# Via `run` so the function's internal `((_wait++))` (which returns 1
+	# when _wait starts at 0) doesn't trip bats' errexit. Production has
+	# no set -e, so this is a harness concern, not a code defect.
+	run cleanup_orphaned_cowork_daemon
+
+	grep -q 'Killed orphaned cowork-vm-service daemon (PIDs: 4242)' \
+		"$log_file"
+	# Negative assertions via `run` + status: a bare `! grep` that isn't
+	# the last command does not fail a bats test (SC2314), so it would be
+	# a hollow check.
+	run grep -q 'SIGKILL' "$log_file"
+	[[ $status -ne 0 ]]
+	grep -q '^kill 4242$' "$TEST_TMP/kills"
+	run grep -qF -- '-KILL' "$TEST_TMP/kills"
+	[[ $status -ne 0 ]]
+}
+
+@test "cleanup_orphaned_cowork_daemon: orphan survives SIGTERM — escalates to SIGKILL" {
+	# Daemon never dies, so after the SIGTERM grace window the function
+	# escalates to SIGKILL and logs the SIGKILL variant.
+	pgrep() {
+		if [[ $2 == *cowork-vm-service* ]]; then
+			echo 4242
+		else
+			return 1
+		fi
+	}
+	kill() { echo "kill $*" >> "$TEST_TMP/kills"; }
+	sleep() { :; }
+
+	setup_logging
+	# `run` for the same errexit reason as the SIGTERM test above.
+	run cleanup_orphaned_cowork_daemon
+
+	grep -q 'Killed orphaned cowork-vm-service daemon (SIGKILL, PIDs: 4242)' \
+		"$log_file"
+	grep -q '^kill 4242$' "$TEST_TMP/kills"
+	grep -q '^kill -KILL 4242$' "$TEST_TMP/kills"
+}
+
+# =============================================================================
 # Doctor helper functions
 # =============================================================================
 
