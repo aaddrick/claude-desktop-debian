@@ -114,6 +114,16 @@ ASAR_FILTER_PATCH
 # window close+reopen (#383, #622 regression in v2.0.16+).
 #
 # Fix: inject !PARAM.endsWith(".asar")&& before the existsSync call.
+#
+# Threat model: this argv path is reachable from user-launched
+# invocations (TPr's only caller is the second-instance handler, and
+# the desktop entries ship `Exec=... %u`), so it is not just the app's
+# own relaunch. The exact-suffix, case-sensitive ".asar" match is still
+# correct because the only sink here is attach-to-draft
+# (dispatchOnCoworkFromMain -> selectedFiles) — identical to a manual
+# drag, with no content read, privilege boundary, or traversal sink. So
+# don't "harden" it with toLowerCase(): that would diverge from the
+# sibling .asar guards for zero behavioral gain.
 # ---------------------------------------------------------------------------
 patch_asar_argv_file_drop_guard() {
 	echo 'Patching argv file-drop collector to reject .asar paths...'
@@ -123,7 +133,7 @@ patch_asar_argv_file_drop_guard() {
 	# !PARAM.startsWith("-")&&!PARAM.endsWith(".asar") — anchored to
 	# startsWith to avoid false-positive matches from other .asar guards
 	# (e.g. the statSync patch or the --add-dir filter).
-	if grep -qP '\.startsWith\("-"\)&&![\w$]+\.endsWith\("\.asar"\)' \
+	if grep -qP '\.startsWith\("-"\)\s*&&\s*![\w$]+\.endsWith\("\.asar"\)' \
 		"$index_js"; then
 		echo '  .asar file-drop guard already present (idempotent)'
 		echo '##############################################################'
@@ -186,7 +196,7 @@ const patched = startsPart + '!' + param + '.endsWith(".asar")&&' +
 code = code.replace(match[0], patched);
 
 // Verify the patch landed with the correct context
-if (!code.match(/\.startsWith\("-"\)&&![\w$]+\.endsWith\("\.asar"\)/)) {
+if (!code.match(/\.startsWith\("-"\)\s*&&\s*![\w$]+\.endsWith\("\.asar"\)/)) {
     console.error('FATAL: .asar file-drop guard replacement failed.');
     process.exit(1);
 }
@@ -198,7 +208,6 @@ ASAR_FILE_DROP_PATCH
 		echo 'FATAL: .asar argv file-drop guard patch failed' >&2
 		echo 'The app will show file-drop prompts on window reopen' \
 			'without this patch (#383, #622).' >&2
-		cd "$project_root" || exit 1
 		exit 1
 	fi
 
