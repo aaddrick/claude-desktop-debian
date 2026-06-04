@@ -948,9 +948,14 @@ print(len(servers))
 					'  Common on Ubuntu 24.04+ where AppArmor sets' \
 					'apparmor_restrict_unprivileged_userns=1'
 				_info \
-					'  by default. See docs/troubleshooting.md' \
-					'"Cowork on Ubuntu 24.04"'
-				_info '  for the AppArmor profile fix.'
+					'  by default. The .deb auto-installs an AppArmor'
+				_info \
+					'  profile (/etc/apparmor.d/claude-desktop-bwrap)'
+				_info \
+					'  to permit it for bwrap; reinstall the .deb to'
+				_info \
+					'  restore it, or see docs/troubleshooting.md'
+				_info '  "Cowork on Ubuntu 24.04".'
 			fi
 		fi
 	else
