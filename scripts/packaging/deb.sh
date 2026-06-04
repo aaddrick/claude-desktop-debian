@@ -179,7 +179,9 @@ echo 'Launcher script created'
 echo 'Creating control file...'
 # Electron is bundled with its own Node.js runtime, so nodejs/npm are not
 # runtime dependencies. p7zip is only used at build time to extract the
-# installer. No external dependencies are required at runtime.
+# installer. bubblewrap is Recommended (not required): it provides the
+# default namespace-sandbox isolation for Cowork mode; the app runs without
+# it (Cowork falls back to host-direct). apt installs Recommends by default.
 
 cat > "$package_root/DEBIAN/control" << EOF
 Package: $package_name
@@ -187,6 +189,7 @@ Version: $version
 Section: utils
 Priority: optional
 Architecture: $architecture
+Recommends: bubblewrap
 Maintainer: $maintainer
 Description: $description
  Claude is an AI assistant from Anthropic.
