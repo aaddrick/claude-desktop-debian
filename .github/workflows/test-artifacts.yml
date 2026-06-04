@@ -49,6 +49,23 @@ jobs:
           sudo apt-get install -y file libfuse2 nodejs npm \
             xvfb dbus-x11 procps
 
+      # Fail loud if a smoke-test tool is missing. Without this guard a
+      # missing/renamed tool turns run_launch_smoke_test into a silent
+      # green skip (it does `pass "$skip"; return`), masking the test.
+      - name: Verify smoke-test tools are present (Ubuntu)
+        if: matrix.format != 'rpm'
+        run: |
+          for t in xvfb-run dbus-run-session setsid; do
+            command -v "$t" >/dev/null || { echo "::error::missing $t"; exit 1; }
+          done
+
+      - name: Verify smoke-test tools are present (Fedora)
+        if: matrix.format == 'rpm'
+        run: |
+          for t in xvfb-run dbus-run-session setsid runuser; do
+            command -v "$t" >/dev/null || { echo "::error::missing $t"; exit 1; }
+          done
+
       - name: Run artifact tests
         run: |
           chmod +x tests/test-artifact-${{ matrix.format }}.sh

@@ -144,10 +144,13 @@ validate_app_contents() {
 # Headless launch smoke test. Boots the packaged app under Xvfb + dbus
 # and waits for the frame-fix readiness marker
 # ('[Frame Fix] Patches built successfully'), which scripts/frame-fix-
-# wrapper.js emits once all patches install — proving main-process
-# startup finished without a fatal. Catches startup-only regressions
-# (asar/wrapper syntax errors, bad patch anchors that yield a
-# SyntaxError) that pure structure checks miss. Ref: #670 (deb/rpm),
+# wrapper.js emits on the FIRST require('electron') — i.e. before
+# app.whenReady(), not after full startup. Reaching it proves the asar
+# loaded and the wrapper's electron interception ran without a
+# SyntaxError (the #666 class) — note a hang after this point would
+# still pass. Catches startup-only regressions (asar/wrapper syntax
+# errors, bad patch anchors that yield a SyntaxError) that pure
+# structure checks miss. Ref: #670 (deb/rpm),
 # #646 (AppImage readiness-poll pattern this generalizes).
 #
 # Scope: main-process startup only. GPU/renderer crashes (#583-class)
@@ -273,6 +276,10 @@ run_launch_smoke_test() {
 	kill -KILL -- "-$_smoke_launch_pid" 2>/dev/null || true
 	wait "$_smoke_launch_pid" 2>/dev/null || true
 	# Sweep any electron child that escaped the group (e.g. zygote).
+	# Under the rpm runuser path PAM re-setsid()s the child into its own
+	# session/process group, so the negative-PID group kills above miss
+	# it entirely — this pkill -f sweep is the ACTUAL reaper there, not a
+	# belt-and-suspenders extra. Don't drop it.
 	if [[ -n $pkill_match ]]; then
 		pkill -KILL -f "$pkill_match" 2>/dev/null || true
 	fi
