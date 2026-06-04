@@ -26,10 +26,16 @@ else
 	fail "Package name is not claude-desktop"
 fi
 
-if [[ $pkg_info == *'Architecture: amd64'* ]]; then
-	pass "Architecture is amd64"
+# Architecture must match the target we built for. TARGET_ARCH is set by
+# the CI workflow's per-arch matrix; fall back to the host's dpkg
+# architecture for standalone/local runs (each CI arch runs on a native
+# runner, so the host arch matches the package arch there too).
+expected_arch="${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null)}"
+if [[ -n $expected_arch ]] \
+	&& [[ $pkg_info == *"Architecture: $expected_arch"* ]]; then
+	pass "Architecture is $expected_arch"
 else
-	fail "Architecture is not amd64"
+	fail "Architecture is not ${expected_arch:-<undetermined>}"
 fi
 
 if [[ $pkg_info == *'Version:'* ]]; then

@@ -82,6 +82,8 @@ jobs:
           done
 
       - name: Run artifact tests
+        env:
+          TARGET_ARCH: ${{ inputs.arch }}
         run: |
           chmod +x tests/test-artifact-${{ matrix.format }}.sh
           tests/test-artifact-${{ matrix.format }}.sh artifacts/
