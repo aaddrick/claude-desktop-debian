@@ -740,6 +740,32 @@ run_doctor() {
 		_warn 'Chrome sandbox not found (expected for AppImage)'
 	fi
 
+	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
+	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
+	# blocks the user namespaces Chromium's sandbox needs and crashes the
+	# app on launch (credentials.cc FATAL, exit 133). The deb installs a
+	# scoped AppArmor profile to permit them for Claude only.
+	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
+	local _userns_val=''
+	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
+	if [[ $_userns_val == 1 ]]; then
+		local _aa_profile='/etc/apparmor.d/claude-desktop'
+		if [[ -e $_aa_profile ]]; then
+			_pass 'User namespaces: restricted, AppArmor profile present'
+		else
+			_warn 'User namespaces: restricted by AppArmor,' \
+				'no Claude profile found'
+			_info '  Unprivileged user namespaces are blocked, which'
+			_info '  crashes the app on launch (credentials.cc FATAL).'
+			_info '  The .deb normally installs an AppArmor profile to'
+			_info '  permit them for Claude only.'
+			_info '  Fix: reinstall the .deb, or see docs/troubleshooting.md'
+			_info '  "Claude Desktop crashes immediately on launch".'
+		fi
+	else
+		_pass 'User namespaces: unrestricted or N/A (OK)'
+	fi
+
 	# -- SingletonLock --
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
 	local lock_file="$config_dir/SingletonLock"
