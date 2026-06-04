@@ -10,7 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
-- Claude Desktop no longer crashes on launch on Ubuntu 24.04+, where `apparmor_restrict_unprivileged_userns=1` blocks the user namespaces Chromium's sandbox needs (`sandbox/linux/services/credentials.cc` FATAL, `Trace/breakpoint trap`, exit 133). The `.deb` `postinst` now installs a scoped AppArmor profile granting `userns` to the bundled Electron binary — mirroring the `google-chrome`/`code`/`slack` packages — and removes it again on uninstall. The Chromium sandbox stays enabled (no `--no-sandbox`). `claude-desktop --doctor` gained a **User namespaces** check that flags a missing profile. ([#PRPLACEHOLDER](https://github.com/aaddrick/claude-desktop-debian/pull/PRPLACEHOLDER))
+- Claude Desktop no longer crashes on launch on Ubuntu 24.04+, where `apparmor_restrict_unprivileged_userns=1` blocks the user namespaces Chromium's sandbox needs (`sandbox/linux/services/credentials.cc` FATAL, `Trace/breakpoint trap`, exit 133). The `.deb` `postinst` now installs a scoped AppArmor profile granting `userns` to the bundled Electron binary — mirroring the `google-chrome`/`code`/`slack` packages — and removes it again on uninstall. The Chromium sandbox stays enabled (no `--no-sandbox`). `claude-desktop --doctor` gained a **User namespaces** check that flags a missing profile. ([#2](https://github.com/diarized/claude-desktop-debian/pull/2))
 
 ## [v2.0.18] — 2026-06-04
 
