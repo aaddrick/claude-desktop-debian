@@ -1,5 +1,6 @@
 {
   buildFHSEnv,
+  bubblewrap,
   claude-desktop,
   nodejs,
   docker,
@@ -12,6 +13,7 @@ buildFHSEnv {
   name = "claude-desktop";
 
   targetPkgs = pkgs: [
+    bubblewrap
     claude-desktop
     docker
     docker-compose
