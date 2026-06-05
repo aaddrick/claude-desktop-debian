@@ -37,7 +37,7 @@ On Fedora 44 / GNOME 50.2 / xdg-desktop-portal **1.21.2**, `globalShortcut.regis
 
 Reproduced identically on Electron **40.6.1, 41.5.0, 41.7.1, and 42.3.3** (latest), with the relevant app-id fixes already present (electron#49988 → backported to `41-x-y` via #50051). So the Electron *version* is not the variable.
 
-**Root cause:** xdg-desktop-portal **1.20+** requires a non-sandboxed ("host") app to declare its identity via `org.freedesktop.host.portal.Registry.Register(app_id, options)` before app-id-gated portals will serve it. Chromium's `GlobalAcceleratorListenerLinux` still relies on the legacy systemd-scope app-id derivation (it creates `app-electron-<pid>.scope` but never calls `Registry.Register`). On portal 1.21 the legacy path no longer yields an app id for host apps, so a manual `CreateSession` returns `org.freedesktop.portal.Error.NotAllowed: An app id is required`.
+**Root cause (pinned to source on both sides):** xdg-desktop-portal grew a host-app identity step — non-sandboxed apps must call `org.freedesktop.host.portal.Registry.Register(app_id)` (added in **1.20**, commit `8fd5bdd5ec`), and GlobalShortcuts `CreateSession` now hard-rejects an empty app id (`src/global-shortcuts.c` `handle_create_session()` → `NOT_ALLOWED "An app id is required"`, added in **1.21.0**, commit `38dd2c03f2`). Chromium never makes that call in the normal case: `components/dbus/xdg/portal.cc` `PortalRegistrar::OnServiceChecked()` only calls `Register()` when starting its transient systemd scope *fails* — when the scope starts (`kUnitStarted`, the usual path; the browser creates `app-<id>-<pid>.scope`) it skips `Register()`, assuming the portal derives the app id from the scope. On portal 1.21 that derivation is gone, so the connection has an empty app id and `CreateSession` (issued from `ui/base/accelerators/global_accelerator_listener/global_accelerator_listener_linux.cc`) is rejected. Confirmed on plain Chromium 151 (HEAD) and Chrome 149, not just Electron.
 
 **Proof the portal itself works** — a ~60-line Python client that performs the missing `Registry.Register` call (reverse-DNS app id backed by a `.desktop` file, launched in a matching `app-<id>.scope` via `systemd-run --user --scope`) drives the whole flow and receives `Activated` from an *unfocused* window:
 
@@ -52,7 +52,7 @@ Secondary gate: GNOME's backend also rejects app ids that are not reverse-DNS an
 
 Why it works on GNOME ≤ 49: older xdg-desktop-portal derived the app id from the systemd scope automatically and did not require `Registry.Register`. GNOME 50 / portal 1.21 introduced the requirement Chromium hasn't adopted.
 
-Filed upstream: [electron/electron#51875](https://github.com/electron/electron/issues/51875) (fundamentally a Chromium `global_accelerator_listener_linux.cc` gap, surfacing through Electron).
+Filed upstream: [electron/electron#51875](https://github.com/electron/electron/issues/51875) (accepted, milestone `42-x-y`) and the underlying Chromium bug at [crbug 520262204](https://issues.chromium.org/issues/520262204) — fundamentally the `components/dbus/xdg/portal.cc` skip-`Register()`-on-`kUnitStarted` gap, surfacing through Electron.
 
 ## First-run UX and escape hatch
 
@@ -70,4 +70,4 @@ The portal flag is harmless where the compositor's portal has no GlobalShortcuts
 - `tools/test-harness/src/runners/S12_global_shortcuts_portal_flag.spec.ts` — GNOME-W flag-in-argv detector (passes: the launcher delivers the flag).
 - `tools/test-harness/src/runners/S14_quick_entry_from_other_focus_niri.spec.ts` — Niri portal `BindShortcuts` detector (known-failing by design).
 - `docs/testing/cases/shortcuts-and-input.md` (S12/S14), `docs/testing/quick-entry-closeout.md` (QE-6).
-- Upstream blocker: [electron/electron#51875](https://github.com/electron/electron/issues/51875).
+- Upstream blockers: [electron/electron#51875](https://github.com/electron/electron/issues/51875), Chromium [crbug 520262204](https://issues.chromium.org/issues/520262204).
