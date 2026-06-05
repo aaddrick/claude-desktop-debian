@@ -317,26 +317,22 @@ teardown() {
 	[[ $use_x11_on_wayland == false ]]
 }
 
-@test "detect_display_backend: GNOME Wayland forces native Wayland (#404)" {
+@test "detect_display_backend: GNOME Wayland keeps XWayland default (not auto-flipped)" {
+	# GNOME native+portal is opt-in only; the default session stays on
+	# mature XWayland to avoid rendering/IME regressions (#404 portal
+	# route is opt-in via CLAUDE_USE_WAYLAND=1).
 	WAYLAND_DISPLAY="wayland-0"
 	XDG_CURRENT_DESKTOP="GNOME"
 	setup_logging
 	detect_display_backend
 	[[ $is_wayland == true ]]
-	[[ $use_x11_on_wayland == false ]]
+	[[ $use_x11_on_wayland == true ]]
 }
 
-@test "detect_display_backend: GNOME Wayland via colon-separated ubuntu:GNOME" {
+@test "detect_display_backend: GNOME Wayland + CLAUDE_USE_WAYLAND=1 opts into native" {
 	WAYLAND_DISPLAY="wayland-0"
 	XDG_CURRENT_DESKTOP="ubuntu:GNOME"
-	setup_logging
-	detect_display_backend
-	[[ $use_x11_on_wayland == false ]]
-}
-
-@test "detect_display_backend: GNOME detection is case-insensitive" {
-	WAYLAND_DISPLAY="wayland-0"
-	XDG_CURRENT_DESKTOP="gnome"
+	CLAUDE_USE_WAYLAND=1
 	setup_logging
 	detect_display_backend
 	[[ $use_x11_on_wayland == false ]]
@@ -445,8 +441,13 @@ teardown() {
 	use_x11_on_wayland=false
 	setup_logging
 	build_electron_args deb
+	# Exactly one --enable-features switch (Chromium honours only the
+	# last), carrying both features. Order inside the value is irrelevant
+	# to Chromium, so assert each subkey independently rather than with an
+	# ordered glob.
 	[[ $(count_enable_features) -eq 1 ]]
-	has_electron_arg '--enable-features=*UseOzonePlatform*GlobalShortcutsPortal*'
+	has_electron_arg '--enable-features=*UseOzonePlatform*'
+	has_electron_arg '--enable-features=*GlobalShortcutsPortal*'
 }
 
 @test "build_electron_args: hidden titlebar + native Wayland - one merged --enable-features" {

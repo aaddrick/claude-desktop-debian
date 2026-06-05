@@ -24,28 +24,28 @@ On Wayland sessions the launcher picks a display backend per compositor:
 
 | Compositor | Backend | Why |
 |------------|---------|-----|
-| GNOME (mutter) | native Wayland | mutter no longer honours XWayland global key grabs ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)); global shortcuts route through the XDG GlobalShortcuts portal instead (works on GNOME ≤ 49; see the GNOME 50 note below) |
-| Niri | native Wayland | no XWayland support at all |
-| KDE, Sway, Hyprland, others | XWayland | XWayland global key grabs still work; gives the broadest compatibility |
+| Niri | native Wayland (auto) | no XWayland support at all |
+| Everything else (GNOME, KDE, Sway, Hyprland, COSMIC, …) | XWayland (auto) | XWayland global key grabs still work on most; mature path, broadest compatibility |
 
-The Quick Entry global shortcut (`Ctrl+Alt+Space`) is meant to work in both backends — via an X11 key grab under XWayland, and via the XDG GlobalShortcuts portal under native Wayland (requires Electron ≥ 35; we bundle 41). On GNOME the first time the shortcut is registered the portal shows a one-time permission dialog — accept it to bind the shortcut.
+By default only Niri is auto-selected for native Wayland. GNOME Wayland stays on XWayland by default even though mutter no longer honours XWayland global key grabs ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)) — flipping the default GNOME session off XWayland is a rendering/IME/HiDPI risk, so it's left opt-in for now.
 
-**GNOME 50 / xdg-desktop-portal ≥ 1.20 limitation:** the portal path does not work yet on these versions. The newer portal requires apps to declare their identity via `org.freedesktop.host.portal.Registry.Register`, which Electron/Chromium does not yet do, so `globalShortcut.register()` fails and Quick Entry stays focus-bound. Tracked upstream at [electron/electron#51875](https://github.com/electron/electron/issues/51875). On GNOME ≤ 49 (the current mainstream releases) the portal path works.
+To route Quick Entry's global shortcut (`Ctrl+Alt+Space`) through the XDG GlobalShortcuts portal on GNOME, opt into native Wayland with `CLAUDE_USE_WAYLAND=1`. On **GNOME ≤ 49** this works after a one-time portal permission dialog (accept it to bind the shortcut). On **GNOME 50 / xdg-desktop-portal ≥ 1.20 it does not work yet**: the newer portal requires apps to declare identity via `org.freedesktop.host.portal.Registry.Register`, which Electron/Chromium doesn't do, so `globalShortcut.register()` fails and the shortcut stays focus-bound. Tracked upstream at [electron/electron#51875](https://github.com/electron/electron/issues/51875).
 
 Override the auto-detection with `CLAUDE_USE_WAYLAND`:
 
 ```bash
-# Force native Wayland (e.g. on Sway/Hyprland)
+# Force native Wayland (GNOME portal route, or Sway/Hyprland)
 CLAUDE_USE_WAYLAND=1 claude-desktop
 
-# Force XWayland (e.g. if native Wayland regresses rendering on GNOME)
+# Force XWayland (e.g. to override Niri's auto-native, or if native
+# Wayland regresses rendering)
 CLAUDE_USE_WAYLAND=0 claude-desktop
 
 # Or persist either choice
 export CLAUDE_USE_WAYLAND=1
 ```
 
-**Note:** the XDG GlobalShortcuts portal needs a compositor backend that implements it (GNOME and KDE do). wlroots compositors (Sway, Hyprland, Niri) currently ship no GlobalShortcuts backend, so portal-routed global shortcuts are a no-op there until their portal gains one.
+**Note:** portal-routed global shortcuts only work where the compositor's portal backend implements `org.freedesktop.portal.GlobalShortcuts`. Support is per-compositor and currently uneven — GNOME and KDE implement it; wlroots compositors (Sway, Hyprland, Niri) and COSMIC currently ship no GlobalShortcuts backend, so the portal route is a no-op there until their portal gains one.
 
 ### Menu Bar
 

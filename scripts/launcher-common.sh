@@ -73,26 +73,25 @@ detect_display_backend() {
 	local wayland_override="${CLAUDE_USE_WAYLAND:-}"
 	[[ $wayland_override == '1' ]] && use_x11_on_wayland=false
 
-	# Fixes: #226, #404 - Auto-detect compositors that need native
-	# Wayland, for two distinct reasons:
+	# Fixes: #226 - Only Niri is auto-forced to native Wayland: it has
+	# no XWayland at all, so the X11 backend can't even start.
 	#
-	#   Niri  - has no XWayland at all, so the X11 backend can't start.
-	#   GNOME - mutter (GNOME >= 49) no longer honours XWayland-side
-	#           global key grabs, so Quick Entry's globalShortcut only
-	#           fires when Claude already has focus (#404). Native
-	#           Wayland routes the shortcut through the XDG
-	#           GlobalShortcuts portal instead (see build_electron_args),
-	#           which mutter does honour.
+	# GNOME Wayland is NOT auto-forced. mutter no longer honours
+	# XWayland global key grabs (#404), and native Wayland would route
+	# Quick Entry's globalShortcut through the XDG GlobalShortcuts portal
+	# instead -- but flipping the default session off mature XWayland is
+	# a rendering / IME / HiDPI risk, and on GNOME 50 the portal path is
+	# a no-op anyway (electron/electron#51875). GNOME users who want the
+	# portal route opt in with CLAUDE_USE_WAYLAND=1 (works on GNOME <=49
+	# after the one-time portal permission dialog).
 	#
 	# Sway and Hyprland keep working XWayland grabs and their wlroots
-	# portal has no GlobalShortcuts backend, so they stay on the
-	# XWayland default; users there can still opt in with
-	# CLAUDE_USE_WAYLAND=1. An explicit CLAUDE_USE_WAYLAND=0 opts out
-	# of this auto-detect entirely.
+	# portal has no GlobalShortcuts backend, so they also stay on the
+	# XWayland default; opt in with CLAUDE_USE_WAYLAND=1 if desired. An
+	# explicit CLAUDE_USE_WAYLAND=0 opts out of this auto-detect entirely.
 	#
-	# XDG_CURRENT_DESKTOP can be colon-separated (e.g. "niri:GNOME" or
-	# "ubuntu:GNOME"); the *glob* substring matches handle this. Niri
-	# is checked first so a "niri:GNOME" session takes the Niri branch.
+	# XDG_CURRENT_DESKTOP can be colon-separated (e.g. "niri:GNOME"); the
+	# *glob* substring match handles this.
 	if [[ $is_wayland == true && $use_x11_on_wayland == true \
 		&& $wayland_override != '0' ]]; then
 		local desktop="${XDG_CURRENT_DESKTOP:-}"
@@ -100,10 +99,6 @@ detect_display_backend() {
 
 		if [[ -n "${NIRI_SOCKET:-}" || "$desktop" == *niri* ]]; then
 			log_message "Niri detected - forcing native Wayland"
-			use_x11_on_wayland=false
-		elif [[ "$desktop" == *gnome* ]]; then
-			log_message \
-				"GNOME Wayland detected - forcing native Wayland for global shortcuts portal (#404)"
 			use_x11_on_wayland=false
 		fi
 	fi

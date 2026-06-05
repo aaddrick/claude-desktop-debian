@@ -5,21 +5,23 @@ import { readPidArgv, argvHasFlag } from '../lib/argv.js';
 import { readLauncherLog, captureSessionEnv } from '../lib/diagnostics.js';
 
 // S12 — `--enable-features=GlobalShortcutsPortal` launcher flag
-// wired up for GNOME Wayland. Backs QE-6 in
+// wired up for the native-Wayland path. Backs QE-6 in
 // docs/testing/quick-entry-closeout.md.
 //
 // On GNOME Wayland, mutter no longer honors XWayland-side key grabs,
 // so the Quick Entry global shortcut fails from unfocused state
-// (#404). The fix is to route global shortcuts through XDG Desktop
-// Portal: pass `--enable-features=GlobalShortcutsPortal` to Electron
-// from the launcher when XDG_CURRENT_DESKTOP includes GNOME and
-// XDG_SESSION_TYPE is wayland.
+// (#404). The launcher routes global shortcuts through XDG Desktop
+// Portal by adding `GlobalShortcutsPortal` to the native-Wayland
+// `--enable-features` set.
 //
-// As of writing, this fix is NOT implemented. The test asserts the
-// fix's signature (the flag is in the spawned Electron's argv) and
-// will therefore FAIL on GNOME-W until the launcher patch lands.
-// That's intentional — it's the regression detector, not a smoke
-// test. Once the patch is in, this becomes a Critical green cell.
+// GNOME native Wayland is opt-in (CLAUDE_USE_WAYLAND=1), NOT the
+// default — flipping the default GNOME session off XWayland is a
+// rendering/IME risk, and on GNOME 50 the portal route is a no-op
+// upstream (electron/electron#51875). So this test launches with
+// CLAUDE_USE_WAYLAND=1 and asserts the flag is present on that
+// opt-in path. The portal feature is comma-joined with the ozone
+// features (Chromium honors only the last `--enable-features`), so we
+// match the subkey, not an exact token.
 //
 // Row gate: GNOME Wayland only. KDE rows skip with `-`.
 
@@ -41,6 +43,8 @@ test('S12 — --enable-features=GlobalShortcutsPortal launcher flag wired up for
 	const useHostConfig = process.env.CLAUDE_TEST_USE_HOST_CONFIG === '1';
 	const app = await launchClaude({
 		isolation: useHostConfig ? null : undefined,
+		// GNOME native+portal is opt-in; exercise that path explicitly.
+		extraEnv: { CLAUDE_USE_WAYLAND: '1' },
 	});
 
 	try {

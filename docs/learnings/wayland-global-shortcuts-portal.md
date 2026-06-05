@@ -2,7 +2,7 @@
 
 # Wayland global shortcuts via the XDG GlobalShortcuts portal
 
-Quick Entry's global hotkey (`Ctrl+Alt+Space`) is focus-bound on modern GNOME Wayland; the launcher now routes it through the XDG GlobalShortcuts portal (native Wayland + a merged `--enable-features=…,GlobalShortcutsPortal`), which fixes GNOME ≤ 49 — but GNOME 50 / xdg-desktop-portal ≥ 1.20 is still blocked by an upstream Electron gap ([electron/electron#51875](https://github.com/electron/electron/issues/51875)).
+Quick Entry's global hotkey (`Ctrl+Alt+Space`) is focus-bound on modern GNOME Wayland; the native-Wayland path now routes it through the XDG GlobalShortcuts portal (a merged `--enable-features=…,GlobalShortcutsPortal`), opt-in on GNOME via `CLAUDE_USE_WAYLAND=1` — which fixes GNOME ≤ 49, but GNOME 50 / xdg-desktop-portal ≥ 1.20 is still blocked by an upstream Electron gap ([electron/electron#51875](https://github.com/electron/electron/issues/51875)).
 
 ## The problem (#404)
 
@@ -12,14 +12,11 @@ That stopped working on GNOME. mutter (GNOME ≥ 49) no longer honours XWayland-
 
 ## The launcher change (necessary, not sufficient)
 
-Electron ≥ 35 (we bundle 41) exposes Chromium's `GlobalShortcutsPortal` feature: under the **native Wayland ozone platform** it is *supposed* to route `globalShortcut.register()` through the `org.freedesktop.portal.GlobalShortcuts` D-Bus interface instead of an X11 grab. So the launcher (`scripts/launcher-common.sh`):
+Electron ≥ 35 (we bundle 41) exposes Chromium's `GlobalShortcutsPortal` feature: under the **native Wayland ozone platform** it is *supposed* to route `globalShortcut.register()` through the `org.freedesktop.portal.GlobalShortcuts` D-Bus interface instead of an X11 grab. So `build_electron_args` adds `GlobalShortcutsPortal` to the native-Wayland feature set.
 
-1. `detect_display_backend` auto-forces GNOME Wayland to native Wayland (joining Niri, which was already forced for a different reason — no XWayland at all).
-2. `build_electron_args` adds `GlobalShortcutsPortal` to the native-Wayland feature set.
+GNOME Wayland is **not** auto-flipped to native Wayland. `detect_display_backend` still only auto-forces Niri (no XWayland at all). The reason: GNOME Wayland is the default session for a large slice of users, and moving it off mature XWayland is a rendering / IME / HiDPI / fractional-scaling risk — shipped on argv-only verification, and on GNOME 50 the portal route is a no-op anyway (so those users would take the risk for zero benefit). GNOME users opt in with `CLAUDE_USE_WAYLAND=1`, which fully works on **GNOME ≤ 49** after the one-time portal dialog. Auto-selecting native Wayland on GNOME is deferred to a follow-up gated on a real "still renders correctly" check, not just "the flag reached argv."
 
-KDE/Sway/Hyprland stay on XWayland: their XWayland grabs still work, so there's no reason to take on native-Wayland rendering risk.
-
-This is the correct, required prerequisite, and it is what closes #404 on **GNOME ≤ 49**. It is *not* sufficient on GNOME 50 — see below.
+KDE/Sway/Hyprland likewise stay on XWayland by default (opt in with `=1`).
 
 ## Two traps that bite
 
