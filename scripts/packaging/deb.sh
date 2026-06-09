@@ -244,8 +244,18 @@ if command -v apparmor_parser >/dev/null 2>&1 \
     echo "Configuring AppArmor profile for Chromium sandbox..."
     # Writing the profile is best-effort: a read-only or atypical /etc must
     # never abort the install (this postinst runs under set -e). Keeping the
-    # mkdir + heredoc in the if-condition exempts them from errexit.
-    if mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$APPARMOR_PROFILE" <<'APPARMOR_EOF'
+    # grep / mkdir + heredoc in the if/elif conditions exempts them from
+    # errexit. Debian Policy 10.7.3: a profile without our marker header was
+    # hand-created or hand-edited by the admin — preserve it, never overwrite.
+    if [ -e "\$APPARMOR_PROFILE" ] \
+        && ! grep -qF "managed by the $package_name package" \
+            "\$APPARMOR_PROFILE" 2>/dev/null; then
+        echo "Preserving locally modified \$APPARMOR_PROFILE (no marker header)"
+        apparmor_parser -r "\$APPARMOR_PROFILE" >/dev/null 2>&1 || true
+    elif mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$APPARMOR_PROFILE" <<'APPARMOR_EOF'
+# This profile is managed by the $package_name package (postinst); direct
+# edits will be overwritten on upgrade. Put local changes in
+# /etc/apparmor.d/local/$package_name instead.
 abi <abi/4.0>,
 include <tunables/global>
 
@@ -264,6 +274,10 @@ APPARMOR_EOF
             echo "AppArmor on this system does not support the userns rule; skipping profile (not required here)."
         fi
     else
+        # A failed write may leave a truncated profile behind; clear it.
+        # The || true is mandatory: this branch is errexit-live, and a bare
+        # rm fails the upgrade on a read-only /etc.
+        rm -f "\$APPARMOR_PROFILE" 2>/dev/null || true
         echo "Warning: could not write \$APPARMOR_PROFILE; skipping AppArmor profile."
     fi
 fi
@@ -329,18 +343,25 @@ echo 'Creating postrm script...'
 # matching it would also clean during the overwrite-by-another-package flow.
 # Two profiles: the Electron one (Chromium sandbox, #687) and the bwrap one
 # (Cowork sandbox helper, #694).
+# Per Debian Policy 10.7.3 the profiles are configuration: unload them
+# whenever the confined binaries go away, but delete the files only on
+# purge — a profile for an absent binary is a harmless no-op (google-chrome
+# leaves its profile behind the same way).
 cat > "$package_root/DEBIAN/postrm" << EOF
 #!/bin/sh
 set -e
 
 case "\$1" in
     remove|purge|abort-install)
-        for _profile in "/etc/apparmor.d/$package_name" "/etc/apparmor.d/${package_name}-bwrap"; do
-            if [ -e "\$_profile" ]; then
-                if command -v apparmor_parser >/dev/null 2>&1; then
-                    apparmor_parser -R "\$_profile" >/dev/null 2>&1 || true
-                fi
-                rm -f "\$_profile"
+        for _profile in "/etc/apparmor.d/$package_name" \
+            "/etc/apparmor.d/${package_name}-bwrap"; do
+            if [ -e "\$_profile" ] \
+                && command -v apparmor_parser >/dev/null 2>&1; then
+                apparmor_parser -R "\$_profile" >/dev/null 2>&1 || true
+            fi
+            # Policy 10.7.3: config survives remove; delete on purge only.
+            if [ "\$1" = purge ]; then
+                rm -f "\$_profile" 2>/dev/null || true
             fi
         done
         ;;
