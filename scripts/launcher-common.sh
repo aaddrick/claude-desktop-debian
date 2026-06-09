@@ -62,18 +62,38 @@ detect_display_backend() {
 	is_wayland=false
 	[[ -n "${WAYLAND_DISPLAY:-}" ]] && is_wayland=true
 
-	# Default: Use X11/XWayland on Wayland for global hotkey support
-	# Set CLAUDE_USE_WAYLAND=1 to use native Wayland (global hotkeys disabled)
+	# Default: Use X11/XWayland on Wayland so upstream's globalShortcut
+	# (Quick Entry's Ctrl+Alt+Space) keeps working via an X11 key grab.
+	#
+	# CLAUDE_USE_WAYLAND is tri-state:
+	#   1     - force native Wayland (global shortcuts via XDG portal)
+	#   0     - force XWayland, skipping the auto-detect below
+	#   unset - auto-detect per compositor
 	use_x11_on_wayland=true
-	[[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]] && use_x11_on_wayland=false
+	local wayland_override="${CLAUDE_USE_WAYLAND:-}"
+	[[ $wayland_override == '1' ]] && use_x11_on_wayland=false
 
-	# Fixes: #226 - Auto-detect compositors that require native Wayland
-	# Only Niri is auto-forced: it has no XWayland support.
-	# Sway and Hyprland have working XWayland, so users on those
-	# compositors who want native Wayland can set CLAUDE_USE_WAYLAND=1.
-	# XDG_CURRENT_DESKTOP can be colon-separated (e.g. "niri:GNOME");
-	# glob matching with *niri* handles this correctly.
-	if [[ $is_wayland == true && $use_x11_on_wayland == true ]]; then
+	# Fixes: #226 - Only Niri is auto-forced to native Wayland: it has
+	# no XWayland at all, so the X11 backend can't even start.
+	#
+	# GNOME Wayland is NOT auto-forced. mutter no longer honours
+	# XWayland global key grabs (#404), and native Wayland would route
+	# Quick Entry's globalShortcut through the XDG GlobalShortcuts portal
+	# instead -- but flipping the default session off mature XWayland is
+	# a rendering / IME / HiDPI risk, and on GNOME 50 the portal path is
+	# a no-op anyway (electron/electron#51875). GNOME users who want the
+	# portal route opt in with CLAUDE_USE_WAYLAND=1 (works on GNOME <=49
+	# after the one-time portal permission dialog).
+	#
+	# Sway and Hyprland keep working XWayland grabs and their wlroots
+	# portal has no GlobalShortcuts backend, so they also stay on the
+	# XWayland default; opt in with CLAUDE_USE_WAYLAND=1 if desired. An
+	# explicit CLAUDE_USE_WAYLAND=0 opts out of this auto-detect entirely.
+	#
+	# XDG_CURRENT_DESKTOP can be colon-separated (e.g. "niri:GNOME"); the
+	# *glob* substring match handles this.
+	if [[ $is_wayland == true && $use_x11_on_wayland == true \
+		&& $wayland_override != '0' ]]; then
 		local desktop="${XDG_CURRENT_DESKTOP:-}"
 		desktop="${desktop,,}"
 
@@ -166,6 +186,12 @@ build_electron_args() {
 
 	electron_args=()
 
+	# Chromium ignores all but the LAST --enable-features switch on a
+	# command line, so every feature we want must end up in ONE
+	# comma-joined flag. Accumulate them here and emit a single
+	# --enable-features=... at the end of the function.
+	local enable_features=()
+
 	# AppImage always needs --no-sandbox due to FUSE constraints
 	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
@@ -173,14 +199,14 @@ build_electron_args() {
 	#   hybrid (default) / native: --disable-features=CustomTitlebar
 	#           so Chromium's drawn CSD titlebar doesn't compete with
 	#           the DE-drawn one. Both modes use frame:true.
-	#   hidden: --enable-features=WindowControlsOverlay because WCO
-	#           is off by default on Linux Chromium (Win/macOS have
-	#           it on by default). Without this flag, titleBarOverlay
-	#           is silently ignored at the page level.
+	#   hidden: WindowControlsOverlay because WCO is off by default on
+	#           Linux Chromium (Win/macOS have it on by default).
+	#           Without it, titleBarOverlay is silently ignored at the
+	#           page level.
 	local _tb
 	_tb=$(_resolve_titlebar_style)
 	if [[ $_tb == 'hidden' ]]; then
-		electron_args+=('--enable-features=WindowControlsOverlay')
+		enable_features+=('WindowControlsOverlay')
 	else
 		electron_args+=('--disable-features=CustomTitlebar')
 	fi
@@ -232,31 +258,47 @@ build_electron_args() {
 	[[ $_disable_gpu == true ]] \
 		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')
 
-	# X11 session - no special flags needed
+	# X11 session - no display-backend flags needed.
 	if [[ $is_wayland != true ]]; then
 		log_message 'X11 session detected'
-		return
+	else
+		# Wayland: deb/nix packages need --no-sandbox in both modes
+		[[ $package_type == 'deb' || $package_type == 'nix' ]] \
+			&& electron_args+=('--no-sandbox')
+
+		if [[ $use_x11_on_wayland == true ]]; then
+			# Use X11 via XWayland; globalShortcut uses an X11 key grab.
+			log_message 'Using X11 backend via XWayland (for global hotkey support)'
+			electron_args+=('--ozone-platform=x11')
+		else
+			# Native Wayland: route globalShortcut through the XDG
+			# GlobalShortcutsPortal instead of an X11 key grab. Needs
+			# the wayland ozone platform (the feature is inert under
+			# XWayland) and Electron >= 35. Fixes #404 on GNOME, where
+			# mutter no longer honours XWayland grabs. On compositors
+			# whose portal lacks a GlobalShortcuts backend (e.g.
+			# wlroots) the feature is a harmless no-op.
+			log_message 'Using native Wayland backend (global shortcuts via XDG portal)'
+			enable_features+=(
+				'UseOzonePlatform'
+				'WaylandWindowDecorations'
+				'GlobalShortcutsPortal'
+			)
+			electron_args+=('--ozone-platform=wayland')
+			electron_args+=('--enable-wayland-ime')
+			electron_args+=('--wayland-text-input-version=3')
+			# Override any system-wide GDK_BACKEND=x11 that would silently
+			# prevent GTK from connecting to the Wayland compositor, causing
+			# blurry rendering or launch failures on HiDPI displays.
+			export GDK_BACKEND=wayland
+		fi
 	fi
 
-	# Wayland: deb/nix packages need --no-sandbox in both modes
-	[[ $package_type == 'deb' || $package_type == 'nix' ]] \
-		&& electron_args+=('--no-sandbox')
-
-	if [[ $use_x11_on_wayland == true ]]; then
-		# Default: Use X11 via XWayland for global hotkey support
-		log_message 'Using X11 backend via XWayland (for global hotkey support)'
-		electron_args+=('--ozone-platform=x11')
-	else
-		# Native Wayland mode (user opted in via CLAUDE_USE_WAYLAND=1)
-		log_message 'Using native Wayland backend (global hotkeys may not work)'
-		electron_args+=('--enable-features=UseOzonePlatform,WaylandWindowDecorations')
-		electron_args+=('--ozone-platform=wayland')
-		electron_args+=('--enable-wayland-ime')
-		electron_args+=('--wayland-text-input-version=3')
-		# Override any system-wide GDK_BACKEND=x11 that would silently
-		# prevent GTK from connecting to the Wayland compositor, causing
-		# blurry rendering or launch failures on HiDPI displays.
-		export GDK_BACKEND=wayland
+	# Emit all accumulated Chromium features as a single switch (see the
+	# enable_features declaration above for why a single switch matters).
+	if [[ ${#enable_features[@]} -gt 0 ]]; then
+		local IFS=','
+		electron_args+=("--enable-features=${enable_features[*]}")
 	fi
 }
 

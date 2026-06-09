@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Changed
+
+- The native-Wayland launch path now routes Quick Entry's global shortcut (`Ctrl+Alt+Space`) through the XDG GlobalShortcuts portal: `GlobalShortcutsPortal` is added to the `--enable-features` set, and all Chromium feature requests are merged into a single `--enable-features=` switch (Chromium honours only the last one, so the previous code could silently clobber features). GNOME Wayland users can opt into the portal route with `CLAUDE_USE_WAYLAND=1`, which works on GNOME ≤ 49 after a one-time portal permission dialog and fixes the focus-bound hotkey from [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404). The default GNOME session stays on XWayland (no rendering/IME regression risk); auto-selecting native Wayland on GNOME is deferred until it can be gated on a real render check. **On GNOME 50 / xdg-desktop-portal ≥ 1.20 the portal route is currently a no-op** — Electron/Chromium doesn't perform the portal's new host `Registry.Register` app-id handshake (filed upstream as [electron/electron#51875](https://github.com/electron/electron/issues/51875)). `CLAUDE_USE_WAYLAND` is now tri-state: `1` native Wayland, `0` force XWayland, unset auto-detects. ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404))
+
 ## [v2.0.18] — 2026-06-04
 
 Tracks upstream Claude Desktop 1.10628.2.
