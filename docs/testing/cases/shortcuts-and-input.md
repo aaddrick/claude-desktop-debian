@@ -133,7 +133,7 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Currently:** Fedora 43 GNOME Wayland reproduces [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404) on the default (XWayland) path — mutter doesn't honour the XWayland-side key grab, so the shortcut is focus-bound. The fix is opt-in: launch with `CLAUDE_USE_WAYLAND=1` to use native Wayland + the XDG GlobalShortcuts portal (see [S12](#s12----enable-featuresglobalshortcutsportal-launcher-flag-wired-up-for-gnome-wayland)), which mutter honours on **GNOME ≤ 49**. GNOME Wayland is not auto-flipped (rendering risk; GNOME 50 portal route is a no-op upstream). Re-verify on a GNOME Wayland host.
 
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404), [PR #406](https://github.com/aaddrick/claude-desktop-debian/pull/406)
-**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (GNOME → native Wayland) and `build_electron_args` (native-Wayland `GlobalShortcutsPortal` feature); upstream `index.js:499416` (`globalShortcut.register`).
+**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (native Wayland opt-in via `CLAUDE_USE_WAYLAND=1`; only Niri auto-forced) and `build_electron_args` (native-Wayland `GlobalShortcutsPortal` feature); upstream `index.js:499416` (`globalShortcut.register`).
 
 ## S12 — `--enable-features=GlobalShortcutsPortal` launcher flag wired up for GNOME Wayland
 
@@ -143,18 +143,18 @@ Tests covering URL handling, the Quick Entry global shortcut, and DE-specific sh
 **Issues:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)
 
 **Steps:**
-1. On GNOME Wayland, launch the app.
+1. On GNOME Wayland, launch the app with `CLAUDE_USE_WAYLAND=1`.
 2. Inspect the Electron command line via `pgrep -af claude-desktop` — look for `--enable-features=GlobalShortcutsPortal`.
 3. Test Quick Entry shortcut from unfocused state (see [T06](#t06--quick-entry-global-shortcut-unfocused)).
 
-**Expected:** Launcher detects GNOME Wayland, forces native Wayland, and emits `GlobalShortcutsPortal` inside a single merged `--enable-features=…` switch, routing global shortcuts through XDG Desktop Portal instead of X11 key grabs. Closes [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404). Note the flag is comma-joined with `UseOzonePlatform,WaylandWindowDecorations`, so match the `GlobalShortcutsPortal` subkey, not an exact `--enable-features=GlobalShortcutsPortal` token.
+**Expected:** With `CLAUDE_USE_WAYLAND=1`, the launcher uses native Wayland and emits `GlobalShortcutsPortal` inside a single merged `--enable-features=…` switch, routing global shortcuts through XDG Desktop Portal instead of X11 key grabs ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404); GNOME is not auto-flipped — the portal route is opt-in). Note the flag is comma-joined with `UseOzonePlatform,WaylandWindowDecorations`, so match the `GlobalShortcutsPortal` subkey, not an exact `--enable-features=GlobalShortcutsPortal` token.
 
-**Diagnostics on failure:** Full process argv (`cat /proc/$(pgrep -f 'app\.asar')/cmdline | tr '\0' ' '`), launcher log (expect `GNOME Wayland detected - forcing native Wayland for global shortcuts portal (#404)`), `XDG_CURRENT_DESKTOP`.
+**Diagnostics on failure:** Full process argv (`cat /proc/$(pgrep -f 'app\.asar')/cmdline | tr '\0' ' '`), launcher log (expect `Using native Wayland backend (global shortcuts via XDG portal)`), `XDG_CURRENT_DESKTOP`.
 
 **Currently:** Launcher side implemented — `build_electron_args` adds `GlobalShortcutsPortal` to the native-Wayland feature set (opt-in via `CLAUDE_USE_WAYLAND=1`; GNOME is not auto-flipped). The flag is verified present in argv on that opt-in path (this case launches with `CLAUDE_USE_WAYLAND=1` and passes). Functional global-from-unfocused works on **GNOME ≤ 49** (first registration shows a one-time portal permission dialog). On **GNOME 50 / xdg-desktop-portal ≥ 1.20** it does not yet fire: Electron/Chromium never performs the portal's host `Registry.Register` app-id handshake, so `globalShortcut.register()` returns `false` and the portal is never contacted. Proven via D-Bus capture + a Python portal client; filed upstream as [electron/electron#51875](https://github.com/electron/electron/issues/51875).
 
 **References:** [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)
-**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (GNOME branch) + `build_electron_args` (merged `enable_features` array). See [`wayland-global-shortcuts-portal.md`](../../learnings/wayland-global-shortcuts-portal.md).
+**Code anchors:** project `scripts/launcher-common.sh` `detect_display_backend` (tri-state `CLAUDE_USE_WAYLAND` override) + `build_electron_args` (merged `enable_features` array). See [`wayland-global-shortcuts-portal.md`](../../learnings/wayland-global-shortcuts-portal.md).
 
 ## S14 — Global shortcuts via XDG portal work on Niri
 

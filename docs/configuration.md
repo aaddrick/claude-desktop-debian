@@ -13,7 +13,7 @@ Model Context Protocol settings are stored in:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (GNOME and Niri default to native Wayland). See [Wayland Support](#wayland-support) below. |
+| `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (only Niri defaults to native Wayland). See [Wayland Support](#wayland-support) below. |
 | `CLAUDE_MENU_BAR` | unset (`auto`) | Controls menu bar behavior: `auto` (hidden, Alt toggles), `visible` / `1` (always shown), `hidden` / `0` (always hidden, Alt disabled). See [Menu Bar](#menu-bar) below. |
 | `CLAUDE_TITLEBAR_STYLE` | unset (`hybrid`) | Controls window decoration style: `hybrid` (system frame + in-app topbar), `native` (system frame, no in-app topbar), `hidden` (frameless WCO — broken on X11, kept for diagnostics). See [Titlebar Style](#titlebar-style) below. |
 | `COWORK_VM_BACKEND` | unset (auto-detect) | Force a specific Cowork isolation backend: `kvm` (full VM), `bwrap` (bubblewrap namespace sandbox), or `host` (no isolation). See [Cowork Backend](#cowork-backend) below. |
@@ -45,7 +45,7 @@ CLAUDE_USE_WAYLAND=0 claude-desktop
 export CLAUDE_USE_WAYLAND=1
 ```
 
-**Note:** portal-routed global shortcuts only work where the compositor's portal backend implements `org.freedesktop.portal.GlobalShortcuts`. Support is per-compositor and currently uneven — GNOME and KDE implement it; wlroots compositors (Sway, Hyprland, Niri) and COSMIC currently ship no GlobalShortcuts backend, so the portal route is a no-op there until their portal gains one.
+**Note:** portal-routed global shortcuts only work where the compositor's portal backend implements `org.freedesktop.portal.GlobalShortcuts`. Support is per-compositor and currently uneven — GNOME and KDE implement it (though the app-id requirement above — enforced for GlobalShortcuts since xdg-desktop-portal 1.21 — applies to all desktops, KDE included); wlroots compositors (Sway, Hyprland, Niri) and COSMIC currently ship no GlobalShortcuts backend, so the portal route is a no-op there until their portal gains one.
 
 ### Menu Bar
 

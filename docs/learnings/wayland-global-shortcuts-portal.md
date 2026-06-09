@@ -56,7 +56,7 @@ Filed upstream: [electron/electron#51875](https://github.com/electron/electron/i
 
 ## First-run UX and escape hatch
 
-When the portal path *does* engage (GNOME ≤ 49), GNOME shows a **one-time permission dialog** the first time the shortcut is registered; the user must accept it to bind the shortcut. Expected portal behaviour, not a bug.
+When the portal path *does* engage (GNOME ≤ 49), GNOME shows a **one-time permission dialog** the first time the shortcut is registered; the user must accept it to bind the shortcut. Expected portal behaviour, not a bug. A dismissed or denied dialog persists in the portal permission store and later `globalShortcut.register()` calls then fail silently; clearing the stored decision with `flatpak permission-reset <app-id>` (the store is shared with non-Flatpak apps) should re-trigger the dialog on the next launch — untested here.
 
 `CLAUDE_USE_WAYLAND` is tri-state: `1` forces native Wayland, `0` forces XWayland (skipping auto-detect), unset auto-detects. The `0` value is the escape hatch for a GNOME user who hits a native-Wayland rendering regression and wants the old XWayland behaviour back (losing global-shortcut-from-unfocused in the process — which on GNOME 50 is not yet working anyway).
 
