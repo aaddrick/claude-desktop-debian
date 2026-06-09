@@ -170,6 +170,49 @@ behavior to persist across reinstalls and config resets.
 
 Tracking issue: [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583).
 
+### Black screen on Fedora KDE with Intel Iris Xe ([#706](https://github.com/aaddrick/claude-desktop-debian/issues/706))
+
+If the window opens but renders entirely black on Fedora KDE with
+Intel Iris Xe graphics (TigerLake-LP GT2), force Mesa's reference
+software rasterizer:
+
+```bash
+MESA_LOADER_DRIVER_OVERRIDE=softpipe claude-desktop
+```
+
+The failing launch logs this signature in
+`~/.cache/claude-desktop-debian/launcher.log`:
+
+```
+KMS: DRM_IOCTL_MODE_CREATE_DUMB failed: Permission denied
+```
+
+**Try the faster fallbacks first.** softpipe renders everything on
+the CPU with no acceleration of any kind and is noticeably slow.
+Before reaching for it:
+
+1. `CLAUDE_DISABLE_GPU=1 claude-desktop` — disables hardware
+   acceleration entirely (see the previous section).
+2. `LIBGL_ALWAYS_SOFTWARE=1 claude-desktop` — selects llvmpipe,
+   Mesa's supported software fallback, several times faster than
+   softpipe.
+
+Use `MESA_LOADER_DRIVER_OVERRIDE=softpipe` only if
+`LIBGL_ALWAYS_SOFTWARE=1` also produces a black screen. To make it
+persistent:
+
+```bash
+echo 'export MESA_LOADER_DRIVER_OVERRIDE=softpipe' >> ~/.profile
+```
+
+Tracking issue:
+[#706](https://github.com/aaddrick/claude-desktop-debian/issues/706).
+Credit: workaround discovered and confirmed by
+[@dubreal](https://github.com/dubreal) while diagnosing
+[#593](https://github.com/aaddrick/claude-desktop-debian/issues/593)
+and
+[#599](https://github.com/aaddrick/claude-desktop-debian/pull/599).
+
 ### AppImage Sandbox Warning
 
 AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
