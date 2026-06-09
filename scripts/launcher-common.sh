@@ -176,6 +176,55 @@ _detect_password_store() {
 	echo 'basic'
 }
 
+# Detect whether the previous launch ended in Chromium's
+# "GPU process isn't usable" crash signature (#583).
+#
+# setup_logging() must have run first so $log_file is available. The
+# launcher writes the current session header before build_electron_args()
+# runs, so the previous launch lives in the penultimate log section.
+#
+# A recovered launch (running with --disable-gpu) produces no GPU
+# output, so the crash signature alone would re-enable GPU on launch
+# N+2 and oscillate crash/work/crash on permanently broken hardware.
+# The launcher's own "disabling GPU" marker therefore also counts as
+# a trigger, making recovery sticky once tripped. CLAUDE_DISABLE_GPU=0
+# remains the escape hatch for retesting hardware acceleration.
+#
+# Section headers vary by package format: deb/rpm write "Launcher
+# Start", AppImage writes "AppImage Start", and Nix writes "Launcher
+# Start (NixOS)" (nix/claude-desktop.nix).
+_previous_launch_hit_gpu_fatal() {
+	[[ -f ${log_file:-} ]] || return 1
+
+	awk '
+		/^--- Claude Desktop (Launcher|AppImage) Start( \(NixOS\))? ---$/ {
+			section++
+			next
+		}
+		{
+			sections[section] = sections[section] $0 "\n"
+		}
+		END {
+			target = section > 1 ? section - 1 : section
+			if (target < 1) {
+				exit 1
+			}
+			text = sections[target]
+			if (index(text,
+				"GPU process launch failed: error_code=") &&
+				index(text,
+				"GPU process isn'\''t usable. Goodbye.")) {
+				exit 0
+			}
+			if (index(text,
+				"Previous launch hit GPU process FATAL")) {
+				exit 0
+			}
+			exit 1
+		}
+	' "$log_file"
+}
+
 # Build Electron arguments array based on display backend
 # Requires: is_wayland, use_x11_on_wayland to be set
 #           (call detect_display_backend first)
@@ -249,9 +298,16 @@ build_electron_args() {
 	# behaviour is reachable via Settings → disable hardware
 	# acceleration; this lets users persist it via the env without
 	# having to reach the Settings UI through repeated crashes.
-	if [[ ${CLAUDE_DISABLE_GPU:-} == '1' ]]; then
+	if [[ -v CLAUDE_DISABLE_GPU ]]; then
+		if [[ ${CLAUDE_DISABLE_GPU} == '1' ]]; then
+			_disable_gpu=true
+			log_message \
+				'CLAUDE_DISABLE_GPU=1 - hardware acceleration disabled'
+		fi
+	elif _previous_launch_hit_gpu_fatal; then
 		_disable_gpu=true
-		log_message 'CLAUDE_DISABLE_GPU=1 - hardware acceleration disabled'
+		log_message \
+			'Previous launch hit GPU process FATAL - disabling GPU'
 	fi
 	[[ $_disable_gpu == true ]] \
 		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')

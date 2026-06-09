@@ -40,3 +40,19 @@ result-*
 
 # Wrangler (Cloudflare Worker dev/deploy cache)
 worker/.wrangler/
+
+# Graphify outputs and temporary files
+graphify-out/
+.graphify_*
+
+# Local agent/editor state and helper bins
+.agents/
+.codex/
+.tmpbin/
+
+# Local package artifacts
+*.rpm
+
+# Root-level scratch extracts from app inspection
+/frame-fix-wrapper.js
+/index.js

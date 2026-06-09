@@ -71,6 +71,10 @@ MimeType=x-scheme-handler/claude;
 StartupWMClass=$WM_CLASS
 EOF
 
+# --- Stage AppStream metainfo (installed via %files block below) ---
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$staging_dir/claude-desktop" << EOF
@@ -239,8 +243,18 @@ cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 # Install desktop entry
 install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
 
+# Install AppStream metainfo (GNOME Software / KDE Discover)
+install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
+
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
+
+# Normalize file modes — the cp -r above honors the build umask, and
+# the "-" first field of %defattr ships buildroot *file* modes verbatim
+# (only directory modes are forced to 0755), so a umask-077 build would
+# package an unreadable app.asar and a non-executable electron binary.
+# Must run before the chrome-sandbox chmod below so 4755 survives.
+find %{buildroot}/usr/lib/$package_name -type f -exec chmod u=rwX,go=rX {} +
 
 # Set the chrome-sandbox suid bit in the buildroot so the /usr/lib
 # directory walk in %files records 4755 in the payload (preserves #539
@@ -260,6 +274,7 @@ update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 %attr(755, root, root) /usr/bin/claude-desktop
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
+/usr/share/metainfo/$metainfo_name
 /usr/share/icons/hicolor/*/apps/claude-desktop.png
 SPECEOF
 

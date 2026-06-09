@@ -177,14 +177,15 @@ mkdir -p "$metadata_dir" || exit 1
 appdata_file="$metadata_dir/${component_id}.appdata.xml"
 
 # Generate the AppStream XML file
-# Use MIT license based on LICENSE-MIT file in repo
+# project_license describes the app the user launches (the proprietary
+# Claude binary), not the MIT packaging scripts
 # ID follows reverse DNS convention
 cat > "$appdata_file" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>$component_id</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>LicenseRef-proprietary</project_license>
   <developer id="io.github.aaddrick">
     <name>aaddrick</name>
   </developer>
@@ -274,6 +275,17 @@ if [[ -z $appimagetool_path ]]; then
 		exit 1
 	fi
 fi
+
+# Normalize AppDir permissions before squashing. The staging copy above
+# uses `cp -a`, which preserves source modes, and a restrictive build
+# umask can leave directories at 0700. mksquashfs records those verbatim,
+# so a user who later runs the AppImage can't traverse into
+# app.asar.unpacked/ — silently breaking Cowork's daemon auto-launch (the
+# fork is guarded by fs.existsSync(), false on a directory it can't read).
+# Canonical modes: dirs and already-executable files 755, the rest 644.
+echo 'Normalizing AppDir permissions...'
+find "$appdir_path" -type d -exec chmod 755 {} + || exit 1
+find "$appdir_path" -type f -exec chmod u=rwX,go=rX {} + || exit 1
 
 # --- Build AppImage ---
 echo 'Building AppImage...'
