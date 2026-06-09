@@ -220,9 +220,7 @@ build_electron_args() {
 	# value, Electron may silently report encryption unavailable even
 	# when a keyring daemon is running, discarding OAuth tokens on exit
 	# and forcing re-authentication on every launch. We probe for the
-	# best available store at startup and pass it before the app path
-	# so Chromium treats it as a Chromium flag (args after the app
-	# path go to the renderer, not Chromium). Fixes: #593
+	# best available store at startup. Fixes: #593
 	local pw_store
 	pw_store=$(_detect_password_store)
 	electron_args+=("--password-store=${pw_store}")
@@ -325,17 +323,26 @@ cleanup_orphaned_cowork_daemon() {
 	# daemon itself.  Counting any of those as "the UI is alive"
 	# causes a false negative and the orphan survives.
 	#
-	# The reliable definition of "UI is alive" is: an Electron main
-	# process whose cmdline references app.asar and is NOT a Chromium
+	# We also can NOT fingerprint on `app.asar`: since #700 the
+	# launchers no longer pass it as an argument (Electron auto-loads
+	# it from resources/), so it never appears in any cmdline.  The
+	# stable signature across deb/rpm/AppImage/nix is the
+	# `--class=$WM_CLASS` flag every launcher passes via
+	# build_electron_args; Chromium keeps the exec'd argv in
+	# /proc/PID/cmdline and does not propagate --class to its
+	# --type=... helper children (verified empirically).
+	#
+	# The reliable definition of "UI is alive" is therefore: a process
+	# whose cmdline carries our --class flag and is NOT a Chromium
 	# helper (--type=...) and NOT the cowork daemon, and is actually
 	# runnable (not stopped/zombie).
 	local pid cmdline state
-	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
+	for pid in $(pgrep -f -- "--class=$WM_CLASS" 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) \
 			|| continue
-		# Skip the cowork daemon (matches app.asar.unpacked path).
+		# Skip the cowork daemon (defensive; it carries no --class).
 		[[ $cmdline == *cowork-vm-service* ]] && continue
 		# Skip Chromium helpers: zygote, renderer, gpu, utility, etc.
 		[[ $cmdline == *--type=* ]] && continue

@@ -6,8 +6,9 @@
 # per-package launcher scripts — deb, rpm, AppImage, Nix).
 #
 # Provides: run_doctor (the `claude-desktop --doctor` entry point) plus its
-# internal helpers. Self-contained — no dependencies on launcher-common.sh
-# state or functions.
+# internal helpers. Self-contained except for the WM_CLASS constant defined
+# at the top of launcher-common.sh (substituted at build time), which the
+# live-UI fingerprint in the orphaned-daemon check reads at runtime.
 #
 # To add a new check: define an internal function `_check_<name>`, call it
 # from run_doctor in the appropriate section, use _pass / _fail / _warn /
@@ -1072,19 +1073,22 @@ print(len(servers))
 
 	# -- Orphaned cowork daemon --
 	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon
-	# above: a live UI is an Electron main process on app.asar that is
-	# not a Chromium helper (--type=...), not the cowork daemon itself,
-	# and not stopped/zombie.  Counting any `claude-desktop`-matching
-	# process (as the old check did) would include the launcher's own
-	# bash and stuck launcher bashes from previous crashes, producing
-	# false negatives where a real orphan is misreported as "parent
-	# alive".
+	# above: a live UI is an Electron main process carrying our
+	# --class=$WM_CLASS flag (since #700 the launchers no longer pass
+	# app.asar in argv — Electron auto-loads it — so the --class flag
+	# from build_electron_args is the cmdline signature shared by
+	# deb/rpm/AppImage/nix) that is not a Chromium helper (--type=...),
+	# not the cowork daemon itself, and not stopped/zombie.  Counting
+	# any `claude-desktop`-matching process (as the old check did)
+	# would include the launcher's own bash and stuck launcher bashes
+	# from previous crashes, producing false negatives where a real
+	# orphan is misreported as "parent alive".
 	local _cowork_pids
 	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
 		|| true
 	if [[ -n $_cowork_pids ]]; then
 		local _daemon_orphaned=true _pid _cmdline _state
-		for _pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
+		for _pid in $(pgrep -f -- "--class=$WM_CLASS" 2>/dev/null); do
 			[[ $_pid == "$$" || $_pid == "$PPID" ]] && continue
 			_cmdline=$(tr '\0' ' ' \
 				< "/proc/$_pid/cmdline" 2>/dev/null) || continue

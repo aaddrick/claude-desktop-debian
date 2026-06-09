@@ -758,13 +758,18 @@ s.close()
 	# cmdline ('sleep ...') is neither the cowork daemon nor a --type=
 	# helper, and its state is sleeping (not T/t/Z), so the function
 	# treats it as a live UI and must NOT kill the daemon.
+	#
+	# The UI scan fingerprints on the launcher-passed --class flag
+	# (pgrep -f -- "--class=$WM_CLASS"); since #700 app.asar no longer
+	# appears in any cmdline. Match on "$*" because the pattern sits
+	# after the `--` end-of-options separator.
 	sleep 300 &
 	ui_pid=$!
 
 	pgrep() {
-		if [[ $2 == *cowork-vm-service* ]]; then
+		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
-		elif [[ $2 == *app* ]]; then
+		elif [[ $* == *--class=Claude* ]]; then
 			echo "$ui_pid"
 		fi
 	}
@@ -785,10 +790,11 @@ s.close()
 	# sent, so the escalation to SIGKILL must not fire.
 	local term_sent="$TEST_TMP/term_sent"
 	pgrep() {
-		if [[ $2 == *cowork-vm-service* ]]; then
+		if [[ $* == *cowork-vm-service* ]]; then
 			[[ -f $term_sent ]] && return 1
 			echo 4242
 		else
+			# UI scan (--class fingerprint): no live UI.
 			return 1
 		fi
 	}
@@ -821,9 +827,10 @@ s.close()
 	# Daemon never dies, so after the SIGTERM grace window the function
 	# escalates to SIGKILL and logs the SIGKILL variant.
 	pgrep() {
-		if [[ $2 == *cowork-vm-service* ]]; then
+		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
 		else
+			# UI scan (--class fingerprint): no live UI.
 			return 1
 		fi
 	}
