@@ -123,7 +123,11 @@ fi
 # AppImage execs Electron from its FUSE mount (/tmp/.mount_claudeXXXX), so
 # the escaped zygote/electron children live there. Matching the artifact
 # path would sweep nothing. See CLAUDE.md (`pkill -9 -f "mount_claude"`).
-run_launch_smoke_test 'AppImage' 'mount_claude' '' "$appimage_file"
+# Sweep escaped children only in CI: locally, 'mount_claude' also
+# matches a developer's live Claude Desktop AppImage session.
+smoke_sweep=''
+[[ -n ${CI:-} ]] && smoke_sweep='mount_claude'
+run_launch_smoke_test 'AppImage' "$smoke_sweep" '' "$appimage_file"
 
 # --- Cleanup ---
 rm -rf "$extract_dir"
