@@ -789,7 +789,15 @@ run_doctor() {
 	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
 	local _userns_val=''
 	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
-	if [[ $_userns_val == 1 ]]; then
+	# Gate on the deb's installed Electron, not $electron_path (the
+	# invoking build's binary): the profile pins this exact path, so only
+	# a deb install is confined by it. AppImage always runs --no-sandbox
+	# and Nix binaries live in the store — neither can hit the crash.
+	local _deb_electron='/usr/lib/claude-desktop'
+	_deb_electron+='/node_modules/electron/dist/electron'
+	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
+		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
+		# (PACKAGE_NAME in build.sh).
 		local _aa_profile='/etc/apparmor.d/claude-desktop'
 		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
 		# securityfs marks this file world-readable (0444), but the kernel
@@ -809,23 +817,31 @@ run_doctor() {
 					'Claude profile not loaded'
 				if [[ -e $_aa_profile ]]; then
 					_info '  Profile is on disk but not loaded. Load it:'
-					_info '  sudo apparmor_parser -r /etc/apparmor.d/claude-desktop'
+					_info "  sudo apparmor_parser -r $_aa_profile"
 				else
 					_info '  No profile found. See docs/troubleshooting.md'
 					_info '  "Claude Desktop crashes immediately on launch".'
 				fi
 			fi
 		elif [[ -e $_aa_profile ]]; then
-			# Non-root: the loaded set is unreadable, so we cannot
-			# confirm the profile is active. Report presence on disk
+			# The loaded set was unreadable: non-root (the kernel needs
+			# CAP_MAC_ADMIN despite the 0444 mode), or securityfs is
+			# unmounted (common in containers). Report presence on disk
 			# only — never a definitive PASS.
-			_info 'User namespaces: AppArmor profile present on disk' \
-				'(re-run with sudo to confirm it is loaded)'
+			if (( EUID == 0 )); then
+				_info 'User namespaces: AppArmor profile present on disk' \
+					'(securityfs unavailable; cannot confirm it is loaded)'
+			else
+				_info 'User namespaces: AppArmor profile present on disk' \
+					'(re-run with sudo to confirm it is loaded)'
+			fi
 		else
 			_warn 'User namespaces: restricted by AppArmor,' \
 				'no Claude profile found'
 			_info '  Unprivileged user namespaces are blocked, which'
-			_info '  crashes the app on launch (credentials.cc FATAL).'
+			_info '  crashes the app on launch in X11 sessions'
+			_info '  (credentials.cc FATAL). Wayland sessions run with'
+			_info '  --no-sandbox and are unaffected.'
 			_info '  See docs/troubleshooting.md "Claude Desktop crashes'
 			_info '  immediately on launch" for the profile to install.'
 		fi
