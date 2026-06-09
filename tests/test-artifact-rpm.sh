@@ -43,6 +43,8 @@ fi
 # --- File existence checks ---
 assert_executable '/usr/bin/claude-desktop'
 assert_file_exists '/usr/share/applications/claude-desktop.desktop'
+assert_file_exists \
+	'/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml'
 assert_dir_exists '/usr/lib/claude-desktop'
 assert_file_exists '/usr/lib/claude-desktop/launcher-common.sh'
 
@@ -94,6 +96,15 @@ assert_contains '/usr/bin/claude-desktop' 'build_electron_args' \
 # --- App contents (asar) ---
 resources_dir='/usr/lib/claude-desktop/node_modules/electron/dist/resources'
 validate_app_contents "$resources_dir"
+
+# app.asar.unpacked must be world-traversable and root-owned, or
+# Cowork's auto-launch fs.existsSync() guard silently fails (#695).
+unpacked_stat=$(stat -c '%a %U:%G' "$resources_dir/app.asar.unpacked")
+if [[ $unpacked_stat == '755 root:root' ]]; then
+	pass 'app.asar.unpacked is 755 root:root'
+else
+	fail "app.asar.unpacked is $unpacked_stat (want 755 root:root)"
+fi
 
 # --- Doctor smoke test ---
 doctor_exit=0

@@ -89,6 +89,13 @@ StartupWMClass=$WM_CLASS
 EOF
 echo 'Desktop entry created'
 
+# --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
+echo 'Installing AppStream metainfo...'
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+install -Dm 644 "$script_dir/$metainfo_name" \
+	"$install_dir/share/metainfo/$metainfo_name" || exit 1
+echo 'AppStream metainfo installed'
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$install_dir/bin/claude-desktop" << EOF
@@ -412,7 +419,25 @@ echo 'Setting script permissions...'
 chmod 755 "$package_root/DEBIAN/postinst" || exit 1
 chmod 755 "$package_root/DEBIAN/postrm" || exit 1
 
-if ! dpkg-deb --build "$package_root" "$deb_file"; then
+# Normalize the installed tree before building. A restrictive build umask
+# can leave directories at 0700, and dpkg-deb records file ownership
+# verbatim unless told otherwise. Both bite at runtime: the launcher runs
+# as the desktop user, who then can't traverse into app.asar.unpacked/ —
+# silently breaking Cowork's daemon auto-launch (the fork is guarded by
+# fs.existsSync(), which returns false on a directory it can't read, so
+# the symptom is an endless connect ENOENT on the VM-service socket with
+# no daemon log and no [cowork-autolaunch] line). Canonical modes: dirs
+# and already-executable files 755, every other file 644. The blanket
+# pass clears chrome-sandbox's setuid bit, but postinst re-asserts 4755
+# after install, so the net result is unchanged.
+echo 'Normalizing installed tree permissions...'
+find "$install_dir" -type d -exec chmod 755 {} + || exit 1
+find "$install_dir" -type f -exec chmod u=rwX,go=rX {} + || exit 1
+
+# --root-owner-group forces root:root in the archive so a leaked build
+# uid can't deny access on the installed system (the build does not run
+# under fakeroot).
+if ! dpkg-deb --root-owner-group --build "$package_root" "$deb_file"; then
 	echo 'Failed to build .deb package' >&2
 	exit 1
 fi

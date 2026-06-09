@@ -162,6 +162,13 @@ applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
 
+If the previous launch already died with the GPU-process FATAL
+signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
+auto-applies the same flags and keeps them applied on subsequent
+launches. Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback
+when retesting hardware acceleration after a driver fix — any
+explicitly set value suppresses it; only `1` forces the flags on.
+
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for
 `CLAUDE_DISABLE_GPU=1` when the app crashes before you can open
@@ -170,6 +177,49 @@ Settings, when running in environments with no GPU available
 behavior to persist across reinstalls and config resets.
 
 Tracking issue: [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583).
+
+### Black screen on Fedora KDE with Intel Iris Xe ([#706](https://github.com/aaddrick/claude-desktop-debian/issues/706))
+
+If the window opens but renders entirely black on Fedora KDE with
+Intel Iris Xe graphics (TigerLake-LP GT2), force Mesa's reference
+software rasterizer:
+
+```bash
+MESA_LOADER_DRIVER_OVERRIDE=softpipe claude-desktop
+```
+
+The failing launch logs this signature in
+`~/.cache/claude-desktop-debian/launcher.log`:
+
+```
+KMS: DRM_IOCTL_MODE_CREATE_DUMB failed: Permission denied
+```
+
+**Try the faster fallbacks first.** softpipe renders everything on
+the CPU with no acceleration of any kind and is noticeably slow.
+Before reaching for it:
+
+1. `CLAUDE_DISABLE_GPU=1 claude-desktop` — disables hardware
+   acceleration entirely (see the previous section).
+2. `LIBGL_ALWAYS_SOFTWARE=1 claude-desktop` — selects llvmpipe,
+   Mesa's supported software fallback, several times faster than
+   softpipe.
+
+Use `MESA_LOADER_DRIVER_OVERRIDE=softpipe` only if
+`LIBGL_ALWAYS_SOFTWARE=1` also produces a black screen. To make it
+persistent:
+
+```bash
+echo 'export MESA_LOADER_DRIVER_OVERRIDE=softpipe' >> ~/.profile
+```
+
+Tracking issue:
+[#706](https://github.com/aaddrick/claude-desktop-debian/issues/706).
+Credit: workaround discovered and confirmed by
+[@dubreal](https://github.com/dubreal) while diagnosing
+[#593](https://github.com/aaddrick/claude-desktop-debian/issues/593)
+and
+[#599](https://github.com/aaddrick/claude-desktop-debian/pull/599).
 
 ### AppImage Sandbox Warning
 
@@ -257,6 +307,57 @@ To customize the profile on a `.deb` install, put overrides in
 `/etc/apparmor.d/local/claude-desktop` — they survive upgrades; direct
 edits to the managed profile are rewritten by the `postinst` on every
 upgrade.
+
+Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
+Chromium sandbox entirely, which the package is built to keep. (AppImage
+builds already launch with `--no-sandbox` because they can't ship a SUID
+helper, so they never hit this crash.)
+
+**Security note:** the profile grants the unconfined profile plus the
+`userns` capability to the bundled Electron binary only, not system-wide —
+narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
+globally, which would lift the restriction for every program on the host.
+Review against your threat model before applying.
+
+### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
+
+The `.deb` handles this automatically — this section is for the rare case
+where it doesn't. Ubuntu 24.04+ sets
+`apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
+Chromium's sandbox needs (same root cause as the Cowork case above, but it
+kills the **main app** on startup before any window appears). The deb's
+`postinst` installs a scoped AppArmor profile
+(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the bundled
+Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
+packages do — so a normal install needs no action.
+
+You only need to act if the app still crashes on launch with:
+
+- `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . :
+  Permission denied (13)` in
+  `~/.cache/claude-desktop-debian/launcher.log` (the line number varies by
+  Electron version), and
+- a `Trace/breakpoint trap` / core dump (exit code 133).
+
+Run `sudo claude-desktop --doctor` first — the **User namespaces** check
+reports whether the profile is actually loaded into the kernel (reading the
+loaded set needs root; without `sudo` it can only confirm the profile is
+present on disk). To (re)install it manually:
+
+```bash
+sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile claude-desktop /usr/lib/claude-desktop/node_modules/electron/dist/electron flags=(unconfined) {
+    userns,
+
+    include if exists <local/claude-desktop>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
+```
 
 Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
 Chromium sandbox entirely, which the package is built to keep. (AppImage
