@@ -167,10 +167,13 @@ The string and object forms can be mixed freely in the same array.
 > `/sbin`, `/lib`, `/lib64`) silently replaces it inside the sandbox; you
 > almost never want this, and `--doctor` will warn if you do.
 
-> **Note for immutable distros (Fedora Silverblue, Bazzite):** Use the real
-> home path `/var/home/<user>/...` in `additionalBinds` — avoid the
-> `/home/<user>` symlink form, as the bwrap sandbox does not follow it.
-> For example: `"/var/home/cloud/dev"` instead of `"/home/cloud/dev"`.
+> **Note for immutable distros (Fedora Silverblue, Bazzite):** On these
+> systems `/home` is a symlink to `/var/home`, and the sandbox has no such
+> symlink — a bind configured as `/home/<user>/...` lands at the literal
+> `/home/...` path while `$HOME` is `/var/home/<user>`, so the mount looks
+> missing even though bwrap never silently drops a bind. Use the real path
+> (for example `"/var/home/cloud/dev"` instead of `"/home/cloud/dev"`) so
+> the configured path matches the sandbox layout.
 
 ### Security notes
 

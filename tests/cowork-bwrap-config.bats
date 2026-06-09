@@ -460,8 +460,8 @@ const result = mergeBwrapArgs(defaults, {
     disabledDefaultBinds: []
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
-    '--dir', '/opt/tools', '--ro-bind', '/opt/tools', '/opt/tools',
-    '--dir', '/nix/store', '--ro-bind', '/nix/store', '/nix/store'];
+    '--dir', '/opt', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', '/nix', '--ro-bind', '/nix/store', '/nix/store'];
 assertDeepEqual(result, expected, 'ro appended');
 "
 	[[ "$status" -eq 0 ]]
@@ -477,7 +477,7 @@ const result = mergeBwrapArgs(defaults, {
     disabledDefaultBinds: []
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
-    '--dir', home + '/data', '--bind', home + '/data', home + '/data'];
+    '--dir', home, '--bind', home + '/data', home + '/data'];
 assertDeepEqual(result, expected, 'rw appended');
 "
 	[[ "$status" -eq 0 ]]
@@ -495,18 +495,20 @@ const result = mergeBwrapArgs(defaults, {
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
     '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--tmpfs', '/run',
-    '--dir', '/opt/tools', '--ro-bind', '/opt/tools', '/opt/tools',
-    '--dir', home + '/shared', '--bind', home + '/shared', home + '/shared'];
+    '--dir', '/opt', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', home, '--bind', home + '/shared', home + '/shared'];
 assertDeepEqual(result, expected, 'combined');
 "
 	[[ "$status" -eq 0 ]]
 }
 
-@test "mergeBwrapArgs: emits --dir before --bind on immutable distros (Silverblue/Bazzite)" {
-	# On Fedora Silverblue/Bazzite, os.homedir() returns /var/home/<user>
-	# instead of /home/<user>. The bwrap sandbox starts with --tmpfs / so
-	# /var/home does not exist at all. Without a preceding --dir the bind
-	# destination is absent and bwrap silently drops the mount.
+@test "mergeBwrapArgs: pre-creates parent dir for immutable-distro home paths" {
+	# On Fedora Silverblue/Bazzite, os.homedir() returns /var/home/<user>.
+	# bwrap auto-creates missing bind-destination parents itself, so the
+	# preceding --dir is path-creation hardening, not a fix for a dropped
+	# mount (#702's real cause is the /home vs /var/home symlink mismatch;
+	# see docs/configuration.md). The --dir must target the parent, never
+	# the destination itself, or file binds break (next two tests).
 	run node -e "${NODE_PREAMBLE}
 const varHome = '/var/home/cloud';
 const defaults = ['--tmpfs', '/'];
@@ -515,14 +517,52 @@ const result = mergeBwrapArgs(defaults, {
     additionalBinds: [varHome + '/dev'],
     disabledDefaultBinds: []
 });
-const dirIdx = result.indexOf('--dir');
-const bindIdx = result.indexOf('--bind');
-assert(dirIdx !== -1, '--dir must be present');
-assert(bindIdx !== -1, '--bind must be present');
-assert(dirIdx < bindIdx, '--dir (' + dirIdx + ') must precede --bind (' + bindIdx + ')');
-assertEqual(result[dirIdx + 1], varHome + '/dev', '--dir target must be dst');
-assertEqual(result[bindIdx + 1], varHome + '/dev', '--bind src');
-assertEqual(result[bindIdx + 2], varHome + '/dev', '--bind dst');
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--dir', varHome, '--bind', varHome + '/dev', varHome + '/dev'
+], 'immutable-distro dir bind');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: file bind targets --dir at parent, not the file dst" {
+	# additionalBinds may name a single file (e.g. ~/.gitconfig).
+	# Emitting --dir on the file dst itself would pre-create it as a
+	# directory and bwrap would die with 'Can't create file at ...: Is a
+	# directory'. Only the parent may be pre-created.
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [],
+    additionalBinds: [home + '/.gitconfig'],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--dir', home, '--bind', home + '/.gitconfig', home + '/.gitconfig'
+], 'file bind');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: file overlay onto RO parent emits --dir on existing parent only" {
+	# Overlaying a file onto a default RO mount (e.g. a custom /etc/hosts
+	# over the default /etc ro-bind) works today. --dir /etc/hosts would
+	# die with 'Can't mkdir /etc/hosts: Not a directory'; --dir /etc is a
+	# no-op on the already-mounted parent.
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const defaults = ['--tmpfs', '/', '--ro-bind', '/etc', '/etc'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [{ src: home + '/hosts', dst: '/etc/hosts' }],
+    additionalBinds: [],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/', '--ro-bind', '/etc', '/etc',
+    '--dir', '/etc', '--ro-bind', home + '/hosts', '/etc/hosts'
+], 'file overlay onto RO parent');
 "
 	[[ "$status" -eq 0 ]]
 }
@@ -827,7 +867,7 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--dir', '/sandbox/tools', '--ro-bind', '/opt/tools', '/sandbox/tools'
+    '--dir', '/sandbox', '--ro-bind', '/opt/tools', '/sandbox/tools'
 ], 'ro object form');
 "
 	[[ "$status" -eq 0 ]]
@@ -844,7 +884,7 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--dir', '/tmp', '--bind', home + '/persistent', '/tmp'
+    '--dir', '/', '--bind', home + '/persistent', '/tmp'
 ], 'rw object form');
 "
 	[[ "$status" -eq 0 ]]
@@ -867,10 +907,10 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--dir', '/opt/tools', '--ro-bind', '/opt/tools', '/opt/tools',
-    '--dir', '/sandbox/nix', '--ro-bind', '/nix/store', '/sandbox/nix',
-    '--dir', home + '/data', '--bind', home + '/data', home + '/data',
-    '--dir', '/tmp', '--bind', home + '/cache', '/tmp'
+    '--dir', '/opt', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', '/sandbox', '--ro-bind', '/nix/store', '/sandbox/nix',
+    '--dir', home, '--bind', home + '/data', home + '/data',
+    '--dir', '/', '--bind', home + '/cache', '/tmp'
 ], 'mixed forms');
 "
 	[[ "$status" -eq 0 ]]

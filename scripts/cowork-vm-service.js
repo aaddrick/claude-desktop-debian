@@ -864,14 +864,18 @@ function mergeBwrapArgs(defaultArgs, config) {
         }
     }
 
+    // Pre-create the destination's parent (never the destination
+    // itself: a file bind onto a pre-created directory dies with
+    // "Can't create file at ...: Is a directory"). --dir creates all
+    // intermediate parents and is a no-op when they already exist.
     for (const m of config.additionalROBinds) {
         const dst = typeof m === 'string' ? m : m.dst;
-        result.push('--dir', dst);
+        result.push('--dir', path.dirname(dst));
         result.push('--ro-bind', typeof m === 'string' ? m : m.src, dst);
     }
     for (const m of config.additionalBinds) {
         const dst = typeof m === 'string' ? m : m.dst;
-        result.push('--dir', dst);
+        result.push('--dir', path.dirname(dst));
         result.push('--bind', typeof m === 'string' ? m : m.src, dst);
     }
 
