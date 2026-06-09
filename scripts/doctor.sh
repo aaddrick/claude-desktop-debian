@@ -462,6 +462,8 @@ _doctor_check_filename_limit() {
 	local name_max
 	name_max=$(getconf NAME_MAX "$probe_dir" 2>/dev/null) || return 0
 	[[ $name_max =~ ^[0-9]+$ ]] || return 0
+	# Force base 10 so a leading zero can't trip octal arithmetic.
+	name_max=$((10#$name_max))
 
 	((name_max >= 200)) && return 0
 
@@ -562,9 +564,9 @@ _doctor_check_recent_crashes() {
 # sources this file) to surface what keyring Electron will use for
 # safeStorage / cookie encryption. 'basic' is valid but means tokens
 # rely on filesystem permissions alone, so we note it for visibility.
-# 'basic' is an intentional fallback, not an error; an empty result
-# means detection itself failed (e.g. a sourcing-order regression) and
-# warns rather than emitting a green PASS with a blank value.
+# An empty result means detection itself failed (e.g. a sourcing-order
+# regression) and warns rather than emitting a green PASS with a blank
+# value.
 _doctor_check_password_store() {
 	local store
 	store=$(_detect_password_store)
@@ -587,14 +589,23 @@ _doctor_check_password_store() {
 # Report free space on the partition holding the Claude config dir.
 # Arguments: $1 = config directory to check.
 #
-# Skips silently when df is unavailable or yields a non-numeric value:
-# better no line than a green PASS reporting space we could not read.
+# Skips when df is unavailable or yields a non-numeric value, leaving
+# an _info line so the summary never claims a pass over an unrun
+# check: better a visible skip than a green PASS reporting space we
+# could not read.
 _doctor_check_disk_space() {
 	local config_dir="$1"
 	local avail
 	avail=$(df -BM --output=avail "$config_dir" 2>/dev/null \
 		| tail -1 | tr -d ' M') || true
-	[[ $avail =~ ^[0-9]+$ ]] || return 0
+	if [[ ! $avail =~ ^[0-9]+$ ]]; then
+		_info 'Disk space: unable to read (df)'
+		return 0
+	fi
+	# Force base 10: a leading zero ("0099") would otherwise make
+	# (( )) parse the value as octal and error out, falling through
+	# to the PASS branch.
+	avail=$((10#$avail))
 	if ((avail < 100)); then
 		_fail "Disk space: ${avail}MB free on config partition"
 		_info 'Fix: Free up disk space'
