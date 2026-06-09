@@ -154,10 +154,16 @@ Fixed at the packaging boundary (not in the app code): `deb.sh` and
 `appimage.sh` normalize the staged tree to canonical modes (directories
 and executables `755`, other files `644`) before building, and the deb
 is built with `dpkg-deb --root-owner-group` so ownership is `root:root`.
-RPM is unaffected — `%defattr(-, root, root, 0755)` already forces
-directory permissions in the payload. To unstick an already-installed
-package without rebuilding: `sudo chmod -R o+rX /usr/lib/claude-desktop`
-(preserves the setuid `chrome-sandbox`).
+RPM has the same exposure through *file* modes: `%defattr(-, root,
+root, 0755)` forces directory modes in the payload, but the `-` in its
+first field preserves file modes verbatim from the buildroot, which
+`%install` populates with plain `cp -r` — so a `umask 077` build ships
+an unreadable `app.asar` and a non-executable electron binary (louder
+symptom: EACCES, since the forced `0755` keeps directories
+traversable). `rpm.sh` therefore normalizes file modes in `%install`
+too. To unstick an already-installed package without rebuilding:
+`sudo chmod -R o+rX /usr/lib/claude-desktop` (preserves the setuid
+`chrome-sandbox`).
 
 ## Key Files
 

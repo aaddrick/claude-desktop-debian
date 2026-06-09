@@ -67,6 +67,11 @@ assert_executable "$electron_path"
 assert_file_exists \
 	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
 
+# The build's permission normalization clears the setuid bit; postinst
+# must re-assert 4755 or the Electron sandbox breaks silently (#695).
+assert_setuid \
+	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+
 # --- Desktop entry validation ---
 desktop_file='/usr/share/applications/claude-desktop.desktop'
 assert_contains "$desktop_file" 'Exec=/usr/bin/claude-desktop' \
@@ -107,6 +112,15 @@ assert_contains '/usr/bin/claude-desktop' 'build_electron_args' \
 # --- App contents (asar) ---
 resources_dir='/usr/lib/claude-desktop/node_modules/electron/dist/resources'
 validate_app_contents "$resources_dir"
+
+# app.asar.unpacked must be world-traversable and root-owned, or
+# Cowork's auto-launch fs.existsSync() guard silently fails (#695).
+unpacked_stat=$(stat -c '%a %U:%G' "$resources_dir/app.asar.unpacked")
+if [[ $unpacked_stat == '755 root:root' ]]; then
+	pass 'app.asar.unpacked is 755 root:root'
+else
+	fail "app.asar.unpacked is $unpacked_stat (want 755 root:root)"
+fi
 
 # --- Doctor smoke test ---
 # --doctor checks system state; some checks will fail in CI (no display,
