@@ -443,3 +443,90 @@ SHIM
 	[[ $output == *'Password store:'* ]]
 	[[ $output == *'basic'* ]]
 }
+
+@test "_doctor_check_password_store: warns, not PASS, when detection returns empty" {
+	# An empty backend means detection failed (e.g. sourcing-order
+	# regression) — it must not surface as a green PASS with a blank value.
+	_detect_password_store() { echo ''; }
+	run _doctor_check_password_store
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_disk_space
+# =============================================================================
+
+@test "_doctor_check_disk_space: fails when under 100MB free" {
+	df() { printf 'Avail\n50M\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'50MB free'* ]]
+}
+
+@test "_doctor_check_disk_space: warns when under 500MB free" {
+	df() { printf 'Avail\n300M\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'300MB free'* ]]
+}
+
+@test "_doctor_check_disk_space: warns at exactly 100MB (tier boundary)" {
+	# 100 is not < 100, so the FAIL tier must not fire; < 500 → WARN.
+	df() { printf 'Avail\n100M\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output == *'100MB free'* ]]
+}
+
+@test "_doctor_check_disk_space: passes at exactly 500MB (tier boundary)" {
+	# 500 is not < 500, so the WARN tier must not fire → PASS.
+	df() { printf 'Avail\n500M\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output == *'500MB free'* ]]
+}
+
+@test "_doctor_check_disk_space: no false PASS on leading-zero df output" {
+	# '0099' clears the numeric regex but would make (( )) parse the
+	# value as octal and error out, falling through to the PASS
+	# branch. The 10# normalization must read it as 99 → FAIL tier.
+	df() { printf 'Avail\n0099M\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output == *'99MB free'* ]]
+}
+
+@test "_doctor_check_disk_space: passes with ample free space" {
+	df() { printf 'Avail\n2048M\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'2048MB free'* ]]
+}
+
+@test "_doctor_check_disk_space: no false PASS on non-numeric df output" {
+	# A malformed/empty avail field must not slip through as a PASS,
+	# and the skip must be visible rather than hiding behind a clean
+	# summary.
+	df() { printf 'Avail\nN/A\n'; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $status -eq 0 ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output == *'Disk space: unable to read (df)'* ]]
+}
+
+@test "_doctor_check_disk_space: visible skip when df is unavailable" {
+	df() { return 127; }
+	run _doctor_check_disk_space "$XDG_CONFIG_HOME"
+	[[ $status -eq 0 ]]
+	[[ $output == *'Disk space: unable to read (df)'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
