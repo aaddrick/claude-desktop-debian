@@ -186,11 +186,28 @@ For enhanced security, consider:
 
 **Symptom:** `claude-desktop --doctor` shows `Cowork isolation: host-direct (bwrap probe failed)`.
 
-**Fix:** None needed. The `.deb` `postinst` installs `/etc/apparmor.d/claude-desktop-bwrap`, granting `userns` to `/usr/bin/bwrap`.
+**Fix (`.deb` installs):** None needed. The `postinst` installs `/etc/apparmor.d/claude-desktop-bwrap`, granting `userns` to `/usr/bin/bwrap`. Still failing? Reinstall the package — the `postinst` recreates the profile.
 
-**Still failing:** Reinstall the package. The `postinst` recreates the profile.
+**Fix (AppImage, Nix, rpm, and manual installs):** The auto-install is deb-only; install the profile by hand:
 
-**Pre-existing manual fix:** A hand-made `/etc/apparmor.d/bwrap` still works. The `postinst` detects and defers to it.
+```bash
+sudo tee /etc/apparmor.d/bwrap <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+
+    include if exists <local/bwrap>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/bwrap
+```
+
+**Existing profiles win:** The `postinst` defers to any profile already attaching to `/usr/bin/bwrap` — the hand-made `/etc/apparmor.d/bwrap` above, or `bwrap-userns-restrict` from the `apparmor-profiles` package — rather than shadowing it with its unconfined-mode one. If such a profile blocks `userns`, resolve the conflict yourself before expecting Cowork isolation to work.
+
+**Customizing:** Put overrides in `/etc/apparmor.d/local/claude-desktop-bwrap` — they survive upgrades. Direct edits to the managed profile do not: the `postinst` rewrites any profile carrying its marker header on every upgrade, and removes it on purge.
 
 **Security:** The profile grants `userns` to `/usr/bin/bwrap` host-wide. Bubblewrap's own sandbox does the confining. Review against your threat model.
 
@@ -235,6 +252,11 @@ EOF
 
 sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
 ```
+
+To customize the profile on a `.deb` install, put overrides in
+`/etc/apparmor.d/local/claude-desktop` — they survive upgrades; direct
+edits to the managed profile are rewritten by the `postinst` on every
+upgrade.
 
 Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
 Chromium sandbox entirely, which the package is built to keep. (AppImage
