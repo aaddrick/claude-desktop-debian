@@ -163,8 +163,10 @@ the launcher won't stack duplicate flags.
 
 If the previous launch already died with the GPU-process FATAL
 signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
-auto-applies the same flags. `CLAUDE_DISABLE_GPU=0` suppresses that
-auto-fallback if you need to retest hardware acceleration.
+auto-applies the same flags and keeps them applied on subsequent
+launches. Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback
+when retesting hardware acceleration after a driver fix — any
+explicitly set value suppresses it; only `1` forces the flags on.
 
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for
