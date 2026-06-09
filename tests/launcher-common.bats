@@ -754,18 +754,19 @@ s.close()
 }
 
 @test "cleanup_orphaned_cowork_daemon: live UI present — daemon left running" {
-	# A real background process stands in for the live Electron UI: its
-	# cmdline ('sleep ...') is neither the cowork daemon nor a --type=
-	# helper, and its state is sleeping (not T/t/Z), so the function
-	# treats it as a live UI and must NOT kill the daemon.
-	#
-	# The UI scan fingerprints on the launcher-passed --class flag
-	# (pgrep -f -- "--class=$WM_CLASS"); since #700 app.asar no longer
-	# appears in any cmdline. Match on "$*" because the pattern sits
-	# after the `--` end-of-options separator.
-	sleep 300 &
+	# A real background process stands in for the live Electron UI so
+	# the /proc cmdline and status reads resolve naturally. The UI
+	# scan fingerprints on the launcher-passed --class flag (since
+	# #700 app.asar no longer appears in any cmdline), so the
+	# stand-in's argv[0] is renamed to carry it via exec -a. Its state
+	# is sleeping (not T/t/Z), so the function treats it as a live UI
+	# and must NOT kill the daemon.
+	bash -c 'exec -a "--class=Claude" sleep 300' &
 	ui_pid=$!
 
+	# Match on "$*", not "$2": the UI scan passes -u <uid> and a `--`
+	# end-of-options separator before the pattern, so the pattern is
+	# not at a fixed argument position.
 	pgrep() {
 		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
@@ -845,6 +846,102 @@ s.close()
 		"$log_file"
 	grep -q '^kill 4242$' "$TEST_TMP/kills"
 	grep -q '^kill -KILL 4242$' "$TEST_TMP/kills"
+}
+
+# =============================================================================
+# cleanup_stale_desktop_helpers
+# =============================================================================
+
+@test "_desktop_helper_cmdline_matches: matches known Desktop helpers only" {
+	local config_dir="$XDG_CONFIG_HOME/Claude"
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$config_dir"
+	[[ $status -eq 0 ]]
+
+	# tr '\0' ' ' joins cmdline args with a trailing space, so the
+	# --user-data-dir arm anchors on "$config_dir " — exact dir only.
+	run _desktop_helper_cmdline_matches \
+		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=$config_dir "
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=${config_dir}Dev "
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js"
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"node $config_dir/Claude Extensions/ant.dir.example/server.js"
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron /usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"claude --dangerously-skip-permissions"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/home/scott/dev/dude/core/agent-dude/dist/index.js mcp"
+	[[ $status -ne 0 ]]
+}
+
+@test "_claude_desktop_ui_cmdline_matches: keys on the --class fingerprint" {
+	# Live UI: launcher argv carries --class=$WM_CLASS (tr '\0' ' '
+	# leaves every argument space-terminated). Since #700 app.asar no
+	# longer appears in any cmdline, so the --class flag from
+	# build_electron_args is the only stable UI signature.
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --class=Claude --enable-features=WaylandWindowDecorations "
+	[[ $status -eq 0 ]]
+
+	# Another Electron app's asar path must not match.
+	run _claude_desktop_ui_cmdline_matches \
+		"/opt/other-electron-app/resources/app.asar "
+	[[ $status -ne 0 ]]
+
+	# Look-alike WM class is rejected by the trailing-space anchor.
+	run _claude_desktop_ui_cmdline_matches \
+		"/opt/claude-dev/electron --class=ClaudeDev "
+	[[ $status -ne 0 ]]
+
+	# Chromium helpers (--type=) never count as the UI, even if a
+	# --class flag leaked into their argv.
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
+	[[ $status -ne 0 ]]
+
+	# The cowork daemon never counts as the UI.
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
+	[[ $status -ne 0 ]]
+}
+
+@test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
+	local marker="$TEST_TMP/cleanup-ran"
+	local electron="$TEST_TMP/electron"
+
+	cat > "$electron" <<'STUB'
+#!/usr/bin/env bash
+echo "electron argv: $*"
+exit 7
+STUB
+	chmod +x "$electron"
+
+	cleanup_after_electron_exit() {
+		touch "$marker"
+	}
+
+	setup_logging
+	run run_electron_and_cleanup "$electron" '--flag' 'value'
+	[[ $status -eq 7 ]]
+	[[ -f $marker ]]
+	run cat "$log_file"
+	[[ $output == *'electron argv: --flag value'* ]]
 }
 
 # =============================================================================

@@ -87,7 +87,13 @@ fi
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
+
+# Path to the bundled Electron executable and app
+electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
+app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
+
 cleanup_orphaned_cowork_daemon
+cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
 
@@ -100,10 +106,6 @@ log_message "Timestamp: $(date)"
 log_message "Arguments: $@"
 log_message "APPDIR: $appdir"
 log_session_env
-
-# Path to the bundled Electron executable and app
-electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
-app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
 
 # Build electron args (appimage mode adds --no-sandbox)
 build_electron_args 'appimage'
@@ -120,9 +122,11 @@ log_message "App (auto-loaded by Electron): $app_path"
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
 cd "$HOME" || exit 1
 
-# Execute Electron
+# Execute Electron and keep AppRun alive so explicit quit can clean up
+# Desktop-owned helpers that outlive the Electron main process.
 log_message "Executing: $electron_exec ${electron_args[*]} $*"
-exec "$electron_exec" "${electron_args[@]}" "$@" >> "$log_file" 2>&1
+run_electron_and_cleanup "$electron_exec" "${electron_args[@]}" "$@"
+exit $?
 EOF
 chmod +x "$appdir_path/AppRun" || exit 1
 echo 'AppRun script created'

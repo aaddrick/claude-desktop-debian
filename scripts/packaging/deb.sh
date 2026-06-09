@@ -114,7 +114,12 @@ fi
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
+
+# App path
+app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
+
 cleanup_orphaned_cowork_daemon
+cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
 
@@ -162,9 +167,6 @@ else
 	fi
 fi
 
-# App path
-app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
-
 # Build electron args
 build_electron_args 'deb'
 
@@ -189,10 +191,11 @@ app_dir="/usr/lib/$package_name"
 log_message "Changing directory to \$app_dir"
 cd "\$app_dir" || { log_message "Failed to cd to \$app_dir"; exit 1; }
 
-# Execute Electron (exec replaces the shell process so signals
-# like SIGINT, SIGTERM, and SIGHUP reach Electron directly)
+# Execute Electron and keep the launcher alive so explicit quit can
+# clean up Desktop-owned helpers that outlive the Electron main process.
 log_message "Executing: \$electron_exec \${electron_args[*]} \$*"
-exec "\$electron_exec" "\${electron_args[@]}" "\$@" >> "\$log_file" 2>&1
+run_electron_and_cleanup "\$electron_exec" "\${electron_args[@]}" "\$@"
+exit \$?
 EOF
 chmod +x "$install_dir/bin/claude-desktop" || exit 1
 echo 'Launcher script created'

@@ -1139,36 +1139,21 @@ print(len(servers))
 	_doctor_check_filename_limit
 
 	# -- Orphaned cowork daemon --
-	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon
-	# above: a live UI is an Electron main process carrying our
-	# --class=$WM_CLASS flag (since #700 the launchers no longer pass
-	# app.asar in argv — Electron auto-loads it — so the --class flag
-	# from build_electron_args is the cmdline signature shared by
-	# deb/rpm/AppImage/nix) that is not a Chromium helper (--type=...),
-	# not the cowork daemon itself, and not stopped/zombie.  Counting
-	# any `claude-desktop`-matching process (as the old check did)
-	# would include the launcher's own bash and stuck launcher bashes
-	# from previous crashes, producing false negatives where a real
-	# orphan is misreported as "parent alive".
+	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon:
+	# _claude_desktop_ui_is_alive in launcher-common.sh fingerprints on
+	# the --class=$WM_CLASS flag from build_electron_args (since #700
+	# the launchers no longer pass app.asar in argv — Electron
+	# auto-loads it), excluding Chromium helpers (--type=...), the
+	# cowork daemon itself, our own launcher bash, and stopped/zombie
+	# processes.  Counting any `claude-desktop`-matching process (as
+	# the old check did) would include the launcher's own bash and
+	# stuck launcher bashes from previous crashes, producing false
+	# negatives where a real orphan is misreported as "parent alive".
 	local _cowork_pids
 	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
 		|| true
 	if [[ -n $_cowork_pids ]]; then
-		local _daemon_orphaned=true _pid _cmdline _state
-		for _pid in $(pgrep -f -- "--class=$WM_CLASS" 2>/dev/null); do
-			[[ $_pid == "$$" || $_pid == "$PPID" ]] && continue
-			_cmdline=$(tr '\0' ' ' \
-				< "/proc/$_pid/cmdline" 2>/dev/null) || continue
-			[[ $_cmdline == *cowork-vm-service* ]] && continue
-			[[ $_cmdline == *--type=* ]] && continue
-			_state=$(awk '/^State:/ {print $2; exit}' \
-				"/proc/$_pid/status" 2>/dev/null) || continue
-			[[ $_state == T || $_state == t || $_state == Z ]] \
-				&& continue
-			_daemon_orphaned=false
-			break
-		done
-		if [[ $_daemon_orphaned == true ]]; then
+		if ! _claude_desktop_ui_is_alive; then
 			_warn "Cowork daemon: orphaned (PIDs: $_cowork_pids)"
 			_info 'Fix: Restart Claude Desktop' \
 				'(daemon will be cleaned up automatically)'

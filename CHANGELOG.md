@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- Explicit quit now keeps the launcher alive until Electron exits, then runs
+  stale-helper cleanup for Desktop-owned Cowork, Claude config, and extension
+  helpers. Close-to-tray still leaves the app and helpers running.
+  ([#682](https://github.com/aaddrick/claude-desktop-debian/pull/682))
 - All launchers (deb, RPM, AppImage, nix) no longer pass `app.asar` as an Electron
   argument. Electron auto-loads `app.asar` from its default `resources/` dir next to the
   binary, so the extra argv entry was redundant — and the app treated it as a
