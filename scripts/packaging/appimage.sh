@@ -108,8 +108,14 @@ app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
 # Build electron args (appimage mode adds --no-sandbox)
 build_electron_args 'appimage'
 
-# Add app path LAST - Chromium flags must come before this
-electron_args+=("$app_path")
+# Intentionally NOT appended: app.asar sits in Electron's default
+# resources/ dir next to the binary, so Electron auto-loads it. Passing
+# the path again makes Electron treat it as a file-to-open, which the
+# app forwards to its file-drop handler, producing a spurious
+# "Attach app.asar?" prompt on launch and on every taskbar reopen
+# (the second-instance argv path). Omitting it is the root-cause fix.
+# See issue #696.
+log_message "App (auto-loaded by Electron): $app_path"
 
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
 cd "$HOME" || exit 1
