@@ -72,8 +72,8 @@ StartupWMClass=Claude
 EOF
 
 # --- Stage AppStream metainfo (installed via %files block below) ---
-cp "$script_dir/com.anthropic.Claude.metainfo.xml" \
-	"$staging_dir/com.anthropic.Claude.metainfo.xml" || exit 1
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
@@ -231,7 +231,7 @@ cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
 
 # Install AppStream metainfo (GNOME Software / KDE Discover)
-install -Dm 644 $staging_dir/com.anthropic.Claude.metainfo.xml %{buildroot}/usr/share/metainfo/com.anthropic.Claude.metainfo.xml
+install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
 
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
@@ -250,7 +250,7 @@ update-desktop-database /usr/share/applications &> /dev/null || true
 %attr(4755, root, root) /usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
-/usr/share/metainfo/com.anthropic.Claude.metainfo.xml
+/usr/share/metainfo/$metainfo_name
 /usr/share/icons/hicolor/*/apps/claude-desktop.png
 SPECEOF
 

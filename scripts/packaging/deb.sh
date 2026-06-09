@@ -90,9 +90,9 @@ echo 'Desktop entry created'
 
 # --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
 echo 'Installing AppStream metainfo...'
-mkdir -p "$install_dir/share/metainfo" || exit 1
-cp "$script_dir/com.anthropic.Claude.metainfo.xml" \
-	"$install_dir/share/metainfo/com.anthropic.Claude.metainfo.xml" || exit 1
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+install -Dm 644 "$script_dir/$metainfo_name" \
+	"$install_dir/share/metainfo/$metainfo_name" || exit 1
 echo 'AppStream metainfo installed'
 
 # --- Create Launcher Script ---
