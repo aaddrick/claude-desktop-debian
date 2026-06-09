@@ -162,11 +162,22 @@ _detect_password_store() {
 # setup_logging() must have run first so $log_file is available. The
 # launcher writes the current session header before build_electron_args()
 # runs, so the previous launch lives in the penultimate log section.
+#
+# A recovered launch (running with --disable-gpu) produces no GPU
+# output, so the crash signature alone would re-enable GPU on launch
+# N+2 and oscillate crash/work/crash on permanently broken hardware.
+# The launcher's own "disabling GPU" marker therefore also counts as
+# a trigger, making recovery sticky once tripped. CLAUDE_DISABLE_GPU=0
+# remains the escape hatch for retesting hardware acceleration.
+#
+# Section headers vary by package format: deb/rpm write "Launcher
+# Start", AppImage writes "AppImage Start", and Nix writes "Launcher
+# Start (NixOS)" (nix/claude-desktop.nix).
 _previous_launch_hit_gpu_fatal() {
 	[[ -f ${log_file:-} ]] || return 1
 
 	awk '
-		/^--- Claude Desktop (Launcher|AppImage) Start ---$/ {
+		/^--- Claude Desktop (Launcher|AppImage) Start( \(NixOS\))? ---$/ {
 			section++
 			next
 		}
@@ -183,6 +194,10 @@ _previous_launch_hit_gpu_fatal() {
 				"GPU process launch failed: error_code=") &&
 				index(text,
 				"GPU process isn'\''t usable. Goodbye.")) {
+				exit 0
+			}
+			if (index(text,
+				"Previous launch hit GPU process FATAL")) {
 				exit 0
 			}
 			exit 1
