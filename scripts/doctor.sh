@@ -6,8 +6,9 @@
 # per-package launcher scripts — deb, rpm, AppImage, Nix).
 #
 # Provides: run_doctor (the `claude-desktop --doctor` entry point) plus its
-# internal helpers. Self-contained — no dependencies on launcher-common.sh
-# state or functions.
+# internal helpers. Self-contained except for the WM_CLASS constant defined
+# at the top of launcher-common.sh (substituted at build time), which the
+# live-UI fingerprint in the orphaned-daemon check reads at runtime.
 #
 # To add a new check: define an internal function `_check_<name>`, call it
 # from run_doctor in the appropriate section, use _pass / _fail / _warn /
@@ -779,6 +780,74 @@ run_doctor() {
 		_warn 'Chrome sandbox not found (expected for AppImage)'
 	fi
 
+	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
+	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
+	# blocks the user namespaces Chromium's sandbox needs and crashes the
+	# app on launch (credentials.cc FATAL, exit 133). A scoped AppArmor
+	# profile permits them for Claude only. Only report when the
+	# restriction is actually in force — on other distros the knob is
+	# absent and this check stays silent.
+	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
+	local _userns_val=''
+	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
+	# Gate on the deb's installed Electron, not $electron_path (the
+	# invoking build's binary): the profile pins this exact path, so only
+	# a deb install is confined by it. AppImage always runs --no-sandbox
+	# and Nix binaries live in the store — neither can hit the crash.
+	local _deb_electron='/usr/lib/claude-desktop'
+	_deb_electron+='/node_modules/electron/dist/electron'
+	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
+		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
+		# (PACKAGE_NAME in build.sh).
+		local _aa_profile='/etc/apparmor.d/claude-desktop'
+		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
+		# securityfs marks this file world-readable (0444), but the kernel
+		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
+		# passes for non-root yet the read returns nothing. Attempt the read
+		# and judge by whether we actually got data, not by the mode bits.
+		local _loaded_set=''
+		_loaded_set=$(cat "$_aa_loaded" 2>/dev/null)
+		if [[ -n $_loaded_set ]]; then
+			# Authoritative: we actually read the kernel's loaded profile
+			# set (needs root), so report the real load state — not
+			# mere presence on disk.
+			if printf '%s\n' "$_loaded_set" | grep -q '^claude-desktop '; then
+				_pass 'User namespaces: restricted, AppArmor profile loaded'
+			else
+				_warn 'User namespaces: restricted by AppArmor,' \
+					'Claude profile not loaded'
+				if [[ -e $_aa_profile ]]; then
+					_info '  Profile is on disk but not loaded. Load it:'
+					_info "  sudo apparmor_parser -r $_aa_profile"
+				else
+					_info '  No profile found. See docs/troubleshooting.md'
+					_info '  "Claude Desktop crashes immediately on launch".'
+				fi
+			fi
+		elif [[ -e $_aa_profile ]]; then
+			# The loaded set was unreadable: non-root (the kernel needs
+			# CAP_MAC_ADMIN despite the 0444 mode), or securityfs is
+			# unmounted (common in containers). Report presence on disk
+			# only — never a definitive PASS.
+			if (( EUID == 0 )); then
+				_info 'User namespaces: AppArmor profile present on disk' \
+					'(securityfs unavailable; cannot confirm it is loaded)'
+			else
+				_info 'User namespaces: AppArmor profile present on disk' \
+					'(re-run with sudo to confirm it is loaded)'
+			fi
+		else
+			_warn 'User namespaces: restricted by AppArmor,' \
+				'no Claude profile found'
+			_info '  Unprivileged user namespaces are blocked, which'
+			_info '  crashes the app on launch in X11 sessions'
+			_info '  (credentials.cc FATAL). Wayland sessions run with'
+			_info '  --no-sandbox and are unaffected.'
+			_info '  See docs/troubleshooting.md "Claude Desktop crashes'
+			_info '  immediately on launch" for the profile to install.'
+		fi
+	fi
+
 	# -- SingletonLock --
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
 	local lock_file="$config_dir/SingletonLock"
@@ -923,8 +992,7 @@ print(len(servers))
 					'apparmor_restrict_unprivileged_userns=1'
 				_info \
 					'  by default. See docs/troubleshooting.md' \
-					'"Cowork on Ubuntu 24.04"'
-				_info '  for the AppArmor profile fix.'
+					'"Cowork on Ubuntu 24.04" for the AppArmor profile fix.'
 			fi
 		fi
 	else
@@ -1071,33 +1139,21 @@ print(len(servers))
 	_doctor_check_filename_limit
 
 	# -- Orphaned cowork daemon --
-	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon
-	# above: a live UI is an Electron main process on app.asar that is
-	# not a Chromium helper (--type=...), not the cowork daemon itself,
-	# and not stopped/zombie.  Counting any `claude-desktop`-matching
-	# process (as the old check did) would include the launcher's own
-	# bash and stuck launcher bashes from previous crashes, producing
-	# false negatives where a real orphan is misreported as "parent
-	# alive".
+	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon:
+	# _claude_desktop_ui_is_alive in launcher-common.sh fingerprints on
+	# the --class=$WM_CLASS flag from build_electron_args (since #700
+	# the launchers no longer pass app.asar in argv — Electron
+	# auto-loads it), excluding Chromium helpers (--type=...), the
+	# cowork daemon itself, our own launcher bash, and stopped/zombie
+	# processes.  Counting any `claude-desktop`-matching process (as
+	# the old check did) would include the launcher's own bash and
+	# stuck launcher bashes from previous crashes, producing false
+	# negatives where a real orphan is misreported as "parent alive".
 	local _cowork_pids
 	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
 		|| true
 	if [[ -n $_cowork_pids ]]; then
-		local _daemon_orphaned=true _pid _cmdline _state
-		for _pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
-			[[ $_pid == "$$" || $_pid == "$PPID" ]] && continue
-			_cmdline=$(tr '\0' ' ' \
-				< "/proc/$_pid/cmdline" 2>/dev/null) || continue
-			[[ $_cmdline == *cowork-vm-service* ]] && continue
-			[[ $_cmdline == *--type=* ]] && continue
-			_state=$(awk '/^State:/ {print $2; exit}' \
-				"/proc/$_pid/status" 2>/dev/null) || continue
-			[[ $_state == T || $_state == t || $_state == Z ]] \
-				&& continue
-			_daemon_orphaned=false
-			break
-		done
-		if [[ $_daemon_orphaned == true ]]; then
+		if ! _claude_desktop_ui_is_alive; then
 			_warn "Cowork daemon: orphaned (PIDs: $_cowork_pids)"
 			_info 'Fix: Restart Claude Desktop' \
 				'(daemon will be cleaned up automatically)'

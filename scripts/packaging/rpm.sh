@@ -71,6 +71,10 @@ MimeType=x-scheme-handler/claude;
 StartupWMClass=$WM_CLASS
 EOF
 
+# --- Stage AppStream metainfo (installed via %files block below) ---
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$staging_dir/claude-desktop" << EOF
@@ -92,7 +96,6 @@ setup_electron_env
 
 # App path
 app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
-claude_desktop_app_path="\$app_path"
 
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
@@ -121,12 +124,14 @@ fi
 
 # Determine Electron executable path
 electron_exec='electron'
+using_global_electron=false
 local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
 if [[ -f \$local_electron_path ]]; then
 	electron_exec="\$local_electron_path"
 	log_message "Using local Electron: \$electron_exec"
 else
 	if command -v electron &> /dev/null; then
+		using_global_electron=true
 		log_message "Using global Electron: \$electron_exec"
 	else
 		log_message 'Error: Electron executable not found'
@@ -144,8 +149,21 @@ fi
 # Build electron args - use 'deb' type (same sandbox behavior)
 build_electron_args 'deb'
 
-# Add app path LAST
-electron_args+=("\$app_path")
+# Bundled Electron: app.asar sits in its default resources/ dir next
+# to the binary, so Electron auto-loads it. Passing the path again
+# makes Electron treat it as a file-to-open, which the app forwards
+# to its file-drop handler, producing a spurious "Attach app.asar?"
+# prompt on launch and on every taskbar reopen (the second-instance
+# argv path). Omitting it is the root-cause fix. See issue #696.
+# Global (PATH) Electron has no co-located app.asar and would boot
+# its default_app welcome screen instead — only there the explicit
+# app path is load-bearing and must stay.
+if [[ \$using_global_electron == true ]]; then
+	electron_args+=("\$app_path")
+	log_message "App (explicit arg, global Electron): \$app_path"
+else
+	log_message "App (auto-loaded by Electron): \$app_path"
+fi
 
 # Change to application directory
 app_dir="/usr/lib/$package_name"
@@ -228,8 +246,18 @@ cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 # Install desktop entry
 install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
 
+# Install AppStream metainfo (GNOME Software / KDE Discover)
+install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
+
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
+
+# Normalize file modes — the cp -r above honors the build umask, and
+# the "-" first field of %defattr ships buildroot *file* modes verbatim
+# (only directory modes are forced to 0755), so a umask-077 build would
+# package an unreadable app.asar and a non-executable electron binary.
+# Must run before the chrome-sandbox chmod below so 4755 survives.
+find %{buildroot}/usr/lib/$package_name -type f -exec chmod u=rwX,go=rX {} +
 
 # Set the chrome-sandbox suid bit in the buildroot so the /usr/lib
 # directory walk in %files records 4755 in the payload (preserves #539
@@ -249,6 +277,7 @@ update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 %attr(755, root, root) /usr/bin/claude-desktop
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
+/usr/share/metainfo/$metainfo_name
 /usr/share/icons/hicolor/*/apps/claude-desktop.png
 SPECEOF
 

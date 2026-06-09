@@ -226,7 +226,6 @@ stdenvNoCC.mkDerivation {
 
 electron_exec="ELECTRON_PLACEHOLDER"
 app_path="RESOURCES_PLACEHOLDER/app.asar"
-claude_desktop_app_path="$app_path"
 
 source "LAUNCHER_LIB_PLACEHOLDER"
 
@@ -264,8 +263,14 @@ detect_display_backend
 # Build Electron arguments
 build_electron_args 'nix'
 
-# Add app path
-electron_args+=("$app_path")
+# Intentionally NOT appended: app.asar sits in Electron's default
+# resources/ dir next to the binary, so Electron auto-loads it. Passing
+# the path again makes Electron treat it as a file-to-open, which the
+# app forwards to its file-drop handler, producing a spurious
+# "Attach app.asar?" prompt on launch and on every taskbar reopen
+# (the second-instance argv path). Omitting it is the root-cause fix.
+# See issue #696.
+log_message "App (auto-loaded by Electron): $app_path"
 
 # Execute Electron and keep the launcher alive so explicit quit can
 # clean up Desktop-owned helpers that outlive the Electron main process.

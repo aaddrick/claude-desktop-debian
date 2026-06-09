@@ -91,7 +91,6 @@ setup_electron_env
 # Path to the bundled Electron executable and app
 electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
 app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
-claude_desktop_app_path="$app_path"
 
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
@@ -111,8 +110,14 @@ log_session_env
 # Build electron args (appimage mode adds --no-sandbox)
 build_electron_args 'appimage'
 
-# Add app path LAST - Chromium flags must come before this
-electron_args+=("$app_path")
+# Intentionally NOT appended: app.asar sits in Electron's default
+# resources/ dir next to the binary, so Electron auto-loads it. Passing
+# the path again makes Electron treat it as a file-to-open, which the
+# app forwards to its file-drop handler, producing a spurious
+# "Attach app.asar?" prompt on launch and on every taskbar reopen
+# (the second-instance argv path). Omitting it is the root-cause fix.
+# See issue #696.
+log_message "App (auto-loaded by Electron): $app_path"
 
 # Change to HOME directory before exec'ing Electron to avoid CWD permission issues
 cd "$HOME" || exit 1
@@ -176,14 +181,15 @@ mkdir -p "$metadata_dir" || exit 1
 appdata_file="$metadata_dir/${component_id}.appdata.xml"
 
 # Generate the AppStream XML file
-# Use MIT license based on LICENSE-MIT file in repo
+# project_license describes the app the user launches (the proprietary
+# Claude binary), not the MIT packaging scripts
 # ID follows reverse DNS convention
 cat > "$appdata_file" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>$component_id</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>LicenseRef-proprietary</project_license>
   <developer id="io.github.aaddrick">
     <name>aaddrick</name>
   </developer>
@@ -273,6 +279,17 @@ if [[ -z $appimagetool_path ]]; then
 		exit 1
 	fi
 fi
+
+# Normalize AppDir permissions before squashing. The staging copy above
+# uses `cp -a`, which preserves source modes, and a restrictive build
+# umask can leave directories at 0700. mksquashfs records those verbatim,
+# so a user who later runs the AppImage can't traverse into
+# app.asar.unpacked/ — silently breaking Cowork's daemon auto-launch (the
+# fork is guarded by fs.existsSync(), false on a directory it can't read).
+# Canonical modes: dirs and already-executable files 755, the rest 644.
+echo 'Normalizing AppDir permissions...'
+find "$appdir_path" -type d -exec chmod 755 {} + || exit 1
+find "$appdir_path" -type f -exec chmod u=rwX,go=rX {} + || exit 1
 
 # --- Build AppImage ---
 echo 'Building AppImage...'

@@ -755,21 +755,22 @@ s.close()
 
 @test "cleanup_orphaned_cowork_daemon: live UI present — daemon left running" {
 	# A real background process stands in for the live Electron UI so
-	# the /proc cmdline and status reads resolve naturally. UI detection
-	# is keyed on the Claude bundle's app.asar path, so the stand-in's
-	# argv[0] is renamed to it via exec -a. Its state is sleeping (not
-	# T/t/Z), so the function treats it as a live UI and must NOT kill
-	# the daemon.
-	bash -c \
-		'exec -a /usr/lib/claude-desktop/electron/resources/app.asar sleep 300' &
+	# the /proc cmdline and status reads resolve naturally. The UI
+	# scan fingerprints on the launcher-passed --class flag (since
+	# #700 app.asar no longer appears in any cmdline), so the
+	# stand-in's argv[0] is renamed to carry it via exec -a. Its state
+	# is sleeping (not T/t/Z), so the function treats it as a live UI
+	# and must NOT kill the daemon.
+	bash -c 'exec -a "--class=Claude" sleep 300' &
 	ui_pid=$!
 
-	# Match on "$*", not "$2": the UI scan passes -u <uid> before -f,
-	# so the pattern is no longer at a fixed argument position.
+	# Match on "$*", not "$2": the UI scan passes -u <uid> and a `--`
+	# end-of-options separator before the pattern, so the pattern is
+	# not at a fixed argument position.
 	pgrep() {
 		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
-		elif [[ $* == *app* ]]; then
+		elif [[ $* == *--class=Claude* ]]; then
 			echo "$ui_pid"
 		fi
 	}
@@ -790,10 +791,11 @@ s.close()
 	# sent, so the escalation to SIGKILL must not fire.
 	local term_sent="$TEST_TMP/term_sent"
 	pgrep() {
-		if [[ $2 == *cowork-vm-service* ]]; then
+		if [[ $* == *cowork-vm-service* ]]; then
 			[[ -f $term_sent ]] && return 1
 			echo 4242
 		else
+			# UI scan (--class fingerprint): no live UI.
 			return 1
 		fi
 	}
@@ -826,9 +828,10 @@ s.close()
 	# Daemon never dies, so after the SIGTERM grace window the function
 	# escalates to SIGKILL and logs the SIGKILL variant.
 	pgrep() {
-		if [[ $2 == *cowork-vm-service* ]]; then
+		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
 		else
+			# UI scan (--class fingerprint): no live UI.
 			return 1
 		fi
 	}
@@ -887,19 +890,34 @@ s.close()
 	[[ $status -ne 0 ]]
 }
 
-@test "_claude_desktop_ui_cmdline_matches: ignores other Electron apps" {
-	claude_desktop_app_path='/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar'
-
+@test "_claude_desktop_ui_cmdline_matches: keys on the --class fingerprint" {
+	# Live UI: launcher argv carries --class=$WM_CLASS (tr '\0' ' '
+	# leaves every argument space-terminated). Since #700 app.asar no
+	# longer appears in any cmdline, so the --class flag from
+	# build_electron_args is the only stable UI signature.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron $claude_desktop_app_path"
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --class=Claude --enable-features=WaylandWindowDecorations "
 	[[ $status -eq 0 ]]
 
+	# Another Electron app's asar path must not match.
 	run _claude_desktop_ui_cmdline_matches \
-		"/opt/other-electron-app/resources/app.asar"
+		"/opt/other-electron-app/resources/app.asar "
 	[[ $status -ne 0 ]]
 
+	# Look-alike WM class is rejected by the trailing-space anchor.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude"
+		"/opt/claude-dev/electron --class=ClaudeDev "
+	[[ $status -ne 0 ]]
+
+	# Chromium helpers (--type=) never count as the UI, even if a
+	# --class flag leaked into their argv.
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
+	[[ $status -ne 0 ]]
+
+	# The cowork daemon never counts as the UI.
+	run _claude_desktop_ui_cmdline_matches \
+		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
 	[[ $status -ne 0 ]]
 }
 

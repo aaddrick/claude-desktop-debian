@@ -24,6 +24,7 @@ suggested fixes:
 | Input method | IBus/GTK immodule sanity (ibus-gtk3 installed, cache fresh, XWayland routing note) |
 | Electron binary | Existence and version |
 | Chrome sandbox | Correct permissions (4755/root) |
+| User namespaces | AppArmor userns restriction + Claude profile presence (Ubuntu 24.04+) |
 | SingletonLock | Stale lock file detection |
 | MCP config | JSON validity and server count |
 | Node.js | Version (v20+ recommended for MCP) |
@@ -161,6 +162,13 @@ applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
 
+If the previous launch already died with the GPU-process FATAL
+signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
+auto-applies the same flags and keeps them applied on subsequent
+launches. Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback
+when retesting hardware acceleration after a driver fix — any
+explicitly set value suppresses it; only `1` forces the flags on.
+
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for
 `CLAUDE_DISABLE_GPU=1` when the app crashes before you can open
@@ -224,18 +232,13 @@ For enhanced security, consider:
 
 ### Cowork on Ubuntu 24.04+ (AppArmor Blocks User Namespaces)
 
-Ubuntu 24.04 ships with `apparmor_restrict_unprivileged_userns=1`
-by default, which blocks the unprivileged user namespaces that
-Cowork's bubblewrap sandbox relies on. Symptoms:
+**Cause:** Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`. This blocks the user namespaces Cowork's bubblewrap sandbox needs.
 
-- `claude-desktop --doctor` reports `bubblewrap: sandbox probe failed`
-  with `Operation not permitted` in stderr.
-- `~/.config/Claude/logs/cowork_vm_daemon.log` contains
-  `bwrap is installed but cannot create a user namespace`.
-- Cowork sessions hang at "Starting VM..." or loop on reconnect.
+**Symptom:** `claude-desktop --doctor` shows `Cowork isolation: host-direct (bwrap probe failed)`.
 
-Permit user namespaces for `bwrap` via an AppArmor profile (one-time
-setup, requires sudo):
+**Fix (`.deb` installs):** None needed. The `postinst` installs `/etc/apparmor.d/claude-desktop-bwrap`, granting `userns` to `/usr/bin/bwrap`. Still failing? Reinstall the package — the `postinst` recreates the profile.
+
+**Fix (AppImage, Nix, rpm, and manual installs):** The auto-install is deb-only; install the profile by hand:
 
 ```bash
 sudo tee /etc/apparmor.d/bwrap <<'EOF'
@@ -252,20 +255,120 @@ EOF
 sudo apparmor_parser -r /etc/apparmor.d/bwrap
 ```
 
-After applying the profile, run `claude-desktop --doctor` — the
-bubblewrap probe should pass, and Cowork should start without
-falling back to host-direct.
+**Existing profiles win:** The `postinst` defers to any profile already attaching to `/usr/bin/bwrap` — the hand-made `/etc/apparmor.d/bwrap` above, or `bwrap-userns-restrict` from the `apparmor-profiles` package — rather than shadowing it with its unconfined-mode one. If such a profile blocks `userns`, resolve the conflict yourself before expecting Cowork isolation to work.
 
-**Security note:** this grants `/usr/bin/bwrap` the unconfined
-profile plus the `userns` capability. It matches the behavior
-bwrap had on Ubuntu 22.04 and earlier, and on most other distros,
-but is a system-wide change that affects every program invoking
-`/usr/bin/bwrap` (not just Claude Desktop). Review the profile
-against your threat model before applying.
+**Customizing:** Put overrides in `/etc/apparmor.d/local/claude-desktop-bwrap` — they survive upgrades. Direct edits to the managed profile do not: the `postinst` rewrites any profile carrying its marker header on every upgrade, and removes it on purge.
 
-Credit: this workaround was contributed by
-[@hfyeh](https://github.com/hfyeh) in
-[#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
+**Security:** The profile grants `userns` to `/usr/bin/bwrap` host-wide. Bubblewrap's own sandbox does the confining. Review against your threat model.
+
+**Credit:** [@hfyeh](https://github.com/hfyeh), [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
+
+### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
+
+The `.deb` handles this automatically — this section is for the rare case
+where it doesn't. Ubuntu 24.04+ sets
+`apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
+Chromium's sandbox needs (same root cause as the Cowork case above, but it
+kills the **main app** on startup before any window appears). The deb's
+`postinst` installs a scoped AppArmor profile
+(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the bundled
+Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
+packages do — so a normal install needs no action.
+
+You only need to act if the app still crashes on launch with:
+
+- `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . :
+  Permission denied (13)` in
+  `~/.cache/claude-desktop-debian/launcher.log` (the line number varies by
+  Electron version), and
+- a `Trace/breakpoint trap` / core dump (exit code 133).
+
+Run `sudo claude-desktop --doctor` first — the **User namespaces** check
+reports whether the profile is actually loaded into the kernel (reading the
+loaded set needs root; without `sudo` it can only confirm the profile is
+present on disk). To (re)install it manually:
+
+```bash
+sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile claude-desktop /usr/lib/claude-desktop/node_modules/electron/dist/electron flags=(unconfined) {
+    userns,
+
+    include if exists <local/claude-desktop>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
+```
+
+To customize the profile on a `.deb` install, put overrides in
+`/etc/apparmor.d/local/claude-desktop` — they survive upgrades; direct
+edits to the managed profile are rewritten by the `postinst` on every
+upgrade.
+
+Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
+Chromium sandbox entirely, which the package is built to keep. (AppImage
+builds already launch with `--no-sandbox` because they can't ship a SUID
+helper, so they never hit this crash.)
+
+**Security note:** the profile grants the unconfined profile plus the
+`userns` capability to the bundled Electron binary only, not system-wide —
+narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
+globally, which would lift the restriction for every program on the host.
+Review against your threat model before applying.
+
+### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
+
+The `.deb` handles this automatically — this section is for the rare case
+where it doesn't. Ubuntu 24.04+ sets
+`apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
+Chromium's sandbox needs (same root cause as the Cowork case above, but it
+kills the **main app** on startup before any window appears). The deb's
+`postinst` installs a scoped AppArmor profile
+(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the bundled
+Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
+packages do — so a normal install needs no action.
+
+You only need to act if the app still crashes on launch with:
+
+- `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . :
+  Permission denied (13)` in
+  `~/.cache/claude-desktop-debian/launcher.log` (the line number varies by
+  Electron version), and
+- a `Trace/breakpoint trap` / core dump (exit code 133).
+
+Run `sudo claude-desktop --doctor` first — the **User namespaces** check
+reports whether the profile is actually loaded into the kernel (reading the
+loaded set needs root; without `sudo` it can only confirm the profile is
+present on disk). To (re)install it manually:
+
+```bash
+sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile claude-desktop /usr/lib/claude-desktop/node_modules/electron/dist/electron flags=(unconfined) {
+    userns,
+
+    include if exists <local/claude-desktop>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
+```
+
+Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
+Chromium sandbox entirely, which the package is built to keep. (AppImage
+builds already launch with `--no-sandbox` because they can't ship a SUID
+helper, so they never hit this crash.)
+
+**Security note:** the profile grants the unconfined profile plus the
+`userns` capability to the bundled Electron binary only, not system-wide —
+narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
+globally, which would lift the restriction for every program on the host.
+Review against your threat model before applying.
 
 ### Cowork: "VM connection timeout after 60 seconds"
 

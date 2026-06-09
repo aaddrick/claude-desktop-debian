@@ -176,6 +176,55 @@ _detect_password_store() {
 	echo 'basic'
 }
 
+# Detect whether the previous launch ended in Chromium's
+# "GPU process isn't usable" crash signature (#583).
+#
+# setup_logging() must have run first so $log_file is available. The
+# launcher writes the current session header before build_electron_args()
+# runs, so the previous launch lives in the penultimate log section.
+#
+# A recovered launch (running with --disable-gpu) produces no GPU
+# output, so the crash signature alone would re-enable GPU on launch
+# N+2 and oscillate crash/work/crash on permanently broken hardware.
+# The launcher's own "disabling GPU" marker therefore also counts as
+# a trigger, making recovery sticky once tripped. CLAUDE_DISABLE_GPU=0
+# remains the escape hatch for retesting hardware acceleration.
+#
+# Section headers vary by package format: deb/rpm write "Launcher
+# Start", AppImage writes "AppImage Start", and Nix writes "Launcher
+# Start (NixOS)" (nix/claude-desktop.nix).
+_previous_launch_hit_gpu_fatal() {
+	[[ -f ${log_file:-} ]] || return 1
+
+	awk '
+		/^--- Claude Desktop (Launcher|AppImage) Start( \(NixOS\))? ---$/ {
+			section++
+			next
+		}
+		{
+			sections[section] = sections[section] $0 "\n"
+		}
+		END {
+			target = section > 1 ? section - 1 : section
+			if (target < 1) {
+				exit 1
+			}
+			text = sections[target]
+			if (index(text,
+				"GPU process launch failed: error_code=") &&
+				index(text,
+				"GPU process isn'\''t usable. Goodbye.")) {
+				exit 0
+			}
+			if (index(text,
+				"Previous launch hit GPU process FATAL")) {
+				exit 0
+			}
+			exit 1
+		}
+	' "$log_file"
+}
+
 # Build Electron arguments array based on display backend
 # Requires: is_wayland, use_x11_on_wayland to be set
 #           (call detect_display_backend first)
@@ -220,9 +269,7 @@ build_electron_args() {
 	# value, Electron may silently report encryption unavailable even
 	# when a keyring daemon is running, discarding OAuth tokens on exit
 	# and forcing re-authentication on every launch. We probe for the
-	# best available store at startup and pass it before the app path
-	# so Chromium treats it as a Chromium flag (args after the app
-	# path go to the renderer, not Chromium). Fixes: #593
+	# best available store at startup. Fixes: #593
 	local pw_store
 	pw_store=$(_detect_password_store)
 	electron_args+=("--password-store=${pw_store}")
@@ -251,9 +298,16 @@ build_electron_args() {
 	# behaviour is reachable via Settings → disable hardware
 	# acceleration; this lets users persist it via the env without
 	# having to reach the Settings UI through repeated crashes.
-	if [[ ${CLAUDE_DISABLE_GPU:-} == '1' ]]; then
+	if [[ -v CLAUDE_DISABLE_GPU ]]; then
+		if [[ ${CLAUDE_DISABLE_GPU} == '1' ]]; then
+			_disable_gpu=true
+			log_message \
+				'CLAUDE_DISABLE_GPU=1 - hardware acceleration disabled'
+		fi
+	elif _previous_launch_hit_gpu_fatal; then
 		_disable_gpu=true
-		log_message 'CLAUDE_DISABLE_GPU=1 - hardware acceleration disabled'
+		log_message \
+			'Previous launch hit GPU process FATAL - disabling GPU'
 	fi
 	[[ $_disable_gpu == true ]] \
 		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')
@@ -302,24 +356,46 @@ build_electron_args() {
 	fi
 }
 
+# Does a /proc/PID/cmdline (joined with spaces) belong to the Claude
+# Desktop Electron UI main process?
+#
+# We can NOT fingerprint on `app.asar`: since #700 the launchers no
+# longer pass it as an argument (Electron auto-loads it from
+# resources/), so it never appears in any cmdline.  The stable
+# signature across deb/rpm/AppImage/nix is the `--class=$WM_CLASS`
+# flag every launcher passes via build_electron_args; Chromium keeps
+# the exec'd argv in /proc/PID/cmdline and does not propagate --class
+# to its --type=... helper children (verified empirically).
+#
+# Callers join /proc/PID/cmdline with `tr '\0' ' '`, which leaves
+# every argument space-terminated, so anchoring on the trailing space
+# rejects look-alike classes (e.g. ClaudeDev).
 _claude_desktop_ui_cmdline_matches() {
 	local cmdline="$1"
-	local app_path="${claude_desktop_app_path:-}"
 
+	# Never the cowork daemon (defensive; it carries no --class) and
+	# never a Chromium helper: zygote, renderer, gpu, utility, etc.
 	[[ $cmdline == *cowork-vm-service* ]] && return 1
 	[[ $cmdline == *--type=* ]] && return 1
 
-	if [[ -n $app_path ]]; then
-		[[ $cmdline == *"$app_path"* ]] && return 0
-		return 1
-	fi
-
-	[[ $cmdline == */usr/lib/claude-desktop/*/resources/app.asar* ]]
+	[[ $cmdline == *"--class=$WM_CLASS "* ]]
 }
 
+# Is a live Claude Desktop UI running for this user?
+#
+# We can NOT use `pgrep -f 'claude-desktop'` on its own for this: it
+# matches the launcher's own bash process (this script's cmdline
+# contains "/usr/bin/claude-desktop"), any stale launcher bash left
+# stopped/zombie after a previous crash, and the cowork daemon
+# itself.  Counting any of those as "the UI is alive" causes false
+# negatives in the cleanup functions below.  The reliable definition
+# is: a process whose cmdline carries our --class fingerprint (see
+# _claude_desktop_ui_cmdline_matches) and is actually runnable (not
+# stopped/zombie), excluding our own launcher bash and its parent.
 _claude_desktop_ui_is_alive() {
 	local pid cmdline state
-	for pid in $(pgrep -u "$(id -u)" -f 'app\.asar' 2>/dev/null); do
+	for pid in \
+		$(pgrep -u "$(id -u)" -f -- "--class=$WM_CLASS" 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
@@ -329,7 +405,7 @@ _claude_desktop_ui_is_alive() {
 		state=$(awk '/^State:/ {print $2; exit}' \
 			"/proc/$pid/status" 2>/dev/null) || continue
 		[[ $state == T || $state == t || $state == Z ]] && continue
-		# Found a genuine live Electron UI — daemon is expected
+		# Found a genuine live Electron UI.
 		return 0
 	done
 	return 1
@@ -345,23 +421,13 @@ _claude_desktop_ui_is_alive() {
 # Must run BEFORE cleanup_stale_lock / cleanup_stale_cowork_socket
 # so that stale files left behind by the daemon can be cleaned up.
 cleanup_orphaned_cowork_daemon() {
-	local cowork_pids
+	local cowork_pids pid
 	cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
 		|| return 0
 
-	# Check if a live Claude Desktop UI process is also running.
-	#
-	# We can NOT use `pgrep -f 'claude-desktop'` on its own for this:
-	# it matches the launcher's own bash process (this script's
-	# cmdline contains "/usr/bin/claude-desktop"), any stale launcher
-	# bash left stopped/zombie after a previous crash, and the cowork
-	# daemon itself.  Counting any of those as "the UI is alive"
-	# causes a false negative and the orphan survives.
-	#
-	# The reliable definition of "UI is alive" is: an Electron main
-	# process whose cmdline references app.asar and is NOT a Chromium
-	# helper (--type=...) and NOT the cowork daemon, and is actually
-	# runnable (not stopped/zombie).
+	# A live Claude Desktop UI process means the daemon is expected;
+	# leave it alone.  See _claude_desktop_ui_is_alive for why neither
+	# `pgrep -f 'claude-desktop'` nor an app.asar fingerprint works.
 	if _claude_desktop_ui_is_alive; then
 		return 0
 	fi

@@ -13,6 +13,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 - Explicit quit now keeps the launcher alive until Electron exits, then runs
   stale-helper cleanup for Desktop-owned Cowork, Claude config, and extension
   helpers. Close-to-tray still leaves the app and helpers running.
+  ([#682](https://github.com/aaddrick/claude-desktop-debian/pull/682))
+- All launchers (deb, RPM, AppImage, nix) no longer pass `app.asar` as an Electron
+  argument. Electron auto-loads `app.asar` from its default `resources/` dir next to the
+  binary, so the extra argv entry was redundant — and the app treated it as a
+  file-to-open, surfacing a spurious "Attach app.asar?" prompt on launch and on every
+  taskbar reopen. This removes the path at the source, complementing the renderer-side
+  `.asar` guards in [#669](https://github.com/aaddrick/claude-desktop-debian/pull/669)
+  and surviving upstream re-minification. Live-UI detection in the launcher and doctor,
+  which fingerprinted on the now-removed argv, was updated alongside.
+  ([#700](https://github.com/aaddrick/claude-desktop-debian/pull/700),
+  fixes [#696](https://github.com/aaddrick/claude-desktop-debian/issues/696))
+- Cowork's VM daemon never auto-launched on packages built under a restrictive umask (CI builds with umask `022`, so released artifacts were unaffected; local builds with e.g. `umask 077` were) because the bundled `app.asar.unpacked/` directory shipped as mode `0700` owned by the build uid, so the desktop user running the app couldn't traverse it and the auto-launch `fs.existsSync()` fork guard silently returned `false` (symptom: endless `connect ENOENT …/cowork-vm-service.sock`, no `cowork_vm_daemon.log`, no `[cowork-autolaunch]` line). `deb.sh` now normalizes the installed tree to canonical permissions (directories and executables `755`, other files `644`) and builds with `dpkg-deb --root-owner-group` for `root:root` ownership; `appimage.sh` applies the same normalization to the AppDir before `mksquashfs` (it copies with `cp -a`, which preserved the bad modes); and `rpm.sh` normalizes file modes in `%install` — `%defattr(-, root, root, 0755)` forces directory modes in the payload, but its `-` first field preserves file modes from the `cp -r`-populated buildroot, so a restrictive-umask RPM build shipped an unreadable `app.asar` and a non-executable electron binary.
+- Claude Desktop no longer crashes on launch on Ubuntu 24.04+, where `apparmor_restrict_unprivileged_userns=1` blocks the user namespaces Chromium's sandbox needs (`sandbox/linux/services/credentials.cc` FATAL, `Trace/breakpoint trap`, exit 133). The `.deb` `postinst` now installs a scoped AppArmor profile granting `userns` to the bundled Electron binary — mirroring the `google-chrome`/`code`/`slack` packages — and removes it again on uninstall. The Chromium sandbox stays enabled (no `--no-sandbox`). `claude-desktop --doctor` gained a **User namespaces** check that flags a missing profile. ([#687](https://github.com/aaddrick/claude-desktop-debian/pull/687))
+- Cowork mode no longer silently falls back to host-direct (no isolation) on Ubuntu 24.04+, where `apparmor_restrict_unprivileged_userns=1` blocks the user namespaces its bubblewrap sandbox needs. The `.deb` `postinst` now installs a second scoped AppArmor profile granting `userns` to `/usr/bin/bwrap` (distinct from the Electron profile above), automating the manual workaround from [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351) (contributed by [@hfyeh](https://github.com/hfyeh)). The profile is gated on the kernel's `apparmor_restrict_unprivileged_userns` knob and defers to any profile already attaching to `/usr/bin/bwrap` (a hand-made `/etc/apparmor.d/bwrap`, `apparmor-profiles`' `bwrap-userns-restrict`); put local overrides in `/etc/apparmor.d/local/claude-desktop-bwrap` — they survive upgrades. `bubblewrap` is now a `Recommends`. ([#694](https://github.com/aaddrick/claude-desktop-debian/pull/694))
 
 ### Changed
 
