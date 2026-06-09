@@ -89,6 +89,13 @@ StartupWMClass=$WM_CLASS
 EOF
 echo 'Desktop entry created'
 
+# --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
+echo 'Installing AppStream metainfo...'
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+install -Dm 644 "$script_dir/$metainfo_name" \
+	"$install_dir/share/metainfo/$metainfo_name" || exit 1
+echo 'AppStream metainfo installed'
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$install_dir/bin/claude-desktop" << EOF

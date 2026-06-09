@@ -71,6 +71,10 @@ MimeType=x-scheme-handler/claude;
 StartupWMClass=$WM_CLASS
 EOF
 
+# --- Stage AppStream metainfo (installed via %files block below) ---
+metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
+
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
 cat > "$staging_dir/claude-desktop" << EOF
@@ -224,6 +228,9 @@ cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 # Install desktop entry
 install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
 
+# Install AppStream metainfo (GNOME Software / KDE Discover)
+install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
+
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
 
@@ -245,6 +252,7 @@ update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 %attr(755, root, root) /usr/bin/claude-desktop
 /usr/lib/$package_name
 /usr/share/applications/claude-desktop.desktop
+/usr/share/metainfo/$metainfo_name
 /usr/share/icons/hicolor/*/apps/claude-desktop.png
 SPECEOF
 

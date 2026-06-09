@@ -171,14 +171,15 @@ mkdir -p "$metadata_dir" || exit 1
 appdata_file="$metadata_dir/${component_id}.appdata.xml"
 
 # Generate the AppStream XML file
-# Use MIT license based on LICENSE-MIT file in repo
+# project_license describes the app the user launches (the proprietary
+# Claude binary), not the MIT packaging scripts
 # ID follows reverse DNS convention
 cat > "$appdata_file" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>$component_id</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>LicenseRef-proprietary</project_license>
   <developer id="io.github.aaddrick">
     <name>aaddrick</name>
   </developer>

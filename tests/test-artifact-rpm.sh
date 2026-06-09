@@ -43,6 +43,8 @@ fi
 # --- File existence checks ---
 assert_executable '/usr/bin/claude-desktop'
 assert_file_exists '/usr/share/applications/claude-desktop.desktop'
+assert_file_exists \
+	'/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml'
 assert_dir_exists '/usr/lib/claude-desktop'
 assert_file_exists '/usr/lib/claude-desktop/launcher-common.sh'
 
