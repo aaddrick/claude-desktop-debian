@@ -119,6 +119,51 @@ Interpreting the log after a failure:
 | `lifecycle uncaughtException ...` | JS-level crash, stack is in the log entry |
 | `lifecycle SIGTERM received` + `lifecycle exit code=0` | Clean app-initiated shutdown |
 | No `startup` entry at all | `fork()` didn't complete; check launcher.log for `[cowork-autolaunch]` errors |
+| No `cowork_vm_daemon.log` file at all **and** no `[cowork-autolaunch]` line | The auto-launch `fs.existsSync()` guard returned false — `app.asar.unpacked/` isn't traversable by the running user. Packaging perms bug; see [below](#packaging--appasarunpacked-must-be-traversable-by-the-run-time-user). |
+
+## Packaging — `app.asar.unpacked/` must be traversable by the run-time user
+
+The auto-launch fork is guarded by an existence check:
+
+```javascript
+const _d = _p.join(process.resourcesPath, "app.asar.unpacked",
+    "cowork-vm-service.js");
+if (_fs.existsSync(_d)) { /* fork daemon */ }
+```
+
+`fs.existsSync()` returns **false** when the directory can't be
+traversed, not only when the file is genuinely absent — and there is no
+`else`/`catch`, so the fork is skipped with zero log output. If the
+packaged `app.asar.unpacked/` ships as mode `0700` owned by the build
+uid (a restrictive build umask, plus `dpkg-deb` recording ownership
+verbatim when not run under fakeroot or `--root-owner-group`), the
+desktop user — a *different* uid — can't enter it. `existsSync` is
+false, the daemon never forks, and the client loops forever on `connect
+ENOENT`. The tell is that **both** the daemon log file and the
+`[cowork-autolaunch]` error line are absent: nothing was even attempted.
+
+Confirm what the run-time user actually sees, not what root sees:
+
+```bash
+svc=.../app.asar.unpacked/cowork-vm-service.js
+test -r "$svc" && echo OK || echo BLOCKED   # run as the desktop user
+stat -c '%A %U:%G' "$(dirname "$svc")"      # 0700 + foreign uid == broken
+```
+
+Fixed at the packaging boundary (not in the app code): `deb.sh` and
+`appimage.sh` normalize the staged tree to canonical modes (directories
+and executables `755`, other files `644`) before building, and the deb
+is built with `dpkg-deb --root-owner-group` so ownership is `root:root`.
+RPM has the same exposure through *file* modes: `%defattr(-, root,
+root, 0755)` forces directory modes in the payload, but the `-` in its
+first field preserves file modes verbatim from the buildroot, which
+`%install` populates with plain `cp -r` — so a `umask 077` build ships
+an unreadable `app.asar` and a non-executable electron binary (louder
+symptom: EACCES, since the forced `0755` keeps directories
+traversable). `rpm.sh` therefore normalizes file modes in `%install`
+too. To unstick an already-installed package without rebuilding:
+`sudo chmod -R o+rX /usr/lib/claude-desktop` (preserves the setuid
+`chrome-sandbox`).
 
 ## Key Files
 

@@ -234,6 +234,13 @@ install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$met
 # Install launcher script
 install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
 
+# Normalize file modes — the cp -r above honors the build umask, and
+# the "-" first field of %defattr ships buildroot *file* modes verbatim
+# (only directory modes are forced to 0755), so a umask-077 build would
+# package an unreadable app.asar and a non-executable electron binary.
+# Must run before the chrome-sandbox chmod below so 4755 survives.
+find %{buildroot}/usr/lib/$package_name -type f -exec chmod u=rwX,go=rX {} +
+
 # Set the chrome-sandbox suid bit in the buildroot so the /usr/lib
 # directory walk in %files records 4755 in the payload (preserves #539
 # without the "File listed twice" warning #609 — see %files block).

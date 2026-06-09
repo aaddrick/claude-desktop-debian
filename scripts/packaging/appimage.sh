@@ -270,6 +270,17 @@ if [[ -z $appimagetool_path ]]; then
 	fi
 fi
 
+# Normalize AppDir permissions before squashing. The staging copy above
+# uses `cp -a`, which preserves source modes, and a restrictive build
+# umask can leave directories at 0700. mksquashfs records those verbatim,
+# so a user who later runs the AppImage can't traverse into
+# app.asar.unpacked/ — silently breaking Cowork's daemon auto-launch (the
+# fork is guarded by fs.existsSync(), false on a directory it can't read).
+# Canonical modes: dirs and already-executable files 755, the rest 644.
+echo 'Normalizing AppDir permissions...'
+find "$appdir_path" -type d -exec chmod 755 {} + || exit 1
+find "$appdir_path" -type f -exec chmod u=rwX,go=rX {} + || exit 1
+
 # --- Build AppImage ---
 echo 'Building AppImage...'
 output_filename="${package_name}-${version}-${architecture}.AppImage"
