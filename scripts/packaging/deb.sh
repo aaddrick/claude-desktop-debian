@@ -186,7 +186,9 @@ echo 'Launcher script created'
 echo 'Creating control file...'
 # Electron is bundled with its own Node.js runtime, so nodejs/npm are not
 # runtime dependencies. p7zip is only used at build time to extract the
-# installer. No external dependencies are required at runtime.
+# installer. bubblewrap is Recommended (not required): it provides the
+# default namespace-sandbox isolation for Cowork mode; the app runs without
+# it (Cowork falls back to host-direct). apt installs Recommends by default.
 
 cat > "$package_root/DEBIAN/control" << EOF
 Package: $package_name
@@ -194,6 +196,7 @@ Version: $version
 Section: utils
 Priority: optional
 Architecture: $architecture
+Recommends: bubblewrap
 Maintainer: $maintainer
 Description: $description
  Claude is an AI assistant from Anthropic.
@@ -286,6 +289,80 @@ APPARMOR_EOF
     fi
 fi
 
+# --- AppArmor profile for the Cowork bwrap sandbox helper ---
+# Cowork's "bwrap backend" runs the agent's Claude Code process inside a
+# bubblewrap sandbox, which itself needs unprivileged user namespaces — the
+# same thing Ubuntu 24.04+ blocks (apparmor_restrict_unprivileged_userns=1).
+# bwrap is a SEPARATE binary from the Electron app, so the claude-desktop
+# profile above (which scopes the Electron binary) does not cover it; it
+# needs its own profile on /usr/bin/bwrap. Without this, Cowork silently
+# falls back to host-direct (no isolation).
+#
+# Gate on the kernel knob, exactly like the Electron block above: only a
+# kernel that can enforce the restriction exposes the knob, and a userspace
+# parser that merely accepts the userns rule (AppArmor 4) is not
+# enforcement — without the knob the profile is dead weight on a binary
+# this package does not own. There is deliberately no [ -x /usr/bin/bwrap ]
+# gate: a profile attaching to a nonexistent binary is inert, and dpkg
+# gives Recommends no ordering edge, so gating on the binary races a
+# same-transaction bubblewrap install. Static checks only: postinst runs as
+# root, which is exempt from the unprivileged-userns restriction, so a
+# behavioral bwrap probe here would falsely pass — the behavioral probe
+# lives in 'claude-desktop --doctor' instead (runs as the user).
+BWRAP_PROFILE="/etc/apparmor.d/${package_name}-bwrap"
+if command -v apparmor_parser >/dev/null 2>&1 \
+    && [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+    echo "Configuring AppArmor profile for the Cowork bwrap sandbox..."
+    # Writing the profile is best-effort: a read-only or atypical /etc must
+    # never abort the install (this postinst runs under set -e). Keeping the
+    # grep / mkdir + heredoc in the if/elif conditions exempts them from
+    # errexit. Debian Policy 10.7.3: a profile without our marker header was
+    # hand-created or hand-edited by the admin — preserve it, never overwrite.
+    if [ -e "\$BWRAP_PROFILE" ] \
+        && ! grep -qF "managed by the $package_name package" \
+            "\$BWRAP_PROFILE" 2>/dev/null; then
+        echo "Preserving locally modified \$BWRAP_PROFILE (no marker header)"
+        apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || true
+    elif grep -rl '/usr/bin/bwrap' /etc/apparmor.d/ 2>/dev/null \
+        | grep -vxF "\$BWRAP_PROFILE" | grep -q .; then
+        # Another profile already attaches to /usr/bin/bwrap — a hand-made
+        # /etc/apparmor.d/bwrap, apparmor-profiles' bwrap-userns-restrict,
+        # or any other filename. Identical attachment strings have no
+        # specificity tiebreak, and shadowing a restrictive profile with our
+        # unconfined-mode one would silently undo distro hardening, so defer
+        # to the existing profile. (A false grep hit in a comment fails
+        # safe: we merely skip our profile.)
+        echo "An existing AppArmor profile already covers /usr/bin/bwrap; leaving it in charge."
+    elif mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
+# This profile is managed by the $package_name package (postinst); direct
+# edits will be overwritten on upgrade. Put local changes in
+# /etc/apparmor.d/local/${package_name}-bwrap instead.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile ${package_name}-bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+
+    include if exists <local/${package_name}-bwrap>
+}
+BWRAP_APPARMOR_EOF
+    then
+        if apparmor_parser -Q "\$BWRAP_PROFILE" >/dev/null 2>&1; then
+            apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || echo "Note: bwrap AppArmor profile staged but not loaded now; it will apply on the next AppArmor reload or reboot."
+            echo "Cowork bwrap AppArmor profile installed at \$BWRAP_PROFILE"
+        else
+            rm -f "\$BWRAP_PROFILE"
+            echo "AppArmor on this system does not support the userns rule; skipping bwrap profile (not required here)."
+        fi
+    else
+        # A failed write may leave a truncated profile behind; clear it.
+        # The || true is mandatory: this branch is errexit-live, and a bare
+        # rm fails the upgrade on a read-only /etc.
+        rm -f "\$BWRAP_PROFILE" 2>/dev/null || true
+        echo "Warning: could not write \$BWRAP_PROFILE; skipping bwrap AppArmor profile."
+    fi
+fi
+
 exit 0
 EOF
 chmod +x "$package_root/DEBIAN/postinst" || exit 1
@@ -293,30 +370,34 @@ echo 'Postinst script created'
 
 # --- Create Postrm Script ---
 echo 'Creating postrm script...'
-# The AppArmor profile is generated by postinst, not tracked by dpkg, so we
-# unload and delete it ourselves. Cleanup lives in postrm (not prerm) so it
+# The AppArmor profiles are generated by postinst, not tracked by dpkg, so we
+# unload and delete them ourselves. Cleanup lives in postrm (not prerm) so it
 # also fires on purge and abort-install. Skip on upgrade — the incoming
-# postinst rewrites and reloads it. 'disappear' is deliberately not handled:
+# postinst rewrites and reloads them. 'disappear' is deliberately not handled:
 # matching it would also clean during the overwrite-by-another-package flow.
-# Per Debian Policy 10.7.3 the profile is configuration: unload it whenever
-# the confined binary goes away, but delete the file only on purge — a
-# profile for an absent binary is a harmless no-op (google-chrome leaves
-# its profile behind the same way).
+# Two profiles: the Electron one (Chromium sandbox, #687) and the bwrap one
+# (Cowork sandbox helper, #694).
+# Per Debian Policy 10.7.3 the profiles are configuration: unload them
+# whenever the confined binaries go away, but delete the files only on
+# purge — a profile for an absent binary is a harmless no-op (google-chrome
+# leaves its profile behind the same way).
 cat > "$package_root/DEBIAN/postrm" << EOF
 #!/bin/sh
 set -e
 
 case "\$1" in
     remove|purge|abort-install)
-        APPARMOR_PROFILE="/etc/apparmor.d/$package_name"
-        if [ -e "\$APPARMOR_PROFILE" ] \
-            && command -v apparmor_parser >/dev/null 2>&1; then
-            apparmor_parser -R "\$APPARMOR_PROFILE" >/dev/null 2>&1 || true
-        fi
-        # Policy 10.7.3: config survives remove; delete on purge only.
-        if [ "\$1" = purge ]; then
-            rm -f "\$APPARMOR_PROFILE" 2>/dev/null || true
-        fi
+        for _profile in "/etc/apparmor.d/$package_name" \
+            "/etc/apparmor.d/${package_name}-bwrap"; do
+            if [ -e "\$_profile" ] \
+                && command -v apparmor_parser >/dev/null 2>&1; then
+                apparmor_parser -R "\$_profile" >/dev/null 2>&1 || true
+            fi
+            # Policy 10.7.3: config survives remove; delete on purge only.
+            if [ "\$1" = purge ]; then
+                rm -f "\$_profile" 2>/dev/null || true
+            fi
+        done
         ;;
 esac
 

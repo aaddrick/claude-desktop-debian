@@ -991,8 +991,7 @@ print(len(servers))
 					'apparmor_restrict_unprivileged_userns=1'
 				_info \
 					'  by default. See docs/troubleshooting.md' \
-					'"Cowork on Ubuntu 24.04"'
-				_info '  for the AppArmor profile fix.'
+					'"Cowork on Ubuntu 24.04" for the AppArmor profile fix.'
 			fi
 		fi
 	else
