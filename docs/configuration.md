@@ -167,6 +167,11 @@ The string and object forms can be mixed freely in the same array.
 > `/sbin`, `/lib`, `/lib64`) silently replaces it inside the sandbox; you
 > almost never want this, and `--doctor` will warn if you do.
 
+> **Note for immutable distros (Fedora Silverblue, Bazzite):** Use the real
+> home path `/var/home/<user>/...` in `additionalBinds` — avoid the
+> `/home/<user>` symlink form, as the bwrap sandbox does not follow it.
+> For example: `"/var/home/cloud/dev"` instead of `"/home/cloud/dev"`.
+
 ### Security notes
 
 - Paths `/`, `/proc`, `/dev`, `/sys` (and their subpaths) are always rejected

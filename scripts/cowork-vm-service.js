@@ -865,18 +865,14 @@ function mergeBwrapArgs(defaultArgs, config) {
     }
 
     for (const m of config.additionalROBinds) {
-        if (typeof m === 'string') {
-            result.push('--ro-bind', m, m);
-        } else {
-            result.push('--ro-bind', m.src, m.dst);
-        }
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', dst);
+        result.push('--ro-bind', typeof m === 'string' ? m : m.src, dst);
     }
     for (const m of config.additionalBinds) {
-        if (typeof m === 'string') {
-            result.push('--bind', m, m);
-        } else {
-            result.push('--bind', m.src, m.dst);
-        }
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', dst);
+        result.push('--bind', typeof m === 'string' ? m : m.src, dst);
     }
 
     return result;

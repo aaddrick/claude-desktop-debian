@@ -460,8 +460,8 @@ const result = mergeBwrapArgs(defaults, {
     disabledDefaultBinds: []
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
-    '--ro-bind', '/opt/tools', '/opt/tools',
-    '--ro-bind', '/nix/store', '/nix/store'];
+    '--dir', '/opt/tools', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', '/nix/store', '--ro-bind', '/nix/store', '/nix/store'];
 assertDeepEqual(result, expected, 'ro appended');
 "
 	[[ "$status" -eq 0 ]]
@@ -477,7 +477,7 @@ const result = mergeBwrapArgs(defaults, {
     disabledDefaultBinds: []
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
-    '--bind', home + '/data', home + '/data'];
+    '--dir', home + '/data', '--bind', home + '/data', home + '/data'];
 assertDeepEqual(result, expected, 'rw appended');
 "
 	[[ "$status" -eq 0 ]]
@@ -495,9 +495,34 @@ const result = mergeBwrapArgs(defaults, {
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
     '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--tmpfs', '/run',
-    '--ro-bind', '/opt/tools', '/opt/tools',
-    '--bind', home + '/shared', home + '/shared'];
+    '--dir', '/opt/tools', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', home + '/shared', '--bind', home + '/shared', home + '/shared'];
 assertDeepEqual(result, expected, 'combined');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: emits --dir before --bind on immutable distros (Silverblue/Bazzite)" {
+	# On Fedora Silverblue/Bazzite, os.homedir() returns /var/home/<user>
+	# instead of /home/<user>. The bwrap sandbox starts with --tmpfs / so
+	# /var/home does not exist at all. Without a preceding --dir the bind
+	# destination is absent and bwrap silently drops the mount.
+	run node -e "${NODE_PREAMBLE}
+const varHome = '/var/home/cloud';
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [],
+    additionalBinds: [varHome + '/dev'],
+    disabledDefaultBinds: []
+});
+const dirIdx = result.indexOf('--dir');
+const bindIdx = result.indexOf('--bind');
+assert(dirIdx !== -1, '--dir must be present');
+assert(bindIdx !== -1, '--bind must be present');
+assert(dirIdx < bindIdx, '--dir (' + dirIdx + ') must precede --bind (' + bindIdx + ')');
+assertEqual(result[dirIdx + 1], varHome + '/dev', '--dir target must be dst');
+assertEqual(result[bindIdx + 1], varHome + '/dev', '--bind src');
+assertEqual(result[bindIdx + 2], varHome + '/dev', '--bind dst');
 "
 	[[ "$status" -eq 0 ]]
 }
@@ -802,7 +827,7 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--ro-bind', '/opt/tools', '/sandbox/tools'
+    '--dir', '/sandbox/tools', '--ro-bind', '/opt/tools', '/sandbox/tools'
 ], 'ro object form');
 "
 	[[ "$status" -eq 0 ]]
@@ -819,7 +844,7 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--bind', home + '/persistent', '/tmp'
+    '--dir', '/tmp', '--bind', home + '/persistent', '/tmp'
 ], 'rw object form');
 "
 	[[ "$status" -eq 0 ]]
@@ -842,10 +867,10 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--ro-bind', '/opt/tools', '/opt/tools',
-    '--ro-bind', '/nix/store', '/sandbox/nix',
-    '--bind', home + '/data', home + '/data',
-    '--bind', home + '/cache', '/tmp'
+    '--dir', '/opt/tools', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', '/sandbox/nix', '--ro-bind', '/nix/store', '/sandbox/nix',
+    '--dir', home + '/data', '--bind', home + '/data', home + '/data',
+    '--dir', '/tmp', '--bind', home + '/cache', '/tmp'
 ], 'mixed forms');
 "
 	[[ "$status" -eq 0 ]]
