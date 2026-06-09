@@ -291,22 +291,45 @@ fi
 # needs its own profile on /usr/bin/bwrap. Without this, Cowork silently
 # falls back to host-direct (no isolation).
 #
-# Discovery-led, not distro-led: install when AppArmor can parse the userns
-# rule (4.0+) AND bwrap is present AND no other profile already owns bwrap.
-# This also covers a hardened Debian (restriction enabled) and is a harmless
-# no-op where the restriction is off. Static checks only: postinst runs as
+# Gate on the kernel knob, exactly like the Electron block above: only a
+# kernel that can enforce the restriction exposes the knob, and a userspace
+# parser that merely accepts the userns rule (AppArmor 4) is not
+# enforcement — without the knob the profile is dead weight on a binary
+# this package does not own. There is deliberately no [ -x /usr/bin/bwrap ]
+# gate: a profile attaching to a nonexistent binary is inert, and dpkg
+# gives Recommends no ordering edge, so gating on the binary races a
+# same-transaction bubblewrap install. Static checks only: postinst runs as
 # root, which is exempt from the unprivileged-userns restriction, so a
 # behavioral bwrap probe here would falsely pass — the behavioral probe
 # lives in 'claude-desktop --doctor' instead (runs as the user).
 BWRAP_PROFILE="/etc/apparmor.d/${package_name}-bwrap"
 if command -v apparmor_parser >/dev/null 2>&1 \
-    && [ -x /usr/bin/bwrap ] \
-    && [ ! -e /etc/apparmor.d/bwrap ]; then
+    && [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
     echo "Configuring AppArmor profile for the Cowork bwrap sandbox..."
     # Writing the profile is best-effort: a read-only or atypical /etc must
     # never abort the install (this postinst runs under set -e). Keeping the
-    # mkdir + heredoc in the if-condition exempts them from errexit.
-    if mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
+    # grep / mkdir + heredoc in the if/elif conditions exempts them from
+    # errexit. Debian Policy 10.7.3: a profile without our marker header was
+    # hand-created or hand-edited by the admin — preserve it, never overwrite.
+    if [ -e "\$BWRAP_PROFILE" ] \
+        && ! grep -qF "managed by the $package_name package" \
+            "\$BWRAP_PROFILE" 2>/dev/null; then
+        echo "Preserving locally modified \$BWRAP_PROFILE (no marker header)"
+        apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || true
+    elif grep -rl '/usr/bin/bwrap' /etc/apparmor.d/ 2>/dev/null \
+        | grep -vxF "\$BWRAP_PROFILE" | grep -q .; then
+        # Another profile already attaches to /usr/bin/bwrap — a hand-made
+        # /etc/apparmor.d/bwrap, apparmor-profiles' bwrap-userns-restrict,
+        # or any other filename. Identical attachment strings have no
+        # specificity tiebreak, and shadowing a restrictive profile with our
+        # unconfined-mode one would silently undo distro hardening, so defer
+        # to the existing profile. (A false grep hit in a comment fails
+        # safe: we merely skip our profile.)
+        echo "An existing AppArmor profile already covers /usr/bin/bwrap; leaving it in charge."
+    elif mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
+# This profile is managed by the $package_name package (postinst); direct
+# edits will be overwritten on upgrade. Put local changes in
+# /etc/apparmor.d/local/${package_name}-bwrap instead.
 abi <abi/4.0>,
 include <tunables/global>
 
@@ -325,6 +348,10 @@ BWRAP_APPARMOR_EOF
             echo "AppArmor on this system does not support the userns rule; skipping bwrap profile (not required here)."
         fi
     else
+        # A failed write may leave a truncated profile behind; clear it.
+        # The || true is mandatory: this branch is errexit-live, and a bare
+        # rm fails the upgrade on a read-only /etc.
+        rm -f "\$BWRAP_PROFILE" 2>/dev/null || true
         echo "Warning: could not write \$BWRAP_PROFILE; skipping bwrap AppArmor profile."
     fi
 fi
