@@ -319,7 +319,7 @@ _claude_desktop_ui_cmdline_matches() {
 
 _claude_desktop_ui_is_alive() {
 	local pid cmdline state
-	for pid in $(pgrep -f 'app\.asar' 2>/dev/null); do
+	for pid in $(pgrep -u "$(id -u)" -f 'app\.asar' 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
@@ -397,7 +397,7 @@ _desktop_helper_cmdline_matches() {
 		*cowork-vm-service.js*)
 			return 0
 			;;
-		*"--user-data-dir=$config_dir"*)
+		*"--user-data-dir=$config_dir "*)
 			return 0
 			;;
 		*"$config_dir/Claude Extensions/"*)
@@ -411,30 +411,13 @@ _desktop_helper_cmdline_matches() {
 	return 1
 }
 
-_desktop_scoped_mcp_cmdline_matches() {
-	local cmdline="$1"
-
-	case "$cmdline" in
-		*' mcp'|*' mcp '*|*@modelcontextprotocol/*|*-mcp*)
-			return 0
-			;;
-	esac
-
-	return 1
-}
-
-_pid_in_claude_desktop_scope() {
-	local pid="$1"
-
-	grep -q '/app-claude-desktop-[^/]*\.scope' \
-		"/proc/$pid/cgroup" 2>/dev/null
-}
-
 _desktop_helper_candidate_pids() {
-	pgrep -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/|[[:space:]]mcp([[:space:]]|$)|@modelcontextprotocol/|-mcp' 2>/dev/null
+	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/' 2>/dev/null
 }
 
 cleanup_stale_desktop_helpers() {
+	# A live UI (any instance) suppresses all cleanup. We don't scope
+	# helpers per-instance. Safe, not complete.
 	if _claude_desktop_ui_is_alive; then
 		return 0
 	fi
@@ -448,13 +431,7 @@ cleanup_stale_desktop_helpers() {
 		[[ ${_electron_child_pid:-} == "$pid" ]] && continue
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
-		if ! _desktop_helper_cmdline_matches "$cmdline"; then
-			if ! _pid_in_claude_desktop_scope "$pid" \
-				|| ! _desktop_scoped_mcp_cmdline_matches "$cmdline"
-			then
-				continue
-			fi
-		fi
+		_desktop_helper_cmdline_matches "$cmdline" || continue
 		matched+=("$pid")
 	done
 
@@ -475,7 +452,7 @@ cleanup_stale_desktop_helpers() {
 		done
 		[[ $alive == false ]] && break
 		sleep 0.1
-		((wait_count++))
+		wait_count=$((wait_count + 1))
 	done
 
 	if [[ $alive == true ]]; then

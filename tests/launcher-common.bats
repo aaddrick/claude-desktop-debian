@@ -761,10 +761,12 @@ s.close()
 	sleep 300 &
 	ui_pid=$!
 
+	# Match on "$*", not "$2": the UI scan passes -u <uid> before -f,
+	# so the pattern is no longer at a fixed argument position.
 	pgrep() {
-		if [[ $2 == *cowork-vm-service* ]]; then
+		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
-		elif [[ $2 == *app* ]]; then
+		elif [[ $* == *app* ]]; then
 			echo "$ui_pid"
 		fi
 	}
@@ -851,6 +853,16 @@ s.close()
 		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
+	# tr '\0' ' ' joins cmdline args with a trailing space, so the
+	# --user-data-dir arm anchors on "$config_dir " — exact dir only.
+	run _desktop_helper_cmdline_matches \
+		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=$config_dir "
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=${config_dir}Dev "
+	[[ $status -ne 0 ]]
+
 	run _desktop_helper_cmdline_matches \
 		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js"
 	[[ $status -eq 0 ]]
@@ -886,38 +898,6 @@ s.close()
 	run _claude_desktop_ui_cmdline_matches \
 		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude"
 	[[ $status -ne 0 ]]
-}
-
-@test "_desktop_scoped_mcp_cmdline_matches: matches MCP commands only" {
-	run _desktop_scoped_mcp_cmdline_matches \
-		"/usr/bin/node /home/scott/dev/dude/core/agent-dude/dist/index.js mcp"
-	[[ $status -eq 0 ]]
-
-	run _desktop_scoped_mcp_cmdline_matches \
-		"npx -y @modelcontextprotocol/server-filesystem /home/scott"
-	[[ $status -eq 0 ]]
-
-	run _desktop_scoped_mcp_cmdline_matches \
-		"uvx computer-control-mcp@latest"
-	[[ $status -eq 0 ]]
-
-	run _desktop_scoped_mcp_cmdline_matches \
-		"xed /home/scott/.config/Claude/logs/mcp-server-agent-dude.log"
-	[[ $status -ne 0 ]]
-
-	run _desktop_scoped_mcp_cmdline_matches \
-		"termium daemon-server"
-	[[ $status -ne 0 ]]
-}
-
-@test "_desktop_helper_candidate_pids: includes MCP-like commands" {
-	pgrep() {
-		[[ $1 == '-f' ]] || return 1
-		[[ $2 == *'[[:space:]]mcp([[:space:]]|$)'* ]]
-	}
-
-	run _desktop_helper_candidate_pids
-	[[ $status -eq 0 ]]
 }
 
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
