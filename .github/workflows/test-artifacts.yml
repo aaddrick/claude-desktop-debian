@@ -2,6 +2,11 @@ name: Test Build Artifacts (Reusable)
 
 on:
   workflow_call:
+    inputs:
+      arch:
+        description: Architecture of the artifacts under test (amd64/arm64)
+        type: string
+        default: amd64
 
 permissions:
   contents: read
@@ -13,17 +18,17 @@ jobs:
       matrix:
         include:
           - format: deb
-            artifact: package-amd64-deb
             container: ""
           - format: rpm
-            artifact: package-amd64-rpm
             container: "fedora:42"
           - format: appimage
-            artifact: package-amd64-appimage
             container: ""
 
-    name: Validate ${{ matrix.format }} package
-    runs-on: ubuntu-latest
+    name: Validate ${{ inputs.arch }} ${{ matrix.format }} package
+    # arm64 artifacts run on a native arm64 runner (matching build-arm64)
+    # so the launch smoke test actually executes the packaged binary
+    # rather than failing on a foreign architecture.
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-latest' }}
     container: ${{ matrix.container || '' }}
 
     steps:
@@ -33,7 +38,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ${{ matrix.artifact }}
+          name: package-${{ inputs.arch }}-${{ matrix.format }}
           path: artifacts/
 
       - name: Install test dependencies (Fedora)
@@ -77,6 +82,8 @@ jobs:
           done
 
       - name: Run artifact tests
+        env:
+          TARGET_ARCH: ${{ inputs.arch }}
         run: |
           chmod +x tests/test-artifact-${{ matrix.format }}.sh
           tests/test-artifact-${{ matrix.format }}.sh artifacts/

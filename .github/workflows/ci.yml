@@ -54,9 +54,11 @@ jobs:
       release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
   test-artifacts:
-    name: Test Build Artifacts
+    name: Test Build Artifacts (amd64)
     needs: [build-amd64]
     uses: ./.github/workflows/test-artifacts.yml
+    with:
+      arch: amd64
 
   build-arm64:
     name: Build Packages (arm64 - ${{ matrix.artifact_suffix }})
@@ -82,10 +84,17 @@ jobs:
       artifact_suffix: ${{ matrix.artifact_suffix }}
       release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
+  test-artifacts-arm64:
+    name: Test Build Artifacts (arm64)
+    needs: [build-arm64]
+    uses: ./.github/workflows/test-artifacts.yml
+    with:
+      arch: arm64
+
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-flags, build-amd64, build-arm64, test-artifacts]
+    needs: [test-flags, build-amd64, build-arm64, test-artifacts, test-artifacts-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
