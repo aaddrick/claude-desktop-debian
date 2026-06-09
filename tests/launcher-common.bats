@@ -754,11 +754,14 @@ s.close()
 }
 
 @test "cleanup_orphaned_cowork_daemon: live UI present — daemon left running" {
-	# A real background process stands in for the live Electron UI: its
-	# cmdline ('sleep ...') is neither the cowork daemon nor a --type=
-	# helper, and its state is sleeping (not T/t/Z), so the function
-	# treats it as a live UI and must NOT kill the daemon.
-	sleep 300 &
+	# A real background process stands in for the live Electron UI so
+	# the /proc cmdline and status reads resolve naturally. UI detection
+	# is keyed on the Claude bundle's app.asar path, so the stand-in's
+	# argv[0] is renamed to it via exec -a. Its state is sleeping (not
+	# T/t/Z), so the function treats it as a live UI and must NOT kill
+	# the daemon.
+	bash -c \
+		'exec -a /usr/lib/claude-desktop/electron/resources/app.asar sleep 300' &
 	ui_pid=$!
 
 	# Match on "$*", not "$2": the UI scan passes -u <uid> before -f,
