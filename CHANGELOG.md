@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Fixed
 
 - `claude-desktop --doctor` reports the installed version from the package manager that actually owns the install (probed via `rpm -qf` on the bundled Electron binary) instead of trusting `dpkg-query` alone — rpm installs on hosts that also carry a stale dpkg record (e.g. Fedora boxes with dpkg installed as a build tool) no longer show a months-old version with a PASS. ([#712](https://github.com/aaddrick/claude-desktop-debian/pull/712), fixes [#711](https://github.com/aaddrick/claude-desktop-debian/issues/711))
+- `claude-desktop --doctor` no longer reports a removed-but-not-purged deb (dpkg `config-files`/rc state) as installed — the dpkg branch now gates on `${db:Status-Status}` being `installed`, so a leftover record from `apt remove` (without `--purge`) warns like an AppImage/Nix install instead of a months-old PASS. ([#713](https://github.com/aaddrick/claude-desktop-debian/pull/713), follow-up to [#712](https://github.com/aaddrick/claude-desktop-debian/pull/712))
 
 ## [v2.0.19] — 2026-06-10
 

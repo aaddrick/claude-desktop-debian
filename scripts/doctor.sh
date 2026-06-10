@@ -652,10 +652,19 @@ _doctor_check_pkg_version() {
 	fi
 
 	# dpkg branch: only consulted when rpm does not own the install.
+	# Gate on the install status, not just the version: dpkg-query
+	# still prints a version for a removed-but-not-purged package (rc
+	# state, ${db:Status-Status} == config-files), so trusting the
+	# version alone would PASS for software that is no longer installed
+	# — the same false-PASS family as #711. Accept only the `installed`
+	# status; config-files and any other state fall through to the warn.
 	if command -v dpkg-query &>/dev/null; then
-		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop 2>/dev/null) || pkg_version=''
-		if [[ -n $pkg_version ]]; then
+		local dpkg_status=''
+		dpkg_status=$(dpkg-query -W \
+			-f='${db:Status-Status} ${Version}' \
+			claude-desktop 2>/dev/null) || dpkg_status=''
+		if [[ $dpkg_status == 'installed '* ]]; then
+			pkg_version="${dpkg_status#installed }"
 			_pass "Installed version: $pkg_version"
 			return 0
 		fi
