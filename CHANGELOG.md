@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `claude-desktop --doctor` reports the installed version from the package manager that actually owns the install (probed via `rpm -qf` on the bundled Electron binary) instead of trusting `dpkg-query` alone — rpm installs on hosts that also carry a stale dpkg record (e.g. Fedora boxes with dpkg installed as a build tool) no longer show a months-old version with a PASS. ([#712](https://github.com/aaddrick/claude-desktop-debian/pull/712), fixes [#711](https://github.com/aaddrick/claude-desktop-debian/issues/711))
+
 ## [v2.0.19] — 2026-06-10
 
 Tracks upstream Claude Desktop 1.11847.5.
