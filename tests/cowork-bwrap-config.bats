@@ -135,6 +135,32 @@ assertDeepEqual(result, { valid: true }, 'rw under home');
 	[[ "$status" -eq 0 ]]
 }
 
+@test "validateMountPath: accepts RW paths under real HOME on immutable distros (Silverblue/Bazzite)" {
+	# On Fedora Silverblue/Bazzite, /home is a symlink to /var/home.
+	# os.homedir() returns /home/<user> but fs.realpathSync resolves it to
+	# /var/home/<user>. Without resolving $HOME before comparing, both the
+	# symlink form (/home/user/dir) and the real form (/var/home/user/dir)
+	# were rejected with "Read-write mounts must be under $HOME".
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+let realHome = home;
+try { realHome = require('fs').realpathSync(home); } catch (_) {}
+
+// Symlink form: must pass regardless of whether realpath differs
+const r1 = validateMountPath(home + '/dev', { readWrite: true });
+assert(r1.valid, 'symlink-form home path must be accepted: ' + home + '/dev');
+
+// Real path form: must also pass when realHome differs from home
+const r2 = validateMountPath(realHome + '/dev', { readWrite: true });
+assert(r2.valid, 'realpath-form home path must be accepted: ' + realHome + '/dev');
+
+// Non-home path must still be rejected
+const r3 = validateMountPath('/opt/tools', { readWrite: true });
+assert(!r3.valid, '/opt/tools must still be rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
 @test "validateMountPath: accepts RO paths anywhere (not forbidden)" {
 	run node -e "${NODE_PREAMBLE}
 const r1 = validateMountPath('/opt/my-tools');

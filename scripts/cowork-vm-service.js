@@ -727,8 +727,11 @@ function validateMountPath(mountPath, opts) {
 
     if (opts.readWrite) {
         const home = os.homedir();
+        let realHome = home;
+        try { realHome = fs.realpathSync(home); } catch (_) {}
         const check = resolved !== normalized ? resolved : normalized;
-        if (check !== home && !check.startsWith(home + '/')) {
+        const underHome = (h) => check === h || check.startsWith(h + '/');
+        if (!underHome(home) && !underHome(realHome)) {
             return { valid: false, reason: 'Read-write mounts must be under $HOME' };
         }
     }
