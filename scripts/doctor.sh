@@ -618,6 +618,57 @@ _doctor_check_disk_space() {
 	fi
 }
 
+# Report the installed claude-desktop version from the package manager
+# that actually owns the install (#711). On dual-DB hosts (e.g. a
+# Fedora box with dpkg installed for deb work) a stale dpkg record
+# must not shadow the live rpm install, so rpm ownership of the real
+# Electron binary is probed first: `rpm -qf <path>` succeeds only when
+# rpm installed the file, which a stale dpkg record can never claim.
+# dpkg is consulted only when rpm does not own the path.
+#
+# AppImage and Nix installs (no package owns the path) keep the
+# existing not-found warn; hosts with no package tools stay silent.
+#
+# Usage: _doctor_check_pkg_version <electron_path>
+_doctor_check_pkg_version() {
+	local electron_path="${1:-}"
+	local probe_path="$electron_path"
+	local pkg_version=''
+
+	if [[ -z $probe_path ]]; then
+		probe_path='/usr/lib/claude-desktop'
+		probe_path+='/node_modules/electron/dist/electron'
+	fi
+
+	# rpm branch: query the file, not the package name, so the answer
+	# comes from the database that owns the actual install.
+	if command -v rpm &>/dev/null; then
+		pkg_version=$(rpm -qf --qf '%{VERSION}-%{RELEASE}' \
+			"$probe_path" 2>/dev/null) || pkg_version=''
+		if [[ -n $pkg_version ]]; then
+			_pass "Installed version: $pkg_version"
+			return 0
+		fi
+	fi
+
+	# dpkg branch: only consulted when rpm does not own the install.
+	if command -v dpkg-query &>/dev/null; then
+		pkg_version=$(dpkg-query -W -f='${Version}' \
+			claude-desktop 2>/dev/null) || pkg_version=''
+		if [[ -n $pkg_version ]]; then
+			_pass "Installed version: $pkg_version"
+			return 0
+		fi
+	fi
+
+	# Neither manager knows the install — AppImage or Nix. Only warn
+	# when a package tool exists; with none there is nothing to say.
+	if command -v rpm &>/dev/null \
+		|| command -v dpkg-query &>/dev/null; then
+		_warn 'claude-desktop not found via dpkg/rpm (AppImage?)'
+	fi
+}
+
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
@@ -635,16 +686,7 @@ run_doctor() {
 	echo
 
 	# -- Installed package version --
-	if command -v dpkg-query &>/dev/null; then
-		local pkg_version
-		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop 2>/dev/null) || true
-		if [[ -n $pkg_version ]]; then
-			_pass "Installed version: $pkg_version"
-		else
-			_warn 'claude-desktop not found via dpkg (AppImage?)'
-		fi
-	fi
+	_doctor_check_pkg_version "$electron_path"
 
 	# -- Display server --
 	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
