@@ -530,3 +530,85 @@ SHIM
 	[[ $output != *'[FAIL]'* ]]
 	[[ $output != *'[WARN]'* ]]
 }
+
+# =============================================================================
+# _doctor_check_pkg_version: package-manager ownership (#711)
+# =============================================================================
+
+# Make `command -v` report the named package tools (rpm, dpkg-query)
+# as missing so tests can simulate single-manager or tool-less hosts
+# regardless of what the CI/dev box really has installed. Same shadow
+# trick as _skip_gtk_query: `command -v` finds functions too, so
+# shadowing `command` itself is the only reliable way.
+_hide_pkg_tools() {
+	_hidden_pkg_tools=" $* "
+	command() {
+		if [[ $1 == '-v' \
+			&& $_hidden_pkg_tools == *" $2 "* ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+}
+
+@test "_doctor_check_pkg_version: rpm owns the path — rpm version wins over stale dpkg record (#711)" {
+	# The #711 repro: Fedora host, rpm owns the install, but a stale
+	# dpkg record from an old deb experiment still answers. The rpm
+	# answer must win; the stale dpkg version must not appear at all.
+	rpm() { printf '1.11847.5-2.0.19'; }
+	dpkg-query() { printf '1.5354.0'; }
+
+	run _doctor_check_pkg_version \
+		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Installed version: 1.11847.5-2.0.19'* ]]
+	[[ $output != *'1.5354.0'* ]]
+}
+
+@test "_doctor_check_pkg_version: dpkg-only host reports dpkg version" {
+	_hide_pkg_tools rpm
+	dpkg-query() { printf '1.11847.5'; }
+
+	run _doctor_check_pkg_version ''
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Installed version: 1.11847.5'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_pkg_version: dual-DB host where rpm does not own the path falls back to dpkg" {
+	# rpm exists but the install is a real deb: `rpm -qf` says "not
+	# owned" (rc=1, message on stdout) and dpkg must be consulted.
+	rpm() {
+		# $4 = probe path ($1=-qf $2=--qf $3=<format>)
+		printf 'file %s is not owned by any package\n' "$4"
+		return 1
+	}
+	dpkg-query() { printf '1.11847.5'; }
+
+	run _doctor_check_pkg_version ''
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Installed version: 1.11847.5'* ]]
+	[[ $output != *'not owned'* ]]
+}
+
+@test "_doctor_check_pkg_version: neither manager owns the install — warn (AppImage/Nix)" {
+	rpm() { return 1; }
+	dpkg-query() { return 1; }
+
+	run _doctor_check_pkg_version ''
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'AppImage'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_pkg_version: silent when no package tools exist" {
+	_hide_pkg_tools rpm dpkg-query
+
+	run _doctor_check_pkg_version ''
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
