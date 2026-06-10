@@ -16,16 +16,16 @@
 }:
 let
   pname = "claude-desktop";
-  version = "1.11187.4";
+  version = "1.11847.5";
 
   srcs = {
     x86_64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/x64/1.11187.4/Claude-58400536f3ccde1cff9a129de6c3112dc8cb489a.exe";
-      hash = "sha256-GxYAmt3CgK0irX9aqQ9yV7+pmyxirSbe8qwMdrI0toc=";
+      url = "https://downloads.claude.ai/releases/win32/x64/1.11847.5/Claude-9692f0b44ffa0158a501a91309e361c0d48ed8e4.exe";
+      hash = "sha256-nm5i2wseSdmeQjuUNVbMQ8V4UeETZ9lop6wB+vfhQMs=";
     };
     aarch64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/arm64/1.11187.4/Claude-58400536f3ccde1cff9a129de6c3112dc8cb489a.exe";
-      hash = "sha256-KnaOJjl35QKRiukTqg4c5In6VJQkM60LhCNWzOiTMC0=";
+      url = "https://downloads.claude.ai/releases/win32/arm64/1.11847.5/Claude-9692f0b44ffa0158a501a91309e361c0d48ed8e4.exe";
+      hash = "sha256-aCCeJS8TTOOgtvQstLCOxSAZYqFZw0vGKC//vZejDu8=";
     };
   };
 
