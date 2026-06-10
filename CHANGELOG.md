@@ -8,8 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v2.0.19] — 2026-06-10
+
+Tracks upstream Claude Desktop 1.11847.5.
+
+### Added
+
+- AppStream metainfo (`io.github.aaddrick.claude-desktop-debian.metainfo.xml`) installed by the deb, RPM, and AppImage builds, so the package appears in GNOME Software, KDE Discover, and App Center with correct unofficial-repackaging branding and a `LicenseRef-proprietary` project license. Store search for not-yet-installed users needs repo-side DEP-11/appstream metadata, tracked in [#708](https://github.com/aaddrick/claude-desktop-debian/issues/708). ([#633](https://github.com/aaddrick/claude-desktop-debian/pull/633))
+- GPU crash auto-recovery in the launcher: when the previous launch died to a Chromium GPU-process FATAL (the [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583) SIGTRAP signature), the next launch automatically applies safe GPU flags — and stays recovered on subsequent launches instead of oscillating crash/work/crash. Detects NixOS launcher log headers too; set `CLAUDE_DISABLE_GPU=0` to override. ([#666](https://github.com/aaddrick/claude-desktop-debian/pull/666))
+
 ### Fixed
 
+- `claude-desktop --doctor` no longer reports a false-green PASS when the password store reads back empty or when `df` returns a non-numeric disk reading — bad reads now fail or print a visible skip instead of falling through to the PASS branch, and leading-zero `df` output can no longer slip past as octal arithmetic. ([#692](https://github.com/aaddrick/claude-desktop-debian/pull/692))
 - Explicit quit now keeps the launcher alive until Electron exits, then runs
   stale-helper cleanup for Desktop-owned Cowork, Claude config, and extension
   helpers. Close-to-tray still leaves the app and helpers running.
@@ -30,6 +40,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Changed
 
+- CI now validates the arm64 deb, RPM, and AppImage artifacts on native `ubuntu-22.04-arm` runners (previously only amd64 was tested), and the AppImage launch smoke test's process sweep is keyed to `mount_claude` and gated behind `$CI` so a local test run can't kill a developer's live Claude Desktop session. The launcher's orphaned-daemon reaper also gained mutation-tested BATS coverage. ([#691](https://github.com/aaddrick/claude-desktop-debian/pull/691), [#693](https://github.com/aaddrick/claude-desktop-debian/pull/693))
 - The native-Wayland launch path now routes Quick Entry's global shortcut (`Ctrl+Alt+Space`) through the XDG GlobalShortcuts portal: `GlobalShortcutsPortal` is added to the `--enable-features` set, and all Chromium feature requests are merged into a single `--enable-features=` switch (Chromium honours only the last one, so the previous code could silently clobber features). GNOME Wayland users can opt into the portal route with `CLAUDE_USE_WAYLAND=1`, which works on GNOME ≤ 49 after a one-time portal permission dialog and fixes the focus-bound hotkey from [#404](https://github.com/aaddrick/claude-desktop-debian/issues/404). The default GNOME session stays on XWayland (no rendering/IME regression risk); auto-selecting native Wayland on GNOME is deferred until it can be gated on a real render check. **On GNOME 50 / xdg-desktop-portal ≥ 1.20 the portal route is currently a no-op** — Electron/Chromium doesn't perform the portal's new host `Registry.Register` app-id handshake (filed upstream as [electron/electron#51875](https://github.com/electron/electron/issues/51875)). `CLAUDE_USE_WAYLAND` is now tri-state: `1` native Wayland, `0` force XWayland, unset auto-detects. ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404))
 
 ## [v2.0.18] — 2026-06-04
