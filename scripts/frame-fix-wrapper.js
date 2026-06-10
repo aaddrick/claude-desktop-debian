@@ -90,6 +90,26 @@ console.log(`[Frame Fix] Close-to-tray: ${CLOSE_TO_TRAY ? 'on' : 'off'}`);
 const KEEP_AWAKE = process.env.CLAUDE_KEEP_AWAKE !== '0';
 console.log(`[Frame Fix] Keep awake: ${KEEP_AWAKE ? 'on (default)' : 'suppressed (CLAUDE_KEEP_AWAKE=0)'}`);
 
+// Tiling-WM detection for the workspace-switch jiggle (the
+// blur→focus armPair below). Hyprland, sway, i3 and niri export
+// their session sockets/signatures into the environment; stacking
+// WMs (KWin, Mutter) set none of these. Tiling WMs without a
+// recognizable env var (xmonad, dwm, river, ...) can opt back in
+// with CLAUDE_TILING_WM=1; CLAUDE_TILING_WM=0 forces the refocus
+// jiggle off.
+const rawTilingWm = process.env.CLAUDE_TILING_WM;
+if (rawTilingWm !== undefined && rawTilingWm !== ''
+  && rawTilingWm !== '1' && rawTilingWm !== '0') {
+  console.warn(`[Frame Fix] Unknown CLAUDE_TILING_WM value '${rawTilingWm}', falling back to auto-detection. Valid: 1, 0`);
+}
+const TILING_WM = rawTilingWm === '1' ? true
+  : rawTilingWm === '0' ? false
+  : !!(process.env.HYPRLAND_INSTANCE_SIGNATURE
+    || process.env.SWAYSOCK || process.env.I3SOCK
+    || process.env.NIRI_SOCKET);
+console.log(`[Frame Fix] Tiling WM: ${TILING_WM}`
+  + (rawTilingWm === '1' || rawTilingWm === '0' ? ' (CLAUDE_TILING_WM override)' : ' (detected)'));
+
 // Detect if a window intends to be frameless (popup/Quick Entry/About).
 // Window kinds — see build-reference/app-extracted/.vite/build/index.js:
 //   Quick Entry:    titleBarStyle:"hidden",      frame:false  (caught early)
@@ -523,7 +543,14 @@ Module.prototype.require = function(id) {
               // (Hyprland) or hide/show pairs. Jiggle only fires
               // when fixChildBounds() finds no mismatch (stale
               // compositor cache on same-size workspace switch).
-              // Fixes: #323
+              // On stacking WMs every alt-tab is a blur→focus pair
+              // and the jiggle visibly nudges the window and
+              // re-bounds the content view, so that pair is only
+              // armed when a tiling compositor is detected
+              // (TILING_WM above). hide→show (tray restore, unhide)
+              // stays armed everywhere — it is not hit by alt-tab
+              // and keeps the fixChildBounds() safety net on
+              // restore. Fixes: #323, #715
               const armPair = (armEvt, fireEvt) => {
                 let armed = false;
                 this.on(armEvt, () => { armed = true; });
@@ -538,7 +565,9 @@ Module.prototype.require = function(id) {
               this.on('focus', () => {
                 this.flashFrame(false); // Fixes: #149
               });
-              armPair('blur', 'focus');
+              if (TILING_WM) {
+                armPair('blur', 'focus');
+              }
               armPair('hide', 'show');
             }
 
