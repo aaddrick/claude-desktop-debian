@@ -97,6 +97,11 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# Patch menuBarEnabled to default to true when unset
 	patch_menu_bar_default
 
+	# Quit on main-window close (instead of hiding to a dead background
+	# process) when the tray is disabled — upstream gates this on win32
+	# only, so Linux otherwise needs Ctrl+Q to actually exit
+	patch_close_quits_when_tray_disabled
+
 	# Patch quick window
 	patch_quick_window
 

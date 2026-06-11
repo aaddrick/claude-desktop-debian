@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- Closing the main window now quits the app on Linux when the tray is disabled, instead of hiding to a headless background process that only `Ctrl+Q` could kill. Upstream's "quit on close when the menu bar is off" path is gated on `process.platform==="win32"`, so on Linux the close handler always fell through to `preventDefault()`+`hide()`; `patch_close_quits_when_tray_disabled` widens the guard to every non-macOS platform, anchored on the stable `"Quitting app on main window close since tray is disabled"` log string rather than the minified identifiers. ([#PRNUM](https://github.com/aaddrick/claude-desktop-debian/pull/PRNUM))
 - `claude-desktop --doctor` reports the installed version from the package manager that actually owns the install (probed via `rpm -qf` on the bundled Electron binary) instead of trusting `dpkg-query` alone — rpm installs on hosts that also carry a stale dpkg record (e.g. Fedora boxes with dpkg installed as a build tool) no longer show a months-old version with a PASS. ([#712](https://github.com/aaddrick/claude-desktop-debian/pull/712), fixes [#711](https://github.com/aaddrick/claude-desktop-debian/issues/711))
 
 ## [v2.0.19] — 2026-06-10

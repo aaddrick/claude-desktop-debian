@@ -1,6 +1,7 @@
 #===============================================================================
-# Tray-related patches: menu handler mutex/DBus delay, icon theme selection,
-# and menuBarEnabled default.
+# Tray-related patches: menu handler mutex/DBus delay, icon theme
+# selection, menuBarEnabled default, and close-to-quit when the tray is
+# disabled.
 #
 # Sourced by: build.sh
 # Sourced globals: project_root, electron_var, electron_var_re
@@ -276,6 +277,70 @@ patch_menu_bar_default() {
 		echo '  Patched menuBarEnabled to default to true'
 	else
 		echo '  menuBarEnabled pattern not found or already patched'
+	fi
+	echo '##############################################################'
+}
+
+patch_close_quits_when_tray_disabled() {
+	echo 'Patching window-close to quit on non-macOS when tray disabled...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	# Upstream only quits on main-window close (rather than hiding to the
+	# tray) when process.platform==="win32" AND the tray is disabled. On
+	# Linux the win32 guard is always false, so the close handler falls
+	# through to preventDefault()+hide() and leaves a headless background
+	# process that only Ctrl+Q can kill. Widen the guard to every
+	# non-macOS platform so a tray-less Linux session exits on close;
+	# macOS keeps its dock-resident convention.
+	local log_str='Quitting app on main window close since tray is disabled'
+
+	# The post-patch shape, reused for the idempotency check up front and
+	# the did-it-apply verification afterwards.
+	local applied_re
+	applied_re='process\.platform!=="darwin"\s*&&\s*!\s*[$\w]+\(\s*"menuBarEnabled"\s*\)\s*\)\s*\{\s*[$\w]+\.info\(\s*"'"$log_str"'"'
+
+	# Idempotency: bail if the darwin-negated guard is already in place.
+	if grep -qP "$applied_re" "$index_js"; then
+		echo '  Close-to-quit already patched (idempotent)'
+		echo '##############################################################'
+		return
+	fi
+
+	# Extract the win32 platform const used in *this* handler. Many
+	# `X=process.platform==="win32"` sites exist, so disambiguate via the
+	# stable log string rather than the minified identifier. `grep -o`
+	# emits one line per match — minified JS is a single physical line, so
+	# `grep -c` would always report 1; count -o output lines instead to
+	# catch a future upstream that duplicates the log-string site.
+	local win_vars win_count
+	win_vars=$(grep -oP \
+		'if\(\K[$\w]+(?=\s*&&\s*!\s*[$\w]+\(\s*"menuBarEnabled"\s*\)\s*\)\s*\{\s*[$\w]+\.info\(\s*"'"$log_str"'")' \
+		"$index_js")
+	win_count=$(printf '%s\n' "$win_vars" | grep -c .)
+	if [[ $win_count -ne 1 ]]; then
+		if [[ $win_count -eq 0 ]]; then
+			echo '  Could not locate close-handler platform guard — skipping'
+		else
+			echo "  Expected 1 close-handler guard, found ${win_count} — skipping"
+		fi
+		echo '##############################################################'
+		return
+	fi
+	echo "  Found close-handler platform guard: $win_vars"
+
+	# Escape `$` for sed -E (minifier emits identifiers like `i$o`).
+	local win_var_re="${win_vars//\$/\\$}"
+	sed -i -E \
+		"s/(if\(\s*)${win_var_re}(\s*&&\s*!\s*[[:alnum:]_\$]+\(\s*\"menuBarEnabled\"\s*\)\s*\)\s*\{\s*[[:alnum:]_\$]+\.info\(\s*\"${log_str}\")/\1process.platform!==\"darwin\"\2/" \
+		"$index_js"
+
+	# Verify the substitution landed — grep is PCRE, sed is ERE, so a
+	# future divergence between the two could no-op silently while the
+	# build log still claimed success. CI greps for WARNING:.
+	if grep -qP "$applied_re" "$index_js"; then
+		echo '  Close-to-quit now fires on all non-macOS platforms'
+	else
+		echo 'WARNING: close-to-quit sed matched nothing — handler unchanged' >&2
 	fi
 	echo '##############################################################'
 }
