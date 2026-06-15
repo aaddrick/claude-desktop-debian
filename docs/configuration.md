@@ -16,6 +16,7 @@ Model Context Protocol settings are stored in:
 | `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (only Niri defaults to native Wayland). See [Wayland Support](#wayland-support) below. |
 | `CLAUDE_MENU_BAR` | unset (`auto`) | Controls menu bar behavior: `auto` (hidden, Alt toggles), `visible` / `1` (always shown), `hidden` / `0` (always hidden, Alt disabled). See [Menu Bar](#menu-bar) below. |
 | `CLAUDE_TITLEBAR_STYLE` | unset (`hybrid`) | Controls window decoration style: `hybrid` (system frame + in-app topbar), `native` (system frame, no in-app topbar), `hidden` (frameless WCO — broken on X11, kept for diagnostics). See [Titlebar Style](#titlebar-style) below. |
+| `CLAUDE_TILING_WM` | unset (auto) | Override tiling-WM detection for the workspace-switch refocus jiggle: `1` = treat the compositor as tiling (arm the blur→focus jiggle), `0` = treat as stacking (never jiggle on refocus). Unset auto-detects via `HYPRLAND_INSTANCE_SIGNATURE` / `SWAYSOCK` / `I3SOCK` / `NIRI_SOCKET`; unrecognized values warn and fall back to auto-detection. Set `1` on tiling WMs without a recognizable env var (xmonad, dwm, river, …) if window content goes stale on workspace switches. |
 | `COWORK_VM_BACKEND` | unset (auto-detect) | Force a specific Cowork isolation backend: `kvm` (full VM), `bwrap` (bubblewrap namespace sandbox), or `host` (no isolation). See [Cowork Backend](#cowork-backend) below. |
 
 ### Wayland Support

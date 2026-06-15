@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- The workspace-switch jiggle's blur→focus armed pair is now armed only when a tiling compositor is detected via its session env vars (`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, `I3SOCK`, `NIRI_SOCKET`); `CLAUDE_TILING_WM=1`/`0` overrides the detection for compositors without a recognizable env var. On stacking WMs the pair fired on every alt-tab and the 1px jiggle visibly nudged the window and re-bounded the content view ~100 ms after each refocus — most noticeable on KDE Plasma with a maximized window. The hide→show pair (tray restore), the `resize`-event path and the KWin `moved`/state-change fixes are unchanged. ([#716](https://github.com/aaddrick/claude-desktop-debian/pull/716), fixes [#715](https://github.com/aaddrick/claude-desktop-debian/issues/715))
 - `claude-desktop --doctor` reports the installed version from the package manager that actually owns the install (probed via `rpm -qf` on the bundled Electron binary) instead of trusting `dpkg-query` alone — rpm installs on hosts that also carry a stale dpkg record (e.g. Fedora boxes with dpkg installed as a build tool) no longer show a months-old version with a PASS. ([#712](https://github.com/aaddrick/claude-desktop-debian/pull/712), fixes [#711](https://github.com/aaddrick/claude-desktop-debian/issues/711))
 
 ## [v2.0.19] — 2026-06-10
