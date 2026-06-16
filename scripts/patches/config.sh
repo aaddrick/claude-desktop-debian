@@ -166,72 +166,65 @@ patch_asar_additional_dirs_guard() {
 	echo 'Patching --add-dir dispatch to reject .asar paths (#649)...'
 	local index_js='app.asar.contents/.vite/build/index.js'
 
-	# Idempotency
-	if grep -qF '.filter(_d=>!_d.endsWith(".asar"))' "$index_js"; then
-		echo '  .asar --add-dir filter already present (idempotent)'
-		echo '##############################################################'
-		return
-	fi
-
 	if ! INDEX_JS="$index_js" node << 'ASAR_ADDDIR_PATCH'
 const fs = require('fs');
 const indexJs = process.env.INDEX_JS;
 let code = fs.readFileSync(indexJs, 'utf8');
 let patchCount = 0;
+let dispatchPatchCount = 0;
+let dispatchAlreadyPresent = code.includes(
+    '.filter(_d=>!_d.endsWith(".asar"))'
+);
 
 // ================================================================
 // Sub-patch 1: Filter .asar from --add-dir loop
 //
-// Target (unique, 1 occurrence):
+// Targets (one or more occurrences):
 //   for (let O of A) Y.push("--add-dir", O);
 // Fallback (if minifier uses .forEach):
 //   A.forEach(O=>Y.push("--add-dir",O))
 // ================================================================
 {
     // Primary: for...of pattern
-    const forOfRe = /for\s*\(\s*let\s+([\w$]+)\s+of\s+([\w$]+)\s*\)\s*([\w$]+)\.push\(\s*"--add-dir"\s*,\s*\1\s*\)/;
+    const forOfRe = /for\s*\(\s*let\s+([\w$]+)\s+of\s+([\w$]+)\s*\)\s*([\w$]+)\.push\(\s*"--add-dir"\s*,\s*\1\s*\)/g;
     // Fallback: .forEach pattern
-    const forEachRe = /([\w$]+)\.forEach\(\s*([\w$]+)\s*=>\s*([\w$]+)\.push\(\s*"--add-dir"\s*,\s*\2\s*\)\s*\)/;
+    const forEachRe = /([\w$]+)\.forEach\(\s*([\w$]+)\s*=>\s*([\w$]+)\.push\(\s*"--add-dir"\s*,\s*\2\s*\)\s*\)/g;
 
-    let match = code.match(forOfRe);
-    let variant = 'for-of';
-    if (!match) {
-        match = code.match(forEachRe);
-        variant = 'forEach';
-    }
-    if (!match) {
+    let forOfCount = 0;
+    let forEachCount = 0;
+    code = code.replace(forOfRe, (match, iterVar, arrVar, pushTarget) => {
+        forOfCount++;
+        dispatchPatchCount++;
+        patchCount++;
+        return 'for(let ' + iterVar + ' of ' + arrVar +
+            '.filter(_d=>!_d.endsWith(".asar")))' +
+            pushTarget + '.push("--add-dir",' + iterVar + ')';
+    });
+    code = code.replace(forEachRe, (match, arrVar, iterVar, pushTarget) => {
+        forEachCount++;
+        dispatchPatchCount++;
+        patchCount++;
+        return arrVar +
+            '.filter(_d=>!_d.endsWith(".asar")).forEach(' +
+            iterVar + '=>' + pushTarget +
+            '.push("--add-dir",' + iterVar + '))';
+    });
+
+    if (dispatchPatchCount === 0 && !dispatchAlreadyPresent) {
         console.error('FATAL: --add-dir dispatch loop not found.');
         console.error('  for(let X of Y) Z.push("--add-dir", X)');
         console.error('  Y.forEach(X=>Z.push("--add-dir", X))');
         process.exit(1);
     }
 
-    // Count assertion: exactly 1 match expected
-    const escaped = match[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const allMatches = code.match(new RegExp(escaped, 'g'));
-    if (allMatches && allMatches.length > 1) {
-        console.error('FATAL: --add-dir pattern matches ' +
-            allMatches.length + ' times (expected 1).');
-        process.exit(1);
-    }
-
-    let filtered;
-    if (variant === 'for-of') {
-        const [, iterVar, arrVar, pushTarget] = match;
-        filtered = 'for(let ' + iterVar + ' of ' + arrVar +
-            '.filter(_d=>!_d.endsWith(".asar")))' +
-            pushTarget + '.push("--add-dir",' + iterVar + ')';
+    if (dispatchPatchCount > 0) {
+        console.log('  Filtered ' + dispatchPatchCount +
+            ' --add-dir dispatch loop(s) (for-of=' + forOfCount +
+            ', forEach=' + forEachCount + ')');
     } else {
-        const [, arrVar, iterVar, pushTarget] = match;
-        filtered = arrVar +
-            '.filter(_d=>!_d.endsWith(".asar")).forEach(' +
-            iterVar + '=>' + pushTarget +
-            '.push("--add-dir",' + iterVar + '))';
+        console.log('  .asar --add-dir filter already present ' +
+            '(idempotent)');
     }
-    code = code.replace(match[0], filtered);
-    console.log('  Filtered --add-dir dispatch (' +
-        variant + ' variant)');
-    patchCount++;
 }
 
 // ================================================================
@@ -288,9 +281,8 @@ let patchCount = 0;
 fs.writeFileSync(indexJs, code);
 console.log('  Applied ' + patchCount +
     ' .asar additionalDirectories patch(es)');
-if (patchCount < 1) {
-    console.error('FATAL: No patches applied — --add-dir filter ' +
-        'must succeed (#649).');
+if (dispatchPatchCount < 1 && !dispatchAlreadyPresent) {
+    console.error('FATAL: --add-dir filter must succeed (#649).');
     process.exit(1);
 }
 ASAR_ADDDIR_PATCH
