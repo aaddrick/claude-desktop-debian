@@ -206,12 +206,14 @@ let patchCount = 0;
         process.exit(1);
     }
 
-    // Count assertion: exactly 1 match expected
+    // Count sites — 2 is expected when the SDK is bundled twice
+    // (e.g. chat panel + Code/Agent panel each embed a copy).
     const escaped = match[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const allMatches = code.match(new RegExp(escaped, 'g'));
-    if (allMatches && allMatches.length > 1) {
+    const siteCount = allMatches ? allMatches.length : 1;
+    if (siteCount > 2) {
         console.error('FATAL: --add-dir pattern matches ' +
-            allMatches.length + ' times (expected 1).');
+            siteCount + ' times (expected 1–2).');
         process.exit(1);
     }
 
@@ -228,9 +230,10 @@ let patchCount = 0;
             iterVar + '=>' + pushTarget +
             '.push("--add-dir",' + iterVar + '))';
     }
-    code = code.replace(match[0], filtered);
+    // Replace all sites (split/join handles 1 or 2 occurrences)
+    code = code.split(match[0]).join(filtered);
     console.log('  Filtered --add-dir dispatch (' +
-        variant + ' variant)');
+        variant + ' variant, ' + siteCount + ' site(s))');
     patchCount++;
 }
 
