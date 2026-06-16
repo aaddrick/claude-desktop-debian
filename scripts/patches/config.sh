@@ -208,9 +208,10 @@ let patchCount = 0;
 
     // Count sites — 2 is expected when the SDK is bundled twice
     // (e.g. chat panel + Code/Agent panel each embed a copy).
-    const escaped = match[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const allMatches = code.match(new RegExp(escaped, 'g'));
-    const siteCount = allMatches ? allMatches.length : 1;
+    // Split on the literal match so the count matches exactly what
+    // the replacement below substitutes.
+    const sites = code.split(match[0]);
+    const siteCount = sites.length - 1;
     if (siteCount > 2) {
         console.error('FATAL: --add-dir pattern matches ' +
             siteCount + ' times (expected 1–2).');
@@ -230,8 +231,8 @@ let patchCount = 0;
             iterVar + '=>' + pushTarget +
             '.push("--add-dir",' + iterVar + '))';
     }
-    // Replace all sites (split/join handles 1 or 2 occurrences)
-    code = code.split(match[0]).join(filtered);
+    // Replace all sites (join handles 1 or 2 occurrences)
+    code = sites.join(filtered);
     console.log('  Filtered --add-dir dispatch (' +
         variant + ' variant, ' + siteCount + ' site(s))');
     patchCount++;
