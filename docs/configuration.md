@@ -168,12 +168,12 @@ The string and object forms can be mixed freely in the same array.
 > almost never want this, and `--doctor` will warn if you do.
 
 > **Note for immutable distros (Fedora Silverblue, Bazzite):** On these
-> systems `/home` is a symlink to `/var/home`, and the sandbox has no such
-> symlink — a bind configured as `/home/<user>/...` lands at the literal
-> `/home/...` path while `$HOME` is `/var/home/<user>`, so the mount looks
-> missing even though bwrap never silently drops a bind. Use the real path
-> (for example `"/var/home/cloud/dev"` instead of `"/home/cloud/dev"`) so
-> the configured path matches the sandbox layout.
+> systems `/home` is a symlink to `/var/home` on the *host*, but the sandbox
+> has no such symlink — `$HOME` inside the sandbox is the literal
+> `/home/<user>` form. Use the same form in your config
+> (for example `"/home/cloud/dev"`, not `"/var/home/cloud/dev"`) so the
+> mount is accessible under `~/` inside the sandbox. Both forms are accepted
+> by the validator; only the `/home/...` form will appear under `$HOME`.
 
 ### Security notes
 
