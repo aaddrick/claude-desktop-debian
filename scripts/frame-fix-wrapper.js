@@ -152,6 +152,43 @@ const autoUpdaterNoop = new Proxy({}, {
   },
 });
 
+// Claude 1.14271 added an enterprise-policy probe that reads the
+// Windows registry through @ant/claude-native during main-process
+// startup. The Linux native module can exist without that Windows-only
+// helper, and upstream calls readRegistryValues() unguarded; because
+// index.pre.js installs an empty uncaughtException handler early, the
+// TypeError is swallowed and startup stalls before any window is
+// created. Make the Windows policy probe a no-op on Linux.
+function patchClaudeNative(nativeModule) {
+  if (process.platform === 'win32'
+    || !nativeModule
+    || typeof nativeModule.readRegistryValues === 'function') {
+    return nativeModule;
+  }
+
+  if (typeof nativeModule === 'object' || typeof nativeModule === 'function') {
+    try {
+      Object.defineProperty(nativeModule, 'readRegistryValues', {
+        value: () => [],
+        configurable: true,
+        writable: true,
+      });
+      console.log('[Frame Fix] Shimmed claude-native.readRegistryValues');
+      return nativeModule;
+    } catch (err) {
+      console.warn('[Frame Fix] Could not patch claude-native in place:', err.message);
+      return new Proxy(nativeModule, {
+        get(target, prop, receiver) {
+          if (prop === 'readRegistryValues') return () => [];
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+    }
+  }
+
+  return nativeModule;
+}
+
 // Build the patched BrowserWindow class and Menu interceptor once,
 // on first require('electron'), then reuse via Proxy on every access.
 let PatchedBrowserWindow = null;
@@ -160,6 +197,10 @@ let electronModule = null;
 
 Module.prototype.require = function(id) {
   const result = originalRequire.apply(this, arguments);
+
+  if (id === '@ant/claude-native') {
+    return patchClaudeNative(result);
+  }
 
   if (id === 'electron') {
     // Build patches once from the real electron module

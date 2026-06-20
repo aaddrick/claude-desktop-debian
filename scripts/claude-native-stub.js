@@ -64,6 +64,8 @@ module.exports = {
   },
 
   showNotification: () => {},
+  // Windows enterprise policy registry reads are not applicable on Linux.
+  readRegistryValues: () => [],
 
   // Progress bar is natively supported on Linux (Unity/KDE/GNOME)
   setProgressBar: (progress) => {
