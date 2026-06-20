@@ -77,8 +77,19 @@ console.log(`[Frame Fix] Titlebar style: ${TITLEBAR_STYLE}`);
 // the flag so the close handler lets the windows actually close.
 // Set CLAUDE_QUIT_ON_CLOSE=1 to restore the Electron-default
 // "closing the last window quits the app" behaviour.
+//
+// CLAUDE_TRAY_AVAILABLE is computed by the launcher (_detect_tray_available
+// in launcher-common.sh): '0' when the tray is turned off OR no
+// StatusNotifier host is registered to draw it — e.g. vanilla GNOME with
+// no AppIndicator extension, where hiding to a tray nothing renders would
+// strand an invisible, Ctrl+Q-only background process. Gating on it here
+// lets that case fall through to the CLAUDE_QUIT_ON_CLOSE branch below
+// (close → app.quit()) instead of adding a second close handler. When the
+// var is unset (older launcher, non-AppImage path) the !== '0' test keeps
+// the previous always-hide behaviour. Fixes: #66, #122
 const CLOSE_TO_TRAY = process.platform === 'linux'
-  && process.env.CLAUDE_QUIT_ON_CLOSE !== '1';
+  && process.env.CLAUDE_QUIT_ON_CLOSE !== '1'
+  && process.env.CLAUDE_TRAY_AVAILABLE !== '0';
 console.log(`[Frame Fix] Close-to-tray: ${CLOSE_TO_TRAY ? 'on' : 'off'}`);
 
 // Power save blocker behavior, controlled by CLAUDE_KEEP_AWAKE env var:
