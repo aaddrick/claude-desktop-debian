@@ -42,6 +42,25 @@ class AuthRequest {
 
 module.exports = {
   getWindowsVersion: () => "10.0.0",
+
+  // Windows-only native methods that do not exist on Linux. Newer
+  // upstream (Claude Desktop >= 1.13576.0) calls readRegistryValues()
+  // UNCONDITIONALLY at startup (managed-config / enterprise-policy
+  // lookup) from index.pre.js and index.js top-level. The bundle only
+  // guards the module being null (`(o=g2())==null?void 0:o.readRegistryValues(r)`),
+  // not the method being absent, so a missing method throws
+  // "readRegistryValues is not a function" during top-level execution —
+  // before the logger and the main window are created. The app process
+  // stays alive but no window ever appears (idles in the event loop).
+  // Stub these as safe no-ops returning "nothing here" so the lookups
+  // succeed. Fixes the Linux "hangs indefinitely, app window never
+  // shows up" regression (upstream issue #729).
+  readRegistryValues: () => [],
+  writeRegistryValue: () => {},
+  writeRegistryDword: () => {},
+  getWindowsElevationType: () => "default",
+  getCurrentPackageFamilyName: () => null,
+
   setWindowEffect: () => {},
   removeWindowEffect: () => {},
 
