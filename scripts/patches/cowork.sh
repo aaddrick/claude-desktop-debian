@@ -252,100 +252,100 @@ function extractBlock(str, startIdx, open = '{') {
 }
 
 // ============================================================
-// Patch 1: Platform check - allow Linux through fz()
-// Pattern: VAR!=="darwin"&&VAR!=="win32" (unique in platform gate)
-// Anchor: appears near 'unsupported_platform' code value
+// Patch 1: VM-supported gate - allow Linux through startVM
+// Upstream 1.13576+ replaced the old darwin/win32 platform gate
+// with a feature-flag gate ("yukonSilver") inside startVM (VF):
+//   const{yukonSilver:r}=D_();
+//   if((r==null?void 0:r.status)!=="supported"){...return}
+// On Linux the flag is never "supported", so startVM bails before
+// it ever talks to our daemon. Anchor on the unique log string
+// "[startVM] VM not supported" to locate the guard, then make Linux
+// bypass the support check (mirrors the old "allow Linux through"
+// intent). This is load-bearing — FATAL on miss.
 // ============================================================
-const platformGateRe = /([\w$]+)(\s*!==\s*"darwin"\s*&&\s*)\1(\s*!==\s*"win32")/g;
-const origCode = code;
-code = code.replace(platformGateRe, (match, varName, mid, end) => {
-    // Only patch the instance near the "unsupported_platform" code value
-    const matchIdx = origCode.indexOf(match);
-    const nearbyText = origCode.substring(matchIdx, matchIdx + 200);
-    if (nearbyText.includes('unsupported_platform') || nearbyText.includes('Unsupported platform')) {
-        return `${varName}${mid}${varName}${end}&&${varName}!=="linux"`;
-    }
-    return match;
-});
-if (code !== origCode) {
-    console.log('  Patched platform check to allow Linux');
-    patchCount++;
-} else {
-    // Try without backreference (in case minifier uses different var names)
-    const simpleRe = /(!=="darwin"\s*&&\s*[\w$]+\s*!=="win32")([\s\S]{0,200}unsupported_platform)/;
-    const simpleMatch = code.match(simpleRe);
-    if (simpleMatch) {
-        const varMatch = simpleMatch[0].match(/([\w$]+)\s*!==\s*"win32"/);
-        if (varMatch) {
-            code = code.replace(simpleMatch[1],
-                simpleMatch[1] + '&&' + varMatch[1] + '!=="linux"');
-            console.log('  Patched platform check to allow Linux (fallback)');
-            patchCount++;
+{
+    const gateAnchor = '[startVM] VM not supported';
+    const gateIdx = code.indexOf(gateAnchor);
+    if (/process\.platform!=="linux"&&\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported"/.test(code)) {
+        console.log('  VM-supported Linux gate already applied (Patch 1)');
+    } else if (gateIdx === -1) {
+        console.error('FATAL: Could not find startVM support-gate anchor.');
+        console.error('The app will crash at startup without this patch.');
+        console.error('The "[startVM] VM not supported" anchor may have changed.');
+        process.exit(1);
+    } else {
+        // Find the nearest yukonSilver support check before the anchor.
+        const winStart = Math.max(0, gateIdx - 200);
+        const region = code.substring(winStart, gateIdx);
+        const supRe = /if\(\(([\w$]+)==null\?void 0:\1\.status\)!=="supported"\)/g;
+        let m, last = null;
+        while ((m = supRe.exec(region)) !== null) last = m;
+        if (!last) {
+            console.error('FATAL: Could not find yukonSilver support check.');
+            console.error('The app will crash at startup without this patch.');
+            console.error('The platform gate structure may have changed.');
+            process.exit(1);
         }
+        const orig = last[0];
+        const guardVar = last[1];
+        const patched = 'if(process.platform!=="linux"&&(' + guardVar +
+            '==null?void 0:' + guardVar + '.status)!=="supported")';
+        const absStart = winStart + last.index;
+        code = code.substring(0, absStart) + patched +
+            code.substring(absStart + orig.length);
+        console.log('  Patched VM-supported gate to allow Linux');
+        patchCount++;
     }
-}
-if (code === origCode) {
-    console.error('FATAL: Failed to patch cowork platform gate for Linux.');
-    console.error('The app will crash at startup without this patch.');
-    console.error('The platform check pattern or nearby anchor text may have changed.');
-    process.exit(1);
 }
 
 // ============================================================
 // Patch 2: Module loading - use TypeScript VM client on Linux
 // Anchor: unique string "vmClient (TypeScript)"
-// Extracts the win32 platform variable, adds Linux OR condition
+// Upstream 1.13576+ gates the vmClient module load behind Rl()
+// (the MSIX/install-type detector) inside YBt():
+//   async function YBt(){return Rl()?QL||QrA||(...,"vmClient
+//     (TypeScript)"...QL={vm:hji}...):null}
+// Both the log line and the {vm:...} assignment now live in this
+// one Rl()?...:null expression, so widening the gate covers the
+// old Patch 2a + 2b at once. Do NOT patch the gate fn itself — it
+// also drives the isMsix install-type detection and would mis-flag
+// Linux as an MSIX install.
 // ============================================================
-const vmClientLogMatch = code.match(/([\w$]+)(\s*\?\s*"vmClient \(TypeScript\)")/);
-if (vmClientLogMatch) {
-    const win32Var = vmClientLogMatch[1];
-
-    // 2a: Patch the log/description line
-    // FROM: WIN32VAR?"vmClient (TypeScript)"
-    // TO:   (WIN32VAR||process.platform==="linux")?"vmClient (TypeScript)"
-    // Use negative lookbehind to avoid double-patching
-    const logRe = new RegExp(
-        '(?<!\\|\\|process\\.platform==="linux"\\))' +
-        win32Var.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        '(\\s*\\?\\s*"vmClient \\(TypeScript\\)")'
-    );
-    if (logRe.test(code)) {
-        code = code.replace(logRe,
-            '(' + win32Var + '||process.platform==="linux")$1');
-        console.log('  Patched VM client log check for Linux');
-        patchCount++;
-    } else if (code.includes(
-        '||process.platform==="linux")?"vmClient (TypeScript)"'
-    )) {
-        console.log('  VM client log gate already applied (Patch 2a)');
+{
+    const vmAnchor = '"vmClient (TypeScript)"';
+    const vmIdx = code.indexOf(vmAnchor);
+    const winStart = Math.max(0, vmIdx - 400);
+    if (vmIdx === -1) {
+        console.log('  WARNING: vmClient (TypeScript) anchor not found' +
+            ' — Cowork module load gate not patched');
+    } else if (/\([\w$]+\(\)\|\|process\.platform==="linux"\)\?/.test(
+        code.substring(winStart, vmIdx))) {
+        console.log('  vmClient Linux load gate already applied (Patch 2)');
     } else {
-        console.log('  WARNING: Could not find anchor for VM client log' +
-            ' gate (Patch 2a) — half-patched asar will fail Cowork startup');
+        // Find the `return FN()?` gate immediately before the log
+        // string (scoped so the install-type `Rl()?"msix":...` ternary
+        // isn't touched). FN is the minified isMsix detector and
+        // changes between releases, so capture it dynamically.
+        const region = code.substring(winStart, vmIdx);
+        const gateRe = /return ([\w$]+)\(\)\?/g;
+        let m, last = null;
+        while ((m = gateRe.exec(region)) !== null) last = m;
+        if (!last) {
+            console.log('  WARNING: could not find `return FN()?` gate' +
+                ' before vmClient log — module load not patched');
+        } else {
+            const fnName = last[1];
+            const absStart = winStart + last.index;
+            const orig = 'return ' + fnName + '()?';
+            const patched =
+                'return (' + fnName + '()||process.platform==="linux")?';
+            code = code.substring(0, absStart) + patched +
+                code.substring(absStart + orig.length);
+            console.log('  Patched vmClient module load gate for Linux' +
+                ' (gate fn: ' + fnName + ')');
+            patchCount++;
+        }
     }
-
-    // 2b: Patch the actual module assignment
-    // Beautified: WIN32VAR ? (df = { vm: bYe }) : (df = ...)
-    // Minified:   WIN32VAR?df={vm:bYe}:df=...
-    // Handle both: outer parens are optional in minified code
-    const assignRe = new RegExp(
-        '(?<!\\|\\|process\\.platform==="linux"\\)?)' +
-        win32Var.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        '(\\s*\\?\\s*\\(?\\s*[\\w$]+\\s*=\\s*\\{\\s*vm\\s*:\\s*[\\w$]+\\s*\\}\\s*\\)?)'
-    );
-    if (assignRe.test(code)) {
-        code = code.replace(assignRe,
-            '(' + win32Var + '||process.platform==="linux")$1');
-        console.log('  Patched VM module assignment for Linux');
-        patchCount++;
-    } else if (/\|\|process\.platform==="linux"\)\??\(?[\w$]+=\{vm:[\w$]+\}/.test(code)) {
-        console.log('  VM module assignment already applied (Patch 2b)');
-    } else {
-        console.log('  WARNING: Could not find anchor for VM module' +
-            ' assignment (Patch 2b) — half-patched asar will fail' +
-            ' Cowork startup (PR #555 failure mode)');
-    }
-} else {
-    console.log('  WARNING: Could not find vmClient variable for module loading patch');
 }
 
 // ============================================================
@@ -521,8 +521,12 @@ if (serviceErrorIdx !== -1) {
         const newServiceErrorIdx = code.lastIndexOf(serviceErrorStr);
         const searchEnd = Math.min(code.length, newServiceErrorIdx + 300);
         const searchRegion = code.substring(newServiceErrorIdx, searchEnd);
+        // Upstream 1.13576+ replaced the inline retry delay
+        // `await new Promise(r=>setTimeout(r,N))` with a helper call
+        // `await dn(Eji)`. Match the single-arg awaited delay call
+        // (two-arg awaits like `await Cji(A,e)` won't match).
         const retryMatch = searchRegion.match(
-            /await new Promise\(([\w$]+)=>\s*setTimeout\(\1,\s*([\w$]+)\)\)/
+            /await [\w$]+\([\w$]+\)/
         );
         if (retryMatch) {
             const retryStr = retryMatch[0];
@@ -592,6 +596,12 @@ if (serviceErrorIdx !== -1) {
 // Anchor: const NAME=["rootfs.img",...] — the module-level array
 // driving the reinstall-files cleanup in _ue()/deleteVMBundle().
 //
+// NOTE (1.13576+/yukonSilver): rootfs.img now appears only in
+// object form ([{name:"rootfs.img",...}]); the string-array anchor
+// is gone, so this WARNs and is a safe no-op on the current bundle
+// (the Linux VM-download path is disabled by Patch 4 anyway). It
+// auto-reactivates if upstream restores the string array.
+//
 // Upstream preserves sessiondata.img and rootfs.img.zst across
 // auto-reinstall to avoid re-download. On 1.2773.0, preserving
 // them puts the daemon into an unstartable state that persists
@@ -643,6 +653,12 @@ if (serviceErrorIdx !== -1) {
 // Anchor: unique string "wvm-" in mkdtemp call
 // Strategy: find the bundle dir variable from nearby mkdir(),
 // then replace tmpdir() with that variable in the mkdtemp call.
+//
+// NOTE (1.13576+/yukonSilver): the mkdtemp(os.tmpdir(),"wvm-")
+// shape is gone (the temp constant is now ".wvm-tmp-"), so this
+// WARNs and is a safe no-op — the Linux VM-download path that
+// would hit /tmp ENOSPC is disabled by Patch 4. Re-derive if the
+// rootfs-download path is ever re-enabled on Linux.
 // ============================================================
 {
     // Find: MKDTEMP(PATH.join(OS.tmpdir(), "wvm-"))
@@ -691,7 +707,11 @@ if (serviceErrorIdx !== -1) {
 // since minified names change between releases (#344).
 // ============================================================
 {
-    if (code.includes('[VM:start] Copying smol-bin') && code.includes('process.platform==="linux"')) {
+    // Idempotency: key on the fork's OWN injected log ("…to bundle
+    // (Linux)"), NOT the generic "[VM:start] Copying smol-bin" string
+    // — upstream now ships its own (win32-gated) smol-bin copy that
+    // emits the latter, which would falsely report "already present".
+    if (code.includes('smol-bin.${_la}.vhdx to bundle (Linux)')) {
         console.log('  Linux smol-bin copy block already present');
     } else {
         const anchor = '"[VM:start] Windows VM service configured"';
@@ -863,137 +883,6 @@ if (serviceErrorIdx !== -1) {
             console.log('  WARNING: Could not find registerQuitHandler' +
                 ' export for quit handler');
         }
-    }
-}
-
-// ============================================================
-// Patch 12: Forward user-selected folder as sharedCwdPath (#412)
-// The cowork-vm-service daemon honors a sharedCwdPath field on
-// the spawn IPC payload with priority over cwd (resolveWorkDir
-// in scripts/cowork-vm-service.js), but upstream never populates
-// it on Linux, so the daemon falls back to mountMap heuristics
-// (#389/#392/#411). Thread the user's folder through three sites:
-//   12a. getVMSpawnFunction({...}) config — inject sharedCwdPath.
-//   12b. Kyr() -> VMClient.spawn() call — forward as 13th arg.
-//   12c. spawn() body — accept trailing param, set on IPC payload.
-// Daemon-side mount heuristic from #392 remains as fallback.
-// ============================================================
-{
-    // --- 12a: inject sharedCwdPath into getVMSpawnFunction config ---
-    let site1Done = false;
-    const cfgAnchor = 'this.getVMSpawnFunction(';
-    const cfgIdx = code.indexOf(cfgAnchor);
-    if (cfgIdx === -1) {
-        console.log('  WARNING: #412 getVMSpawnFunction anchor not found');
-    } else {
-        // The argument is a {...} object literal; extract it directly.
-        const cfgBlock = extractBlock(code, cfgIdx + cfgAnchor.length, '{');
-        if (!cfgBlock) {
-            console.log('  WARNING: #412 getVMSpawnFunction {...} not found');
-        } else if (cfgBlock.includes('sharedCwdPath')) {
-            console.log('  #412 sharedCwdPath already in spawn config');
-            site1Done = true;
-        } else {
-            // The session-id var is the value of the first field
-            // 'sessionId:VAR' in the config itself — cheap, scoped, and
-            // immune to unrelated *.userSelectedFolders references (e.g.
-            // loop variables) that wander into the enclosing scope.
-            const sidMatch = cfgBlock.match(/\{sessionId:([\w$]+)\b/);
-            if (!sidMatch) {
-                console.log('  WARNING: #412 no sessionId field in config');
-            } else {
-                const sidVar = sidMatch[1];
-                // Route through this.sessions.get() — canonical accessor
-                // the same class already uses, so the injection survives
-                // re-orderings of local vars in the enclosing function.
-                const blockStart = code.indexOf(cfgBlock, cfgIdx);
-                const insertAt = blockStart + cfgBlock.length - 1;
-                const insertion = ',sharedCwdPath:this.sessions.get(' +
-                    sidVar + ')?.userSelectedFolders?.[0]';
-                code = code.substring(0, insertAt) +
-                    insertion + code.substring(insertAt);
-                console.log('  Injected sharedCwdPath into spawn' +
-                    ' config (sessionId var: ' + sidVar + ')');
-                patchCount++;
-                site1Done = true;
-            }
-        }
-    }
-
-    // --- 12c: accept a 13th param in spawn() method body ---
-    let site3Done = false;
-    const spawnIdempotent =
-        /async spawn\([^)]+\)\{const [\w$]+=\{id:[^}]+\};[^{}]*\.sharedCwdPath=/;
-    if (spawnIdempotent.test(code)) {
-        console.log('  #412 spawn method already accepts sharedCwdPath');
-        site3Done = true;
-    } else {
-        // Match the spawn body with the trailing mountConda setter and the
-        // IPC call. Captures: arg list, payload var, setter chain, IPC tail.
-        const spawnRe =
-            /async spawn\(([^)]+)\)\{const ([\w$]+)=\{id:[^}]+\};([^{}]*?[\w$]+&&\(\2\.mountConda=[\w$]+\)),(await [\w$]+\("spawn",\2\)\})/;
-        const spawnMatch = code.match(spawnRe);
-        if (!spawnMatch) {
-            console.log('  WARNING: #412 spawn method body regex did not match');
-        } else {
-            const [whole, argList, payloadVar, setters, tail] = spawnMatch;
-            const argNames = new Set(argList.split(',').map(s =>
-                s.split('=')[0].trim()));
-            let param = null;
-            for (const c of 'hHpPqQxXyYzZkKmMwW') {
-                if (!argNames.has(c)) { param = c; break; }
-            }
-            if (!param) {
-                console.log('  WARNING: #412 no unused letter for spawn param');
-            } else {
-                const newSetters = setters + ',' + param + '&&(' +
-                    payloadVar + '.sharedCwdPath=' + param + ')';
-                const assembled = whole
-                    .replace('async spawn(' + argList + ')',
-                        'async spawn(' + argList + ',' + param + ')')
-                    .replace(setters + ',' + tail, newSetters + ',' + tail);
-                code = code.slice(0, spawnMatch.index) + assembled +
-                    code.slice(spawnMatch.index + whole.length);
-                console.log('  Extended spawn() with ' + param +
-                    ' -> ' + payloadVar + '.sharedCwdPath setter');
-                patchCount++;
-                site3Done = true;
-            }
-        }
-    }
-
-    // --- 12b: forward SESSION.sharedCwdPath in Kyr -> spawn() call ---
-    // Anchor: ',VAR.mountConda)' — expected unique to the 12-arg caller
-    // (the shorter 10-arg one-shot call sites lack mountConda). Assert
-    // the uniqueness so a second upstream caller wouldn't silently take
-    // only the first hit.
-    let site2Done = false;
-    if (/,[\w$]+\.mountConda,[\w$]+\.sharedCwdPath\)/.test(code)) {
-        console.log('  #412 caller already forwards sharedCwdPath');
-        site2Done = true;
-    } else {
-        const callMatches = [...code.matchAll(/,([\w$]+)\.mountConda\)/g)];
-        if (callMatches.length === 0) {
-            console.log('  WARNING: #412 no ",VAR.mountConda)" pattern found');
-        } else if (callMatches.length > 1) {
-            console.log('  WARNING: #412 expected 1 ",VAR.mountConda)" match,' +
-                ' found ' + callMatches.length + '; skipping to avoid' +
-                ' wrong-site forwarding');
-        } else {
-            const [whole, sessionVar] = callMatches[0];
-            code = code.replace(whole, ',' + sessionVar +
-                '.mountConda,' + sessionVar + '.sharedCwdPath)');
-            console.log('  Forwarded sharedCwdPath in Kyr->spawn call' +
-                ' (var: ' + sessionVar + ')');
-            patchCount++;
-            site2Done = true;
-        }
-    }
-
-    if (!site1Done || !site2Done || !site3Done) {
-        console.log('  WARNING: #412 partial — site1=' + site1Done +
-            ' site2=' + site2Done + ' site3=' + site3Done +
-            '; daemon fallback still active');
     }
 }
 
