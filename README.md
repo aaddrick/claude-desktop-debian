@@ -296,6 +296,9 @@ Special thanks to:
 - **[diarized](https://github.com/diarized)** for auto-installing scoped AppArmor userns profiles from the `.deb` postinst on Ubuntu 24.04+ — one for the bundled Electron binary (fixing the launch crash without `--no-sandbox`) and one for `/usr/bin/bwrap` (keeping Cowork's sandbox isolated instead of silently falling back to host-direct), automating the workaround from #351 (#687, #694)
 - **[emandel82](https://github.com/emandel82)** for root-causing the "Attach app.asar?" prompt: every launcher passed `app.asar` as a redundant Electron argument, which the second-instance argv collector treated as a file to open — removed at the source across all four package formats (#700, #696)
 - **[svankirk](https://github.com/svankirk)** for cleaning up Desktop helper processes after an explicit quit — a quit wrapper with signal forwarding and a bundle-keyed live-UI check, so closing the app no longer strands helper processes (#682)
+- **[pjordanandrsn](https://github.com/pjordanandrsn)** for re-deriving the cowork Linux patch suite against the upstream "yukonSilver" VM refactor (1.13576+) — re-anchoring the platform gate on `startVM`'s `yukonSilver.status` check after Patch 1's removed `darwin`/`win32` anchor started `process.exit(1)`'ing and dropping every subsequent cowork patch, fixing the build's "Verify cowork patches in shipped asar" gate (#736)
+- **[chrisw1005](https://github.com/chrisw1005)** for root-causing the Linux startup hang on Claude Desktop 1.13576+ — the unconditional `@ant/claude-native.readRegistryValues()` / `getWindowsElevationType()` enterprise-policy calls throwing a swallowed missing-method `TypeError` before window creation — via probe injection, and the complete Windows-only native stub fix (#729)
+- **[colonelpanic8](https://github.com/colonelpanic8)** for independently reproducing the same 1.13576+ startup hang and contributing BATS coverage for the Linux native stub (#730)
 
 ## Sponsorship
 
