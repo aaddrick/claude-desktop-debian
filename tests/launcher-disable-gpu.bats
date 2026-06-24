@@ -4,9 +4,9 @@
 # Tests for the CLAUDE_DISABLE_GPU env var handling in
 # build_electron_args (scripts/launcher-common.sh). The var is an
 # opt-in workaround for the Chromium GPU process FATAL exhaustion
-# tracked in #583. CLAUDE_DISABLE_GPU=1 adds --disable-gpu and
-# --disable-software-rasterizer; co-occurrence with XRDP must not
-# stack duplicate flags.
+# tracked in #583. CLAUDE_DISABLE_GPU=1 adds --disable-gpu while
+# leaving Chromium's software rasterizer available; co-occurrence
+# with XRDP must not stack duplicate flags.
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
@@ -70,13 +70,14 @@ args_count() {
 # CLAUDE_DISABLE_GPU=1 — flags must be added
 # =============================================================================
 
-@test "disable-gpu: CLAUDE_DISABLE_GPU=1 adds flags + logs message" {
+@test "disable-gpu: CLAUDE_DISABLE_GPU=1 adds flag + logs message" {
 	export CLAUDE_DISABLE_GPU=1
 
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'CLAUDE_DISABLE_GPU=1' "$log_file"
 }
 
@@ -93,7 +94,7 @@ args_count() {
 	build_electron_args deb
 
 	[[ "$(args_count '--disable-gpu')" -eq 1 ]]
-	[[ "$(args_count '--disable-software-rasterizer')" -eq 1 ]]
+	[[ "$(args_count '--disable-software-rasterizer')" -eq 0 ]]
 	# Both signals should still log (independent diagnostic value),
 	# but only one set of flags should reach electron_args.
 	grep -q 'XRDP session detected' "$log_file"
@@ -154,7 +155,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
 }
 
@@ -176,7 +178,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 }
 
 @test "disable-gpu: NixOS launcher header sections are detected" {
@@ -193,7 +196,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
 }
 
