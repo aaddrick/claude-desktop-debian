@@ -45,6 +45,7 @@ log_session_env() {
 		XMODIFIERS \
 		QT_IM_MODULE \
 		CLAUDE_USE_WAYLAND \
+		CLAUDE_TRAY_AVAILABLE \
 		CLAUDE_TITLEBAR_STYLE \
 		CLAUDE_PASSWORD_STORE \
 		CLAUDE_GTK_IM_MODULE \
@@ -174,6 +175,60 @@ _detect_password_store() {
 
 	# No keyring accessible — fall back to fixed-key provider.
 	echo 'basic'
+}
+
+# Decide whether a usable system tray exists, so the wrapper can choose
+# between hide-to-tray and quit on main-window close. Echoes '1' when a
+# tray is available, '0' otherwise.
+#
+# "Usable" requires BOTH:
+#   1. the user hasn't turned the tray off — preferences.menuBarEnabled
+#      is not false in claude_desktop_config.json (absent defaults to on,
+#      matching patch_menu_bar_default), AND
+#   2. a StatusNotifier host is actually registered on the session bus to
+#      draw the icon.
+#
+# Without (2) the app hides into a tray that nothing renders, stranding an
+# invisible background process that only Ctrl+Q can kill. That is the
+# vanilla-GNOME case (no AppIndicator extension): the host name has no
+# owner at all. KDE, and GNOME with an AppIndicator extension, register a
+# host and keep close-to-tray. Fixes: #66, #122
+#
+# The host name is the freedesktop StatusNotifierItem spec; the 'org.kde'
+# prefix is historical, not desktop-specific. The probe reads two D-Bus
+# outcomes:
+#   call succeeds  -> watcher (hence a host) is up, or one may register
+#                     shortly after launch; bias toward keeping the
+#                     window (close-to-tray)                      -> 1
+#   call fails     -> name has no owner (vanilla GNOME): no host  -> 0
+_detect_tray_available() {
+	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
+	local config="$config_dir/claude_desktop_config.json"
+
+	# (1) Tray explicitly disabled in preferences — no tray.
+	if [[ -f $config ]] \
+		&& grep -qP '"menuBarEnabled"\s*:\s*false' "$config"
+	then
+		echo '0'
+		return
+	fi
+
+	# (2) Probe for a registered StatusNotifier host. A successful call
+	# means the watcher (hence a host) exists, or one may register shortly
+	# after launch — either way bias toward keeping the window. The only
+	# no-host case is vanilla GNOME, where the name has no owner and the
+	# call fails.
+	if dbus-send --session --print-reply --reply-timeout=1000 \
+		--dest=org.kde.StatusNotifierWatcher \
+		/StatusNotifierWatcher \
+		org.freedesktop.DBus.Properties.Get \
+		string:org.kde.StatusNotifierWatcher \
+		string:IsStatusNotifierHostRegistered >/dev/null 2>&1
+	then
+		echo '1'
+	else
+		echo '0'
+	fi
 }
 
 # Detect whether the previous launch ended in Chromium's
@@ -641,6 +696,15 @@ setup_electron_env() {
 	# copied and app resources co-located in resources/, so resourcesPath
 	# naturally points to the right place on all package types.
 	export ELECTRON_FORCE_IS_PACKAGED=true
+	# CLAUDE_TRAY_AVAILABLE tells frame-fix-wrapper.js whether closing the
+	# main window hides to tray ('1') or quits ('0'). Computed here because
+	# both inputs — the menuBarEnabled preference and the D-Bus host probe
+	# — are reachable from the shell but awkward from inside the wrapper.
+	# See _detect_tray_available. Fixes: #66, #122
+	# Assign then export on separate lines (SC2155: a combined
+	# `export X="$(...)"` would mask the substitution's exit status).
+	CLAUDE_TRAY_AVAILABLE=$(_detect_tray_available)
+	export CLAUDE_TRAY_AVAILABLE
 	# ELECTRON_USE_SYSTEM_TITLE_BAR=1 forces a system titlebar at the
 	# Electron level. Set in 'native' and 'hybrid' modes (both use
 	# frame:true); skipped in 'hidden' mode (frame:false + WCO config).

@@ -31,12 +31,13 @@ count_enable_features() {
 
 # Install a dbus-send stub at the front of PATH.
 #   kwallet6   — echoes 'boolean true', exits 0 (kwallet6 detectable)
+#   sni-host   — echoes 'boolean true', exits 0 (StatusNotifier host up)
 #   secrets-ok — fails for kwalletd6 dest, succeeds for all other dests
-#   fail       — always exits 1 with no output (no keyring accessible)
+#   fail       — always exits 1 with no output (no keyring / no host)
 _stub_dbus_send() {
 	mkdir -p "$TEST_TMP/bin"
 	case "${1:-fail}" in
-		kwallet6)
+		kwallet6|sni-host)
 			cat > "$TEST_TMP/bin/dbus-send" <<'STUB'
 #!/usr/bin/env bash
 echo 'boolean true'
@@ -85,6 +86,7 @@ setup() {
 	unset QT_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
+	unset CLAUDE_TRAY_AVAILABLE
 	CLAUDE_PASSWORD_STORE='basic'
 
 	# Copy to temp dir so we can substitute the build-time placeholder
@@ -152,6 +154,7 @@ teardown() {
 	XMODIFIERS='@im=ibus'
 	QT_IM_MODULE='ibus'
 	CLAUDE_USE_WAYLAND='1'
+	CLAUDE_TRAY_AVAILABLE='1'
 	CLAUDE_TITLEBAR_STYLE='hybrid'
 	CLAUDE_PASSWORD_STORE='basic'
 	CLAUDE_GTK_IM_MODULE='xim'
@@ -170,11 +173,12 @@ teardown() {
 	[[ "${lines[6]}"  == '  XMODIFIERS=@im=ibus' ]]
 	[[ "${lines[7]}"  == '  QT_IM_MODULE=ibus' ]]
 	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=1' ]]
-	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=hybrid' ]]
-	[[ "${lines[10]}" == '  CLAUDE_PASSWORD_STORE=basic' ]]
-	[[ "${lines[11]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
-	[[ "${lines[12]}" == '  CLAUDE_DISABLE_GPU=1' ]]
-	[[ "${lines[13]}" == '}' ]]
+	[[ "${lines[9]}"  == '  CLAUDE_TRAY_AVAILABLE=1' ]]
+	[[ "${lines[10]}" == '  CLAUDE_TITLEBAR_STYLE=hybrid' ]]
+	[[ "${lines[11]}" == '  CLAUDE_PASSWORD_STORE=basic' ]]
+	[[ "${lines[12]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
+	[[ "${lines[13]}" == '  CLAUDE_DISABLE_GPU=1' ]]
+	[[ "${lines[14]}" == '}' ]]
 }
 
 @test "log_session_env: unset/empty values render as 'KEY=' (no value)" {
@@ -196,10 +200,11 @@ teardown() {
 	[[ "${lines[6]}"  == '  XMODIFIERS=' ]]
 	[[ "${lines[7]}"  == '  QT_IM_MODULE=' ]]
 	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=' ]]
-	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=' ]]
-	[[ "${lines[10]}" == '  CLAUDE_PASSWORD_STORE=' ]]
-	[[ "${lines[11]}" == '  CLAUDE_GTK_IM_MODULE=' ]]
-	[[ "${lines[12]}" == '  CLAUDE_DISABLE_GPU=' ]]
+	[[ "${lines[9]}"  == '  CLAUDE_TRAY_AVAILABLE=' ]]
+	[[ "${lines[10]}" == '  CLAUDE_TITLEBAR_STYLE=' ]]
+	[[ "${lines[11]}" == '  CLAUDE_PASSWORD_STORE=' ]]
+	[[ "${lines[12]}" == '  CLAUDE_GTK_IM_MODULE=' ]]
+	[[ "${lines[13]}" == '  CLAUDE_DISABLE_GPU=' ]]
 }
 
 # =============================================================================
@@ -1102,4 +1107,59 @@ STUB
 	run _detect_password_store
 	[[ $status -eq 0 ]]
 	[[ $output == 'basic' ]]
+}
+
+# =============================================================================
+# _detect_tray_available
+# =============================================================================
+
+# Write a claude_desktop_config.json into the temp config dir.
+_write_claude_config() {
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	printf '%s\n' "$1" > "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json"
+}
+
+@test "_detect_tray_available: menuBarEnabled false short-circuits to 0 (no probe)" {
+	# A host is up, but the user turned the tray off — must still be 0,
+	# and the dbus-send stub (which would echo true) must not flip it.
+	_write_claude_config '{ "preferences": { "menuBarEnabled": false } }'
+	_stub_dbus_send sni-host
+	run _detect_tray_available
+	[[ $status -eq 0 ]]
+	[[ $output == '0' ]]
+}
+
+@test "_detect_tray_available: tray on + host registered -> 1" {
+	_write_claude_config '{ "preferences": { "menuBarEnabled": true } }'
+	_stub_dbus_send sni-host
+	run _detect_tray_available
+	[[ $output == '1' ]]
+}
+
+@test "_detect_tray_available: tray on + no host (vanilla GNOME) -> 0" {
+	_write_claude_config '{ "preferences": { "menuBarEnabled": true } }'
+	_stub_dbus_send fail
+	run _detect_tray_available
+	[[ $output == '0' ]]
+}
+
+@test "_detect_tray_available: no config file defaults tray on; host -> 1" {
+	# Config absent: menuBarEnabled defaults to on (patch_menu_bar_default),
+	# so availability rides entirely on the host probe.
+	_stub_dbus_send sni-host
+	run _detect_tray_available
+	[[ $output == '1' ]]
+}
+
+@test "_detect_tray_available: no config file + no host -> 0" {
+	_stub_dbus_send fail
+	run _detect_tray_available
+	[[ $output == '0' ]]
+}
+
+@test "setup_electron_env: exports CLAUDE_TRAY_AVAILABLE from the probe" {
+	_write_claude_config '{ "preferences": { "menuBarEnabled": true } }'
+	_stub_dbus_send sni-host
+	setup_electron_env
+	[[ $CLAUDE_TRAY_AVAILABLE == '1' ]]
 }
