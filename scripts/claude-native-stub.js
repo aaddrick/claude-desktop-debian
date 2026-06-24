@@ -42,6 +42,29 @@ class AuthRequest {
 
 module.exports = {
   getWindowsVersion: () => "10.0.0",
+
+  // Windows-only native methods with no Linux equivalent. Newer upstream
+  // (Claude Desktop >= 1.13576.0) calls readRegistryValues() and
+  // getWindowsElevationType() UNCONDITIONALLY at startup — the
+  // managed-config / enterprise-policy lookup — from the top level of
+  // index.pre.js and index.js. The bundle only guards the native module
+  // being null (e.g. `(o=g2())==null?void 0:o.readRegistryValues(r)`),
+  // not the method being absent, so a missing method throws
+  // "<method> is not a function" during top-level execution, before the
+  // logger and main window exist. index.pre.js installs an empty
+  // uncaughtException handler early, so the throw is swallowed: the
+  // process stays alive in the event loop but no window ever appears.
+  // Stub these as neutral no-ops (no registry, no MSIX package, no UAC
+  // on Linux) so the `?? []` / `?? "default"` consumers proceed. Fixing
+  // the stub covers every call site at the source and is robust against
+  // re-minification. Fixes the "hangs indefinitely, app window never
+  // shows up" regression (#729).
+  readRegistryValues: () => [],
+  writeRegistryValue: () => {},
+  writeRegistryDword: () => {},
+  getWindowsElevationType: () => "default",
+  getCurrentPackageFamilyName: () => null,
+
   setWindowEffect: () => {},
   removeWindowEffect: () => {},
 
