@@ -15,17 +15,20 @@
 #   sample   — concrete string the pattern matches; BATS uses it to
 #              build positive and per-marker negative fixtures.
 #
-# The first 9 markers correspond to the smoke-test set defined in
-# issue #559 (PR #555 retrofit, deliverable D6). Additional markers
-# cover other critical patches (e.g., .asar guards).
-vmclient-log-gate	process\.platform==="linux"\)\s*\?\s*"vmClient \(TypeScript\)"	(F||process.platform==="linux")?"vmClient (TypeScript)"
-vm-assignment-linux-gate	process\.platform==="linux"\)\?\(?[\w$]+=\{vm:[\w$]+\}	(F||process.platform==="linux")?N={vm:M}
+# Marker set tracks the cowork patch suite in scripts/patches/cowork.sh.
+# Re-derived for the yukonSilver VM architecture (Claude Desktop
+# 1.13576+): the platform gate moved to startVM's feature-flag check
+# and the vmClient module load moved behind the isMsix detector, so
+# Patch 1 + Patch 2 fingerprints changed and Patch 12 (sharedCwdPath
+# threading) was retired in favor of the daemon's mountMap fallback.
+vm-supported-linux-gate	process\.platform!=="linux"&&\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported"	process.platform!=="linux"&&(r==null?void 0:r.status)!=="supported"
+vmclient-linux-gate	\([\w$]+\(\)\|\|process\.platform==="linux"\)\?	(Rl()||process.platform==="linux")?
 unix-socket-path	process\.platform==="linux"\?\(process\.env\.XDG_RUNTIME_DIR\|\|"/tmp"\)\+"/cowork-vm-service\.sock"	process.platform==="linux"?(process.env.XDG_RUNTIME_DIR||"/tmp")+"/cowork-vm-service.sock"
 empty-linux-bundle-manifest	linux:\{x64:\[\],arm64:\[\]\}	,linux:{x64:[],arm64:[]}
 getdownloadstatus-suppression	getDownloadStatus\(\)\{return process\.platform==="linux"\?[\w$]+\.NotDownloaded	getDownloadStatus(){return process.platform==="linux"?Z.NotDownloaded
 econnrefused-on-linux	process\.platform==="linux"&&[\w$]+\.code==="ECONNREFUSED"	(n.code==="ENOENT"||process.platform==="linux"&&n.code==="ECONNREFUSED")
 cowork-daemon-pid	global\.__coworkDaemonPid	global.__coworkDaemonPid=_c.pid
 cowork-linux-daemon-shutdown	cowork-linux-daemon-shutdown	name:"cowork-linux-daemon-shutdown"
-sharedcwdpath-threadthrough	sharedCwdPath:this\.sessions\.get\(	sharedCwdPath:this.sessions.get(t)?.userSelectedFolders?.[0]
+smol-bin-linux-copy	Copying smol-bin\.\$\{_la\}\.vhdx to bundle \(Linux\)	Copying smol-bin.${_la}.vhdx to bundle (Linux)
 asar-adddir-filter	\.filter\(_d=>!_d\.endsWith\("\.asar"\)\).*"--add-dir"	.filter(_d=>!_d.endsWith(".asar")))Y.push("--add-dir"
 asar-file-drop-guard	\.startsWith\("-"\)\s*&&\s*![\w$]+\.endsWith\("\.asar"\)	.startsWith("-")&&!i.endsWith(".asar")
