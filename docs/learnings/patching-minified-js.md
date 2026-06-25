@@ -287,6 +287,49 @@ Four layers: build log, syntactic validity, asar markers, runtime.
    listening`; socket should exist and be owned by the
    `cowork-vm-service.js` process listed by `ss`.
 
+## One gate, multiple consumers: a marker can't catch a re-armed sibling
+
+A single minified predicate is often read by several independent code
+paths. Patching it at the source flips *all* of them — some you want,
+some you don't — and a marker-based check won't catch the ones you
+didn't, because nothing is *missing*; the regression is behavioral.
+
+The yukonSilver cowork gate (1.13576+) is the case study. The support
+evaluator `$oe()`/`q4r()` returns `{status:"supported"|"unsupported"}`,
+and at least four call sites read it: `startVM` (execution gate), the
+renderer (the Cowork tab's grayed-out / "reinstall" state), the
+download driver `u8A`, and the warm prefetch `mzn`. The tab was grayed
+out on Linux because the evaluator reported `unsupported` (the win32
+`q4r` probe hits `msix_required`). Flipping it to `supported` for Linux
+(`cowork.sh` Patch 1b) un-grayed the tab — and simultaneously re-armed
+the multi-GB `rootfs.vhdx` VM download that #337/`a3190c3` had disabled,
+because the two download consumers read the *same* evaluator.
+
+`verify-patches.sh` was green throughout: Patch 1b's marker was present,
+and there is no "download must stay off" marker to go red. The only
+thing that surfaced it was launching the build and watching
+`cowork_vm_node.log` (`rootfs.vhdx not found, downloading...`). The fix
+was not to un-flip the evaluator but to re-block the now-reachable
+consumers individually — Patch 1c adds `process.platform==="linux"||`
+to `u8A` and `mzn` so they behave as they did under `unsupported`,
+while the evaluator stays `supported` for the renderer.
+
+Two rules fall out of this:
+
+- **Before flipping a shared gate, grep every read of the predicate**
+  (here `\.status\)!=="supported"` / `status!=="supported"`). Enumerate
+  the consumers and decide per-site which should follow the flip. A
+  patch that "works" against the symptom you were chasing can arm a
+  sibling you weren't looking at.
+- **Markers verify structure; only a runtime launch verifies
+  behavior.** When a patch changes a value that other code branches on,
+  the post-build click-through (and a log tail for unwanted side
+  effects) is not optional — the static layers (build log, `node
+  --check`, markers) are all blind to a re-armed consumer. Add a
+  positive marker for the *counter*-patch (Patch 1c ships
+  `vm-download-blocked-linux` + `warm-download-blocked-linux`) so the
+  invariant you just restored has a fingerprint that can go red.
+
 ## Cross-references
 
 - `tray-rebuild-race.md` "Resilience to minifier churn" — prior art
