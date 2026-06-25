@@ -299,6 +299,106 @@ function extractBlock(str, startIdx, open = '{') {
 }
 
 // ============================================================
+// Patch 1b: VM-supported *evaluator* - report supported on Linux
+// Patch 1 opens the startVM *execution* gate, but the refactored
+// renderer (claude.ai web) gates the Cowork tab's *visibility* on the
+// yukonSilver support *evaluator* ($oe -> q4r), a separate consumer.
+// q4r() is the Windows capability probe (win32 VM bundle, MSIX via the
+// install-type detector, Win10 build, Hyper-V HCS). On Linux it returns
+// unsupportedCode:"msix_required" ("...installed with our modern
+// installer"), which the web app maps to the grayed-out
+// "Cowork requires a newer installation / Reinstall" tab (the daemon is
+// up and healthy, but the UI never lets you reach it).
+//
+// Inject an early Linux return of {status:"supported"} at the top of
+// q4r() so the evaluator reports supported. The downstream enterprise/
+// user gates in $oe() (secureVmEnabled, coworkSurface.enabled,
+// secureVmFeaturesEnabled — default-allow) still apply. Anchor on q4r's
+// distinctive win32 + process.arch opening. Do NOT touch the install-
+// type detector (see Patch 2's warning). Non-fatal: on a miss the tab
+// stays grayed out but the app still runs, so warn rather than exit.
+// ============================================================
+{
+    const evalRe =
+        /(const [\w$]+="win32",([\w$]+)=process\.arch;if\(\2!=="x64"&&\2!=="arm64"\))/;
+    if (/if\(process\.platform==="linux"\)return\{status:"supported"\};const [\w$]+="win32"/.test(code)) {
+        console.log('  VM-supported evaluator Linux gate already' +
+            ' applied (Patch 1b)');
+    } else {
+        const evalMatch = code.match(evalRe);
+        if (!evalMatch) {
+            console.log('  WARNING: could not find q4r support-evaluator' +
+                ' anchor (win32/arch probe) — Cowork tab may stay grayed' +
+                ' out on Linux (renderer reads the support evaluator)');
+        } else {
+            code = code.replace(evalRe,
+                'if(process.platform==="linux")return{status:"supported"};$1');
+            console.log('  Patched VM-supported evaluator to report' +
+                ' supported on Linux');
+            patchCount++;
+        }
+    }
+}
+
+// ============================================================
+// Patch 1c: keep the VM-image download DISABLED on Linux
+// Patch 1b flips the yukonSilver evaluator to "supported" so the
+// renderer un-grays the Cowork tab. But the evaluator is ALSO read by
+// the VM-image download drivers, which gate on
+// yukonSilver.status==="supported". With 1b alone they re-arm and pull
+// the multi-GB rootfs.vhdx/vmlinuz/initrd VM bundle that #337/a3190c3
+// deliberately disabled — Linux runs cowork through the bwrap daemon,
+// not a downloaded VM. Re-block the two download triggers on Linux so
+// they behave as they did pre-1b (the old status="unsupported" path):
+//   - download driver (startVM's download_and_sdk_prepare): returns !1
+//   - warm prefetch (autoDownloadInBackground): early-returns
+// startVM itself stays open (Patch 1), so the bwrap session is
+// unaffected. Two sites: flag each; a non-fatal WARNING fires if either
+// misses, so a half-applied build surfaces in CI's WARNING grep.
+// ============================================================
+{
+    let dlDriverDone = false, warmDone = false;
+
+    // Site A: download driver — (X==null?void 0:X.status)!=="supported"?!1:
+    // The unique "[downloadVM] Download already in progress" log lives in
+    // the same function, confirming this is the VM-image driver gate.
+    const dlGateRe =
+        /(\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported")\?!1:/;
+    if (/process\.platform==="linux"\|\|\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported"\)\?!1:/.test(code)) {
+        console.log('  VM-download Linux block already applied (Patch 1c-A)');
+        dlDriverDone = true;
+    } else if (dlGateRe.test(code) &&
+        code.includes('[downloadVM] Download already in progress')) {
+        code = code.replace(dlGateRe,
+            '(process.platform==="linux"||$1)?!1:');
+        console.log('  Patched VM-download driver to skip on Linux');
+        dlDriverDone = true;
+        patchCount++;
+    }
+
+    // Site B: warm prefetch — if(!X||X.status!=="supported"){await Y([]);return}
+    const warmGateRe =
+        /(if\()(![\w$]+\|\|[\w$]+\.status!=="supported")(\)\{await [\w$]+\(\[\]\);return\})/;
+    if (/if\(process\.platform==="linux"\|\|![\w$]+\|\|[\w$]+\.status!=="supported"\)\{await [\w$]+\(\[\]\);return\}/.test(code)) {
+        console.log('  Warm-download Linux block already applied (Patch 1c-B)');
+        warmDone = true;
+    } else if (warmGateRe.test(code)) {
+        code = code.replace(warmGateRe,
+            '$1process.platform==="linux"||$2$3');
+        console.log('  Patched warm prefetch to skip on Linux');
+        warmDone = true;
+        patchCount++;
+    }
+
+    if (!dlDriverDone || !warmDone) {
+        console.log('  WARNING: VM-download block partial — driver=' +
+            dlDriverDone + ' warm=' + warmDone + '; Linux may re-arm the' +
+            ' rootfs.vhdx download (#337) now that the evaluator reports' +
+            ' supported (Patch 1b)');
+    }
+}
+
+// ============================================================
 // Patch 2: Module loading - use TypeScript VM client on Linux
 // Anchor: unique string "vmClient (TypeScript)"
 // Upstream 1.13576+ gates the vmClient module load behind Rl()

@@ -2762,4 +2762,5 @@ module.exports = {
     loadBwrapMountsConfig,
     mergeBwrapArgs,
     classifyBwrapProbeError,
+    detectBackend,
 };

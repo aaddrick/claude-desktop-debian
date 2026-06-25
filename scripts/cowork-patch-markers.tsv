@@ -22,6 +22,9 @@
 # Patch 1 + Patch 2 fingerprints changed and Patch 12 (sharedCwdPath
 # threading) was retired in favor of the daemon's mountMap fallback.
 vm-supported-linux-gate	process\.platform!=="linux"&&\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported"	process.platform!=="linux"&&(r==null?void 0:r.status)!=="supported"
+vm-supported-linux-evaluator	if\(process\.platform==="linux"\)return\{status:"supported"\};const [\w$]+="win32"	if(process.platform==="linux")return{status:"supported"};const A="win32"
+vm-download-blocked-linux	process\.platform==="linux"\|\|\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported"\)\?!1:	(process.platform==="linux"||(t==null?void 0:t.status)!=="supported")?!1:
+warm-download-blocked-linux	if\(process\.platform==="linux"\|\|![\w$]+\|\|[\w$]+\.status!=="supported"\)\{await [\w$]+\(\[\]\);return\}	if(process.platform==="linux"||!i||i.status!=="supported"){await YcA([]);return}
 vmclient-linux-gate	\([\w$]+\(\)\|\|process\.platform==="linux"\)\?	(Rl()||process.platform==="linux")?
 unix-socket-path	process\.platform==="linux"\?\(process\.env\.XDG_RUNTIME_DIR\|\|"/tmp"\)\+"/cowork-vm-service\.sock"	process.platform==="linux"?(process.env.XDG_RUNTIME_DIR||"/tmp")+"/cowork-vm-service.sock"
 empty-linux-bundle-manifest	linux:\{x64:\[\],arm64:\[\]\}	,linux:{x64:[],arm64:[]}
