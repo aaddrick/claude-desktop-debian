@@ -435,7 +435,7 @@ SHIM
 # _doctor_check_electron_binary
 # =============================================================================
 
-@test "_doctor_check_electron_binary: provided path with parseable version — PASS" {
+@test "_doctor_check_electron_binary: provided path with parsable version — PASS" {
 	local bin="$TEST_TMP/electron"
 	printf '#!/bin/sh\n' > "$bin"
 	chmod +x "$bin"
@@ -445,7 +445,7 @@ SHIM
 	[[ $output == *'Electron: v28.1.0'* ]]
 }
 
-@test "_doctor_check_electron_binary: provided path, unparseable version — PASS (found)" {
+@test "_doctor_check_electron_binary: provided path, unparsable version — PASS (found)" {
 	local bin="$TEST_TMP/electron"
 	printf '#!/bin/sh\n' > "$bin"
 	chmod +x "$bin"
