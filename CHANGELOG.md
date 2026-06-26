@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The system tray / menu-bar icon no longer shows as a black square (or an invisible/empty icon) on Linux. Upstream 1.13576+ replaced the runtime platform check for the tray icon *format* with a build-time constant baked for Windows (`uPi="ico"`) routed through `switch(uPi){case"ico":…Tray-Win32.ico…;case"png":…TrayIconTemplate…}`. Because the project repackages the Windows asar verbatim, Linux kept loading the Windows multi-resolution `.ico`, which Electron's `nativeImage` renders as a black square on the freedesktop/KDE StatusNotifier. The existing icon patch was silently rewriting the now-dead `template-image`/`png` case while the live `"ico"` case stayed broken. `patch_tray_icon_selection` now wraps the switch discriminant (`switch(process.platform==="linux"?"png":uPi)`) so Linux takes the already-theme-aware `"png"` case, which selects the `TrayIconTemplate[-Dark].png` assets the build ships and processes for visibility. ([#746](https://github.com/aaddrick/claude-desktop-debian/issues/746))
+
 ## [v2.0.22] — 2026-06-25
 
 Tracks upstream Claude Desktop 1.15200.0.
