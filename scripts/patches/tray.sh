@@ -245,11 +245,17 @@ const fastPath =
 // and the 1.13576+ shape with leading state resets
 //   ;if(X=[],Y=!1,TRAY&&(TRAY.destroy()...
 const destroyMark = T + '.destroy()';
-const di = code.indexOf(destroyMark);
-if (di === -1) {
-  console.error('  [FAIL] TRAY.destroy() site not found');
+// Assert the anchor is unique before trusting indexOf's first hit: a
+// second TRAY.destroy() (a new teardown path, or the string surfacing in
+// a merged chunk) would silently mis-place the injection. Bail loudly so
+// a future upstream surfaces here instead of shipping a wrong fast-path.
+const destroyCount = code.split(destroyMark).length - 1;
+if (destroyCount !== 1) {
+  console.error('  [FAIL] expected exactly 1 ' + destroyMark +
+    ', found ' + destroyCount);
   process.exit(1);
 }
+const di = code.indexOf(destroyMark);
 const ifIdx = code.lastIndexOf(';if(', di);
 if (ifIdx === -1) {
   console.error('  [FAIL] enclosing destroy-recreate if( not found');
@@ -294,7 +300,7 @@ patch_menu_bar_default() {
 	# `menuBarEnabled:!0` (true). When that default is present this patch
 	# is a no-op by design — distinguish that from a genuine miss so a
 	# future default flip back to false surfaces instead of hiding.
-	elif grep -qP 'menuBarEnabled:\s*!0\b' "$index_js"; then
+	elif grep -qP 'menuBarEnabled:[ \t]*!0\b' "$index_js"; then
 		echo '  menuBarEnabled already defaults to true upstream' \
 			'(defaults map) — no patch needed'
 	else

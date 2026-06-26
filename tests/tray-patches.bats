@@ -120,6 +120,19 @@ JS
 	echo "$output" | grep -q 'destroy'
 }
 
+@test "inplace: ambiguous TRAY.destroy() (two sites) is a loud failure" {
+	# Two destroy sites: indexOf would mis-place the injection. The
+	# count==1 guard must bail rather than trust the first hit.
+	write_new_shape_fixture
+	cat >> "$index_js" <<'JS'
+function teardownAgain(){vE.destroy();}
+JS
+	cd "$TEST_TMP"
+	run patch_tray_inplace_update
+	[[ "$status" -ne 0 ]]
+	echo "$output" | grep -qiE 'expected exactly 1|found 2'
+}
+
 @test "menu-bar-default: recognizes the upstream defaults map as already-true" {
 	write_new_shape_fixture
 	cd "$TEST_TMP"
