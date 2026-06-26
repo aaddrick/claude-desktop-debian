@@ -71,18 +71,59 @@ patch_tray_menu_handler() {
 }
 
 patch_tray_icon_selection() {
-	echo 'Patching tray icon selection for Linux visibility...'
+	echo 'Patching tray icon format selection for Linux visibility...'
 	local index_js='app.asar.contents/.vite/build/index.js'
-	local dark_check="${electron_var_re}.nativeTheme.shouldUseDarkColors"
 
-	if grep -qP ':[$\w]+="TrayIconTemplate\.png"' "$index_js"; then
-		sed -i -E \
-			"s/:([[:alnum:]_\$]+)=\"TrayIconTemplate\.png\"/:\1=${dark_check}?\"TrayIconTemplate-Dark.png\":\"TrayIconTemplate.png\"/g" \
-			"$index_js"
-		echo 'Patched tray icon selection for Linux theme support'
-	else
-		echo 'Tray icon selection pattern not found or already patched'
+	# Upstream 1.13576+ bakes the tray icon *format* as a build-time
+	# constant set for the Windows build (`uPi="ico"`) and routes it
+	# through a switch:
+	#   switch(uPi){
+	#     case"ico": e=dark?"Tray-Win32-Dark.ico":"Tray-Win32.ico"; break;
+	#     case"template-image": e="TrayIconTemplate.png"; break;
+	#     case"png": e=dark?"TrayIconTemplate-Dark.png":"TrayIconTemplate.png";
+	#   }
+	# Because we repackage the Windows asar verbatim, that constant stays
+	# "ico" on Linux, so the tray loads the Windows multi-resolution
+	# `.ico`, which Electron's nativeImage renders as a black square on the
+	# freedesktop/KDE StatusNotifier (issue #746). The "png" case already
+	# selects the theme-aware PNG templates the build ships and processes
+	# for Linux visibility (TrayIconTemplate[-Dark].png, made opaque in
+	# scripts/staging/icons.sh) — so the fix is to route Linux to that
+	# case rather than re-deriving the icon names.
+	#
+	# Anchor on the stable `switch(VAR){case"ico":` shape: the case labels
+	# are developer strings that survive minification; VAR (`uPi`) is
+	# extracted dynamically, never hardcoded. Non-fatal — on a miss the
+	# tray may show the wrong icon but the app still runs — so warn loudly
+	# instead of exiting, matching the rest of the tray patch set.
+
+	# Idempotency: our wrapped discriminant is its own marker.
+	if grep -qF 'switch(process.platform==="linux"?"png":' "$index_js"; then
+		echo '  Tray icon format already routed to png on Linux'
+		echo '##############################################################'
+		return
 	fi
+
+	local sw_count sw_var sw_var_re
+	sw_count=$(grep -coP 'switch\([$\w]+\)\{case"ico":' "$index_js")
+	if [[ $sw_count -ne 1 ]]; then
+		echo "WARNING: expected exactly 1 tray icon-format switch" \
+			"(switch(VAR){case\"ico\":), found ${sw_count} — the Linux" \
+			"tray icon may render as a black square (#746); the" \
+			"icon-format switch shape likely changed" >&2
+		echo '##############################################################'
+		return
+	fi
+	sw_var=$(grep -oP 'switch\(\K[$\w]+(?=\)\{case"ico":)' "$index_js" \
+		| head -1)
+	echo "  Found icon-format switch var: $sw_var"
+
+	# Escape `$` for the sed pattern (minified names can be e.g. `u$i`).
+	sw_var_re="${sw_var//\$/\\$}"
+	sed -i -E \
+		"s/switch\(${sw_var_re}\)\{case\"ico\":/switch(process.platform===\"linux\"?\"png\":${sw_var}){case\"ico\":/" \
+		"$index_js"
+	echo '  Routed tray icon format to png on Linux'
 	echo '##############################################################'
 }
 
