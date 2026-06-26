@@ -124,17 +124,26 @@ patch_tray_inplace_update() {
 	menu_func=$(grep -oP "${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\(\))" \
 		"$index_js" | head -1)
 	if [[ -z $menu_func ]]; then
-		menu_var=$(grep -oP "${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\))" \
-			"$index_js" | head -1)
-		if [[ -n $menu_var ]]; then
+		# Prebuilt-object form. Two traps a plain `head -1` falls into on
+		# 1.13576+ bundles: (1) the *first* setContextMenu call site is a
+		# menu-*clear* — `${tray_var}.setContextMenu(null)` on
+		# invalidation — so latching the first arg yields the literal
+		# `null`; (2) the menu object is assigned from the builder by name
+		# (`M=BUILDER()`), so the builder is one hop away. Walk every
+		# setContextMenu argument, skip the `null` clear, and take the
+		# first that resolves to a `VAR=BUILDER()` assignment. The
+		# word-boundary lookbehind resolves the assignment whether it
+		# follows a separator or a declarator (`let `/`const ` leaves a
+		# space before the var).
+		while IFS= read -r menu_var; do
+			[[ -z $menu_var || $menu_var == 'null' ]] && continue
 			menu_var_re="${menu_var//\$/\\$}"
-			# Word-boundary lookbehind, not a fixed [,;({] class, so the
-			# assignment resolves whether it follows a separator or a
-			# declarator (`let `/`const ` leaves a space before the var).
-			# First assignment site wins, matching the inline-form grep.
-			menu_func=$(grep -oP "(?<![\$\w])${menu_var_re}=\K[\$\w]+(?=\(\))" \
+			menu_func=$(grep -oP \
+				"(?<![\$\w])${menu_var_re}=\K[\$\w]+(?=\(\))" \
 				"$index_js" | head -1)
-		fi
+			[[ -n $menu_func ]] && break
+		done < <(grep -oP \
+			"${tray_var_re}\.setContextMenu\(\K[\$\w]+(?=\))" "$index_js")
 	fi
 	if [[ -z $menu_func ]]; then
 		# Both the inline grep and the menu_var fallback came up empty.
@@ -221,17 +230,6 @@ const P = process.env.PATH_VAR;
 const V = process.env.ENABLED_VAR;
 let code = fs.readFileSync(p, 'utf8');
 
-// Anchor at the start of the existing destroy+recreate block,
-// tolerating optional inner whitespace.
-const reEsc = (s) => s.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\\$&');
-const anchor = new RegExp(
-  ';if\\\\(' + reEsc(T) + '&&\\\\(' + reEsc(T) + '\\\\.destroy\\\\(\\\\)'
-);
-if (!anchor.test(code)) {
-  console.error('  [FAIL] destroy-recreate anchor not found');
-  process.exit(1);
-}
-
 const fastPath =
   'if(' + T + '&&' + V + '!==false){' +
     T + '.setImage(' + E + '.nativeImage.createFromPath(' + P + '));' +
@@ -239,9 +237,32 @@ const fastPath =
     'return' +
   '}';
 
-// Prefix the destroy block with the fast-path, keeping the matched
-// portion ';if(TRAY&&(TRAY.destroy()' intact.
-code = code.replace(anchor, (m) => ';' + fastPath + m.slice(1));
+// Inject the fast-path just before the destroy+recreate statement.
+// Locate the TRAY.destroy() call, then walk back to the ';if(' that
+// opens its statement, so the fast-path lands on a clean statement
+// boundary. Robust across both block shapes: the old
+//   ;if(TRAY&&(TRAY.destroy()...
+// and the 1.13576+ shape with leading state resets
+//   ;if(X=[],Y=!1,TRAY&&(TRAY.destroy()...
+const destroyMark = T + '.destroy()';
+// Assert the anchor is unique before trusting indexOf's first hit: a
+// second TRAY.destroy() (a new teardown path, or the string surfacing in
+// a merged chunk) would silently mis-place the injection. Bail loudly so
+// a future upstream surfaces here instead of shipping a wrong fast-path.
+const destroyCount = code.split(destroyMark).length - 1;
+if (destroyCount !== 1) {
+  console.error('  [FAIL] expected exactly 1 ' + destroyMark +
+    ', found ' + destroyCount);
+  process.exit(1);
+}
+const di = code.indexOf(destroyMark);
+const ifIdx = code.lastIndexOf(';if(', di);
+if (ifIdx === -1) {
+  console.error('  [FAIL] enclosing destroy-recreate if( not found');
+  process.exit(1);
+}
+// Insert after the ';' so the existing if-statement stays intact.
+code = code.slice(0, ifIdx + 1) + fastPath + code.slice(ifIdx + 1);
 fs.writeFileSync(p, code);
 console.log('  [OK] Fast-path injected before destroy-recreate');
 "; then
@@ -268,14 +289,25 @@ patch_menu_bar_default() {
 	fi
 	echo "  Found menuBarEnabled variable: $menu_bar_var"
 
-	# Change !!var to var!==false so undefined defaults to true
+	# Change !!var to var!==false so undefined defaults to true.
 	if grep -qP ",\s*!!${menu_bar_var}\s*\)" "$index_js"; then
 		sed -i -E \
 			"s/,\s*!!${menu_bar_var}\s*\)/,${menu_bar_var}!==false)/g" \
 			"$index_js"
 		echo '  Patched menuBarEnabled to default to true'
+	# Upstream 1.13576+ moved the preference behind a settings getter
+	# (Di("menuBarEnabled")) backed by a defaults map that already ships
+	# `menuBarEnabled:!0` (true). When that default is present this patch
+	# is a no-op by design — distinguish that from a genuine miss so a
+	# future default flip back to false surfaces instead of hiding.
+	elif grep -qP 'menuBarEnabled:[ \t]*!0\b' "$index_js"; then
+		echo '  menuBarEnabled already defaults to true upstream' \
+			'(defaults map) — no patch needed'
 	else
-		echo '  menuBarEnabled pattern not found or already patched'
+		echo "WARNING: menuBarEnabled neither carries the legacy" \
+			"!!-default anchor nor the upstream defaults-map" \
+			"\`menuBarEnabled:!0\` — the tray may default OFF on a" \
+			"fresh install; the default shape likely changed" >&2
 	fi
 	echo '##############################################################'
 }

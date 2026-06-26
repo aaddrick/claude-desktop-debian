@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The tray in-place fast-path applies again on Claude Desktop 1.13576+ (verified against 1.15962.0). The "yukonSilver"-era refactor restructured the tray rebuild block — the destroy/recreate is now guarded by `if(X=[],Y=!1,TRAY&&(TRAY.destroy()…),!enabled)` instead of `;if(TRAY&&(TRAY.destroy()`, and the context menu became a prebuilt object (`M=BUILDER();TRAY.setContextMenu(M)`) with a leading `setContextMenu(null)` menu-clear. The patch's `head -1` latched that `null` clear, so the menu builder never resolved, the #680 WARNING fired, and the fast-path was skipped — silently re-arming the #515 KDE/Plasma duplicate-icon StatusNotifier race because tray patches warn-and-continue. The menu-function resolver now walks every `setContextMenu` argument, skips the `null` clear, and resolves the real builder; the injection anchors on the `;if(` that opens the destroy statement so it lands in both the old and new shapes. New `tests/tray-patches.bats` covers builder resolution, injection placement, idempotency, the loud-fail-on-missing-anchor path, and the menu-bar-default cases. ([#746](https://github.com/aaddrick/claude-desktop-debian/issues/746) investigation)
+- `patch_menu_bar_default` no longer reports a bare "pattern not found" on 1.13576+. Upstream moved `menuBarEnabled` behind a settings getter backed by a defaults map that already ships `menuBarEnabled:!0`, so the legacy `!!`-default rewrite is a no-op by design. The patch now distinguishes that case from a genuine miss and warns loudly only if neither the legacy anchor nor the upstream default is present (i.e. the default ever flips back to off).
+
 ## [v2.0.22] — 2026-06-25
 
 Tracks upstream Claude Desktop 1.15200.0.
