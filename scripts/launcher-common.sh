@@ -309,8 +309,10 @@ build_electron_args() {
 		log_message \
 			'Previous launch hit GPU process FATAL - disabling GPU'
 	fi
-	[[ $_disable_gpu == true ]] \
-		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')
+	# Keep Chromium's software rasterizer available. Disabling both
+	# hardware GPU and the software fallback can make Electron abort
+	# with "GPU process isn't usable" instead of recovering.
+	[[ $_disable_gpu == true ]] && electron_args+=('--disable-gpu')
 
 	# X11 session - no display-backend flags needed.
 	if [[ $is_wayland != true ]]; then
