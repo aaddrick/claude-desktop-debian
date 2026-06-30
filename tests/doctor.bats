@@ -432,6 +432,165 @@ SHIM
 }
 
 # =============================================================================
+# _doctor_check_display_server
+# =============================================================================
+
+@test "_doctor_check_display_server: Wayland — PASS + desktop + XWayland default mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_CURRENT_DESKTOP='GNOME'
+	# CLAUDE_USE_WAYLAND unset → default XWayland mode
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output == *'Desktop: GNOME'* ]]
+	[[ $output == *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=1 — native mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	CLAUDE_USE_WAYLAND='1'
+	run _doctor_check_display_server
+	[[ $output == *'native Wayland'* ]]
+	[[ $output != *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: X11 — PASS" {
+	DISPLAY=':0'
+	# WAYLAND_DISPLAY unset (setup clears it)
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland wins when both set" {
+	WAYLAND_DISPLAY='wayland-0'
+	DISPLAY=':0'
+	run _doctor_check_display_server
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output != *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: neither set — FAIL" {
+	# setup() already unsets DISPLAY and WAYLAND_DISPLAY.
+	run _doctor_check_display_server
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'No display server detected'* ]]
+}
+
+# =============================================================================
+# _doctor_check_menu_bar
+# =============================================================================
+
+@test "_doctor_check_menu_bar: unset — auto default (INFO, not PASS)" {
+	unset CLAUDE_MENU_BAR
+	run _doctor_check_menu_bar
+	[[ $output == *'auto (default'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_menu_bar: explicit 'visible' — PASS" {
+	CLAUDE_MENU_BAR='visible'
+	run _doctor_check_menu_bar
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Menu bar mode: visible'* ]]
+}
+
+@test "_doctor_check_menu_bar: boolean alias '1' resolves to visible" {
+	CLAUDE_MENU_BAR='1'
+	run _doctor_check_menu_bar
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Menu bar mode: visible'* ]]
+	[[ $output == *'CLAUDE_MENU_BAR=1'* ]]
+}
+
+@test "_doctor_check_menu_bar: boolean alias 'off' resolves to hidden" {
+	CLAUDE_MENU_BAR='off'
+	run _doctor_check_menu_bar
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Menu bar mode: hidden'* ]]
+}
+
+@test "_doctor_check_menu_bar: case-insensitive (VISIBLE)" {
+	CLAUDE_MENU_BAR='VISIBLE'
+	run _doctor_check_menu_bar
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Menu bar mode: visible'* ]]
+}
+
+@test "_doctor_check_menu_bar: unknown value — WARN" {
+	CLAUDE_MENU_BAR='bogus'
+	run _doctor_check_menu_bar
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *"Unknown CLAUDE_MENU_BAR: 'bogus'"* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_titlebar_style
+# =============================================================================
+
+@test "_doctor_check_titlebar_style: unset — hybrid default (INFO, not PASS)" {
+	unset CLAUDE_TITLEBAR_STYLE
+	run _doctor_check_titlebar_style
+	[[ $output == *'hybrid (default'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_titlebar_style: 'native' — PASS" {
+	CLAUDE_TITLEBAR_STYLE='native'
+	run _doctor_check_titlebar_style
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Titlebar style: native'* ]]
+}
+
+@test "_doctor_check_titlebar_style: 'hidden' — WARN (clicks unresponsive)" {
+	CLAUDE_TITLEBAR_STYLE='hidden'
+	run _doctor_check_titlebar_style
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'unresponsive'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_titlebar_style: case-insensitive (Hybrid)" {
+	CLAUDE_TITLEBAR_STYLE='Hybrid'
+	run _doctor_check_titlebar_style
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Titlebar style: hybrid'* ]]
+}
+
+@test "_doctor_check_titlebar_style: unknown value — WARN" {
+	CLAUDE_TITLEBAR_STYLE='bogus'
+	run _doctor_check_titlebar_style
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *"Unknown CLAUDE_TITLEBAR_STYLE: 'bogus'"* ]]
+}
+
+# =============================================================================
+# _doctor_check_keep_awake
+# =============================================================================
+
+@test "_doctor_check_keep_awake: unset — silent (no output)" {
+	unset CLAUDE_KEEP_AWAKE
+	run _doctor_check_keep_awake
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_keep_awake: 0 — suppressed (PASS)" {
+	CLAUDE_KEEP_AWAKE='0'
+	run _doctor_check_keep_awake
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'suppressed'* ]]
+}
+
+@test "_doctor_check_keep_awake: non-zero — informational, not PASS" {
+	CLAUDE_KEEP_AWAKE='1'
+	run _doctor_check_keep_awake
+	[[ $output == *'CLAUDE_KEEP_AWAKE=1'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+# =============================================================================
 # _doctor_check_password_store
 # =============================================================================
 

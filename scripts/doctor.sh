@@ -669,26 +669,10 @@ _doctor_check_pkg_version() {
 	fi
 }
 
-# Run all diagnostic checks and print results
-# Arguments: $1 = electron path (optional, for package-specific checks)
-run_doctor() {
-	local electron_path="${1:-}"
-	local _doctor_failures=0
-	_doctor_colors
-
-	# Distro ID is shared between the IM-module check (#550) and the
-	# Cowork Mode section further down. Resolve once.
-	local _distro_id
-	_distro_id=$(_cowork_distro_id)
-
-	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
-	echo '================================'
-	echo
-
-	# -- Installed package version --
-	_doctor_check_pkg_version "$electron_path"
-
-	# -- Display server --
+# Report the active display server from WAYLAND_DISPLAY / DISPLAY, and
+# on Wayland the desktop and XWayland-vs-native mode. Fails when neither
+# var is set (e.g. launched from a bare TTY).
+_doctor_check_display_server() {
 	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
 		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
 		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
@@ -707,11 +691,12 @@ run_doctor() {
 			"(DISPLAY and WAYLAND_DISPLAY are unset)"
 		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
 	fi
+}
 
-	# -- Input method (IBus / GTK) --
-	_doctor_check_im_modules "$_distro_id"
-
-	# -- Menu bar mode --
+# Report the CLAUDE_MENU_BAR override, resolving boolean-style aliases
+# (1/true/yes/on → visible, 0/false/no/off → hidden). Warns on an
+# unrecognised value; reports the auto default when unset.
+_doctor_check_menu_bar() {
 	local menu_bar_mode="${CLAUDE_MENU_BAR:-}"
 	if [[ -n $menu_bar_mode ]]; then
 		local resolved_mode="${menu_bar_mode,,}"
@@ -735,8 +720,12 @@ run_doctor() {
 	else
 		_info 'Menu bar mode: auto (default, Alt toggles visibility)'
 	fi
+}
 
-	# -- Titlebar style --
+# Report the CLAUDE_TITLEBAR_STYLE override. Warns on 'hidden' (clicks
+# unresponsive on Linux) and on unrecognised values; reports the hybrid
+# default when unset.
+_doctor_check_titlebar_style() {
 	local titlebar_style="${CLAUDE_TITLEBAR_STYLE:-}"
 	if [[ -n $titlebar_style ]]; then
 		local resolved_style="${titlebar_style,,}"
@@ -758,14 +747,52 @@ run_doctor() {
 	else
 		_info 'Titlebar style: hybrid (default, native frame + in-app topbar)'
 	fi
+}
 
-	# -- Keep awake override --
+# Report the CLAUDE_KEEP_AWAKE override: 0 suppresses the power-save
+# blocker; any other non-empty value is informational. Silent when unset.
+_doctor_check_keep_awake() {
 	local keep_awake="${CLAUDE_KEEP_AWAKE:-}"
 	if [[ $keep_awake == '0' ]]; then
 		_pass 'Keep awake: suppressed (CLAUDE_KEEP_AWAKE=0)'
 	elif [[ -n $keep_awake ]]; then
 		_info "Keep awake: CLAUDE_KEEP_AWAKE=$keep_awake (default behavior)"
 	fi
+}
+
+# Run all diagnostic checks and print results
+# Arguments: $1 = electron path (optional, for package-specific checks)
+run_doctor() {
+	local electron_path="${1:-}"
+	local _doctor_failures=0
+	_doctor_colors
+
+	# Distro ID is shared between the IM-module check (#550) and the
+	# Cowork Mode section further down. Resolve once.
+	local _distro_id
+	_distro_id=$(_cowork_distro_id)
+
+	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
+	echo '================================'
+	echo
+
+	# -- Installed package version --
+	_doctor_check_pkg_version "$electron_path"
+
+	# -- Display server --
+	_doctor_check_display_server
+
+	# -- Input method (IBus / GTK) --
+	_doctor_check_im_modules "$_distro_id"
+
+	# -- Menu bar mode --
+	_doctor_check_menu_bar
+
+	# -- Titlebar style --
+	_doctor_check_titlebar_style
+
+	# -- Keep awake override --
+	_doctor_check_keep_awake
 
 	# -- Electron binary --
 	# Version is read from the file next to the binary rather than
