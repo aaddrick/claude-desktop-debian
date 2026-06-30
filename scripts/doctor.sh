@@ -669,6 +669,82 @@ _doctor_check_pkg_version() {
 	fi
 }
 
+# Report the Electron binary and its version. The version is read from
+# the file next to the binary rather than launching Electron, which can
+# hang (see #371). Falls back to a system `electron` on PATH; fails when
+# a provided path is missing or no binary is found at all.
+#
+# Usage: _doctor_check_electron_binary [electron_path]
+_doctor_check_electron_binary() {
+	local electron_path="${1:-}"
+	if [[ -n $electron_path && -x $electron_path ]]; then
+		local ver
+		ver=$(_electron_version "$electron_path")
+		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
+			_pass "Electron: v${ver#v} ($electron_path)"
+		else
+			_pass "Electron: found at $electron_path"
+		fi
+	elif [[ -n $electron_path ]]; then
+		_fail "Electron binary not found at $electron_path"
+		_info 'Fix: Reinstall claude-desktop package'
+	elif command -v electron &>/dev/null; then
+		local ver
+		ver=$(_electron_version "$(command -v electron)")
+		_pass "Electron: ${ver:+v${ver#v} }(system)"
+	else
+		_fail 'Electron binary not found'
+		_info 'Fix: Reinstall claude-desktop package'
+	fi
+}
+
+# Check the chrome-sandbox helper's setuid permissions (must be 4755,
+# owned by root). Looks at the deb install path and, when an electron
+# path is provided, the chrome-sandbox beside it; the first existing
+# file wins. Warns when none is found (expected for AppImage).
+#
+# _DOCTOR_DEB_SANDBOX overrides the hardcoded deb path (test hook; the
+# default is the real install location, so production is unaffected).
+#
+# Usage: _doctor_check_chrome_sandbox [electron_path]
+_doctor_check_chrome_sandbox() {
+	local electron_path="${1:-}"
+	# Default deb install path, overridable via _DOCTOR_DEB_SANDBOX.
+	local _deb_sandbox="${_DOCTOR_DEB_SANDBOX:-}"
+	if [[ -z $_deb_sandbox ]]; then
+		_deb_sandbox='/usr/lib/claude-desktop'
+		_deb_sandbox+='/node_modules/electron/dist/chrome-sandbox'
+	fi
+	local sandbox_paths=("$_deb_sandbox")
+	# Also check relative to the provided electron path
+	if [[ -n $electron_path ]]; then
+		local electron_dir
+		electron_dir=$(dirname "$electron_path")
+		sandbox_paths+=("$electron_dir/chrome-sandbox")
+	fi
+	local sandbox_checked=false sandbox_path
+	for sandbox_path in "${sandbox_paths[@]}"; do
+		if [[ -f $sandbox_path ]]; then
+			sandbox_checked=true
+			local sandbox_perms sandbox_owner
+			sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
+			sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
+			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
+				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
+			else
+				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
+ owner=${sandbox_owner:-?}"
+				_info "Fix: sudo chown root:root $sandbox_path"
+				_info "     sudo chmod 4755 $sandbox_path"
+			fi
+			break
+		fi
+	done
+	if [[ $sandbox_checked == false ]]; then
+		_warn 'Chrome sandbox not found (expected for AppImage)'
+	fi
+}
+
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
@@ -768,59 +844,10 @@ run_doctor() {
 	fi
 
 	# -- Electron binary --
-	# Version is read from the file next to the binary rather than
-	# launching Electron, which can hang (see #371).
-	if [[ -n $electron_path && -x $electron_path ]]; then
-		local ver
-		ver=$(_electron_version "$electron_path")
-		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
-			_pass "Electron: v${ver#v} ($electron_path)"
-		else
-			_pass "Electron: found at $electron_path"
-		fi
-	elif [[ -n $electron_path ]]; then
-		_fail "Electron binary not found at $electron_path"
-		_info 'Fix: Reinstall claude-desktop package'
-	elif command -v electron &>/dev/null; then
-		local ver
-		ver=$(_electron_version "$(command -v electron)")
-		_pass "Electron: ${ver:+v${ver#v} }(system)"
-	else
-		_fail 'Electron binary not found'
-		_info 'Fix: Reinstall claude-desktop package'
-	fi
+	_doctor_check_electron_binary "$electron_path"
 
 	# -- Chrome sandbox permissions --
-	local sandbox_paths=(
-		'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
-	)
-	# Also check relative to the provided electron path
-	if [[ -n $electron_path ]]; then
-		local electron_dir
-		electron_dir=$(dirname "$electron_path")
-		sandbox_paths+=("$electron_dir/chrome-sandbox")
-	fi
-	local sandbox_checked=false
-	for sandbox_path in "${sandbox_paths[@]}"; do
-		if [[ -f $sandbox_path ]]; then
-			sandbox_checked=true
-			local sandbox_perms sandbox_owner
-			sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
-			sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
-			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
-				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
-			else
-				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
- owner=${sandbox_owner:-?}"
-				_info "Fix: sudo chown root:root $sandbox_path"
-				_info "     sudo chmod 4755 $sandbox_path"
-			fi
-			break
-		fi
-	done
-	if [[ $sandbox_checked == false ]]; then
-		_warn 'Chrome sandbox not found (expected for AppImage)'
-	fi
+	_doctor_check_chrome_sandbox "$electron_path"
 
 	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
 	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
