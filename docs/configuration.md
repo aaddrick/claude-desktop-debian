@@ -182,6 +182,14 @@ The string and object forms can be mixed freely in the same array.
 > `/sbin`, `/lib`, `/lib64`) silently replaces it inside the sandbox; you
 > almost never want this, and `--doctor` will warn if you do.
 
+> **Note for immutable distros (Fedora Silverblue, Bazzite):** On these
+> systems `/home` is a symlink to `/var/home` on the *host*, but the sandbox
+> has no such symlink — `$HOME` inside the sandbox is the literal
+> `/home/<user>` form. Use the same form in your config
+> (for example `"/home/cloud/dev"`, not `"/var/home/cloud/dev"`) so the
+> mount is accessible under `~/` inside the sandbox. Both forms are accepted
+> by the validator; only the `/home/...` form will appear under `$HOME`.
+
 ### Security notes
 
 - Paths `/`, `/proc`, `/dev`, `/sys` (and their subpaths) are always rejected

@@ -727,8 +727,11 @@ function validateMountPath(mountPath, opts) {
 
     if (opts.readWrite) {
         const home = os.homedir();
+        let realHome = home;
+        try { realHome = fs.realpathSync(home); } catch (_) {}
         const check = resolved !== normalized ? resolved : normalized;
-        if (check !== home && !check.startsWith(home + '/')) {
+        const underHome = (h) => check === h || check.startsWith(h + '/');
+        if (!underHome(home) && !underHome(realHome)) {
             return { valid: false, reason: 'Read-write mounts must be under $HOME' };
         }
     }
@@ -864,19 +867,19 @@ function mergeBwrapArgs(defaultArgs, config) {
         }
     }
 
+    // Pre-create the destination's parent (never the destination
+    // itself: a file bind onto a pre-created directory dies with
+    // "Can't create file at ...: Is a directory"). --dir creates all
+    // intermediate parents and is a no-op when they already exist.
     for (const m of config.additionalROBinds) {
-        if (typeof m === 'string') {
-            result.push('--ro-bind', m, m);
-        } else {
-            result.push('--ro-bind', m.src, m.dst);
-        }
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', path.dirname(dst));
+        result.push('--ro-bind', typeof m === 'string' ? m : m.src, dst);
     }
     for (const m of config.additionalBinds) {
-        if (typeof m === 'string') {
-            result.push('--bind', m, m);
-        } else {
-            result.push('--bind', m.src, m.dst);
-        }
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', path.dirname(dst));
+        result.push('--bind', typeof m === 'string' ? m : m.src, dst);
     }
 
     return result;
