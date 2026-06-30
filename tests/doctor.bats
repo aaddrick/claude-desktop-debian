@@ -568,7 +568,9 @@ _hide_pkg_tools() {
 
 @test "_doctor_check_pkg_version: dpkg-only host reports dpkg version" {
 	_hide_pkg_tools rpm
-	dpkg-query() { printf '1.11847.5'; }
+	# Mirrors `dpkg-query -W -f='${db:Status-Status} ${Version}'`:
+	# status word then version, as the helper now requests.
+	dpkg-query() { printf 'installed 1.11847.5'; }
 
 	run _doctor_check_pkg_version ''
 	[[ $status -eq 0 ]]
@@ -585,13 +587,28 @@ _hide_pkg_tools() {
 		printf 'file %s is not owned by any package\n' "$4"
 		return 1
 	}
-	dpkg-query() { printf '1.11847.5'; }
+	dpkg-query() { printf 'installed 1.11847.5'; }
 
 	run _doctor_check_pkg_version ''
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'Installed version: 1.11847.5'* ]]
 	[[ $output != *'not owned'* ]]
+}
+
+@test "_doctor_check_pkg_version: removed-but-not-purged dpkg record (rc state) warns, not PASS (#711 follow-up)" {
+	# dpkg-query still prints a version for a config-files record, so
+	# gating on the version alone would PASS for software that was
+	# `apt remove`d but not purged. Only the `installed` status counts.
+	_hide_pkg_tools rpm
+	dpkg-query() { printf 'config-files 1.5354.0'; }
+
+	run _doctor_check_pkg_version ''
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'AppImage'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'1.5354.0'* ]]
 }
 
 @test "_doctor_check_pkg_version: neither manager owns the install — warn (AppImage/Nix)" {
