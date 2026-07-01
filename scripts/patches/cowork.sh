@@ -1038,6 +1038,30 @@ install_node_pty() {
 		fi
 		echo 'node-pty installed successfully'
 		pty_src_dir="$node_pty_build_dir/node_modules/node-pty"
+
+		# node-pty 1.1.0 forks the shell through a standalone
+		# build/Release/spawn-helper binary (see lib/unixTerminal.js).
+		# On Linux node-gyp only emits pty.node — the published
+		# spawn-helper prebuilds are darwin-only (Mach-O) — so compile
+		# it from source next to pty.node. Without it the integrated
+		# terminal's PTY exits with code 1 (#727). electron.sh's
+		# finalize_app_asar then copies build/Release/* into
+		# app.asar.unpacked, where node-pty resolves spawn-helper at
+		# runtime via its app.asar->app.asar.unpacked path rewrite.
+		local spawn_src="$pty_src_dir/src/unix/spawn-helper.cc"
+		local pty_release="$pty_src_dir/build/Release"
+		if [[ -f $spawn_src && ! -f $pty_release/spawn-helper ]]; then
+			echo 'Compiling node-pty spawn-helper...'
+			if g++ -O2 -o "$pty_release/spawn-helper" "$spawn_src"; then
+				chmod 0755 "$pty_release/spawn-helper"
+				echo 'spawn-helper compiled'
+			else
+				echo 'Error: failed to compile spawn-helper.' >&2
+				echo 'The terminal PTY exits code 1 without it (#727).' >&2
+				cd "$project_root" || exit 1
+				exit 1
+			fi
+		fi
 	fi
 
 	if [[ -n $pty_src_dir && -d $pty_src_dir ]]; then

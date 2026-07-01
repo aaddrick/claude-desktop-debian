@@ -1,6 +1,9 @@
 #===============================================================================
-# Linux support in Claude Code's getHostPlatform: route linux-* bundles
-# through the normal platform switch instead of throwing.
+# Claude Code (Code-tab) Linux patches:
+#   - getHostPlatform: route linux-* bundles through the normal platform
+#     switch instead of throwing.
+#   - integrated-terminal shell selector: use the Linux login shell instead
+#     of the hardcoded powershell.exe (#728).
 #
 # Sourced by: build.sh
 # Sourced globals: (none)
@@ -25,5 +28,36 @@ patch_linux_claude_code() {
 		echo 'Added linux claude code support (legacy format)'
 	else
 		echo 'Warning: Could not find getHostPlatform pattern to patch for Linux claude code support'
+	fi
+}
+
+#===============================================================================
+# Integrated-terminal shell selector: the Code-tab terminal hardcodes the
+# shell to "powershell.exe" with no platform branch, so on Linux node-pty
+# execs a binary that doesn't exist and the PTY exits with code 1 (#728).
+# Point it at the user's login shell instead.
+#===============================================================================
+
+patch_linux_terminal_shell() {
+	local index_js='app.asar.contents/.vite/build/index.js'
+	if grep -qF 'shell:process.env.SHELL||"/bin/bash"' "$index_js"; then
+		echo 'Linux terminal shell selector already patched'
+		return
+	fi
+
+	# Anchor on the literal shell:"powershell.exe" (stable across
+	# releases; the enclosing function name is minified and changes).
+	# /g is deliberate: a single site matches today (verified in the
+	# 1.15962.1 bundle — the other powershell.exe occurrences are
+	# Windows shell-detection lists, not shell: selectors), and any
+	# hardcoded powershell shell selector is wrong on this Linux build,
+	# so rewrite every occurrence to stay correct if upstream adds more.
+	if grep -qP 'shell:\s*"powershell\.exe"' "$index_js"; then
+		sed -i -E \
+			's/shell:\s*"powershell\.exe"/shell:process.env.SHELL||"\/bin\/bash"/g' \
+			"$index_js"
+		echo 'Patched integrated-terminal shell selector for Linux'
+	else
+		echo 'Warning: Could not find powershell.exe shell selector to patch (#728)'
 	fi
 }

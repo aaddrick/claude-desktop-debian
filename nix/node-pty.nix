@@ -34,6 +34,14 @@ buildNpmPackage rec {
     runHook preBuild
     npm run build
     node-gyp rebuild
+    # binding.gyp gates the spawn-helper target to OS=="mac", so
+    # node-gyp rebuild never emits it on Linux even though
+    # lib/unixTerminal.js execs build/Release/spawn-helper on every
+    # unix. Compile it by hand so the Nix build ships it too (#727).
+    # Guarded for symmetry with the npm path (install_node_pty) in case
+    # a future node-gyp/binding.gyp does emit it on Linux.
+    [ -f build/Release/spawn-helper ] \
+      || $CXX -O2 -o build/Release/spawn-helper src/unix/spawn-helper.cc
     runHook postBuild
   '';
 

@@ -35,3 +35,4 @@ cowork-linux-daemon-shutdown	cowork-linux-daemon-shutdown	name:"cowork-linux-dae
 smol-bin-linux-copy	Copying smol-bin\.\$\{_la\}\.vhdx to bundle \(Linux\)	Copying smol-bin.${_la}.vhdx to bundle (Linux)
 asar-adddir-filter	\.filter\(_d=>!_d\.endsWith\("\.asar"\)\).*"--add-dir"	.filter(_d=>!_d.endsWith(".asar")))Y.push("--add-dir"
 asar-file-drop-guard	\.startsWith\("-"\)\s*&&\s*![\w$]+\.endsWith\("\.asar"\)	.startsWith("-")&&!i.endsWith(".asar")
+terminal-shell-linux	shell:process\.env\.SHELL\|\|"/bin/bash"	shell:process.env.SHELL||"/bin/bash"
