@@ -1,3 +1,8 @@
+# shellcheck shell=bash disable=SC2154
+# SC2154: the globals listed under "Sourced globals" below are exported
+# by build.sh before this file is sourced. `shellcheck -x` (as run in
+# CI) resolves them; the local pre-push hook runs plain shellcheck and
+# would otherwise flag every reference.
 #===============================================================================
 # Top-level app.asar patch orchestration: extract, wrap entry point, stub
 # native module, copy i18n and tray icons, then invoke per-feature patches.
