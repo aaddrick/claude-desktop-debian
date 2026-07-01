@@ -116,6 +116,14 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
 	patch_cowork_linux
 
+	# Stub the Windows-only BuddyBleTransport eIPC surface so the
+	# mainView preload's reportState invoke resolves quietly instead
+	# of spamming "No handler registered" every tick, and fix the
+	# paired auto-updater onStateChange listener leak. Load-bearing
+	# for OOM avoidance during sustained Cowork/Dispatch use — see
+	# scripts/patches/buddy-ble-stub.sh.
+	patch_buddy_ble_stub
+
 	# Add Linux org-plugins path for MDM-managed plugin marketplace
 	patch_org_plugins_path
 
