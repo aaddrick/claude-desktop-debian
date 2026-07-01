@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034,SC1091
+#
+# SC2034: variables declared at the top of this file are used inside
+# the per-subsystem scripts sourced below; `-x` mode (CI) resolves
+# them, plain-mode (local pre-push hook) would flag as unused.
+# SC1091: same reason — the sourced files are only followed with `-x`.
 
 #===============================================================================
 # Claude Desktop Debian Build Script
@@ -62,6 +68,8 @@ source "$script_dir/scripts/patches/quick-window.sh"
 source "$script_dir/scripts/patches/claude-code.sh"
 # shellcheck source=scripts/patches/cowork.sh
 source "$script_dir/scripts/patches/cowork.sh"
+# shellcheck source=scripts/patches/buddy-ble-stub.sh
+source "$script_dir/scripts/patches/buddy-ble-stub.sh"
 # shellcheck source=scripts/patches/org-plugins.sh
 source "$script_dir/scripts/patches/org-plugins.sh"
 # shellcheck source=scripts/patches/wco-shim.sh

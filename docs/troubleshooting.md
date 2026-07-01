@@ -535,6 +535,33 @@ Credit: reported with detailed `--doctor` output by
 contributed by [@proffalken](https://github.com/proffalken) in
 [#590](https://github.com/aaddrick/claude-desktop-debian/issues/590).
 
+### Main-process OOM (exit 133) during Cowork/Dispatch use — "BuddyBleTransport: No handler registered"
+
+The main-process V8 heap grows to ~2 GB and the app dies with
+`FATAL ERROR: … JavaScript heap out of memory` within 1–8 minutes of
+Cowork/Dispatch activity. The Windows companion (Bluetooth Low
+Energy) transport in the minified bundle has no handler on Linux, so
+the eIPC layer keeps invoking a missing `_BuddyBleTransport_$_reportState`
+handler each tick; a related `change` subscription re-registers a
+listener on every call without removing the previous one, so listeners
+accumulate until the heap is exhausted.
+
+The failing session logs this signature in
+`~/.cache/claude-desktop-debian/launcher.log`:
+
+```
+Error: No handler registered for '…_BuddyBleTransport_$_reportState'
+(node:12345) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 change listeners added
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+Electron exited with code: 133
+```
+
+Fixed in TBD: see PR #TBD and `scripts/patches/buddy-ble-stub.sh`,
+which registers a no-op handler for the BLE transport and stops the
+listener accumulation. Corroborated by upstream report
+[anthropics/claude-code#48261](https://github.com/anthropics/claude-code/issues/48261)
+on a different build.
+
 ### Authentication Errors (401)
 
 If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).
