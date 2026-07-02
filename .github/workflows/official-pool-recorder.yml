@@ -1,0 +1,71 @@
+# Records the newest claude-desktop version in Anthropic's official APT
+# pool once a day, on the `official-pool-log` branch. The log answers the
+# rebase go/no-go question "does the official Linux pool track the release
+# train closely enough to rebase on?" with data instead of optimism.
+# See docs/learnings/official-deb-rebase-verification.md.
+name: Official Pool Recorder
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: official-pool-recorder
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve newest official versions
+        id: resolve
+        run: |
+          source scripts/_common.sh
+          source scripts/setup/official-deb.sh
+          resolve_official_deb amd64
+          echo "amd64=$resolved_official_version" >> "$GITHUB_OUTPUT"
+          resolve_official_deb arm64
+          echo "arm64=$resolved_official_version" >> "$GITHUB_OUTPUT"
+
+      - name: Append to log branch
+        env:
+          AMD64_VERSION: ${{ steps.resolve.outputs.amd64 }}
+          ARM64_VERSION: ${{ steps.resolve.outputs.arm64 }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          if git fetch origin official-pool-log:official-pool-log; then
+            git checkout official-pool-log
+          else
+            git checkout --orphan official-pool-log
+            git rm -rf --quiet . || true
+            printf 'date\tamd64\tarm64\n' > official-pool-versions.tsv
+          fi
+
+          last=$(tail -n1 official-pool-versions.tsv | cut -f2,3)
+          new=$(printf '%s\t%s' "$AMD64_VERSION" "$ARM64_VERSION")
+          if [[ "$last" == "$new" ]]; then
+            echo 'No new pool version; nothing to record.'
+            exit 0
+          fi
+
+          printf '%s\t%s\n' "$(date -u +%F)" "$new" \
+            >> official-pool-versions.tsv
+          git add official-pool-versions.tsv
+          git commit -m "record official pool versions $(date -u +%F)"
+
+          for _ in 1 2 3; do
+            if git push origin official-pool-log; then
+              exit 0
+            fi
+            git pull --rebase origin official-pool-log
+          done
+          echo 'Failed to push after 3 attempts' >&2
+          exit 1

@@ -24,6 +24,7 @@ claude-desktop --doctor
 
 Hard-won knowledge from debugging real bugs. Consult before working on the related subsystem; add a new entry when you discover something non-obvious that would save the next contributor (human or AI) significant time.
 
+- [**Official-deb rebase verification**](learnings/official-deb-rebase-verification.md) — patch-necessity matrix against the official Linux `.deb` and the install-layout facts the v3.0.0 rebase depends on
 - [**Patching minified JavaScript**](learnings/patching-minified-js.md) — anchor selection, the `\w` vs `$` capture trap, beautified false-negatives, idempotency guards
 - [**APT/DNF Worker architecture**](learnings/apt-worker-architecture.md) — Cloudflare Worker + GitHub Releases redirect chain, credential ownership, heartbeat runbook
 - [**Nix packaging**](learnings/nix.md) — NixOS specifics, Electron resource path resolution, testing without NixOS
