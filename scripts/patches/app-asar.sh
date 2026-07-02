@@ -103,6 +103,10 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 	# Add Linux Claude Code support
 	patch_linux_claude_code
 
+	# Point the Code-tab integrated terminal at the Linux login shell
+	# instead of the hardcoded powershell.exe (#728)
+	patch_linux_terminal_shell
+
 	# Reject .asar paths in the directory-check helper so Electron's
 	# ASAR VFS shim doesn't misidentify app.asar as a folder and
 	# trigger false Cowork dispatch (#383, #622, #632).
