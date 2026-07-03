@@ -1,3 +1,8 @@
+# shellcheck shell=bash disable=SC2154
+# SC2154: the globals listed under "Sourced globals" below are exported
+# by build.sh before this file is sourced. `shellcheck -x` (as run in
+# CI) resolves them; the local pre-push hook runs plain shellcheck and
+# would otherwise flag every reference.
 #===============================================================================
 # Top-level app.asar patch orchestration: extract, wrap entry point, stub
 # native module, copy i18n and tray icons, then invoke per-feature patches.
@@ -115,6 +120,14 @@ console.log('Updated package.json: main entry, desktopName, and node-pty depende
 
 	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
 	patch_cowork_linux
+
+	# Stub the Windows-only BuddyBleTransport eIPC surface so the
+	# mainView preload's reportState invoke resolves quietly instead
+	# of spamming "No handler registered" every tick, and fix the
+	# paired auto-updater onStateChange listener leak. Load-bearing
+	# for OOM avoidance during sustained Cowork/Dispatch use — see
+	# scripts/patches/buddy-ble-stub.sh.
+	patch_buddy_ble_stub
 
 	# Add Linux org-plugins path for MDM-managed plugin marketplace
 	patch_org_plugins_path

@@ -35,3 +35,10 @@ cowork-linux-daemon-shutdown	cowork-linux-daemon-shutdown	name:"cowork-linux-dae
 smol-bin-linux-copy	Copying smol-bin\.\$\{_la\}\.vhdx to bundle \(Linux\)	Copying smol-bin.${_la}.vhdx to bundle (Linux)
 asar-adddir-filter	\.filter\(_d=>!_d\.endsWith\("\.asar"\)\).*"--add-dir"	.filter(_d=>!_d.endsWith(".asar")))Y.push("--add-dir"
 asar-file-drop-guard	\.startsWith\("-"\)\s*&&\s*![\w$]+\.endsWith\("\.asar"\)	.startsWith("-")&&!i.endsWith(".asar")
+# buddy-ble-stub markers — colocated here (not in a separate TSV)
+# because verify-patches.sh runs one TSV per invocation and the CI
+# wiring in .github/workflows already points at this file. The buddy
+# stub patch fingerprints both live in the same shipped index.js as
+# the cowork markers, so adding a second TSV wouldn't reduce risk.
+buddy-ble-ipc-fallback	__CLAUDE_LINUX_BUDDY_BLE_STUB_v1__	/*__CLAUDE_LINUX_BUDDY_BLE_STUB_v1__*/
+buddy-ble-listener-guard	__CLAUDE_LINUX_QA_ONCHANGE_GUARD_v1__	/*__CLAUDE_LINUX_QA_ONCHANGE_GUARD_v1__*/
