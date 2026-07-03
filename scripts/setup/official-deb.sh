@@ -1,14 +1,14 @@
 #===============================================================================
 # Official Claude Desktop .deb acquisition: resolve, download, verify,
-# extract. Replaces the Windows-installer download path (Phase 0 of the
-# official-Linux rebase; not yet sourced by build.sh).
+# extract. Replaced the Windows-installer download path in the v3.0.0
+# official-Linux rebase.
 #
 # The official APT repository is plain HTTPS (no bot challenge), so both
 # resolution and download are curl/wget-able. Extraction deliberately
 # avoids dpkg-deb so rpm-family and Arch hosts can build: ar + tar handle
 # every Debian archive member.
 #
-# Sourced by: tools/patch-necessity-audit.sh (build.sh after the cutover)
+# Sourced by: build.sh, tools/patch-necessity-audit.sh
 # Sourced globals:
 #   work_dir, architecture, local_deb_path (optional), release_tag (optional)
 # Modifies globals:

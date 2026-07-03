@@ -32,39 +32,29 @@ mkdir -p "$install_dir/bin" || exit 1
 
 # --- Icon Installation ---
 echo 'Installing icons...'
-# Map: size -> filename suffix
-declare -A icon_files=(
-	[16]=13 [24]=11 [32]=10 [48]=8 [64]=7 [256]=6
-)
-
-for size in "${!icon_files[@]}"; do
-	icon_dir="$install_dir/share/icons/hicolor/${size}x${size}/apps"
-	mkdir -p "$icon_dir" || exit 1
-	icon_source_path="$work_dir/claude_${icon_files[$size]}_${size}x${size}x32.png"
-	if [[ -f $icon_source_path ]]; then
-		echo "Installing ${size}x${size} icon..."
-		install -Dm 644 "$icon_source_path" "$icon_dir/claude-desktop.png" || exit 1
-	else
-		echo "Warning: Missing ${size}x${size} icon at $icon_source_path"
-	fi
+# The official tree ships hicolor PNGs (16-256px); install them verbatim.
+official_hicolor="${CLAUDE_EXTRACT_DIR:?}/usr/share/icons/hicolor"
+found_icons=false
+for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
+	[[ -f $icon_source_path ]] || continue
+	size_dir=$(basename "$(dirname "$(dirname "$icon_source_path")")")
+	echo "Installing $size_dir icon..."
+	install -Dm 644 "$icon_source_path" \
+		"$install_dir/share/icons/hicolor/$size_dir/apps/claude-desktop.png" || exit 1
+	found_icons=true
 done
+if [[ $found_icons == false ]]; then
+	echo "Warning: no hicolor icons found under $official_hicolor"
+fi
 echo 'Icons installed'
 
 # --- Copy Application Files ---
 echo "Copying application files from $app_staging_dir..."
 
-# Copy local electron first if it was packaged (check if node_modules exists in staging)
-if [[ -d $app_staging_dir/node_modules ]]; then
-	echo 'Copying packaged electron...'
-	cp -r "$app_staging_dir/node_modules" "$install_dir/lib/$package_name/" || exit 1
-fi
-
-# Install app.asar in Electron's resources directory where process.resourcesPath points
-resources_dir="$install_dir/lib/$package_name/node_modules/electron/dist/resources"
-mkdir -p "$resources_dir" || exit 1
-cp "$app_staging_dir/app.asar" "$resources_dir/" || exit 1
-cp -r "$app_staging_dir/app.asar.unpacked" "$resources_dir/" || exit 1
-echo 'Application files copied to Electron resources directory'
+# The staging dir is the extracted official usr/lib/claude-desktop tree
+# (Electron ELF, chrome-sandbox, resources/, locales/, ...); ship it as-is.
+cp -a "$app_staging_dir/." "$install_dir/lib/$package_name/" || exit 1
+echo 'Official application tree copied'
 
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)
@@ -104,19 +94,19 @@ cat > "$install_dir/bin/claude-desktop" << EOF
 # Source shared launcher library
 source "/usr/lib/$package_name/launcher-common.sh"
 
+# The official Electron binary; it auto-loads the co-located
+# resources/app.asar, so no app path is ever passed (issue #696).
+app_exec="/usr/lib/$package_name/claude-desktop"
+
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
-	run_doctor "\$local_electron_path"
+	run_doctor "\$app_exec"
 	exit \$?
 fi
 
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
-
-# App path
-app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
 
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
@@ -143,58 +133,24 @@ if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
 
-# Determine Electron executable path
-electron_exec='electron'
-using_global_electron=false
-local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
-if [[ -f \$local_electron_path ]]; then
-	electron_exec="\$local_electron_path"
-	log_message "Using local Electron: \$electron_exec"
-else
-	if command -v electron &> /dev/null; then
-		using_global_electron=true
-		log_message "Using global Electron: \$electron_exec"
-	else
-		log_message 'Error: Electron executable not found'
-		if command -v zenity &> /dev/null; then
-			zenity --error \
-				--text='Claude Desktop cannot start because the Electron framework is missing.'
-		elif command -v kdialog &> /dev/null; then
-			kdialog --error \
-				'Claude Desktop cannot start because the Electron framework is missing.'
-		fi
-		exit 1
-	fi
+if [[ ! -x \$app_exec ]]; then
+	log_message "Error: Claude Desktop binary not found at \$app_exec"
+	echo "Error: Claude Desktop binary not found at \$app_exec" >&2
+	exit 1
 fi
 
-# Build electron args
+# Build Chromium switches for the official binary
 build_electron_args 'deb'
-
-# Bundled Electron: app.asar sits in its default resources/ dir next
-# to the binary, so Electron auto-loads it. Passing the path again
-# makes Electron treat it as a file-to-open, which the app forwards
-# to its file-drop handler, producing a spurious "Attach app.asar?"
-# prompt on launch and on every taskbar reopen (the second-instance
-# argv path). Omitting it is the root-cause fix. See issue #696.
-# Global (PATH) Electron has no co-located app.asar and would boot
-# its default_app welcome screen instead — only there the explicit
-# app path is load-bearing and must stay.
-if [[ \$using_global_electron == true ]]; then
-	electron_args+=("\$app_path")
-	log_message "App (explicit arg, global Electron): \$app_path"
-else
-	log_message "App (auto-loaded by Electron): \$app_path"
-fi
 
 # Change to application directory
 app_dir="/usr/lib/$package_name"
 log_message "Changing directory to \$app_dir"
 cd "\$app_dir" || { log_message "Failed to cd to \$app_dir"; exit 1; }
 
-# Execute Electron and keep the launcher alive so explicit quit can
-# clean up Desktop-owned helpers that outlive the Electron main process.
-log_message "Executing: \$electron_exec \${electron_args[*]} \$*"
-run_electron_and_cleanup "\$electron_exec" "\${electron_args[@]}" "\$@"
+# Execute the official binary and keep the launcher alive so explicit
+# quit can clean up Desktop-owned helpers that outlive the main process.
+log_message "Executing: \$app_exec \${electron_args[*]} \$*"
+run_electron_and_cleanup "\$app_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
 chmod +x "$install_dir/bin/claude-desktop" || exit 1
@@ -202,26 +158,30 @@ echo 'Launcher script created'
 
 # --- Create Control File ---
 echo 'Creating control file...'
-# Electron is bundled with its own Node.js runtime, so nodejs/npm are not
-# runtime dependencies. p7zip is only used at build time to extract the
-# installer. bubblewrap is Recommended (not required): it provides the
-# default namespace-sandbox isolation for Cowork mode; the app runs without
-# it (Cowork falls back to host-direct). apt installs Recommends by default.
+# Depends/Recommends are re-emitted verbatim from the extracted official
+# control file (exported by build.sh): the contract differs per arch
+# (arm64 recommends qemu-system-arm/qemu-efi-aarch64 instead of
+# qemu-system-x86/ovmf) and tracks upstream automatically this way.
 
-cat > "$package_root/DEBIAN/control" << EOF
-Package: $package_name
-Version: $version
-Section: utils
-Priority: optional
-Architecture: $architecture
-Recommends: bubblewrap
-Maintainer: $maintainer
-Description: $description
- Claude is an AI assistant from Anthropic.
- This package provides the desktop interface for Claude.
- .
- Supported on Debian-based Linux distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.)
-EOF
+{
+	echo "Package: $package_name"
+	echo "Version: $version"
+	echo 'Section: utils'
+	echo 'Priority: optional'
+	echo "Architecture: $architecture"
+	if [[ -n ${OFFICIAL_DEB_DEPENDS:-} ]]; then
+		echo "Depends: $OFFICIAL_DEB_DEPENDS"
+	fi
+	if [[ -n ${OFFICIAL_DEB_RECOMMENDS:-} ]]; then
+		echo "Recommends: $OFFICIAL_DEB_RECOMMENDS"
+	fi
+	echo "Maintainer: $maintainer"
+	echo "Description: $description"
+	echo ' Claude is an AI assistant from Anthropic.'
+	echo ' This package provides the desktop interface for Claude.'
+	echo ' .'
+	echo ' Supported on Debian-based Linux distributions (Debian, Ubuntu, Linux Mint, MX Linux, etc.)'
+} > "$package_root/DEBIAN/control"
 echo 'Control file created'
 
 # --- Create Postinst Script ---
@@ -234,12 +194,12 @@ set -e
 echo "Updating desktop database..."
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
-# Set correct permissions for chrome-sandbox if electron is installed globally
-# or locally packaged
+# Set correct permissions for chrome-sandbox. The official data.tar
+# records it SUID, but our non-root ar|tar extraction strips the bit, so
+# it must be re-asserted here.
 echo "Setting chrome-sandbox permissions..."
 SANDBOX_PATH=""
-# Electron is always packaged locally now, so only check the local path.
-LOCAL_SANDBOX_PATH="/usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox"
+LOCAL_SANDBOX_PATH="/usr/lib/$package_name/chrome-sandbox"
 if [ -f "\$LOCAL_SANDBOX_PATH" ]; then
     SANDBOX_PATH="\$LOCAL_SANDBOX_PATH"
 fi
@@ -284,7 +244,7 @@ if command -v apparmor_parser >/dev/null 2>&1 \
 abi <abi/4.0>,
 include <tunables/global>
 
-profile $package_name /usr/lib/$package_name/node_modules/electron/dist/electron flags=(unconfined) {
+profile $package_name /usr/lib/$package_name/claude-desktop flags=(unconfined) {
     userns,
 
     include if exists <local/$package_name>
@@ -307,80 +267,6 @@ APPARMOR_EOF
     fi
 fi
 
-# --- AppArmor profile for the Cowork bwrap sandbox helper ---
-# Cowork's "bwrap backend" runs the agent's Claude Code process inside a
-# bubblewrap sandbox, which itself needs unprivileged user namespaces — the
-# same thing Ubuntu 24.04+ blocks (apparmor_restrict_unprivileged_userns=1).
-# bwrap is a SEPARATE binary from the Electron app, so the claude-desktop
-# profile above (which scopes the Electron binary) does not cover it; it
-# needs its own profile on /usr/bin/bwrap. Without this, Cowork silently
-# falls back to host-direct (no isolation).
-#
-# Gate on the kernel knob, exactly like the Electron block above: only a
-# kernel that can enforce the restriction exposes the knob, and a userspace
-# parser that merely accepts the userns rule (AppArmor 4) is not
-# enforcement — without the knob the profile is dead weight on a binary
-# this package does not own. There is deliberately no [ -x /usr/bin/bwrap ]
-# gate: a profile attaching to a nonexistent binary is inert, and dpkg
-# gives Recommends no ordering edge, so gating on the binary races a
-# same-transaction bubblewrap install. Static checks only: postinst runs as
-# root, which is exempt from the unprivileged-userns restriction, so a
-# behavioral bwrap probe here would falsely pass — the behavioral probe
-# lives in 'claude-desktop --doctor' instead (runs as the user).
-BWRAP_PROFILE="/etc/apparmor.d/${package_name}-bwrap"
-if command -v apparmor_parser >/dev/null 2>&1 \
-    && [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-    echo "Configuring AppArmor profile for the Cowork bwrap sandbox..."
-    # Writing the profile is best-effort: a read-only or atypical /etc must
-    # never abort the install (this postinst runs under set -e). Keeping the
-    # grep / mkdir + heredoc in the if/elif conditions exempts them from
-    # errexit. Debian Policy 10.7.3: a profile without our marker header was
-    # hand-created or hand-edited by the admin — preserve it, never overwrite.
-    if [ -e "\$BWRAP_PROFILE" ] \
-        && ! grep -qF "managed by the $package_name package" \
-            "\$BWRAP_PROFILE" 2>/dev/null; then
-        echo "Preserving locally modified \$BWRAP_PROFILE (no marker header)"
-        apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || true
-    elif grep -rl '/usr/bin/bwrap' /etc/apparmor.d/ 2>/dev/null \
-        | grep -vxF "\$BWRAP_PROFILE" | grep -q .; then
-        # Another profile already attaches to /usr/bin/bwrap — a hand-made
-        # /etc/apparmor.d/bwrap, apparmor-profiles' bwrap-userns-restrict,
-        # or any other filename. Identical attachment strings have no
-        # specificity tiebreak, and shadowing a restrictive profile with our
-        # unconfined-mode one would silently undo distro hardening, so defer
-        # to the existing profile. (A false grep hit in a comment fails
-        # safe: we merely skip our profile.)
-        echo "An existing AppArmor profile already covers /usr/bin/bwrap; leaving it in charge."
-    elif mkdir -p /etc/apparmor.d 2>/dev/null && cat > "\$BWRAP_PROFILE" <<'BWRAP_APPARMOR_EOF'
-# This profile is managed by the $package_name package (postinst); direct
-# edits will be overwritten on upgrade. Put local changes in
-# /etc/apparmor.d/local/${package_name}-bwrap instead.
-abi <abi/4.0>,
-include <tunables/global>
-
-profile ${package_name}-bwrap /usr/bin/bwrap flags=(unconfined) {
-    userns,
-
-    include if exists <local/${package_name}-bwrap>
-}
-BWRAP_APPARMOR_EOF
-    then
-        if apparmor_parser -Q "\$BWRAP_PROFILE" >/dev/null 2>&1; then
-            apparmor_parser -r "\$BWRAP_PROFILE" >/dev/null 2>&1 || echo "Note: bwrap AppArmor profile staged but not loaded now; it will apply on the next AppArmor reload or reboot."
-            echo "Cowork bwrap AppArmor profile installed at \$BWRAP_PROFILE"
-        else
-            rm -f "\$BWRAP_PROFILE"
-            echo "AppArmor on this system does not support the userns rule; skipping bwrap profile (not required here)."
-        fi
-    else
-        # A failed write may leave a truncated profile behind; clear it.
-        # The || true is mandatory: this branch is errexit-live, and a bare
-        # rm fails the upgrade on a read-only /etc.
-        rm -f "\$BWRAP_PROFILE" 2>/dev/null || true
-        echo "Warning: could not write \$BWRAP_PROFILE; skipping bwrap AppArmor profile."
-    fi
-fi
-
 exit 0
 EOF
 chmod +x "$package_root/DEBIAN/postinst" || exit 1
@@ -394,7 +280,9 @@ echo 'Creating postrm script...'
 # postinst rewrites and reloads them. 'disappear' is deliberately not handled:
 # matching it would also clean during the overwrite-by-another-package flow.
 # Two profiles: the Electron one (Chromium sandbox, #687) and the bwrap one
-# (Cowork sandbox helper, #694).
+# (Cowork sandbox helper, #694). The bwrap profile is no longer installed
+# since the official-deb rebase parked the bwrap Cowork backend, but 2.x
+# installs left it behind — keep removing it here.
 # Per Debian Policy 10.7.3 the profiles are configuration: unload them
 # whenever the confined binaries go away, but delete the files only on
 # purge — a profile for an absent binary is a harmless no-op (google-chrome

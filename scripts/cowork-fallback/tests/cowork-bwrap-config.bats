@@ -17,7 +17,7 @@ const {
     validateMountPath,
     loadBwrapMountsConfig,
     mergeBwrapArgs,
-} = require("'"${SCRIPT_DIR}"'/../scripts/cowork-vm-service.js");
+} = require("'"${SCRIPT_DIR}"'/../cowork-vm-service.js");
 
 function loadBwrapMountsConfigWithLog(configPath, logFn) {
     return loadBwrapMountsConfig(configPath, logFn);

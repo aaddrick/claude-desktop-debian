@@ -5,10 +5,9 @@
 # Sourced by: build.sh
 # Sourced globals: (none read on entry)
 # Modifies globals:
-#   architecture, claude_download_url, claude_exe_sha256, claude_exe_filename,
-#   distro_family, original_user, original_home, project_root, work_dir,
-#   app_staging_dir, build_format, cleanup_action, perform_cleanup,
-#   test_flags_mode, local_exe_path, release_tag, source_dir, node_pty_dir
+#   architecture, distro_family, original_user, original_home, project_root,
+#   work_dir, build_format, cleanup_action, perform_cleanup, test_flags_mode,
+#   local_deb_path, release_tag, source_dir
 #===============================================================================
 
 detect_architecture() {
@@ -22,19 +21,15 @@ detect_architecture() {
 	}
 	echo "Detected machine architecture: $raw_arch"
 
+	# Download URLs and SHA256 pins for the official .deb live in
+	# scripts/setup/official-deb.sh; only the arch mapping happens here.
 	case "$raw_arch" in
 		x86_64)
-			claude_download_url='https://downloads.claude.ai/releases/win32/x64/1.17377.1/Claude-2b3ab429b13f2c904d7552b7ca82a0d2a22af52f.exe'
-			claude_exe_sha256='728cedb1e526581a2138654caa2569e92ea352a3a0a32de2e02e8bb5089aab52'
 			architecture='amd64'
-			claude_exe_filename='Claude-Setup-x64.exe'
 			echo 'Configured for amd64 (x86_64) build.'
 			;;
 		aarch64)
-			claude_download_url='https://downloads.claude.ai/releases/win32/arm64/1.17377.1/Claude-2b3ab429b13f2c904d7552b7ca82a0d2a22af52f.exe'
-			claude_exe_sha256='588f06315fe0eb6cb9a402799be6bad0de54cbee6a249eb188f0921263595bd0'
 			architecture='arm64'
-			claude_exe_filename='Claude-Setup-arm64.exe'
 			echo 'Configured for arm64 (aarch64) build.'
 			;;
 		*)
@@ -131,7 +126,8 @@ parse_arguments() {
 
 	project_root="$(pwd)"
 	work_dir="$project_root/build"
-	app_staging_dir="$work_dir/electron-app"
+	# app_staging_dir is derived in build.sh after the official .deb is
+	# extracted (it points into the extracted tree).
 
 	# Set default build format based on detected distro
 	case "$distro_family" in
@@ -143,7 +139,7 @@ parse_arguments() {
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build|-c|--clean|-e|--exe|-r|--release-tag|-s|--source-dir|--node-pty-dir)
+			-b|--build|-c|--clean|-d|--deb|-r|--release-tag|-s|--source-dir)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
@@ -151,10 +147,9 @@ parse_arguments() {
 				case "$1" in
 					-b|--build) build_format="$2" ;;
 					-c|--clean) cleanup_action="$2" ;;
-					-e|--exe) local_exe_path="$2" ;;
+					-d|--deb) local_deb_path="$2" ;;
 					-r|--release-tag) release_tag="$2" ;;
 					-s|--source-dir) source_dir="$2" ;;
-					--node-pty-dir) node_pty_dir="$2" ;;
 				esac
 				shift 2
 				;;
@@ -163,14 +158,13 @@ parse_arguments() {
 				shift
 				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|rpm|appimage|nix] [--clean yes|no] [--exe /path/to/installer.exe] [--source-dir /path] [--release-tag TAG] [--test-flags]"
+				echo "Usage: $0 [--build deb|rpm|appimage|nix] [--clean yes|no] [--deb /path/to/claude-desktop.deb] [--source-dir /path] [--release-tag TAG] [--test-flags]"
 				echo '  --build: Specify the build format (deb, rpm, appimage, or nix).'
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
-				echo '  --exe:   Use a local Claude installer exe instead of downloading'
+				echo '  --deb:   Use a local official Claude Desktop .deb instead of downloading'
 				echo '  --source-dir: Path to repo root for scripts/ and assets (default: project root)'
-				echo '  --node-pty-dir: Path to pre-built node-pty package (skips npm install)'
-				echo '  --release-tag: Release tag (e.g., v1.3.2+claude1.1.799) to append wrapper version to package'
+				echo '  --release-tag: Release tag (e.g., v3.0.0+claude1.17377.2) to append wrapper version to package'
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
 				;;
@@ -191,10 +185,6 @@ parse_arguments() {
 
 	if [[ ! -d $source_dir ]]; then
 		echo "Error: --source-dir path does not exist: $source_dir" >&2
-		exit 1
-	fi
-	if [[ -n $node_pty_dir && ! -d $node_pty_dir ]]; then
-		echo "Error: --node-pty-dir path does not exist: $node_pty_dir" >&2
 		exit 1
 	fi
 

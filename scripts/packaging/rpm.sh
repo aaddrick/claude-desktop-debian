@@ -83,19 +83,19 @@ cat > "$staging_dir/claude-desktop" << EOF
 # Source shared launcher library
 source "/usr/lib/$package_name/launcher-common.sh"
 
+# The official Electron binary; it auto-loads the co-located
+# resources/app.asar, so no app path is ever passed (issue #696).
+app_exec="/usr/lib/$package_name/claude-desktop"
+
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
-	run_doctor "\$local_electron_path"
+	run_doctor "\$app_exec"
 	exit \$?
 fi
 
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
-
-# App path
-app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
 
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
@@ -122,58 +122,24 @@ if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
 
-# Determine Electron executable path
-electron_exec='electron'
-using_global_electron=false
-local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
-if [[ -f \$local_electron_path ]]; then
-	electron_exec="\$local_electron_path"
-	log_message "Using local Electron: \$electron_exec"
-else
-	if command -v electron &> /dev/null; then
-		using_global_electron=true
-		log_message "Using global Electron: \$electron_exec"
-	else
-		log_message 'Error: Electron executable not found'
-		if command -v zenity &> /dev/null; then
-			zenity --error \
-				--text='Claude Desktop cannot start because the Electron framework is missing.'
-		elif command -v kdialog &> /dev/null; then
-			kdialog --error \
-				'Claude Desktop cannot start because the Electron framework is missing.'
-		fi
-		exit 1
-	fi
+if [[ ! -x \$app_exec ]]; then
+	log_message "Error: Claude Desktop binary not found at \$app_exec"
+	echo "Error: Claude Desktop binary not found at \$app_exec" >&2
+	exit 1
 fi
 
-# Build electron args - use 'deb' type (same sandbox behavior)
+# Build Chromium switches - use 'deb' type (same sandbox behavior)
 build_electron_args 'deb'
-
-# Bundled Electron: app.asar sits in its default resources/ dir next
-# to the binary, so Electron auto-loads it. Passing the path again
-# makes Electron treat it as a file-to-open, which the app forwards
-# to its file-drop handler, producing a spurious "Attach app.asar?"
-# prompt on launch and on every taskbar reopen (the second-instance
-# argv path). Omitting it is the root-cause fix. See issue #696.
-# Global (PATH) Electron has no co-located app.asar and would boot
-# its default_app welcome screen instead — only there the explicit
-# app path is load-bearing and must stay.
-if [[ \$using_global_electron == true ]]; then
-	electron_args+=("\$app_path")
-	log_message "App (explicit arg, global Electron): \$app_path"
-else
-	log_message "App (auto-loaded by Electron): \$app_path"
-fi
 
 # Change to application directory
 app_dir="/usr/lib/$package_name"
 log_message "Changing directory to \$app_dir"
 cd "\$app_dir" || { log_message "Failed to cd to \$app_dir"; exit 1; }
 
-# Execute Electron and keep the launcher alive so explicit quit can
-# clean up Desktop-owned helpers that outlive the Electron main process.
-log_message "Executing: \$electron_exec \${electron_args[*]} \$*"
-run_electron_and_cleanup "\$electron_exec" "\${electron_args[@]}" "\$@"
+# Execute the official binary and keep the launcher alive so explicit
+# quit can clean up Desktop-owned helpers that outlive the main process.
+log_message "Executing: \$app_exec \${electron_args[*]} \$*"
+run_electron_and_cleanup "\$app_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
 chmod +x "$staging_dir/claude-desktop"
@@ -181,19 +147,15 @@ chmod +x "$staging_dir/claude-desktop"
 # --- Create RPM Spec File ---
 echo 'Creating RPM spec file...'
 
-# Build icon installation commands
+# Build icon installation commands from the official hicolor tree
 icon_install_cmds=""
-declare -A icon_files=(
-	[16]=13 [24]=11 [32]=10 [48]=8 [64]=7 [256]=6
-)
+official_hicolor="${CLAUDE_EXTRACT_DIR:?}/usr/share/icons/hicolor"
 
-for size in "${!icon_files[@]}"; do
-	icon_source_path="$work_dir/claude_${icon_files[$size]}_${size}x${size}x32.png"
-	if [[ -f $icon_source_path ]]; then
-		icon_install_cmds+="mkdir -p %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps
-install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps/claude-desktop.png
+for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
+	[[ -f $icon_source_path ]] || continue
+	size_dir=$(basename "$(dirname "$(dirname "$icon_source_path")")")
+	icon_install_cmds+="install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size_dir}/apps/claude-desktop.png
 "
-	fi
 done
 
 cat > "$rpmbuild_dir/SPECS/$package_name.spec" << SPECEOF
@@ -232,10 +194,9 @@ mkdir -p %{buildroot}/usr/bin
 # Install icons
 $icon_install_cmds
 
-# Copy application files
-cp -r $app_staging_dir/node_modules %{buildroot}/usr/lib/$package_name/
-cp $app_staging_dir/app.asar %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
-cp -r $app_staging_dir/app.asar.unpacked %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
+# Copy application files (the extracted official usr/lib/claude-desktop
+# tree: Electron ELF, chrome-sandbox, resources/, locales/, ...)
+cp -a $app_staging_dir/. %{buildroot}/usr/lib/$package_name/
 
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)
@@ -262,7 +223,9 @@ find %{buildroot}/usr/lib/$package_name -type f -exec chmod u=rwX,go=rX {} +
 # Set the chrome-sandbox suid bit in the buildroot so the /usr/lib
 # directory walk in %files records 4755 in the payload (preserves #539
 # without the "File listed twice" warning #609 — see %files block).
-chmod 4755 %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox
+# The official data.tar records the bit, but our non-root ar|tar
+# extraction strips it.
+chmod 4755 %{buildroot}/usr/lib/$package_name/chrome-sandbox
 
 %post
 # Update desktop database for MIME types

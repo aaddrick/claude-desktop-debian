@@ -26,45 +26,29 @@ mkdir -p "$appdir_path/usr/share/icons/hicolor/256x256/apps" || exit 1
 mkdir -p "$appdir_path/usr/share/applications" || exit 1
 
 echo 'Staging application files into AppDir...'
-# Copy node_modules first to set up Electron directory structure
-if [[ -d $app_staging_dir/node_modules ]]; then
-	echo 'Copying node_modules from staging to AppDir...'
-	cp -a "$app_staging_dir/node_modules" "$appdir_path/usr/lib/" || exit 1
-fi
-
-# Install app.asar in Electron's resources directory where process.resourcesPath points
-resources_dir="$appdir_path/usr/lib/node_modules/electron/dist/resources"
-mkdir -p "$resources_dir" || exit 1
-if [[ -f $app_staging_dir/app.asar ]]; then
-	cp -a "$app_staging_dir/app.asar" "$resources_dir/" || exit 1
-fi
-if [[ -d $app_staging_dir/app.asar.unpacked ]]; then
-	cp -a "$app_staging_dir/app.asar.unpacked" "$resources_dir/" || exit 1
-fi
-echo 'Application files copied to Electron resources directory'
+# The staging dir is the extracted official usr/lib/claude-desktop tree
+# (Electron ELF, chrome-sandbox, resources/, locales/, ...); ship it as-is.
+mkdir -p "$appdir_path/usr/lib/claude-desktop" || exit 1
+cp -a "$app_staging_dir/." "$appdir_path/usr/lib/claude-desktop/" || exit 1
+echo 'Official application tree copied'
 
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p "$appdir_path/usr/lib/claude-desktop" || exit 1
 cp "$(dirname "$script_dir")/launcher-common.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
 sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "$appdir_path/usr/lib/claude-desktop/launcher-common.sh"
 cp "$(dirname "$script_dir")/doctor.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
 echo 'Shared launcher library + doctor copied'
 
-# Ensure Electron is bundled within the AppDir for portability
-# Check if electron was copied into the staging dir's node_modules
-# The actual executable is usually inside the 'dist' directory
-bundled_electron_path="$appdir_path/usr/lib/node_modules/electron/dist/electron"
-echo "Checking for executable at: $bundled_electron_path"
-if [[ ! -x $bundled_electron_path ]]; then
-	echo 'Electron executable not found or not executable in staging area.' >&2
-	echo "Path checked: $bundled_electron_path" >&2
-	echo 'AppImage requires Electron to be bundled. Ensure the main script copies it correctly.' >&2
+# Ensure the official binary made it into the AppDir
+bundled_app_path="$appdir_path/usr/lib/claude-desktop/claude-desktop"
+echo "Checking for executable at: $bundled_app_path"
+if [[ ! -f $bundled_app_path ]]; then
+	echo 'Claude Desktop binary not found in staging area.' >&2
+	echo "Path checked: $bundled_app_path" >&2
 	exit 1
 fi
-# Ensure the bundled electron is executable (redundant check, but safe)
-chmod +x "$bundled_electron_path" || exit 1
+chmod +x "$bundled_app_path" || exit 1
 
 # --- Create AppRun Script ---
 echo 'Creating AppRun script...'
@@ -77,20 +61,19 @@ appdir=$(dirname "$(readlink -f "$0")")
 # Source shared launcher library
 source "$appdir/usr/lib/claude-desktop/launcher-common.sh"
 
+# The official Electron binary; it auto-loads the co-located
+# resources/app.asar, so no app path is ever passed (issue #696).
+app_exec="$appdir/usr/lib/claude-desktop/claude-desktop"
+
 # Handle --doctor flag before anything else
 if [[ "${1:-}" == '--doctor' ]]; then
-	electron_path="$appdir/usr/lib/node_modules/electron/dist/electron"
-	run_doctor "$electron_path"
+	run_doctor "$app_exec"
 	exit $?
 fi
 
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
-
-# Path to the bundled Electron executable and app
-electron_exec="$appdir/usr/lib/node_modules/electron/dist/electron"
-app_path="$appdir/usr/lib/node_modules/electron/dist/resources/app.asar"
 
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
@@ -107,25 +90,16 @@ log_message "Arguments: $@"
 log_message "APPDIR: $appdir"
 log_session_env
 
-# Build electron args (appimage mode adds --no-sandbox)
+# Build Chromium switches (appimage mode adds --no-sandbox for FUSE)
 build_electron_args 'appimage'
 
-# Intentionally NOT appended: app.asar sits in Electron's default
-# resources/ dir next to the binary, so Electron auto-loads it. Passing
-# the path again makes Electron treat it as a file-to-open, which the
-# app forwards to its file-drop handler, producing a spurious
-# "Attach app.asar?" prompt on launch and on every taskbar reopen
-# (the second-instance argv path). Omitting it is the root-cause fix.
-# See issue #696.
-log_message "App (auto-loaded by Electron): $app_path"
-
-# Change to HOME directory before exec'ing Electron to avoid CWD permission issues
+# Change to HOME directory before exec'ing the app to avoid CWD permission issues
 cd "$HOME" || exit 1
 
-# Execute Electron and keep AppRun alive so explicit quit can clean up
-# Desktop-owned helpers that outlive the Electron main process.
-log_message "Executing: $electron_exec ${electron_args[*]} $*"
-run_electron_and_cleanup "$electron_exec" "${electron_args[@]}" "$@"
+# Execute the official binary and keep AppRun alive so explicit quit can
+# clean up Desktop-owned helpers that outlive the main process.
+log_message "Executing: $app_exec ${electron_args[*]} $*"
+run_electron_and_cleanup "$app_exec" "${electron_args[@]}" "$@"
 exit $?
 EOF
 chmod +x "$appdir_path/AppRun" || exit 1
@@ -155,8 +129,8 @@ echo 'Bundled desktop entry created and copied to usr/share/applications/'
 
 # --- Copy Icons ---
 echo 'Copying icons...'
-# Use the 256x256 icon as the main AppImage icon
-icon_source_path="$work_dir/claude_6_256x256x32.png"
+# Use the official 256x256 hicolor icon as the main AppImage icon
+icon_source_path="${CLAUDE_EXTRACT_DIR:?}/usr/share/icons/hicolor/256x256/apps/claude-desktop.png"
 if [[ -f $icon_source_path ]]; then
 	# Standard location within AppDir
 	cp "$icon_source_path" "$appdir_path/usr/share/icons/hicolor/256x256/apps/${component_id}.png" || exit 1

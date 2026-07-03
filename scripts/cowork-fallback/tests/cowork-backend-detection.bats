@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 NODE_PREAMBLE='
 const {
     classifyBwrapProbeError,
-} = require("'"${SCRIPT_DIR}"'/../scripts/cowork-vm-service.js");
+} = require("'"${SCRIPT_DIR}"'/../cowork-vm-service.js");
 
 function assert(condition, msg) {
     if (!condition) {
@@ -143,7 +143,7 @@ assertEqual(r.kind, 'unknown', 'null error does not crash');
 # emit a sentinel and parse only that — robust against any log noise.
 backend_name() {
 	COWORK_VM_BACKEND="$1" node -e '
-const { detectBackend } = require("'"${SCRIPT_DIR}"'/../scripts/cowork-vm-service.js");
+const { detectBackend } = require("'"${SCRIPT_DIR}"'/../cowork-vm-service.js");
 const b = detectBackend(() => {});
 process.stdout.write("\n__BACKEND__:" +
     (b && b.constructor ? b.constructor.name : "null") + "\n");
