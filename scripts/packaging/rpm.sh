@@ -18,6 +18,11 @@ echo "Version: $version"
 if [[ $version == *-* ]]; then
 	rpm_version="${version%%-*}"
 	rpm_release="${version#*-}"
+	# RPM Release field cannot contain hyphens either. The wrapper
+	# suffix appended in official-deb.sh can itself carry an RC suffix
+	# (e.g. "3.0.0-rc1"), which lands entirely in rpm_release here since
+	# the split above only cuts on the first hyphen.
+	rpm_release="${rpm_release//-/.}"
 	echo "RPM Version: $rpm_version"
 	echo "RPM Release: $rpm_release"
 else

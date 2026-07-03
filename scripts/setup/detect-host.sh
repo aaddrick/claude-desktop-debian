@@ -118,7 +118,13 @@ check_system_requirements() {
 	echo 'System Information:'
 	echo "Distribution: $(grep 'PRETTY_NAME' /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo 'Unknown')"
 	echo "Distribution family: $distro_family"
-	echo "Target Architecture: $architecture"
+	# No architecture line here: this runs before parse_arguments(), so
+	# $architecture is still the uname -m auto-detection, and printing
+	# it here would read as authoritative right next to the distro
+	# info. The auto-detected value is already logged in
+	# detect_architecture() above; the value after a possible --arch
+	# override is logged at the end of Argument Parsing below, which is
+	# the only trustworthy target-arch line in this output.
 }
 
 parse_arguments() {
@@ -139,12 +145,13 @@ parse_arguments() {
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-b|--build|-c|--clean|-d|--deb|-r|--release-tag|-s|--source-dir)
+			-a|--arch|-b|--build|-c|--clean|-d|--deb|-r|--release-tag|-s|--source-dir)
 				if [[ -z ${2:-} || $2 == -* ]]; then
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
 				fi
 				case "$1" in
+					-a|--arch) architecture="$2" ;;
 					-b|--build) build_format="$2" ;;
 					-c|--clean) cleanup_action="$2" ;;
 					-d|--deb) local_deb_path="$2" ;;
@@ -158,13 +165,16 @@ parse_arguments() {
 				shift
 				;;
 			-h|--help)
-				echo "Usage: $0 [--build deb|rpm|appimage|nix] [--clean yes|no] [--deb /path/to/claude-desktop.deb] [--source-dir /path] [--release-tag TAG] [--test-flags]"
+				echo "Usage: $0 [--build deb|rpm|appimage|nix] [--clean yes|no] [--deb /path/to/claude-desktop.deb] [--source-dir /path] [--release-tag TAG] [--arch amd64|arm64] [--test-flags]"
 				echo '  --build: Specify the build format (deb, rpm, appimage, or nix).'
 				echo "           Default: auto-detected based on distro (current: $build_format)"
 				echo '  --clean: Specify whether to clean intermediate build files (yes or no). Default: yes'
 				echo '  --deb:   Use a local official Claude Desktop .deb instead of downloading'
 				echo '  --source-dir: Path to repo root for scripts/ and assets (default: project root)'
 				echo '  --release-tag: Release tag (e.g., v3.0.0+claude1.17377.2) to append wrapper version to package'
+				echo '  --arch:  Override detected target architecture (amd64 or arm64),'
+				echo '           for cross-building (default: auto-detected via uname -m,'
+				echo "           current: $architecture)"
 				echo '  --test-flags: Parse flags, print results, and exit without building.'
 				exit 0
 				;;
@@ -182,6 +192,7 @@ parse_arguments() {
 	# Validate arguments
 	build_format="${build_format,,}"
 	cleanup_action="${cleanup_action,,}"
+	architecture="${architecture,,}"
 
 	if [[ ! -d $source_dir ]]; then
 		echo "Error: --source-dir path does not exist: $source_dir" >&2
@@ -190,6 +201,15 @@ parse_arguments() {
 
 	if [[ $build_format != 'deb' && $build_format != 'rpm' && $build_format != 'appimage' && $build_format != 'nix' ]]; then
 		echo "Invalid build format specified: '$build_format'. Must be 'deb', 'rpm', 'appimage', or 'nix'." >&2
+		exit 1
+	fi
+
+	# --arch overrides the uname -m detection in detect_architecture(),
+	# enabling cross-building (e.g. an amd64 CI runner producing an
+	# arm64 package, since repackaging the official .deb is
+	# arch-independent).
+	if [[ $architecture != 'amd64' && $architecture != 'arm64' ]]; then
+		echo "Invalid architecture specified: '$architecture'. Must be 'amd64' or 'arm64'." >&2
 		exit 1
 	fi
 
@@ -206,6 +226,7 @@ parse_arguments() {
 
 	echo "Selected build format: $build_format"
 	echo "Cleanup intermediate files: $cleanup_action"
+	echo "Target Architecture: $architecture"
 
 	[[ $cleanup_action == 'yes' ]] && perform_cleanup=true
 

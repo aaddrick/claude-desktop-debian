@@ -206,11 +206,14 @@ fetch_official_deb() {
 	fi
 
 	# Extract wrapper version from release tag if provided
-	# (e.g., v3.0.0+claude1.17377.2 -> 3.0.0)
+	# (e.g., v3.0.0+claude1.17377.2 -> 3.0.0; v3.0.0-rc1+claude1.17377.2
+	# -> 3.0.0-rc1). Deb versions may contain hyphens; rpm.sh sanitizes
+	# the RC suffix (hyphens -> dots) for the RPM Release field.
 	if [[ -n ${release_tag:-} ]]; then
 		local wrapper_version
 		wrapper_version=$(echo "$release_tag" | \
-			LC_ALL=C grep -oP '^v\K[0-9]+\.[0-9]+\.[0-9]+(?=\+claude)')
+			LC_ALL=C grep -oP \
+				'^v\K[0-9]+\.[0-9]+\.[0-9]+(?:-rc[0-9]+)?(?=\+claude)')
 		if [[ -n $wrapper_version ]]; then
 			version="${version}-${wrapper_version}"
 			echo "Package version with wrapper suffix: $version"

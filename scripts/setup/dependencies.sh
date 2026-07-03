@@ -3,7 +3,7 @@
 #
 # Sourced by: build.sh
 # Sourced globals:
-#   build_format, distro_family, work_dir, project_root, architecture
+#   build_format, distro_family, work_dir, project_root
 # Modifies globals:
 #   asar_exec (via setup_asar); PATH is exported (via setup_nodejs)
 #===============================================================================
@@ -135,12 +135,17 @@ setup_nodejs() {
 	# Node.js version inadequate - install locally
 	echo 'Installing Node.js v20 locally in build directory...'
 
-	local node_arch
-	case "$architecture" in
-		amd64) node_arch='x64' ;;
-		arm64) node_arch='arm64' ;;
+	# Node is build-host tooling: it runs asar here and never ships in
+	# the package, so it is keyed to uname -m, NOT to $architecture —
+	# which --arch can override to the cross-build target (an arm64
+	# node on an amd64 runner dies with an exec-format error).
+	local node_arch host_arch
+	host_arch=$(uname -m)
+	case "$host_arch" in
+		x86_64)  node_arch='x64' ;;
+		aarch64) node_arch='arm64' ;;
 		*)
-			echo "Unsupported architecture for Node.js: $architecture" >&2
+			echo "Unsupported host architecture for Node.js: $host_arch" >&2
 			exit 1
 			;;
 	esac

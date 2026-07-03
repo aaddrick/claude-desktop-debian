@@ -211,6 +211,20 @@ echo "AppStream metadata created at $appdata_file"
 
 
 # --- Get appimagetool ---
+# appimagetool is a native binary that must run on the HOST machine, not
+# the package's target architecture: CI cross-builds (e.g. an arm64
+# package on an ubuntu-latest/x86_64 runner) need the x86_64 tool even
+# though $architecture says arm64. Select strictly by uname -m here;
+# the target architecture is only used later for the embedded ARCH.
+host_arch=$(uname -m)
+case "$host_arch" in
+	x86_64|aarch64) ;;
+	*)
+		echo "Unsupported host architecture for appimagetool: $host_arch" >&2
+		exit 1
+		;;
+esac
+
 appimagetool_path=''
 
 # Check system PATH first
@@ -219,30 +233,21 @@ if command -v appimagetool &> /dev/null; then
 	echo "Found appimagetool in PATH: $appimagetool_path"
 fi
 
-# Check for previously downloaded versions
-for arch in x86_64 aarch64; do
-	[[ -n $appimagetool_path ]] && break
-	local_path="$work_dir/appimagetool-${arch}.AppImage"
+# Check for a previously downloaded HOST-arch tool
+if [[ -z $appimagetool_path ]]; then
+	local_path="$work_dir/appimagetool-${host_arch}.AppImage"
 	if [[ -f $local_path ]]; then
 		appimagetool_path="$local_path"
-		echo "Found downloaded ${arch} appimagetool: $appimagetool_path"
+		echo "Found downloaded ${host_arch} appimagetool: $appimagetool_path"
 	fi
-done
+fi
 
 # Download if not found
 if [[ -z $appimagetool_path ]]; then
 	echo 'Downloading appimagetool...'
-	case "$architecture" in
-		amd64) tool_arch='x86_64' ;;
-		arm64) tool_arch='aarch64' ;;
-		*)
-			echo "Unsupported architecture for appimagetool download: $architecture" >&2
-			exit 1
-			;;
-	esac
 
-	appimagetool_url="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${tool_arch}.AppImage"
-	appimagetool_path="$work_dir/appimagetool-${tool_arch}.AppImage"
+	appimagetool_url="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${host_arch}.AppImage"
+	appimagetool_path="$work_dir/appimagetool-${host_arch}.AppImage"
 
 	if wget -q -O "$appimagetool_path" "$appimagetool_url"; then
 		chmod +x "$appimagetool_path" || exit 1
@@ -269,7 +274,18 @@ find "$appdir_path" -type f -exec chmod u=rwX,go=rX {} + || exit 1
 echo 'Building AppImage...'
 output_filename="${package_name}-${version}-${architecture}.AppImage"
 output_path="$work_dir/$output_filename"
-export ARCH="$architecture"
+
+# ARCH tells appimagetool which runtime to embed and must match the
+# TARGET architecture (canonical uname-style name), which can differ
+# from the host running the tool during a cross-build.
+case "$architecture" in
+	amd64) export ARCH='x86_64' ;;
+	arm64) export ARCH='aarch64' ;;
+	*)
+		echo "Unsupported target architecture for ARCH: $architecture" >&2
+		exit 1
+		;;
+esac
 echo "Using ARCH=$ARCH"
 
 # Local build - no update information

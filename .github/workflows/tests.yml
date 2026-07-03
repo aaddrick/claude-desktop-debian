@@ -43,3 +43,9 @@ jobs:
         # Cowork tests load scripts/cowork-vm-service.js via `node` —
         # the `nodejs` install above is what they need.
         run: bats --print-output-on-failure tests/*.bats
+
+      - name: Chromium switch-list smoke
+        # Fails if the launcher's effective Chromium switch list drifts
+        # from tools/chromium-switches.baseline without a deliberate
+        # update (every upstream bump / launcher PR is checked).
+        run: ./tools/chromium-switch-smoke.sh

@@ -29,8 +29,8 @@ jobs:
     name: Test Flags Parsing
     uses: ./.github/workflows/test-flags.yml
 
-  build-amd64:
-    name: Build Packages (amd64 - ${{ matrix.artifact_suffix }})
+  build:
+    name: Build Packages (${{ matrix.arch }} - ${{ matrix.artifact_suffix }})
     needs: test-flags
 
     strategy:
@@ -46,28 +46,6 @@ jobs:
           - arch: amd64
             flags: "--build appimage --clean no"
             artifact_suffix: "appimage"
-
-    uses: ./.github/workflows/build-amd64.yml
-    with:
-      build_flags: ${{ matrix.flags }}
-      artifact_suffix: ${{ matrix.artifact_suffix }}
-      release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-
-  test-artifacts:
-    name: Test Build Artifacts (amd64)
-    needs: [build-amd64]
-    uses: ./.github/workflows/test-artifacts.yml
-    with:
-      arch: amd64
-
-  build-arm64:
-    name: Build Packages (arm64 - ${{ matrix.artifact_suffix }})
-    needs: test-flags
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
           - arch: arm64
             flags: "--build deb --clean no"
             artifact_suffix: "deb"
@@ -78,15 +56,23 @@ jobs:
             flags: "--build appimage"
             artifact_suffix: "appimage"
 
-    uses: ./.github/workflows/build-arm64.yml
+    uses: ./.github/workflows/build.yml
     with:
+      arch: ${{ matrix.arch }}
       build_flags: ${{ matrix.flags }}
       artifact_suffix: ${{ matrix.artifact_suffix }}
       release_tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
+  test-artifacts:
+    name: Test Build Artifacts (amd64)
+    needs: [build]
+    uses: ./.github/workflows/test-artifacts.yml
+    with:
+      arch: amd64
+
   test-artifacts-arm64:
     name: Test Build Artifacts (arm64)
-    needs: [build-arm64]
+    needs: [build]
     uses: ./.github/workflows/test-artifacts.yml
     with:
       arch: arm64
@@ -94,7 +80,7 @@ jobs:
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-flags, build-amd64, build-arm64, test-artifacts, test-artifacts-arm64]
+    needs: [test-flags, build, test-artifacts, test-artifacts-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -383,6 +369,10 @@ jobs:
         with:
           files: artifacts/**/*
           body_path: compare-work/summary.md
+          # RC tags (e.g. v3.0.0-rc1+claude...) publish as a GitHub
+          # prerelease — the opt-in beta channel — while final tags
+          # publish as a full release.
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
 
       - name: Generate and upload reference source
         env:
@@ -407,9 +397,53 @@ jobs:
           gh release upload "${{ github.ref_name }}" reference-source.tar.gz \
             --repo "$GITHUB_REPOSITORY" --clobber
 
+  mirror-official-deb:
+    name: Mirror Official .deb to Release
+    # Runs for RC tags too — the mirror is version-keyed insurance so the
+    # exact upstream binary a release was built from stays retrievable
+    # from our Releases even if it rotates out of Anthropic's pool.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Mirror pinned official .deb per architecture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source scripts/_common.sh
+          source scripts/setup/official-deb.sh
+
+          for arch in amd64 arm64; do
+            official_deb_pin "$arch" || {
+              echo "::error::Failed to pin official .deb for $arch"
+              exit 1
+            }
+            echo "Mirroring $official_deb_filename ($arch)..."
+            if ! wget -q -O "$official_deb_filename" "$official_deb_url"; then
+              echo "::error::Failed to download $official_deb_url"
+              exit 1
+            fi
+            if ! verify_sha256 "$official_deb_filename" \
+                "$official_deb_sha256" "official $arch .deb"; then
+              exit 1
+            fi
+            # Upload under the original pool filename
+            # (claude-desktop_<ver>_<arch>.deb). It cannot collide with our
+            # own assets, which carry the _<ver>-<repo>_ wrapper suffix.
+            gh release upload "$GITHUB_REF_NAME" "$official_deb_filename" \
+              --clobber
+          done
+
   update-apt-repo:
     name: Update APT Repository
-    if: startsWith(github.ref, 'refs/tags/v')
+    # RC tags never touch the stable APT repo.
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc')
     needs: [release]
     runs-on: ubuntu-latest
     permissions:
@@ -582,7 +616,8 @@ jobs:
 
   update-dnf-repo:
     name: Update DNF Repository
-    if: startsWith(github.ref, 'refs/tags/v')
+    # RC tags never touch the stable DNF repo.
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc')
     needs: [release, update-apt-repo]
     runs-on: ubuntu-latest
     permissions:
@@ -802,7 +837,8 @@ jobs:
 
   update-aur-repo:
     name: Update AUR Package
-    if: startsWith(github.ref, 'refs/tags/v')
+    # RC tags never touch the AUR package.
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc')
     needs: [release]
     runs-on: ubuntu-latest
 

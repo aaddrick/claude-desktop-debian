@@ -130,3 +130,32 @@ jobs:
         echo "$OUTPUT" | grep -q "Clean Action: no" || (echo "❌ Expected 'Clean Action: no'" && exit 1)
         echo "✓ Test Case 9 Passed"
         # No cleanup needed
+
+    # Test Case 10: --arch arm64 overrides the detected architecture
+    # (cross-build support; the runner itself is amd64). The last
+    # "Target Architecture" line is the authoritative post-override one
+    # from parse_arguments; detect_architecture's earlier line reports
+    # the raw host detection by design.
+    - name: Test Case 10 - --arch arm64 override
+      run: |
+        echo "--- Running Test Case 10: ./build.sh --arch arm64 --build appimage --test-flags ---"
+        OUTPUT=$(./build.sh --arch arm64 --build appimage --test-flags)
+        echo "$OUTPUT"
+        echo "--- Verifying Test Case 10 ---"
+        echo "$OUTPUT" | grep "Target Architecture:" | tail -1 | grep -q "arm64" || (echo "❌ Expected final 'Target Architecture: arm64'" && exit 1)
+        echo "$OUTPUT" | grep -q "Build Format: appimage" || (echo "❌ Expected 'Build Format: appimage'" && exit 1)
+        echo "✓ Test Case 10 Passed"
+
+    # Test Case 11: --arch rejects invalid values
+    - name: Test Case 11 - --arch rejects invalid values
+      run: |
+        echo "--- Running Test Case 11: ./build.sh --arch bogus --test-flags ---"
+        if OUTPUT=$(./build.sh --arch bogus --test-flags 2>&1); then
+          echo "$OUTPUT"
+          echo "❌ Expected non-zero exit for invalid --arch"
+          exit 1
+        fi
+        echo "$OUTPUT"
+        echo "--- Verifying Test Case 11 ---"
+        echo "$OUTPUT" | grep -q "Invalid architecture specified" || (echo "❌ Expected invalid-architecture error message" && exit 1)
+        echo "✓ Test Case 11 Passed"

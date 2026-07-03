@@ -193,16 +193,6 @@ _fail() {
 _warn() { echo -e "${_yellow}[WARN]${_reset} $*"; }
 _info() { echo -e "       $*"; }
 
-# Warn about an unrecognized COWORK_VM_BACKEND value. The daemon
-# (cowork-vm-service.js) ignores invalid values and falls through to
-# auto-detect — see #442 for the daemon-side wart. Called from both
-# COWORK_VM_BACKEND case statements below so the warning fires once
-# at the severity-gating site and once at the user-facing summary.
-_warn_unknown_backend() {
-	_warn "Unknown COWORK_VM_BACKEND: '${COWORK_VM_BACKEND}'"
-	_info 'Valid values: kvm, bwrap, host'
-}
-
 # Locate the virtiofsd binary. Distros install it at different
 # off-PATH locations:
 #   - Debian/Ubuntu: /usr/libexec/virtiofsd (qemu-system-common)
@@ -497,7 +487,7 @@ _doctor_check_filename_limit() {
 # CLAUDE_DISABLE_GPU=1 in the environment for headless persistence.
 #
 # Arguments: $1 = electron path (e.g.,
-#   /usr/lib/claude-desktop/node_modules/electron/dist/electron)
+#   /usr/lib/claude-desktop/claude-desktop)
 #   Used to filter results to claude-desktop's electron when possible;
 #   falls back to all-electron crashes when the path doesn't match
 #   (e.g., AppImage mount paths are transient).
@@ -559,31 +549,19 @@ _doctor_check_recent_crashes() {
 	fi
 }
 
-# Report the active Chromium password-store backend.
+# Report how the Chromium password-store backend is selected.
 #
-# Calls _detect_password_store() (defined in launcher-common.sh, which
-# sources this file) to surface what keyring Electron will use for
-# safeStorage / cookie encryption. 'basic' is valid but means tokens
-# rely on filesystem permissions alone, so we note it for visibility.
-# An empty result means detection itself failed (e.g. a sourcing-order
-# regression) and warns rather than emitting a green PASS with a blank
-# value.
+# Since the v3.0.0 rebase the launcher no longer probes for a keyring:
+# the official build's os_crypt autodetection owns that decision (and
+# deliberately declines weak persistence on some sessions). The only
+# knob is CLAUDE_PASSWORD_STORE, the documented escape hatch. There is
+# nothing to probe, so this is informational only — no PASS/FAIL.
 _doctor_check_password_store() {
-	local store
-	store=$(_detect_password_store)
-	if [[ -z $store ]]; then
-		_warn 'Password store: unable to detect backend'
-		return
-	fi
-	_pass "Password store: $store"
-	if [[ $store == 'basic' ]]; then
-		_info \
-			'  → using fixed-key fallback;' \
-			'tokens are protected by filesystem permissions only'
-	fi
 	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
-		_info \
-			"  → overridden by CLAUDE_PASSWORD_STORE=${CLAUDE_PASSWORD_STORE}"
+		_info "Password store: forced to $CLAUDE_PASSWORD_STORE" \
+			'(overrides upstream autodetection)'
+	else
+		_info 'Password store: upstream os_crypt autodetect (default)'
 	fi
 }
 
@@ -636,8 +614,9 @@ _doctor_check_pkg_version() {
 	local pkg_version=''
 
 	if [[ -z $probe_path ]]; then
-		probe_path='/usr/lib/claude-desktop'
-		probe_path+='/node_modules/electron/dist/electron'
+		# Official layout: bare ELF at the package root (no
+		# node_modules/electron/dist tree anymore).
+		probe_path='/usr/lib/claude-desktop/claude-desktop'
 	fi
 
 	# rpm branch: query the file, not the package name, so the answer
@@ -646,6 +625,9 @@ _doctor_check_pkg_version() {
 		pkg_version=$(rpm -qf --qf '%{VERSION}-%{RELEASE}' \
 			"$probe_path" 2>/dev/null) || pkg_version=''
 		if [[ -n $pkg_version ]]; then
+			# Record for _check_official_drift (run_doctor scopes the
+			# global; see the drift check for how it is consumed).
+			_installed_pkg_version="$pkg_version"
 			_pass "Installed version: $pkg_version"
 			return 0
 		fi
@@ -656,6 +638,7 @@ _doctor_check_pkg_version() {
 		pkg_version=$(dpkg-query -W -f='${Version}' \
 			claude-desktop 2>/dev/null) || pkg_version=''
 		if [[ -n $pkg_version ]]; then
+			_installed_pkg_version="$pkg_version"
 			_pass "Installed version: $pkg_version"
 			return 0
 		fi
@@ -669,11 +652,305 @@ _doctor_check_pkg_version() {
 	fi
 }
 
+# Best-effort drift check against Anthropic's official APT pool.
+#
+# doctor.sh is installed WITHOUT official-deb.sh, so the resolver is
+# embedded here rather than sourced. It reuses the same RS='' Packages
+# stanza parse as resolve_official_deb in scripts/setup/official-deb.sh
+# (kept in lock-step by hand). Network-optional: a missing curl, an
+# unsupported arch, or an unreachable pool is an _info skip, never a
+# failure.
+#
+# Reads the installed upstream version from the _installed_pkg_version
+# global recorded by _doctor_check_pkg_version — the part before the
+# first '-', since our packages append '-<wrapper>' to upstream's
+# dotted version.
+_check_official_drift() {
+	if ! command -v curl &>/dev/null; then
+		_info 'Version drift: skipped (curl not available)'
+		return 0
+	fi
+
+	local arch
+	case "$(uname -m)" in
+		x86_64)  arch='amd64' ;;
+		aarch64) arch='arm64' ;;
+		*)
+			_info 'Version drift: skipped (unsupported architecture)'
+			return 0
+			;;
+	esac
+
+	local base='https://downloads.claude.ai/claude-desktop/apt/stable'
+	local index_url="$base/dists/stable/main/binary-${arch}/Packages"
+
+	local newest
+	newest=$(curl -fsS --max-time 8 "$index_url" 2>/dev/null | awk -v RS='' '
+		/^Package: claude-desktop\n/ || $1 == "Package:" {
+			v = ""
+			n = split($0, lines, "\n")
+			for (i = 1; i <= n; i++) {
+				if (lines[i] ~ /^Version: /) v = substr(lines[i], 10)
+			}
+			if (v != "") print v
+		}' | sort -V | tail -1)
+
+	if [[ -z $newest ]]; then
+		_info 'Version drift: skipped (offline or pool unreachable)'
+		return 0
+	fi
+
+	local installed="${_installed_pkg_version:-}"
+	installed="${installed%%-*}"
+
+	if [[ -z $installed ]]; then
+		_info "Version drift: newest official pool version is $newest" \
+			'(installed version unknown — AppImage?)'
+		return 0
+	fi
+
+	if [[ $installed == "$newest" ]]; then
+		_pass "Version: in sync with the official pool ($newest)"
+	else
+		_warn "Version drift: official pool has $newest," \
+			"this install packages $installed"
+		_info 'Fix: upgrade via your package manager or download the' \
+			'newest release'
+	fi
+}
+
+# Warn when both Anthropic's official APT repo and this project could
+# ship a package named claude-desktop (whichever version sorts higher
+# wins on upgrade). deb-family only; silent when dpkg-query is absent.
+# The sources.list.d directory is overridable via _DOCTOR_APT_SOURCES_DIR
+# so tests can point at a fixture tree.
+_check_name_collision() {
+	command -v dpkg-query &>/dev/null || return 0
+
+	local sources_list='/etc/apt/sources.list'
+	local sources_dir="${_DOCTOR_APT_SOURCES_DIR:-/etc/apt/sources.list.d}"
+	local pattern='downloads\.claude\.ai/claude-desktop/apt'
+
+	# (a) Is Anthropic's official repo configured in APT's source lists?
+	# grep -qs stays quiet on missing/unreadable files.
+	local repo_found=false
+	if grep -qs "$pattern" "$sources_list" 2>/dev/null; then
+		repo_found=true
+	elif [[ -d $sources_dir ]]; then
+		local f
+		for f in "$sources_dir"/*; do
+			[[ -f $f ]] || continue
+			if grep -qs "$pattern" "$f" 2>/dev/null; then
+				repo_found=true
+				break
+			fi
+		done
+	fi
+
+	if $repo_found; then
+		_warn "Package-name collision: Anthropic's APT repo and this" \
+			'project both ship a package named claude-desktop'
+		_info 'Whichever version sorts higher wins on upgrade.'
+		_info 'See which pool a version comes from:' \
+			'apt policy claude-desktop'
+	fi
+
+	# (b) Who owns the installed claude-desktop?
+	local maintainer
+	maintainer=$(dpkg-query -W -f='${Maintainer}' claude-desktop \
+		2>/dev/null) || maintainer=''
+	if [[ $maintainer == *Anthropic* ]]; then
+		_info "Installed claude-desktop is Anthropic's official package" \
+			"(Maintainer: $maintainer)"
+	fi
+}
+
+# Warn about 2.x environment knobs that the v3.0.0 rebase onto the
+# official build no longer honors (the patches that read them were
+# deleted in Phase 2). Silent when none are set.
+_check_legacy_env() {
+	local var
+	for var in \
+		CLAUDE_TITLEBAR_STYLE \
+		CLAUDE_MENU_BAR \
+		CLAUDE_KEEP_AWAKE
+	do
+		if [[ -n ${!var:-} ]]; then
+			_warn "$var is set but no longer honored since the v3.0.0" \
+				'rebase onto the official build'
+		fi
+	done
+}
+
+# Cowork isolation on the official client is KVM-only. Report whether
+# /dev/kvm is present and read-write. The device path is overridable via
+# _DOCTOR_KVM_DEV for tests (same internal-hook convention as
+# _COWORK_VFSD_PATHS). Cowork absence is never a failure — the app works
+# fine without it.
+_check_kvm() {
+	local dev="${_DOCTOR_KVM_DEV:-/dev/kvm}"
+	if [[ ! -e $dev ]]; then
+		_warn 'KVM: /dev/kvm not present — Cowork requires KVM'
+		_info 'Enable hardware virtualization (VT-x/AMD-V) in your' \
+			'BIOS/UEFI, then: sudo modprobe kvm'
+		_cowork_incomplete=true
+		return 0
+	fi
+	if [[ -r $dev && -w $dev ]]; then
+		_pass 'KVM: /dev/kvm present and accessible'
+	else
+		_warn 'KVM: /dev/kvm present but not read-write'
+		_info "Fix: sudo usermod -aG kvm $USER"
+		_info '(Log out and back in for the group change to take effect)'
+		_cowork_incomplete=true
+	fi
+}
+
+# Cowork's guest<->host control channel rides vhost-vsock. The device
+# path is overridable via _DOCTOR_VSOCK_DEV for tests.
+_check_vhost_vsock() {
+	local dev="${_DOCTOR_VSOCK_DEV:-/dev/vhost-vsock}"
+	if [[ -e $dev ]]; then
+		_pass 'vsock: /dev/vhost-vsock present'
+	else
+		_warn 'vsock: /dev/vhost-vsock not found'
+		_info 'Fix: sudo modprobe vhost_vsock'
+		_info 'Persist across reboots: echo vhost_vsock |' \
+			'sudo tee /etc/modules-load.d/vhost_vsock.conf'
+		_cowork_incomplete=true
+	fi
+}
+
+# Check the QEMU/KVM userspace stack Cowork drives: the arch-matched
+# qemu-system binary on PATH, firmware at the paths the official client
+# hardcodes, and virtiofsd (off-PATH tolerated).
+#
+# Firmware: the official probe list is hardcoded with no env override
+# (audit fact — docs/learnings/official-deb-rebase-verification.md).
+# Firmware present at a Fedora/Arch edk2 location does NOT count, so we
+# check only the official paths and explain the mismatch on a miss. The
+# probe list is overridable via _DOCTOR_OVMF_PATHS (colon-list) for
+# tests. virtiofsd's upstream spawn semantics are unverified, so an
+# off-PATH binary is still reported as found (note when off-PATH).
+#
+# Usage: _check_cowork_stack <distro_id>
+_check_cowork_stack() {
+	local distro="$1"
+	local qemu_bin fw_default
+	case "$(uname -m)" in
+		aarch64)
+			qemu_bin='qemu-system-aarch64'
+			fw_default='/usr/share/AAVMF/AAVMF_CODE.fd'
+			;;
+		*)
+			qemu_bin='qemu-system-x86_64'
+			fw_default='/usr/share/OVMF/OVMF_CODE_4M.fd'
+			fw_default+=':/usr/share/OVMF/OVMF_CODE.fd'
+			;;
+	esac
+
+	# QEMU binary — the client spawns it by PATH name.
+	if command -v "$qemu_bin" &>/dev/null; then
+		_pass "QEMU: $qemu_bin found"
+	else
+		_warn "QEMU: $qemu_bin not found on PATH"
+		_info "Fix: $(_cowork_pkg_hint "$distro" qemu)"
+		_cowork_incomplete=true
+	fi
+
+	# Firmware at the officially probed paths ONLY.
+	local fw_paths="${_DOCTOR_OVMF_PATHS:-$fw_default}"
+	local -a fw_list
+	IFS=: read -r -a fw_list <<< "$fw_paths"
+	local fw fw_found=''
+	for fw in "${fw_list[@]}"; do
+		if [[ -f $fw ]]; then
+			fw_found="$fw"
+			break
+		fi
+	done
+	if [[ -n $fw_found ]]; then
+		_pass "Firmware: $fw_found"
+	else
+		_warn 'Firmware: none of the official probe paths exist' \
+			"($fw_paths)"
+		_info 'The official client hardcodes this probe list with no' \
+			'env override, so firmware installed elsewhere'
+		_info '(Fedora/Arch edk2 layouts) is not found — add a compat' \
+			'symlink at the probed path.'
+		_cowork_incomplete=true
+	fi
+
+	# virtiofsd — off-PATH tolerated (see _find_virtiofsd).
+	local vfsd on_path
+	on_path=$(command -v virtiofsd 2>/dev/null)
+	vfsd=$(_find_virtiofsd)
+	if [[ -n $vfsd ]]; then
+		if [[ $vfsd == "$on_path" ]]; then
+			_pass 'virtiofsd: found'
+		else
+			_pass "virtiofsd: found at $vfsd (not on PATH)"
+		fi
+	else
+		_warn 'virtiofsd: not found'
+		_info "Fix: $(_cowork_pkg_hint "$distro" virtiofsd)"
+		_cowork_incomplete=true
+	fi
+}
+
+# Legacy bwrap diagnostics, retained only for the parked 3.1 fallback
+# (scripts/cowork-fallback/). The official client has no bwrap backend;
+# this runs solely when the user sets COWORK_VM_BACKEND=bwrap.
+#
+# Usage: _doctor_check_bwrap_fallback <distro_id>
+_doctor_check_bwrap_fallback() {
+	local distro="$1"
+
+	if command -v bwrap &>/dev/null; then
+		_pass 'bubblewrap: found'
+
+		# User namespaces must be available for bwrap to create its
+		# sandbox; Ubuntu 24.04+ blocks them via AppArmor (issue #351).
+		local _err='' _rc=0
+		_err=$(bwrap --ro-bind / / true 2>&1 >/dev/null) || _rc=$?
+		if ((_rc == 0)); then
+			_pass 'bubblewrap: sandbox probe succeeded'
+		else
+			_warn "bubblewrap: sandbox probe failed (rc=$_rc)"
+			[[ -n $_err ]] && _info "  stderr: $_err"
+			local _re='(user[[:space:]_-]?namespace|apparmor|[Oo]peration not permitted|CLONE_NEW|CAP_SYS_ADMIN)'
+			if [[ $_err =~ $_re ]]; then
+				_info \
+					'  Likely cause: unprivileged user namespaces' \
+					'are blocked.'
+				_info \
+					'  Common on Ubuntu 24.04+ where AppArmor sets' \
+					'apparmor_restrict_unprivileged_userns=1'
+				_info \
+					'  by default. See docs/troubleshooting.md' \
+					'"Cowork on Ubuntu 24.04" for the AppArmor profile fix.'
+			fi
+		fi
+	else
+		_warn 'bubblewrap: not found'
+		_info "Fix: $(_cowork_pkg_hint "$distro" bubblewrap)"
+	fi
+
+	_doctor_check_bwrap_mounts
+}
+
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
 	local electron_path="${1:-}"
 	local _doctor_failures=0
+	# Recorded by _doctor_check_pkg_version, consumed by
+	# _check_official_drift (dynamic scope makes the helper's assignment
+	# land on this local).
+	local _installed_pkg_version=''
+	# Flipped true by any Cowork stack check that isn't green, so the
+	# section summary can report readiness without recomputing.
+	local _cowork_incomplete=false
 	_doctor_colors
 
 	# Distro ID is shared between the IM-module check (#550) and the
@@ -687,6 +964,12 @@ run_doctor() {
 
 	# -- Installed package version --
 	_doctor_check_pkg_version "$electron_path"
+
+	# -- Version drift vs. the official pool (best-effort, network) --
+	_check_official_drift
+
+	# -- Package-name collision with Anthropic's APT repo --
+	_check_name_collision
 
 	# -- Display server --
 	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
@@ -711,61 +994,8 @@ run_doctor() {
 	# -- Input method (IBus / GTK) --
 	_doctor_check_im_modules "$_distro_id"
 
-	# -- Menu bar mode --
-	local menu_bar_mode="${CLAUDE_MENU_BAR:-}"
-	if [[ -n $menu_bar_mode ]]; then
-		local resolved_mode="${menu_bar_mode,,}"
-		# Resolve boolean-style aliases
-		case "$resolved_mode" in
-			1|true|yes|on) resolved_mode='visible' ;;
-			0|false|no|off) resolved_mode='hidden' ;;
-		esac
-		case "$resolved_mode" in
-			auto|visible|hidden)
-				_pass "Menu bar mode: $resolved_mode" \
-					"(CLAUDE_MENU_BAR=$menu_bar_mode)"
-				;;
-			*)
-				_warn "Unknown CLAUDE_MENU_BAR: '$menu_bar_mode'"
-				_info 'Will fall back to auto'
-				_info 'Valid values: auto, visible, hidden' \
-					'(or 0/1/true/false/yes/no/on/off)'
-				;;
-		esac
-	else
-		_info 'Menu bar mode: auto (default, Alt toggles visibility)'
-	fi
-
-	# -- Titlebar style --
-	local titlebar_style="${CLAUDE_TITLEBAR_STYLE:-}"
-	if [[ -n $titlebar_style ]]; then
-		local resolved_style="${titlebar_style,,}"
-		case "$resolved_style" in
-			hybrid|native)
-				_pass "Titlebar style: $resolved_style" \
-					"(CLAUDE_TITLEBAR_STYLE=$titlebar_style)"
-				;;
-			hidden)
-				_warn "Titlebar style: hidden — topbar clicks unresponsive on Linux (both X11 and Wayland)"
-				_info 'Use hybrid (default) or native for clickable buttons'
-				;;
-			*)
-				_warn "Unknown CLAUDE_TITLEBAR_STYLE: '$titlebar_style'"
-				_info 'Will fall back to hybrid'
-				_info 'Valid values: hybrid, native, hidden'
-				;;
-		esac
-	else
-		_info 'Titlebar style: hybrid (default, native frame + in-app topbar)'
-	fi
-
-	# -- Keep awake override --
-	local keep_awake="${CLAUDE_KEEP_AWAKE:-}"
-	if [[ $keep_awake == '0' ]]; then
-		_pass 'Keep awake: suppressed (CLAUDE_KEEP_AWAKE=0)'
-	elif [[ -n $keep_awake ]]; then
-		_info "Keep awake: CLAUDE_KEEP_AWAKE=$keep_awake (default behavior)"
-	fi
+	# -- Legacy 2.x env knobs (no longer honored post-rebase) --
+	_check_legacy_env
 
 	# -- Electron binary --
 	# Version is read from the file next to the binary rather than
@@ -791,8 +1021,10 @@ run_doctor() {
 	fi
 
 	# -- Chrome sandbox permissions --
+	# Official layout: chrome-sandbox sits at the package root beside the
+	# ELF (no node_modules/electron/dist tree anymore).
 	local sandbox_paths=(
-		'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+		'/usr/lib/claude-desktop/chrome-sandbox'
 	)
 	# Also check relative to the provided electron path
 	if [[ -n $electron_path ]]; then
@@ -836,8 +1068,7 @@ run_doctor() {
 	# invoking build's binary): the profile pins this exact path, so only
 	# a deb install is confined by it. AppImage always runs --no-sandbox
 	# and Nix binaries live in the store — neither can hit the crash.
-	local _deb_electron='/usr/lib/claude-desktop'
-	_deb_electron+='/node_modules/electron/dist/electron'
+	local _deb_electron='/usr/lib/claude-desktop/claude-desktop'
 	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
 		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
 		# (PACKAGE_NAME in build.sh).
@@ -985,222 +1216,64 @@ print(len(servers))
 	echo -e "${_bold}Cowork Mode${_reset}"
 	echo '----------------'
 
-	# Determine whether bwrap is the active backend (for severity
-	# of bwrap-related diagnostics). Auto-detect prefers bwrap, so
-	# bwrap is active unless the user has overridden to KVM or host.
-	local _bwrap_active=true
-	case "${COWORK_VM_BACKEND,,}" in
-		kvm|host) _bwrap_active=false ;;
-		''|bwrap) ;;
-		*)
-			# Unknown values: warn but leave _bwrap_active=true.
-			# The daemon falls through to auto-detect, which
-			# prefers bwrap — keep severity semantics aligned
-			# with that runtime behavior. See #442.
-			_warn_unknown_backend
-			;;
-	esac
+	# The official Linux client runs Cowork as coworkd + QEMU/KVM; there
+	# is no bwrap backend. Report the KVM stack honestly. Cowork absence
+	# is never a _fail — the app works fine without it.
+	_check_kvm
+	_check_vhost_vsock
+	_check_cowork_stack "$_distro_id"
 
-	# Bubblewrap (default backend)
-	if command -v bwrap &>/dev/null; then
-		_pass 'bubblewrap: found'
-
-		# Probe the sandbox. User namespaces must be available for
-		# bwrap to create its sandbox; Ubuntu 24.04+ blocks them via
-		# AppArmor by default (issue #351).
-		local _bwrap_probe_err='' _bwrap_probe_rc=0
-		_bwrap_probe_err=$(bwrap --ro-bind / / true 2>&1 >/dev/null) \
-			|| _bwrap_probe_rc=$?
-		if ((_bwrap_probe_rc == 0)); then
-			_pass 'bubblewrap: sandbox probe succeeded'
-		else
-			local _bwrap_issue=_warn
-			$_bwrap_active && _bwrap_issue=_fail
-			"$_bwrap_issue" \
-				"bubblewrap: sandbox probe failed" \
-				"(rc=$_bwrap_probe_rc)"
-			if [[ -n $_bwrap_probe_err ]]; then
-				_info "  stderr: $_bwrap_probe_err"
-			fi
-			# Detect the Ubuntu 24.04 AppArmor userns block
-			# specifically, and hint the remediation.
-			local _userns_re='(user[[:space:]_-]?namespace|apparmor|[Oo]peration not permitted|CLONE_NEW|CAP_SYS_ADMIN)'
-			if [[ $_bwrap_probe_err =~ $_userns_re ]]; then
-				_info \
-					'  Likely cause: unprivileged user namespaces' \
-					'are blocked.'
-				_info \
-					'  Common on Ubuntu 24.04+ where AppArmor sets' \
-					'apparmor_restrict_unprivileged_userns=1'
-				_info \
-					'  by default. See docs/troubleshooting.md' \
-					'"Cowork on Ubuntu 24.04" for the AppArmor profile fix.'
-			fi
-		fi
+	# One-line readiness summary (the checks above flip
+	# _cowork_incomplete on any non-green result).
+	if [[ $_cowork_incomplete == true ]]; then
+		_info 'Cowork: unavailable until the KVM stack is complete' \
+			'(see above)'
 	else
-		_warn 'bubblewrap: not found'
-		_info \
-			"Fix: $(_cowork_pkg_hint "$_distro_id" bubblewrap)"
+		_info 'Cowork isolation: KVM (official)'
 	fi
 
-	# Warn on missing KVM deps only when explicitly requested;
-	# otherwise just inform since bwrap is the default.
-	local _kvm_active=false
-	[[ ${COWORK_VM_BACKEND-} == [Kk][Vv][Mm] ]] && _kvm_active=true
-	local _kvm_issue=_info
-	$_kvm_active && _kvm_issue=_warn
-
-	# KVM backend (opt-in via COWORK_VM_BACKEND=kvm)
-	if [[ -e /dev/kvm ]]; then
-		if [[ -r /dev/kvm && -w /dev/kvm ]]; then
-			_pass 'KVM: accessible'
+	# Bwrap fallback (parked 3.1 track). The official client has no bwrap
+	# backend, so these diagnostics run ONLY when the user opts into the
+	# parked scripts/cowork-fallback/ path with COWORK_VM_BACKEND=bwrap.
+	# Any other non-empty value is a 2.x knob the official client ignores.
+	local _cvb="${COWORK_VM_BACKEND:-}"
+	if [[ -n $_cvb ]]; then
+		if [[ ${_cvb,,} == 'bwrap' ]]; then
+			echo
+			_info 'COWORK_VM_BACKEND=bwrap: the official client has no' \
+				'bwrap backend; running the legacy bwrap diagnostics'
+			_info 'for the parked 3.1 fallback (scripts/cowork-fallback/).'
+			_doctor_check_bwrap_fallback "$_distro_id"
 		else
-			"$_kvm_issue" 'KVM: /dev/kvm exists but not accessible'
-			if $_kvm_active; then
-				_info "Fix: sudo usermod -aG kvm $USER"
-				_info '(Log out and back in after running this)'
-			fi
-		fi
-	else
-		"$_kvm_issue" 'KVM: not available'
-		if $_kvm_active; then
-			_info \
-				'Fix: Install qemu-kvm and ensure KVM is enabled in BIOS'
+			_info "COWORK_VM_BACKEND=$_cvb: not read by the official" \
+				'client (2.x knob)'
 		fi
 	fi
-
-	# vsock module
-	if [[ -e /dev/vhost-vsock ]]; then
-		_pass 'vsock: module loaded'
-	else
-		"$_kvm_issue" 'vsock: /dev/vhost-vsock not found'
-		if $_kvm_active; then
-			_info 'Fix: sudo modprobe vhost_vsock'
-		fi
-	fi
-
-	# KVM tools: QEMU, socat. virtiofsd is handled separately below
-	# because Debian/Ubuntu install it off-PATH.
-	local _tool_label _tool_bin _tool_pkg
-	for _tool_label in \
-		'QEMU:qemu-system-x86_64:qemu' \
-		'socat:socat:socat'
-	do
-		_tool_bin="${_tool_label#*:}"
-		_tool_pkg="${_tool_bin#*:}"
-		_tool_bin="${_tool_bin%%:*}"
-		_tool_label="${_tool_label%%:*}"
-
-		if command -v "$_tool_bin" &>/dev/null; then
-			_pass "$_tool_label: found"
-		else
-			"$_kvm_issue" "$_tool_label: not found"
-			if $_kvm_active; then
-				_info \
-					"Fix: $(_cowork_pkg_hint "$_distro_id" "$_tool_pkg")"
-			fi
-		fi
-	done
-
-	# virtiofsd: ships off-PATH on several distros (see _find_virtiofsd
-	# above). Probe known locations so we don't report "not found" when
-	# the package is actually installed. KvmBackend spawns by PATH name
-	# and silently falls back to virtio-9p (lower perf) if the spawn
-	# fails — so when KVM is the active backend and virtiofsd is only
-	# reachable off-PATH, surface a [WARN] so the user knows they need
-	# a symlink to actually get virtiofs performance. On the bwrap
-	# default path virtiofsd is unused, so [PASS] is fine.
-	local _vfsd_path _vfsd_on_path
-	_vfsd_on_path=$(command -v virtiofsd 2>/dev/null)
-	_vfsd_path=$(_find_virtiofsd)
-	if [[ -n $_vfsd_path ]]; then
-		if [[ $_vfsd_path == "$_vfsd_on_path" ]]; then
-			_pass 'virtiofsd: found'
-		elif $_kvm_active; then
-			_warn "virtiofsd: found at $_vfsd_path but not on PATH"
-			_info 'KvmBackend spawns by PATH name and will fall back'
-			_info 'to virtio-9p (lower performance) without a symlink.'
-			_info "Fix: sudo ln -s $_vfsd_path /usr/local/bin/virtiofsd"
-		else
-			_pass "virtiofsd: found at $_vfsd_path (not on PATH)"
-		fi
-	else
-		"$_kvm_issue" 'virtiofsd: not found'
-		if $_kvm_active; then
-			_info "Fix: $(_cowork_pkg_hint "$_distro_id" virtiofsd)"
-		fi
-	fi
-
-	# VM image
-	local vm_image
-	vm_image="${HOME}/.local/share/claude-desktop/vm/rootfs.qcow2"
-	if [[ -f $vm_image ]]; then
-		local vm_size
-		vm_size=$(du -h "$vm_image" 2>/dev/null \
-			| cut -f1) || vm_size='unknown size'
-		_pass "VM image: $vm_size"
-	else
-		_info 'VM image: not downloaded yet'
-	fi
-
-	# Determine active backend (matches daemon's detectBackend())
-	local cowork_backend='none (host-direct, no isolation)'
-	if [[ -n ${COWORK_VM_BACKEND-} ]]; then
-		case ${COWORK_VM_BACKEND,,} in
-			kvm)  cowork_backend='KVM (full VM isolation, via override)' ;;
-			bwrap) cowork_backend='bubblewrap (namespace sandbox, via override)' ;;
-			host) cowork_backend='host-direct (no isolation, via override)' ;;
-			*)
-				_warn_unknown_backend
-				cowork_backend="auto-detect (invalid override '${COWORK_VM_BACKEND}' — see warning above)"
-				;;
-		esac
-	elif command -v bwrap &>/dev/null; then
-		# bwrap is installed: if the probe succeeds, use it;
-		# otherwise fall to host (matching daemon behavior, so we
-		# don't silently imply KVM will be chosen when bwrap is
-		# blocked — see #351).
-		if bwrap --ro-bind / / true &>/dev/null; then
-			cowork_backend='bubblewrap (namespace sandbox)'
-		else
-			cowork_backend='host-direct (bwrap probe failed — see above)'
-		fi
-	elif [[ -e /dev/kvm ]] \
-		&& [[ -r /dev/kvm && -w /dev/kvm ]] \
-		&& command -v qemu-system-x86_64 &>/dev/null \
-		&& [[ -e /dev/vhost-vsock ]]; then
-		cowork_backend='KVM (full VM isolation)'
-	fi
-	_info "Cowork isolation: $cowork_backend"
-
-	# Custom bwrap mount configuration
-	_doctor_check_bwrap_mounts
 
 	# Short NAME_MAX on the host's ~/.claude tree (eCryptfs etc.)
 	# blocks cowork session init with ENAMETOOLONG — see #590.
 	_doctor_check_filename_limit
 
-	# -- Orphaned cowork daemon --
-	# Uses the same live-UI detection as cleanup_orphaned_cowork_daemon:
-	# _claude_desktop_ui_is_alive in launcher-common.sh fingerprints on
-	# the --class=$WM_CLASS flag from build_electron_args (since #700
-	# the launchers no longer pass app.asar in argv — Electron
-	# auto-loads it), excluding Chromium helpers (--type=...), the
-	# cowork daemon itself, our own launcher bash, and stopped/zombie
-	# processes.  Counting any `claude-desktop`-matching process (as
-	# the old check did) would include the launcher's own bash and
-	# stuck launcher bashes from previous crashes, producing false
-	# negatives where a real orphan is misreported as "parent alive".
+	# -- Orphaned cowork-vm-service daemon (2.x leftover) --
+	# cowork-vm-service.js was OUR 2.x VM daemon; the official client
+	# does not ship it. On a host upgraded from 2.x a crashed daemon can
+	# still be orphaned — holding LevelDB locks / a stale socket — so we
+	# keep reaping it here. Live-UI detection matches
+	# cleanup_orphaned_cowork_daemon: _claude_desktop_ui_is_alive in
+	# launcher-common.sh fingerprints the --class=$WM_CLASS flag (since
+	# #700 the launchers no longer pass app.asar in argv), excluding
+	# Chromium helpers (--type=...), cowork helpers, our own launcher
+	# bash, and stopped/zombie processes.
 	local _cowork_pids
-	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
-		|| true
+	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) || true
 	if [[ -n $_cowork_pids ]]; then
 		if ! _claude_desktop_ui_is_alive; then
-			_warn "Cowork daemon: orphaned (PIDs: $_cowork_pids)"
+			_warn "Cowork daemon (2.x leftover): orphaned" \
+				"(PIDs: $_cowork_pids)"
 			_info 'Fix: Restart Claude Desktop' \
 				'(daemon will be cleaned up automatically)'
 		else
-			_pass 'Cowork daemon: running (parent alive)'
+			_pass 'Cowork daemon (2.x leftover): running (parent alive)'
 		fi
 	fi
 

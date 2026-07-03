@@ -1,8 +1,17 @@
-name: Build Package ARM64 (Reusable)
+name: Build Package (Reusable)
+
+# Single cross-building reusable workflow. Repackaging Anthropic's
+# prebuilt official .deb is arch-independent (no compilation), so both
+# amd64 and arm64 build on ubuntu-latest; build.sh fetches the official
+# .deb for `--arch` and re-emits it in the requested format.
 
 on:
   workflow_call:
     inputs:
+      arch:
+        description: "Target architecture (amd64 or arm64)"
+        required: true
+        type: string
       build_flags:
         description: 'Flags to pass to build.sh (e.g., "--build appimage --clean no")'
         required: false
@@ -20,7 +29,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-latest
     container: ${{ inputs.artifact_suffix == 'rpm' && 'fedora:42' || '' }}
 
     steps:
@@ -43,16 +52,18 @@ jobs:
 
       - name: Run build script
         run: |
-          TAG_FLAG=""
+          tag_flag=()
           if [[ -n "${{ inputs.release_tag }}" ]]; then
-            TAG_FLAG="--release-tag ${{ inputs.release_tag }}"
+            tag_flag=(--release-tag "${{ inputs.release_tag }}")
           fi
-          ./build.sh ${{ inputs.build_flags }} $TAG_FLAG
+          # build_flags is intentionally unquoted so its space-separated
+          # flags word-split into separate argv entries.
+          ./build.sh ${{ inputs.build_flags }} --arch ${{ inputs.arch }} "${tag_flag[@]}"
 
-      - name: Upload ARM64 Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: package-arm64-${{ inputs.artifact_suffix }}
+          name: package-${{ inputs.arch }}-${{ inputs.artifact_suffix }}
           path: |
             claude-desktop_*.deb
             claude-desktop-*.rpm

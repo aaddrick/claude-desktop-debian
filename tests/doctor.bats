@@ -34,11 +34,6 @@ setup() {
 	# to stub it unless they're exercising the package-check branch.
 	# Override in-test for rc=0 (installed) or rc=1 (missing).
 	_pkg_installed() { return 2; }
-
-	# Default stub for _detect_password_store (defined in
-	# launcher-common.sh, not sourced here). Tests that exercise
-	# _doctor_check_password_store override this in-test if needed.
-	_detect_password_store() { echo 'basic'; }
 }
 
 teardown() {
@@ -433,25 +428,32 @@ SHIM
 
 # =============================================================================
 # _doctor_check_password_store
+#
+# Since the v3.0.0 rebase the launcher no longer probes a keyring: the
+# official build's os_crypt autodetect owns the decision, and
+# CLAUDE_PASSWORD_STORE is the only knob. This is informational only —
+# no PASS/FAIL.
 # =============================================================================
 
-@test "_doctor_check_password_store: output contains 'Password store:' with a valid backend" {
-	# setup() already stubs _detect_password_store to return 'basic'.
+@test "_doctor_check_password_store: unset reports upstream autodetect (no PASS/FAIL)" {
+	# CLAUDE_PASSWORD_STORE unset by setup().
 	run _doctor_check_password_store
 	[[ $status -eq 0 ]]
-	[[ $output == *'[PASS]'* ]]
-	[[ $output == *'Password store:'* ]]
-	[[ $output == *'basic'* ]]
+	[[ $output == *'os_crypt autodetect'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
 }
 
-@test "_doctor_check_password_store: warns, not PASS, when detection returns empty" {
-	# An empty backend means detection failed (e.g. sourcing-order
-	# regression) — it must not surface as a green PASS with a blank value.
-	_detect_password_store() { echo ''; }
+@test "_doctor_check_password_store: set reports the forced override (no PASS/FAIL)" {
+	CLAUDE_PASSWORD_STORE='gnome-libsecret'
 	run _doctor_check_password_store
 	[[ $status -eq 0 ]]
-	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'forced to gnome-libsecret'* ]]
+	[[ $output == *'overrides upstream autodetection'* ]]
 	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
 }
 
 # =============================================================================
@@ -611,4 +613,223 @@ _hide_pkg_tools() {
 	run _doctor_check_pkg_version ''
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
+}
+
+# =============================================================================
+# _check_legacy_env: 2.x knobs no longer honored (post-rebase)
+# =============================================================================
+
+@test "_check_legacy_env: silent when no legacy knobs are set" {
+	unset CLAUDE_TITLEBAR_STYLE CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE
+	run _check_legacy_env
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_legacy_env: warns for each set legacy knob" {
+	unset CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE
+	CLAUDE_TITLEBAR_STYLE='hybrid'
+	run _check_legacy_env
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'CLAUDE_TITLEBAR_STYLE'* ]]
+	[[ $output == *'no longer honored'* ]]
+	[[ $output != *'CLAUDE_MENU_BAR'* ]]
+}
+
+# =============================================================================
+# _check_kvm: /dev/kvm presence + access (device path via _DOCTOR_KVM_DEV)
+# =============================================================================
+
+@test "_check_kvm: missing device warns that Cowork requires KVM" {
+	export _DOCTOR_KVM_DEV="$TEST_TMP/no-such-kvm"
+	run _check_kvm
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'Cowork requires KVM'* ]]
+}
+
+@test "_check_kvm: present and read-write passes" {
+	export _DOCTOR_KVM_DEV="$TEST_TMP/kvm-rw"
+	: > "$_DOCTOR_KVM_DEV"
+	run _check_kvm
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'present and accessible'* ]]
+}
+
+@test "_check_kvm: present but not read-write warns with group hint" {
+	# -r/-w are actual-access checks; root bypasses mode bits, so this
+	# scenario is only meaningful for a non-root tester.
+	[[ $EUID -eq 0 ]] && skip 'permission bits not enforced for root'
+	export _DOCTOR_KVM_DEV="$TEST_TMP/kvm-ro"
+	: > "$_DOCTOR_KVM_DEV"
+	chmod 0000 "$_DOCTOR_KVM_DEV"
+	run _check_kvm
+	chmod 0644 "$_DOCTOR_KVM_DEV"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'not read-write'* ]]
+	[[ $output == *'usermod -aG kvm'* ]]
+}
+
+# =============================================================================
+# _check_vhost_vsock: /dev/vhost-vsock (device path via _DOCTOR_VSOCK_DEV)
+# =============================================================================
+
+@test "_check_vhost_vsock: present passes" {
+	export _DOCTOR_VSOCK_DEV="$TEST_TMP/vsock"
+	: > "$_DOCTOR_VSOCK_DEV"
+	run _check_vhost_vsock
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+}
+
+@test "_check_vhost_vsock: absent warns with modprobe fix" {
+	export _DOCTOR_VSOCK_DEV="$TEST_TMP/no-vsock"
+	run _check_vhost_vsock
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'modprobe vhost_vsock'* ]]
+	[[ $output == *'modules-load.d'* ]]
+}
+
+# =============================================================================
+# _check_cowork_stack: firmware probe (paths via _DOCTOR_OVMF_PATHS)
+# =============================================================================
+
+@test "_check_cowork_stack: firmware found at an official probe path passes" {
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/OVMF_CODE.fd"
+	: > "$_DOCTOR_OVMF_PATHS"
+	run _check_cowork_stack debian
+	[[ $status -eq 0 ]]
+	[[ $output == *"Firmware: $_DOCTOR_OVMF_PATHS"* ]]
+	[[ $output != *'none of the official probe paths'* ]]
+}
+
+@test "_check_cowork_stack: firmware absent from probe list warns (distro-layout note)" {
+	# A firmware file that exists elsewhere must NOT count — only the
+	# official probe paths do. Point the probe list at a nonexistent path.
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/nope/OVMF_CODE.fd"
+	run _check_cowork_stack debian
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'none of the official probe paths'* ]]
+	[[ $output == *'edk2 layouts'* ]]
+}
+
+# =============================================================================
+# _check_official_drift: pool version comparison (curl stubbed)
+# =============================================================================
+
+# A curl stub emitting a one-stanza Packages index for a given pool
+# version. The version is stashed in a global the stub reads at call
+# time (avoids eval); args are ignored — tests don't exercise the URL.
+_stub_curl_packages() {
+	_STUB_PKG_VERSION="$1"
+	curl() {
+		cat <<PKGS
+Package: claude-desktop
+Version: $_STUB_PKG_VERSION
+Filename: pool/main/c/claude-desktop/claude-desktop_${_STUB_PKG_VERSION}_amd64.deb
+SHA256: deadbeefdeadbeef
+Size: 123456
+PKGS
+	}
+}
+
+@test "_check_official_drift: skipped when curl is unavailable" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'curl' ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'skipped'* ]]
+	[[ $output == *'curl not available'* ]]
+}
+
+@test "_check_official_drift: offline (curl fails) is a skip, not a failure" {
+	curl() { return 1; }
+	_installed_pkg_version='1.17377.2-3.0.0'
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'skipped'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_check_official_drift: installed matches pool — PASS in sync" {
+	_stub_curl_packages '1.17377.9'
+	_installed_pkg_version='1.17377.9-3.0.0'
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'in sync'* ]]
+	[[ $output == *'1.17377.9'* ]]
+}
+
+@test "_check_official_drift: installed behind pool — WARN with both versions" {
+	_stub_curl_packages '1.17377.9'
+	_installed_pkg_version='1.17000.0-3.0.0'
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'official pool has 1.17377.9'* ]]
+	[[ $output == *'this install packages 1.17000.0'* ]]
+}
+
+@test "_check_official_drift: unknown installed version reports newest only" {
+	_stub_curl_packages '1.17377.9'
+	_installed_pkg_version=''
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'1.17377.9'* ]]
+	[[ $output == *'installed version unknown'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _check_name_collision: Anthropic repo / package-name overlap
+# (sources dir via _DOCTOR_APT_SOURCES_DIR; deb-family only)
+# =============================================================================
+
+@test "_check_name_collision: silent when dpkg-query is absent" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'dpkg-query' ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_name_collision: warns when Anthropic's APT repo is configured" {
+	dpkg-query() { printf ''; }
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	cat > "$_DOCTOR_APT_SOURCES_DIR/claude-desktop.list" <<'LIST'
+deb [signed-by=/usr/share/keyrings/claude.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main
+LIST
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'collision'* ]]
+	[[ $output == *'apt policy claude-desktop'* ]]
+}
+
+@test "_check_name_collision: reports Anthropic ownership of the installed package" {
+	dpkg-query() { printf 'Anthropic, PBC <support@anthropic.com>'; }
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *"Anthropic's official package"* ]]
 }
