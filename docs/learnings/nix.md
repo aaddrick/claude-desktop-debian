@@ -22,12 +22,19 @@ derivation so nobody re-introduces the hack it needed.
 
 ## Current state (v3.0.0 branch)
 
-- `nix/claude-desktop.nix` implements the design below. Build-verified
-  on x86_64 (both flake outputs, `autoPatchelf` fully satisfied);
-  **not** yet verified: runtime on real NixOS, the aarch64 leg, and
-  Cowork actually booting a VM. Open questions for @typedrat are
-  flagged inline in both nix files (qemu in the FHS `targetPkgs`,
-  aarch64 firmware naming, the dlopen `runtimeDependencies` set).
+- `nix/claude-desktop.nix` implements the design below. Build- **and
+  runtime**-verified on x86_64 + **nvidia** (real NixOS, both flake
+  outputs: the app launches, GPU/EGL init is clean, locales load — see
+  "The ANGLE GL trap" below for the fix that got it there). Cowork now
+  boots a VM on x86_64 too: both gate requirements — `qemuPath` and
+  `firmwarePath` — are satisfied in the FHS env, and a live boot with
+  KVM acceleration and usermode networking has been confirmed on a host
+  that already grants kvm-group access and has `vhost_vsock` loaded.
+  **Not** yet verified: **mesa** (Intel/AMD, i.e. most NixOS users — the
+  failing path is ANGLE's native-GL backend, and mesa picks backends
+  differently, so it's the one GL config that didn't get exercised) and
+  the aarch64 leg. One open question stays flagged inline: aarch64
+  firmware naming in `nix/fhs.nix`.
 - The Windows-installer derivation (7z-extract the exe, stock nixpkgs
   Electron, hand-built co-located resources tree, node-pty build) was
   deleted in the acquisition swap. Recover it from history:
@@ -61,9 +68,12 @@ Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md)
   `scripts/setup/official-deb.sh` (`OFFICIAL_DEB_POOL_*`,
   `OFFICIAL_DEB_SHA256_*`) are the same values in hex form.
 - **Unpack and `autoPatchelfHook` the official co-located tree.**
-  nixpkgs precedent: `signal-desktop`, `slack` — both repackage a
-  vendor `.deb` around a bundled Electron/Chromium ELF. The official
-  tree is bare co-located
+  nixpkgs precedent (verified against the nixpkgs tree): `discord` and
+  `vscode` — both unpack a vendor tarball and `autoPatchelfHook` the
+  bundled Chromium ELF in place. (`signal-desktop` is **not** precedent
+  despite older notes here saying so: it is a *source* build run under
+  nixpkgs `electron_42`, which Claude Desktop cannot use — see the
+  resourcesPath section.) The official tree is bare co-located
   (`/usr/lib/claude-desktop/{claude-desktop, chrome-sandbox,
   resources/app.asar}`), so the derivation patches the shipped ELF
   instead of marrying the app to a nixpkgs `electron`.
@@ -74,25 +84,104 @@ Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md)
 - **`buildFHSEnv` (`nix/fhs.nix`) stays the default output.** MCP
   servers spawned by the app expect an FHS world (`nodejs`, `uv`,
   `docker`, ...); that rationale is unchanged from the Windows era.
-- **The FHS env must bind-provide OVMF firmware at the probed path.**
-  Cowork's firmware probe list is hardcoded with no env override:
-  x86_64 → `/usr/share/OVMF/OVMF_CODE_4M.fd`,
+- **The FHS env must bind-provide the OVMF CODE+VARS pair at the probed
+  path.** Cowork's firmware probe list is hardcoded with no env
+  override: x86_64 → `/usr/share/OVMF/OVMF_CODE_4M.fd`,
   `/usr/share/OVMF/OVMF_CODE.fd`; arm64 →
-  `/usr/share/AAVMF/AAVMF_CODE.fd`. The RPM grew compat symlinks for
-  this (CW-1). `nix/fhs.nix` closes it with a `runCommand` shim in
-  `targetPkgs`: nixpkgs' `OVMF.fd` lands firmware at `FV/*.fd` — not
-  under `share/` — so a bare OVMF package never hits the probe; the
-  shim symlinks it to `share/OVMF/…` (x86_64, where both Debian names
-  alias the single 4M-sized nixpkgs build) and `share/AAVMF/…`
-  (aarch64, with a `QEMU_EFI.fd` fallback — unverified on real
-  aarch64), which buildFHSEnv links into `/usr/share` inside the env.
+  `/usr/share/AAVMF/AAVMF_CODE.fd`. It then derives the **writable VARS
+  template** beside the CODE file it found by renaming
+  `OVMF_CODE`→`OVMF_VARS` / `AAVMF_CODE`→`AAVMF_VARS`
+  (`Qgi = A => A.replace("OVMF_CODE","OVMF_VARS").replace("AAVMF_CODE","AAVMF_VARS")`)
+  and copies it per VM to seed efivars — `coworkd` aborts with *"no EFI
+  variable-store template configured"* if that sibling is missing. So
+  the shim must ship **both halves**; deb/rpm get away with a CODE-only
+  symlink (CW-1) only because the distro's edk2 package already drops
+  `OVMF_VARS` beside it. `nix/fhs.nix` closes it with a `runCommand`
+  shim in `targetPkgs`: nixpkgs' `OVMF.fd` lands firmware at `FV/*.fd` —
+  not under `share/` — so a bare OVMF never hits the probe; the shim
+  symlinks the matched CODE+VARS pair into `share/OVMF/…` (x86_64, both
+  Debian names aliased onto the single 4M-sized nixpkgs build) and
+  `share/AAVMF/…` (aarch64: nixpkgs ships 64 MiB pflash-padded
+  `AAVMF_{CODE,VARS}.fd` — verified present; the old `QEMU_EFI.fd`
+  fallback was dropped, it is unpadded and has no matching VARS name).
+  A build-time guard fails loudly if a source `FV/*.fd` is gone rather
+  than ship a dangling symlink that only bites at VM boot — a
+  build-behavior change for pinned aarch64 consumers, chosen because
+  there is no clean fallback. Both arches' shim output is verified, and
+  x86_64 now boots a VM live with it; aarch64 stays unverified.
+- **The FHS env must also ship qemu.** Cowork's VM-boot gate checks a
+  second requirement beyond firmware: `qemuPath`, found by searching
+  PATH for `qemu-system-x86_64` / `qemu-system-aarch64`. `coworkd`
+  (static Go) then launches a real `accel=kvm` guest — pflash OVMF,
+  `vhost-vsock-pci`, virtiofsd `--shared-dir`, slirp usermode net.
+  `nix/fhs.nix` adds `qemu_kvm` (the host-cpu-only build, ~1.5 GB
+  closure vs 2.1 GB for the all-targets `qemu`) to `targetPkgs`, which
+  lands the arch's `qemu-system-*` on `/usr/bin`. `/dev/kvm` and
+  `/dev/vhost-vsock` are reachable inside the env — buildFHSEnv binds
+  the whole `/dev` (`--dev-bind /dev /dev`) — but the host still has to
+  provide them: `/dev/kvm` is `root:kvm 0660`, so a user outside the
+  `kvm` group gets `EACCES` and coworkd's `accel=kvm` fails, and
+  `/dev/vhost-vsock` doesn't exist until `vhost_vsock` is loaded (not a
+  NixOS default). `--doctor` flags both. Firmware alone is necessary but
+  not sufficient: without qemu the gate returns `requirement_missing`
+  and the VM never boots.
 
 Settled by the implementation: `autoPatchelfHook` covers the full
 dependency surface (zero unsatisfied deps — main ELF, `virtiofsd`,
 `chrome-native-host`; `coworkd` is static Go and skipped), and
 `chrome-sandbox` SUID is dropped in favor of unprivileged user
-namespaces (the NixOS default; same stance as nixpkgs'
-signal-desktop/slack — no `--no-sandbox` anywhere).
+namespaces (the NixOS default; standard stance for nixpkgs'
+Chromium-based apps — no `--no-sandbox` anywhere).
+
+### The ANGLE GL trap
+
+The `autoPatchelf`-satisfied build still crash-looped at startup on
+real NixOS: the GPU process failed EGL init with `Could not dlopen
+native EGL: libEGL.so.1`, exited, and relaunched forever. Root cause,
+traced on 1.18286.0:
+
+- Chromium's bundled **ANGLE** lives in the co-located `libEGL.so` /
+  `libGLESv2.so`. At GPU init it `dlopen()`s the glvnd dispatcher
+  `libEGL.so.1` by bare soname.
+- A `dlopen` resolves against the **calling object's** `DT_RUNPATH`
+  (verified: `DT_RUNPATH` *is* honored for `dlopen`, unlike the common
+  "RPATH only" lore — but it is not transitive). The ANGLE libs carry
+  only their own `DT_NEEDED` on their runpath, not `libGL`, so the
+  dispatcher is unfindable.
+- `runtimeDependencies` does **not** fix this: `autoPatchelf` appends
+  it to dynamic *executables* only (`auto-patchelf.py`,
+  `if file_is_dynamic_executable: rpath += runtime_deps`), so it landed
+  `libGL` on the main ELF but never on the `.so` that issues the
+  `dlopen`.
+
+Fix: `appendRunpaths` (which `autoPatchelf` applies to *every* patched
+file) adds `${lib.getLib libGL}/lib` and
+`${addDriverRunpath.driverLink}/lib` to all runpaths. Once ANGLE can
+load glvnd's `libEGL.so.1`, NixOS-patched glvnd self-locates the vendor
+ICD under `/run/opengl-driver`, so the second hop needs no extra wiring.
+Chosen over a `makeWrapper --suffix LD_LIBRARY_PATH` (which nixpkgs'
+`discord` uses) because the app spawns MCP servers (`node`, `uv`,
+`docker`) — a wrapper would leak the driver tree into their environment;
+a runpath edit is scoped to the ELFs that need it. Verified: both flake
+outputs launch with clean GPU/EGL init on real NixOS x86_64 (nvidia).
+
+**The Vulkan half needs a wrapper anyway.** ANGLE's native-GL backend is
+what nvidia exercised. On mesa, if ANGLE falls through to its Vulkan
+backend (or Chromium lands on SwiftShader), the co-located
+`libvulkan.so.1` — the stock Khronos loader — searches the standard FHS
+ICD dirs (`/usr/share/vulkan/icd.d`, …), which are empty on NixOS, and
+finds no hardware driver. Runpath can't fix this: the loader keys on the
+`VK_ADD_DRIVER_FILES`/`VK_DRIVER_FILES` env vars and fixed filesystem
+paths, never `DT_RUNPATH`. So `installPhase` wraps the launcher to
+prepend `${addDriverRunpath.driverLink}/share/vulkan/icd.d` to
+`VK_ADD_DRIVER_FILES`. That var is *additive* (put before the standard
+search, not replacing it), so a missing dir or a user's own setting still
+wins — same dangling-safe property as `appendRunpaths`. This reintroduces
+the one wrapper the GL fix avoided, but the leak is benign here: the
+spawned MCP servers are CLI processes that never init Vulkan, and the ICD
+dir is the correct value for any that did. This path is **unverified** —
+the nvidia box never took the Vulkan branch; it's wired defensively for
+the mesa configs that might.
 
 ### The SRI auto-bump contract
 
@@ -148,8 +237,18 @@ module top-level in the minified bundle — before any wrapper could
 correct the path. Claude Desktop is unusual among Electron apps in
 loading locale JSONs from `resourcesPath` at module init with no
 fallback, which is why the standard nixpkgs
-`makeWrapper electron --add-flags app.asar` pattern (Signal, Obsidian,
-Vesktop) was never enough here.
+`makeWrapper electron --add-flags app.asar` pattern (Obsidian, Vesktop)
+was never enough here.
+
+**And it's broader than locales.** Verified against the shipping
+1.18286.0 bundle: when `isPackaged`, `process.resourcesPath` (no
+fallback) also resolves the loose native helpers `virtiofsd`,
+`cowork-linux-helper`, and the `smol-bin.*.img` Cowork VM images — all
+shipped in `resources/` *outside* `app.asar`. Under a nixpkgs
+`electron`, `resourcesPath` points at electron's own dir and every one
+of these orphans, not just the locale JSONs. The locale loader is
+`function _0t(){return isPackaged?process.resourcesPath:…}` feeding a
+`readdirSync`/`readFileSync` of `${lang}.json`.
 
 **There is no override.** No Electron env var or CLI flag overrides
 `resourcesPath`; a `--resources-path` PR
