@@ -42,12 +42,18 @@
   glib,
   gtk3,
   libgbm,
+  libx11,
+  libxcb,
+  libxcomposite,
+  libxdamage,
+  libxext,
+  libxfixes,
   libxkbcommon,
+  libxrandr,
   nspr,
   nss,
   pango,
   systemd, # libudev.so.1
-  xorg,
   # DT_NEEDED of the bundled virtiofsd helper
   libcap_ng,
   libseccomp,
@@ -60,6 +66,7 @@
   libpulseaudio,
   libsecret,
   libuuid, # in the official Depends (libuuid1); dlopen'd
+  libxtst, # in the official Depends (libxtst6); dlopen'd
   pciutils,
   pipewire,
   wayland,
@@ -121,13 +128,13 @@ stdenv.mkDerivation {
     pango
     stdenv.cc.cc.lib # libstdc++ (node-pty), libgcc_s
     systemd
-    xorg.libX11
-    xorg.libXcomposite
-    xorg.libXdamage
-    xorg.libXext
-    xorg.libXfixes
-    xorg.libXrandr
-    xorg.libxcb
+    libx11
+    libxcomposite
+    libxdamage
+    libxext
+    libxfixes
+    libxrandr
+    libxcb
   ];
 
   runtimeDependencies = map lib.getLib [
@@ -141,7 +148,7 @@ stdenv.mkDerivation {
     pipewire
     systemd
     wayland
-    xorg.libXtst # in the official Depends (libxtst6); dlopen'd
+    libxtst # in the official Depends (libxtst6); dlopen'd
   ];
 
   # Not `dpkg-deb -x`: chrome-sandbox is recorded SUID (rwsr-xr-x) in
