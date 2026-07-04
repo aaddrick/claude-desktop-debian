@@ -32,6 +32,7 @@
   dpkg,
   autoPatchelfHook,
   addDriverRunpath,
+  makeWrapper,
   # DT_NEEDED of the main Electron ELF (objdump -p on 1.18286.0)
   alsa-lib,
   at-spi2-atk,
@@ -111,6 +112,7 @@ stdenv.mkDerivation {
   nativeBuildInputs = [
     dpkg
     autoPatchelfHook
+    makeWrapper
   ];
 
   buildInputs = [
@@ -180,17 +182,32 @@ stdenv.mkDerivation {
 
     # Ship the official install tree as-is:
     #   lib/claude-desktop/…        bare co-located app tree
-    #   bin/claude-desktop          upstream's relative symlink into it
-    #                               (…/exe still resolves in-tree; the
-    #                               kernel follows the link to the real
-    #                               ELF inside this store path)
     #   share/applications, icons/  consumed by nix/fhs.nix's
     #                               extraInstallCommands
-    # The official .desktop already uses a PATH-relative
-    # `Exec=claude-desktop %U`, so it works from a profile or from the
-    # FHS wrapper without substitution.
+    # bin/claude-desktop is upstream's relative symlink into the tree; we
+    # replace it with a makeWrapper script that execs the same in-tree
+    # ELF (so /proc/self/exe still resolves inside this store path and
+    # process.resourcesPath stays correct) while adding the NixOS Vulkan
+    # ICD dir to the loader search. The official .desktop uses a
+    # PATH-relative `Exec=claude-desktop %U`, so it resolves this wrapper
+    # from a profile or from the FHS env without substitution.
+    #
+    # Chromium's co-located libvulkan.so.1 is the stock Khronos loader; it
+    # searches the standard FHS ICD dirs, which are empty on NixOS, and
+    # falls back to SwiftShader. A runpath edit can't fix this — the
+    # loader keys on the env var and fixed filesystem paths, not
+    # DT_RUNPATH — so VK_ADD_DRIVER_FILES is the only knob. It is additive
+    # (prepended to, not replacing, the normal search) and thus
+    # dangling-safe: a missing dir or a user's own setting still wins. The
+    # value leaking into the MCP servers the app spawns is harmless —
+    # they are CLI processes that never init Vulkan, and the ICD dir is
+    # the correct one for any that did.
     mkdir -p $out
-    cp -a usr/lib usr/share usr/bin $out/
+    cp -a usr/lib usr/share $out/
+    makeWrapper $out/lib/claude-desktop/claude-desktop \
+      $out/bin/claude-desktop \
+      --prefix VK_ADD_DRIVER_FILES : \
+        "${addDriverRunpath.driverLink}/share/vulkan/icd.d"
 
     runHook postInstall
   '';
@@ -226,6 +243,9 @@ stdenv.mkDerivation {
   # autoPatchelf applies those to executables only, missing the .so that
   # issues the dlopen). Runpath, not a LD_LIBRARY_PATH wrapper, so the
   # driver libs don't leak into the env of the MCP servers the app spawns.
+  # (Chromium's bundled Vulkan loader can't be reached this way — it keys
+  # on the env var, not runpath — so it's handled by the
+  # VK_ADD_DRIVER_FILES wrapper in installPhase.)
   appendRunpaths = [
     "${lib.getLib libGL}/lib"
     "${addDriverRunpath.driverLink}/lib"

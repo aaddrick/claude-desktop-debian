@@ -23,12 +23,15 @@ derivation so nobody re-introduces the hack it needed.
 ## Current state (v3.0.0 branch)
 
 - `nix/claude-desktop.nix` implements the design below. Build- **and
-  runtime**-verified on x86_64 (real NixOS, both flake outputs: the app
-  launches, GPU/EGL init is clean, locales load — see "The ANGLE GL
-  trap" below for the fix that got it there). **Not** yet verified: the
-  aarch64 leg, and Cowork actually booting a VM. Open questions for
-  @typedrat are flagged inline in both nix files (qemu in the FHS
-  `targetPkgs`, aarch64 firmware naming).
+  runtime**-verified on x86_64 + **nvidia** (real NixOS, both flake
+  outputs: the app launches, GPU/EGL init is clean, locales load — see
+  "The ANGLE GL trap" below for the fix that got it there). **Not** yet
+  verified: **mesa** (Intel/AMD, i.e. most NixOS users — the failing path
+  is ANGLE's native-GL backend, and mesa picks backends differently, so
+  it's the one GL config that didn't get exercised), the aarch64 leg, and
+  Cowork actually booting a VM. Open questions for @typedrat are flagged
+  inline in both nix files (qemu in the FHS `targetPkgs`, aarch64 firmware
+  naming).
 - The Windows-installer derivation (7z-extract the exe, stock nixpkgs
   Electron, hand-built co-located resources tree, node-pty build) was
   deleted in the acquisition swap. Recover it from history:
@@ -129,6 +132,24 @@ Chosen over a `makeWrapper --suffix LD_LIBRARY_PATH` (which nixpkgs'
 `docker`) — a wrapper would leak the driver tree into their environment;
 a runpath edit is scoped to the ELFs that need it. Verified: both flake
 outputs launch with clean GPU/EGL init on real NixOS x86_64 (nvidia).
+
+**The Vulkan half needs a wrapper anyway.** ANGLE's native-GL backend is
+what nvidia exercised. On mesa, if ANGLE falls through to its Vulkan
+backend (or Chromium lands on SwiftShader), the co-located
+`libvulkan.so.1` — the stock Khronos loader — searches the standard FHS
+ICD dirs (`/usr/share/vulkan/icd.d`, …), which are empty on NixOS, and
+finds no hardware driver. Runpath can't fix this: the loader keys on the
+`VK_ADD_DRIVER_FILES`/`VK_DRIVER_FILES` env vars and fixed filesystem
+paths, never `DT_RUNPATH`. So `installPhase` wraps the launcher to
+prepend `${addDriverRunpath.driverLink}/share/vulkan/icd.d` to
+`VK_ADD_DRIVER_FILES`. That var is *additive* (put before the standard
+search, not replacing it), so a missing dir or a user's own setting still
+wins — same dangling-safe property as `appendRunpaths`. This reintroduces
+the one wrapper the GL fix avoided, but the leak is benign here: the
+spawned MCP servers are CLI processes that never init Vulkan, and the ICD
+dir is the correct value for any that did. This path is **unverified** —
+the nvidia box never took the Vulkan branch; it's wired defensively for
+the mesa configs that might.
 
 ### The SRI auto-bump contract
 
