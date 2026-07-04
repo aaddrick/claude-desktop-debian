@@ -150,9 +150,9 @@ Co-Authored-By: Claude <claude@anthropic.com>
 
 ### Contributor Credits
 
-The README Acknowledgments section credits external contributors in chronological order (by merge date or fix date). Update it when:
+[`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md) credits external contributors in chronological order (by merge date or fix date); the README Acknowledgments section keeps only the three inspirational projects and links there. Update `ACKNOWLEDGMENTS.md` when:
 
-1. **Merging an external PR** — Add the author to the Acknowledgments list with a link to their GitHub profile and a brief description of their contribution.
+1. **Merging an external PR** — Add the author to the list with a link to their GitHub profile and a brief description of their contribution.
 2. **Implementing a fix suggested in an issue** — If an issue author (or commenter) provided a concrete fix, workaround, code snippet, or detailed technical analysis that was directly used, credit them too.
 
 Contributors are listed in chronological order: inspirational projects first (k3d3, emsi, leobuskin), then contributors ordered by when their contribution was merged or implemented.

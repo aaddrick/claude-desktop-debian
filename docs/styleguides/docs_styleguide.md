@@ -138,7 +138,7 @@ Pages can be five sentences. **Don't pad short topics.**
 | Elevator pitch (1–3 sentences) | Full prose docs |
 | Installation one-liners per package format | Complete build / configuration walkthroughs |
 | Link to `docs/index.md` | Everything else |
-| Acknowledgments (contributor credits) | — |
+| Acknowledgments (inspirational projects + link to [`ACKNOWLEDGMENTS.md`](../../ACKNOWLEDGMENTS.md)) | — |
 | License + sponsor links | — |
 
 The README is the project's storefront. `docs/` is the manual. Once a topic exists in `docs/`, the README links out — don't duplicate.
