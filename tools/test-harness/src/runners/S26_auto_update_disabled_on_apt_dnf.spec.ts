@@ -5,63 +5,47 @@ import { readAsarFile, resolveAsarPath } from '../lib/asar.js';
 
 const exec = promisify(execFile);
 
-// S26 — Auto-update is disabled when installed via apt/dnf.
+// S26 — Auto-update stays inert on apt/dnf installs.
 //
 // Per docs/testing/cases/distribution.md S26:
 //   Expected: when installed via the project's APT or DNF repo, the
-//   in-app auto-update path is suppressed. The app does not download
-//   replacement binaries (which would race the package manager).
-//   Updates flow through `apt upgrade` / `dnf upgrade` only. AppImage
-//   installs may continue to self-update or punt to the user.
+//   in-app auto-update path does not download replacement binaries
+//   (which would race the package manager). Updates flow through
+//   `apt upgrade` / `dnf upgrade` only. AppImage installs may
+//   continue to self-update or punt to the user.
 //
-// The case-doc explicitly flags this as **Missing in build 1.5354.0**:
-// no project-side suppression of the upstream auto-update path exists.
-// The launcher exports `ELECTRON_FORCE_IS_PACKAGED=true`
-// (scripts/launcher-common.sh:249), upstream's Linux gate (`lii()` at
-// build-reference/.../index.js:508761-508774) returns true, and the
-// code path proceeds to `hA.autoUpdater.setFeedURL(...)` +
-// `.checkForUpdates()` unconditionally. The only reason it doesn't
-// hit the network today is Electron's Linux `autoUpdater` being
-// unimplemented — a happy accident, not a contract. Tracked at
-// https://github.com/aaddrick/claude-desktop-debian/issues/567 with
-// two candidate fixes (frame-fix-wrapper hook vs. gating
-// ELECTRON_FORCE_IS_PACKAGED on package format).
+// v3.0.0 state (decision D-001 in docs/decisions.md): the official
+// Linux build ships its apt-channel autoupdater PENDING — the bundle
+// carries the `apt_channel_pending` gate and does not self-update on
+// the apt channel. That pending gate is currently the entire
+// suppression mechanism; the project injects nothing. The build
+// enforces this assumption with the AU-1 tripwire in
+// scripts/patches/app-asar.sh (build fails when upstream removes the
+// marker). The 2.x plan of a project-injected suppression marker
+// (issue #567, frame-fix-wrapper hook / ELECTRON_FORCE_IS_PACKAGED
+// gating) died with the rebase — the wrapper and the env export are
+// both gone.
 //
-// **Regression-detector shape.** This runner pins the current state
-// of the bundle so the failing assertion flips to passing the moment
-// the project ships a suppression patch (PR #567 or successor):
+// **Regression-detector shape**, mirroring AU-1 at install time:
 //
-//   1. Sanity assertion (passes today): `setFeedURL` is present in
-//      the bundled main-process JS. This proves the upstream
-//      auto-update code path we'd need to suppress is actually in
-//      the bundle — without it, the rest of the test would be
-//      vacuously true.
+//   1. Sanity assertion: `setFeedURL` is present in the bundled
+//      main-process JS — the upstream auto-update machinery is
+//      still in the bundle, so the gate below is load-bearing,
+//      not vacuous.
 //
-//   2. Suppression assertion (fails today): a project-injected
-//      suppression marker is present in the bundle. No such marker
-//      exists yet. The expected fingerprint shape (per the
-//      issue-#567 thread) is one of:
-//        - `cdd-disable-auto-update` — an injected comment / sentinel
-//          string we'd add alongside a no-op patch.
-//        - `frame-fix-wrapper`-side autoUpdater interception — would
-//          live in scripts/frame-fix-wrapper.js (not the asar JS
-//          itself), but the wrapper module is already covered by H02
-//          for general presence.
-//        - A `disableAutoUpdates: !0`-shaped override in the bundle
-//          coming from a new patch in scripts/patches/*.sh.
-//      We probe for any of these and require at least one to land.
-//      When a suppression patch ships, update MARKERS below with the
-//      actual fingerprint so this assertion stays a working drift
-//      detector instead of becoming a stale TODO.
+//   2. Gate assertion: `apt_channel_pending` is present. The moment
+//      upstream ships the apt-channel autoupdater for real, this
+//      fails on freshly-installed builds and forces the D-001
+//      decision (defer to upstream vs suppress) before deb/rpm
+//      installs start racing the package manager. A build made from
+//      a tree where AU-1 already fired can't reach this point, but
+//      an install probed against a NEWER official deb (VM rows,
+//      manual installs) can — that's the gap this covers.
 //
 // **Skip behaviour.** Case-doc scopes this to "all DEB/RPM rows" —
-// AppImage installs are explicitly carved out ("AppImage installs
-// may continue to self-update or punt to the user"). We detect deb
-// or rpm install via `dpkg-query -W claude-desktop` and `rpm -q
-// claude-desktop`; if neither succeeds, we skip. On hosts where
-// both succeed (mixed-tooling dev box), we run — the assertion
-// shape is purely about what's in the bundle, not about which
-// package manager owns the on-disk binary.
+// AppImage installs are explicitly carved out. We detect deb or rpm
+// install via `dpkg-query -W claude-desktop` and `rpm -q
+// claude-desktop`; if neither succeeds, we skip.
 //
 // Layer: pure file probe (asar read) + spawn probes for install
 // detection. No app launch.
@@ -105,38 +89,7 @@ async function probe(
 	}
 }
 
-// Candidate suppression-marker fingerprints. None present today;
-// any one of these going green flips the assertion to passing. When
-// PR #567 (or its successor) lands, prune this list down to the
-// actual marker so the test is a clean drift detector going forward.
-//
-// We deliberately don't match `disableAutoUpdates` alone — that
-// string is ALREADY in the bundle as the enterprise-policy MDM key
-// (index.js:140737, :140830 etc), so its presence proves nothing.
-// The markers below are shapes that only appear if the project
-// injected them.
-const SUPPRESSION_MARKERS: { needle: string; rationale: string }[] = [
-	{
-		needle: 'cdd-disable-auto-update',
-		rationale:
-			'sentinel comment a future scripts/patches/*.sh would ' +
-			'inject alongside a no-op autoUpdater patch',
-	},
-	{
-		needle: 'cdd-no-auto-update',
-		rationale:
-			'alternative sentinel shape consistent with ' +
-			'cdd-cowork-* / cdd-tray-* naming used elsewhere',
-	},
-	{
-		needle: 'autoUpdater is disabled by claude-desktop-debian',
-		rationale:
-			'human-readable log line a frame-fix-wrapper.js-side ' +
-			'autoUpdater no-op hook would emit on first call',
-	},
-];
-
-test('S26 — Auto-update is disabled when installed via apt/dnf', async (
+test('S26 — Auto-update stays inert on apt/dnf installs (apt_channel_pending gate)', async (
 	{},
 	testInfo,
 ) => {
@@ -146,7 +99,7 @@ test('S26 — Auto-update is disabled when installed via apt/dnf', async (
 	});
 	testInfo.annotations.push({
 		type: 'surface',
-		description: 'Distribution / auto-update suppression',
+		description: 'Distribution / auto-update gate',
 	});
 
 	// Detect install method. S26 only applies to deb/rpm-installed
@@ -214,27 +167,22 @@ test('S26 — Auto-update is disabled when installed via apt/dnf', async (
 	// Sanity assertion: the upstream autoUpdater code path is in the
 	// bundle. If `setFeedURL` ever disappears (upstream rewrite,
 	// module rename), this whole test is vacuous and should be
-	// re-grounded against the new shape before re-asserting on the
-	// suppression direction.
+	// re-grounded against the new bundle shape before re-asserting
+	// on the gate direction.
 	const setFeedURLCount = (
 		indexJs.match(/setFeedURL/g) ?? []
 	).length;
 
-	// Probe each candidate suppression marker.
-	const markerResults = SUPPRESSION_MARKERS.map((m) => ({
-		needle: m.needle,
-		rationale: m.rationale,
-		found: indexJs.includes(m.needle),
-	}));
-	const anyMarkerFound = markerResults.some((r) => r.found);
+	const pendingGateCount = (
+		indexJs.match(/apt_channel_pending/g) ?? []
+	).length;
 
 	await testInfo.attach('bundle-evidence', {
 		body: JSON.stringify(
 			{
 				file: '.vite/build/index.js',
 				setFeedURLOccurrences: setFeedURLCount,
-				suppressionMarkers: markerResults,
-				anyMarkerFound,
+				aptChannelPendingOccurrences: pendingGateCount,
 			},
 			null,
 			2,
@@ -245,21 +193,21 @@ test('S26 — Auto-update is disabled when installed via apt/dnf', async (
 	expect(
 		setFeedURLCount,
 		'app.asar contains the upstream `setFeedURL` autoUpdater code ' +
-			'path (sanity check — the thing S26 expects suppressed). ' +
-			'If this drops to 0 the test is vacuous; re-ground against ' +
-			'the new bundle shape.',
+			'path (sanity check — the machinery the pending gate holds ' +
+			'back). If this drops to 0 the test is vacuous; re-ground ' +
+			'against the new bundle shape.',
 	).toBeGreaterThan(0);
 
-	// Core S26 assertion. Today: fails by design — no project-side
-	// suppression has shipped (#567 open). Flips to passing once a
-	// suppression patch lands and one of SUPPRESSION_MARKERS matches.
+	// Core S26 assertion (install-time sibling of the AU-1 tripwire).
+	// Fails the moment upstream ships the apt-channel autoupdater —
+	// at which point deb/rpm installs could race apt/dnf and D-001
+	// must be settled before the next release.
 	expect(
-		anyMarkerFound,
-		'app.asar contains a project-injected auto-update suppression ' +
-			'marker (deb/rpm installs must not race the package ' +
-			'manager). Currently absent per case-doc S26 / issue #567 ' +
-			'— upstream autoUpdater is unhooked on Linux, suppression ' +
-			'is "accidental" and depends on Electron leaving Linux ' +
-			'autoUpdater unimplemented.',
-	).toBe(true);
+		pendingGateCount,
+		'app.asar carries the upstream `apt_channel_pending` gate ' +
+			'(D-001: apt-channel autoupdater still pending). Absence ' +
+			'means upstream activated self-update on the apt channel — ' +
+			'settle D-001 (defer vs suppress) before shipping deb/rpm ' +
+			'builds that race the package manager.',
+	).toBeGreaterThan(0);
 });

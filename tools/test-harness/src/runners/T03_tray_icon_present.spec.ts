@@ -17,20 +17,20 @@ import { retryUntil, sleep } from '../lib/retry.js';
 //      pass if the pid registered two items, which is the exact
 //      shape of the bug below.
 //   2. After toggling `nativeTheme.themeSource`, still exactly ONE
-//      SNI item is owned by the pid. This guards the
-//      tray-rebuild-race fixed in scripts/patches/tray.sh:
-//      destroy()+sleep(250)+new Tray() can transiently leave two
-//      SNIs registered for the pid because KDE Plasma's systemtray
-//      observer reacts to UnregisterItem after the new Register
-//      call lands. See docs/learnings/tray-rebuild-race.md for the
-//      full timing story.
+//      SNI item is owned by the pid. This guards the KDE
+//      tray-rebuild race: destroy()+new Tray() can transiently
+//      leave two SNIs registered for the pid because KDE Plasma's
+//      systemtray observer reacts to UnregisterItem after the new
+//      Register call lands. See docs/learnings/tray-rebuild-race.md
+//      for the full timing story.
 //
-// The fast-path patch swaps destroy/recreate for in-place
-// setImage/setContextMenu on the existing Tray, which never
-// touches StatusNotifierWatcher registration — so the count
-// stays at 1 across the toggle. If the patch ever regresses (or
-// the rebuild path is reached for some other reason), the
-// post-toggle count climbs and this test catches it.
+// The official build ships the in-place fast-path natively (it
+// converged on the same setImage/createFromPath guard our deleted
+// tray.sh patch used — see the learning's closing note), which
+// never touches StatusNotifierWatcher registration — so the count
+// stays at 1 across the toggle. If an upstream release regresses
+// to destroy/recreate, the post-toggle count climbs and this test
+// catches it.
 
 test('T03 — Tray icon present (and rebuild leaves exactly one SNI)', async ({}, testInfo) => {
 	testInfo.annotations.push({ type: 'severity', description: 'Smoke' });

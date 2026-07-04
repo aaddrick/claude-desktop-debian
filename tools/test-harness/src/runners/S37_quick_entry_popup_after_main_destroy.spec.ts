@@ -6,15 +6,15 @@ import { skipUnlessRow } from '../lib/row.js';
 //
 // Per the closeout doc:
 //   "Likely unreachable on Linux without a debug build, due to
-//    project's hide-to-tray override of the X button. Mark `-`
-//    (N/A) on rows where the destroy path can't be triggered."
+//    hide-to-tray override of the X button. Mark `-` (N/A) on rows
+//    where the destroy path can't be triggered."
 //
-// On every supported Linux row, scripts/frame-fix-wrapper.js
-// intercepts the X button to call hide() instead of close()/
-// destroy() (the close-to-tray behavior). DevTools'
-// `remote.getCurrentWindow().destroy()` would work in principle,
-// but `remote` isn't exposed in modern Electron and adding it as
-// a test-only patch is more invasive than this case is worth.
+// On every supported Linux row the official build turns the X
+// button into hide() instead of close()/destroy() (close-to-tray —
+// T08 pins that contract), so the destroy path stays unreachable.
+// DevTools' `remote.getCurrentWindow().destroy()` would work in
+// principle, but `remote` isn't exposed in modern Electron and a
+// test-only patch is more invasive than this case is worth.
 //
 // All Linux rows skip this with the upstream-rationale message.
 // If a non-Linux row is added later (FreeBSD?), revisit; the spec

@@ -6,31 +6,23 @@ import { retryUntil } from '../lib/retry.js';
 
 // T08 — Closing the main window hides to tray instead of quitting.
 //
-// On Linux, upstream's quit-on-last-window-closed handler at
-// build-reference/app-extracted/.vite/build/index.js:525550-525552
-// (`hA.app.on("window-all-closed", () => { Zr || Ap() })` — `Zr` is
-// the darwin guard) would otherwise call into the quit path the
-// first time the user clicks the X-button. PR #451 plumbed
-// scripts/frame-fix-wrapper.js:178-185:
-//   this.on('close', e => {
-//     if (!result.app._quittingIntentionally && !this.isDestroyed()) {
-//       e.preventDefault();
-//       this.hide();
-//     }
-//   });
-// armed by the `before-quit` handler at frame-fix-wrapper.js:370-374
-// which sets `_quittingIntentionally = true` for the tray-Quit /
-// Ctrl+Q / SIGTERM exits. So the X-button path takes the
-// preventDefault + hide() branch; the tray-Quit path bypasses it.
+// Since the v3.0.0 rebase the official build owns close-to-tray on
+// Linux — the 2.x frame-fix-wrapper close interceptor (PR #451) is
+// deleted because upstream converged on the same user-visible
+// behavior. T08 therefore pins the CONTRACT, not the mechanism:
+// clicking the X-button must hide the window and leave the process
+// alive; only tray-Quit / Ctrl+Q / SIGTERM exit the app. If an
+// upstream release regresses Linux back to quit-on-last-window-
+// closed, this is the spec that catches it.
 //
 // Test shape: launch, capture pre-state, fire `'close'` on the main
 // BrowserWindow (MainWindow.setState('close') calls win.close(),
-// which fires the same 'close' event the wrapper intercepts on a
-// real X-button click), then assert the window flipped to invisible
-// AND the Electron process is still running. The `'hide'` action
-// would also flip visible:false but bypasses the wrapper — that's
-// what S29 tests, and it deliberately does NOT exercise the
-// regression-detection T08 cares about.
+// which fires the same 'close' event a real X-button click does),
+// then assert the window flipped to invisible AND the Electron
+// process is still running. The `'hide'` action would also flip
+// visible:false but bypasses the close path — that's what S29
+// tests, and it deliberately does NOT exercise the regression
+// detection T08 cares about.
 //
 // Applies to all rows. No skipUnlessRow gate.
 
@@ -61,16 +53,16 @@ test('T08 — Closing main window hides to tray, app stays alive', async ({}, te
 		expect(before, 'main window state reachable pre-close').toBeTruthy();
 		expect(before?.visible, 'main window visible before close').toBe(true);
 
-		// Fire the BrowserWindow 'close' event. The wrapper at
-		// frame-fix-wrapper.js:178-185 should preventDefault +
-		// hide() rather than letting the window destroy + the app
-		// quit via the 'window-all-closed' path.
+		// Fire the BrowserWindow 'close' event. The official build's
+		// close handler should preventDefault + hide() rather than
+		// letting the window destroy + the app quit via the
+		// 'window-all-closed' path.
 		await mainWin.setState('close');
 
 		// Poll for visible:false. The close-to-tray transition is
-		// synchronous in the wrapper's interceptor, but compositor
-		// side effects (unmap + isVisible() flip) can lag a beat —
-		// 5s is generous for the runtime check.
+		// synchronous in the close handler, but compositor side
+		// effects (unmap + isVisible() flip) can lag a beat — 5s is
+		// generous for the runtime check.
 		const after = await retryUntil(
 			async () => {
 				const s = await mainWin.getState();

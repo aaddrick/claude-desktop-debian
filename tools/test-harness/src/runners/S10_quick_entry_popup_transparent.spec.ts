@@ -18,11 +18,11 @@ import { captureSessionEnv } from '../lib/diagnostics.js';
 // shows behind the rounded prompt UI.
 //
 // Construction-time options aren't observable through the prototype-
-// method hook in lib/quickentry.ts (the Proxy from frame-fix-wrapper
-// returns the closure-captured PatchedBrowserWindow on `electron.
-// BrowserWindow` reads — see the doc-comment on
-// QuickEntry.installInterceptor and CLAUDE.md "Test harness Electron
-// hooks" learning). Runtime-side, `getBackgroundColor()` reflects
+// method hook in lib/quickentry.ts (the constructor consumes them
+// before any prototype method fires — see the doc-comment on
+// QuickEntry.installInterceptor and
+// docs/learnings/test-harness-electron-hooks.md). Runtime-side,
+// `getBackgroundColor()` reflects
 // what the BrowserWindow was actually constructed with — so we read
 // it via getPopupRuntimeProps() and assert
 //   transparent === true && backgroundColor in {'#00000000','#0000'}

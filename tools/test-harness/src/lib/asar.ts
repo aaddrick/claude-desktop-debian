@@ -1,8 +1,8 @@
 // Read files out of the installed app.asar without on-disk extraction.
 //
-// Used by QE-19 / S09 (verify the KDE-gate string is in the bundled
-// JS) and by future patch-sanity tests for tray.sh / cowork.sh /
-// claude-code.sh patches. Reading via @electron/asar avoids the
+// Used by the patch-fingerprint specs (H03, S09) and the asar
+// content probes (S21/S22/S26-S28, T11/T14a/T18/T22/T30-T38 file
+// probes). Reading via @electron/asar avoids the
 // `npx asar extract /tmp/inspect-installed` dance — same outcome, no
 // temp tree, JSON-grepable from inside a TS spec.
 //
@@ -14,6 +14,9 @@ import { extractFile, listPackage } from '@electron/asar';
 import { existsSync } from 'node:fs';
 
 const DEFAULT_ASAR_PATHS = [
+	// v3.x official bare co-located layout
+	'/usr/lib/claude-desktop/resources/app.asar',
+	// 2.x layouts
 	'/usr/lib/claude-desktop/app.asar',
 	'/opt/Claude/resources/app.asar',
 	'/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar',

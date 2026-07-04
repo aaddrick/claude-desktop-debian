@@ -1,20 +1,27 @@
 import { test, expect } from '@playwright/test';
 import { readAsarFile, resolveAsarPath } from '../lib/asar.js';
 
-// H03 — build pipeline patch fingerprints (file probe).
+// H03 — active-patch fingerprints (file probe).
 //
-// scripts/patches/*.sh layers a stack of regex-based mutations onto
-// the bundled JS at build time. Each patch lands a distinctive
-// string somewhere in the asar; if a patch silently skips (anchor
-// regex misses, idempotency guard short-circuits the wrong way,
-// build orchestrator drops the call), that string is absent and
-// the patch's behavior is gone.
+// Since the v3.0.0 rebase the build ships Anthropic's official
+// app.asar byte-identical unless a patch in the `active_patches`
+// array of scripts/patches/app-asar.sh is wired in (patch-zero,
+// decision D-002 in docs/decisions.md). Each active patch lands a
+// distinctive string in the bundled JS; if a patch silently skips
+// (anchor regex misses against a re-minified upstream, idempotency
+// guard short-circuits the wrong way, orchestrator drops the call),
+// that string is absent and the patch's behavior is gone.
 //
-// S09 already covers quick-window.sh. This test consolidates the
-// rest into one manifest so future drift is observable in a single
-// JSON dump. Fingerprints are pinned to STRINGS THE PATCH INJECTS
-// (not strings the patch matches against), so an upstream rename
-// of the matched site doesn't false-positive a passing patch.
+// The manifest below must track active_patches — currently
+// quick-window.sh and org-plugins.sh. Fingerprints are pinned to
+// STRINGS THE PATCH INJECTS (not strings the patch matches against),
+// so an upstream rename of the matched site doesn't false-positive a
+// passing patch. Verified against pristine official 1.18286.0 bytes:
+// zero occurrences of each fingerprint.
+//
+// Also pins the productName guard's runtime contract (the same
+// invariant app-asar.sh enforces at build time): productName must
+// stay 'Claude' or StartupWMClass breaks in every .desktop file.
 //
 // Pure file probe — no app launch. Fast (<1s). Row-independent.
 
@@ -22,10 +29,8 @@ interface PatchEntry {
 	patch: string;
 	fingerprint: string;
 	file: string;
-	// One-line note explaining where the fingerprint comes from
-	// in the patch script — surfaced in the attached manifest so
-	// future maintainers can tie a failure back to the right
-	// scripts/patches/*.sh:LINE.
+	// One-line note tying the fingerprint back to the right
+	// scripts/patches/*.sh site — surfaced in the attached manifest.
 	source: string;
 }
 
@@ -35,63 +40,28 @@ const MANIFEST: PatchEntry[] = [
 		fingerprint: 'XDG_CURRENT_DESKTOP',
 		file: '.vite/build/index.js',
 		source:
-			'patches/quick-window.sh injects an XDG_CURRENT_DESKTOP env-var ' +
-			'gate; same fingerprint S09 asserts.',
+			'patches/quick-window.sh injects KDE-gated blur()/visibility ' +
+			'workarounds guarded by (process.env.XDG_CURRENT_DESKTOP||"")' +
+			'.toLowerCase().includes("kde"); same fingerprint S09 asserts. ' +
+			'Pristine official bundle: zero occurrences.',
 	},
 	{
-		patch: 'app-asar.sh (frame-fix injection)',
-		fingerprint: 'frame-fix-entry',
-		file: 'package.json',
-		source:
-			'patches/app-asar.sh:40-49 rewrites package.json main to ' +
-			"'frame-fix-entry.js'.",
-	},
-	{
-		patch: 'tray.sh (startup-delay nativeTheme guard)',
-		fingerprint: '_trayStartTime',
+		patch: 'org-plugins.sh',
+		fingerprint: 'case"linux":return"/etc/claude/org-plugins"',
 		file: '.vite/build/index.js',
 		source:
-			'patches/tray.sh:67-69 injects `let _trayStartTime=Date.now();` ' +
-			"into the nativeTheme `on('updated')` handler. Variable name " +
-			'is unique to our patch — upstream never declares it.',
-	},
-	{
-		patch: 'cowork.sh (Linux daemon quit handler)',
-		fingerprint: 'cowork-linux-daemon-shutdown',
-		file: '.vite/build/index.js',
-		source:
-			'patches/cowork.sh:602-605 registers a Linux-only quit handler ' +
-			"with name:'cowork-linux-daemon-shutdown'. Distinctive string " +
-			'unique to the patch.',
-	},
-	{
-		patch: 'claude-code.sh (Linux platform branch)',
-		fingerprint: 'linux-arm64',
-		file: '.vite/build/index.js',
-		source:
-			'patches/claude-code.sh:20-24 injects `linux-arm64` / `linux-x64` ' +
-			'platform-bundle branches into getHostPlatform. Upstream throws ' +
-			'on Linux; the string is absent without the patch.',
+			'patches/org-plugins.sh inserts a Linux case into the ' +
+			'org-plugins source-dir platform switch (upstream only has ' +
+			'darwin/win32 cases; the default returns null and silently ' +
+			'disables the marketplace feature on Linux).',
 	},
 ];
 
-// TODOs intentionally left where a stable fingerprint isn't easy:
-//   - tray.sh has multiple sub-patches (icon selection, in-place
-//     update, menu-bar default). _trayStartTime above covers the
-//     menu-handler patch reliably; the in-place update patch
-//     anchors on a generated name like `${TRAY_VAR}.setImage(...)`
-//     where TRAY_VAR is minifier-renamed every release, so no
-//     fingerprint there is stable enough to assert without a
-//     second extraction step. Acceptable: the menu-handler
-//     fingerprint is upstream of the in-place patch in the same
-//     subsystem, so a missing _trayStartTime implies a much
-//     bigger build problem anyway.
-
-test('H03 — build pipeline patch fingerprints present in app.asar', async ({}, testInfo) => {
+test('H03 — active-patch fingerprints present in app.asar', async ({}, testInfo) => {
 	testInfo.annotations.push({ type: 'severity', description: 'Critical' });
 	testInfo.annotations.push({
 		type: 'surface',
-		description: 'Build pipeline patch fingerprints',
+		description: 'Active-patch fingerprints (patch-zero)',
 	});
 
 	const asarPath = resolveAsarPath();
@@ -100,9 +70,8 @@ test('H03 — build pipeline patch fingerprints present in app.asar', async ({},
 		contentType: 'text/plain',
 	});
 
-	// Read each unique file once, then check fingerprints against
-	// the cached contents. Saves repeated asar extraction for
-	// patches that share a target file.
+	// Read each unique file once, then check fingerprints against the
+	// cached contents.
 	const fileCache = new Map<string, string>();
 	const results: {
 		patch: string;
@@ -119,9 +88,6 @@ test('H03 — build pipeline patch fingerprints present in app.asar', async ({},
 				contents = readAsarFile(entry.file, asarPath);
 				fileCache.set(entry.file, contents);
 			} catch (err) {
-				// File missing — record as a "not found" result so
-				// the manifest dump shows the failure shape rather
-				// than aborting on the first hiccup.
 				results.push({
 					patch: entry.patch,
 					fingerprint: entry.fingerprint,
@@ -145,9 +111,9 @@ test('H03 — build pipeline patch fingerprints present in app.asar', async ({},
 		});
 	}
 
-	// Always attach the manifest — passing tests should still
-	// surface the verified fingerprints so future drift is visible
-	// without re-running with -v.
+	// Always attach the manifest — passing tests should still surface
+	// the verified fingerprints so future drift is visible without
+	// re-running with -v.
 	await testInfo.attach('patch-manifest', {
 		body: JSON.stringify(results, null, 2),
 		contentType: 'application/json',
@@ -156,6 +122,15 @@ test('H03 — build pipeline patch fingerprints present in app.asar', async ({},
 	const missing = results.filter((r) => !r.found);
 	expect(
 		missing,
-		'every expected patch fingerprint is present in the bundled app.asar',
+		'every active-patch fingerprint is present in the bundled app.asar',
 	).toEqual([]);
+
+	// productName guard parity — runtime pin of app-asar.sh's
+	// build-time WM_CLASS/.desktop contract check.
+	const pkgJsonRaw = readAsarFile('package.json', asarPath);
+	const parsed = JSON.parse(pkgJsonRaw) as { productName?: unknown };
+	expect(
+		parsed.productName,
+		'package.json productName matches the WM_CLASS/.desktop contract',
+	).toBe('Claude');
 });

@@ -70,15 +70,15 @@ export class QuickEntry {
 	// Capture BrowserWindow refs by hooking prototype methods, not the
 	// constructor.
 	//
-	// Why prototype-level: scripts/frame-fix-wrapper.js returns the
-	// electron module wrapped in a Proxy whose `get` trap returns a
-	// closure-captured PatchedBrowserWindow. A constructor-level wrap
-	// (`electron.BrowserWindow = Wrapped`) writes to the underlying
-	// module but the Proxy keeps returning PatchedBrowserWindow on
-	// reads, so the wrap is bypassed entirely. Hooking
-	// `BrowserWindow.prototype.loadFile` instead captures every
-	// instance regardless of which subclass it was constructed
-	// through — Patched, frame-fix-wrapped, or plain.
+	// Why prototype-level: a constructor-level wrap
+	// (`electron.BrowserWindow = Wrapped`) only catches call sites
+	// that read the property AFTER the write — any module-level
+	// destructure or subclass captured before the hook bypasses it
+	// (the 2.x frame-fix Proxy made this failure guaranteed; it's
+	// merely likely now). Hooking `BrowserWindow.prototype.loadFile`
+	// captures every instance regardless of how or when its class
+	// was captured. Full rationale:
+	// docs/learnings/test-harness-electron-hooks.md.
 	//
 	// The popup is identified by its loadFile target:
 	// `.vite/renderer/quick_window/quick-window.html`
@@ -443,10 +443,10 @@ function typeAndSubmitJs(text: string): string {
 // triggering Quick Entry.
 //
 // All methods walk webContents to find the claude.ai-hosting
-// BrowserWindow via BrowserWindow.fromWebContents(). The
-// `BrowserWindow.getAllWindows()` registry is broken by frame-fix-
-// wrapper (see lib/inspector.ts gotchas) but `fromWebContents` uses a
-// different code path and remains reliable.
+// BrowserWindow via BrowserWindow.fromWebContents() — the harness
+// convention (see lib/inspector.ts header): it survived the 2.x
+// frame-fix era, when `BrowserWindow.getAllWindows()` returned 0,
+// and stays the standard on the official build.
 export class MainWindow {
 	constructor(private readonly inspector: InspectorClient) {}
 
@@ -466,11 +466,11 @@ export class MainWindow {
 				case 'unFullScreen':win.setFullScreen(false); break;
 				case 'focus':       win.focus(); break;
 				// 'close' fires the BrowserWindow 'close' event so
-				// frame-fix-wrapper.js:178-185 (the close-to-tray
-				// interceptor) and the upstream before-quit flow
-				// run as they would on a real X-button click. NOT
-				// the same as 'hide' — that bypasses the wrapper.
-				// T08 asserts on this distinction.
+				// the official build's close-to-tray handler and
+				// the upstream before-quit flow run as they would
+				// on a real X-button click. NOT the same as 'hide'
+				// — that bypasses the close path. T08 asserts on
+				// this distinction.
 				case 'close':       win.close(); break;
 			}
 			return null;

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { launchClaude } from '../lib/electron.js';
 
 // T14b — Second invocation exits and focuses existing window
@@ -31,21 +31,47 @@ import { launchClaude } from '../lib/electron.js';
 // register a second cleanup. Raw `spawn()` is the right primitive:
 // observe the gate fire, then walk away.
 
-const DEFAULT_INSTALL_PATHS: { electron: string; asar: string }[] = [
+// `bare` is the v3.x official co-located layout: a packaged binary
+// that loads its own resources/app.asar (no positional app path,
+// appDir = binary dir); `system-electron` is the 2.x stock-Electron
+// + asar pair.
+type Layout = 'bare' | 'system-electron';
+const DEFAULT_INSTALL_PATHS: {
+	electron: string;
+	asar: string;
+	layout: Layout;
+}[] = [
+	{
+		electron: '/usr/lib/claude-desktop/claude-desktop',
+		asar: '/usr/lib/claude-desktop/resources/app.asar',
+		layout: 'bare',
+	},
 	{
 		electron: '/usr/lib/claude-desktop/node_modules/electron/dist/electron',
 		asar: '/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar',
+		layout: 'system-electron',
 	},
 	{
 		electron: '/opt/Claude/node_modules/electron/dist/electron',
 		asar: '/opt/Claude/node_modules/electron/dist/resources/app.asar',
+		layout: 'system-electron',
 	},
 ];
 
-function resolveInstallInline(): { electron: string; asar: string } {
+function resolveInstallInline(): {
+	electron: string;
+	asar: string;
+	layout: Layout;
+} {
 	const envBin = process.env.CLAUDE_DESKTOP_ELECTRON;
 	const envAsar = process.env.CLAUDE_DESKTOP_APP_ASAR;
-	if (envBin && envAsar) return { electron: envBin, asar: envAsar };
+	if (envBin && envAsar) {
+		const layout: Layout =
+			dirname(envAsar) === join(dirname(envBin), 'resources')
+				? 'bare'
+				: 'system-electron';
+		return { electron: envBin, asar: envAsar, layout };
+	}
 	for (const candidate of DEFAULT_INSTALL_PATHS) {
 		if (existsSync(candidate.electron) && existsSync(candidate.asar)) {
 			return candidate;
@@ -103,14 +129,17 @@ test('T14b — Second invocation exits and focuses existing window', async ({}, 
 		// electron.ts:123-146) so both procs look the same to the
 		// SingletonLock check — the only difference is that this one
 		// is started after the first holds the lock.
-		const { electron: electronBin, asar } = resolveInstallInline();
-		const appDir = dirname(dirname(dirname(dirname(electronBin))));
+		const { electron: electronBin, asar, layout } = resolveInstallInline();
+		const appDir =
+			layout === 'bare'
+				? dirname(electronBin)
+				: dirname(dirname(dirname(dirname(electronBin))));
 
 		const argv = [
-			'--disable-features=CustomTitlebar',
+			'--class=Claude',
 			'--ozone-platform=x11',
 			'--no-sandbox',
-			asar,
+			...(layout === 'bare' ? [] : [asar]),
 		];
 
 		const env: Record<string, string> = {};
@@ -123,8 +152,9 @@ test('T14b — Second invocation exits and focuses existing window', async ({}, 
 		for (const [k, v] of Object.entries(isolationEnv)) {
 			env[k] = v;
 		}
-		env.ELECTRON_FORCE_IS_PACKAGED = 'true';
-		env.ELECTRON_USE_SYSTEM_TITLE_BAR = '1';
+		// v3.0.0 launcher exports no Electron env overrides (see
+		// LAUNCHER_INJECTED_ENV in lib/electron.ts) — the second
+		// instance must spawn with the same env shape as the primary.
 		env.CI = '1';
 
 		const proc = spawn(electronBin, argv, {

@@ -1,5 +1,5 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
-import { existsSync, readlinkSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readlinkSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -117,33 +117,40 @@ export interface ClaudeApp {
 // supports main-process mocks (e.g. dialog.showOpenDialog for T17).
 
 // Default backend: X11 via XWayland. Mirrors launcher-common.sh's
-// build_electron_args() X11 branch (the launcher itself isn't invoked
-// because we spawn Electron directly to keep CLAUDE_CDP_AUTH out of
-// the picture — see the SIGUSR1 attach comment above).
+// build_electron_args() XWayland branch (the launcher itself isn't
+// invoked because we spawn Electron directly to keep CLAUDE_CDP_AUTH
+// out of the picture — see the SIGUSR1 attach comment above).
+//
+// v3.0.0 launcher policy is opt-in only: no flag may shadow an
+// official upstream code path. --class keeps the WM_CLASS/.desktop
+// contract (#647, #652); --no-sandbox mirrors the deb-on-Wayland /
+// AppImage structural requirement.
 const LAUNCHER_INJECTED_FLAGS_X11 = [
-	'--disable-features=CustomTitlebar',
+	'--class=Claude',
 	'--ozone-platform=x11',
 	'--no-sandbox',
 ];
 
 // Native-Wayland backend, opted into by CLAUDE_HARNESS_USE_WAYLAND=1.
-// Mirrors launcher-common.sh's Wayland branch (lines 132-135). Tests
-// that need to drive the app under native Wayland (#226 follow-ups,
-// future S07 sweep) flip the harness-level switch and every runner
-// inherits this without per-spec changes.
+// Mirrors launcher-common.sh's native-Wayland branch: one merged
+// --enable-features switch (Chromium honors only the last one), with
+// GlobalShortcutsPortal so the S12/S14 portal detectors exercise the
+// same feature set the launcher ships (#404).
 const LAUNCHER_INJECTED_FLAGS_WAYLAND = [
-	'--disable-features=CustomTitlebar',
-	'--enable-features=UseOzonePlatform,WaylandWindowDecorations',
+	'--class=Claude',
+	'--enable-features=UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal',
 	'--ozone-platform=wayland',
 	'--enable-wayland-ime',
 	'--wayland-text-input-version=3',
 	'--no-sandbox',
 ];
 
-const LAUNCHER_INJECTED_ENV: Record<string, string> = {
-	ELECTRON_FORCE_IS_PACKAGED: 'true',
-	ELECTRON_USE_SYSTEM_TITLE_BAR: '1',
-};
+// v3.0.0 launcher exports no Electron env overrides — the official
+// build ships packaged (ELECTRON_FORCE_IS_PACKAGED would shadow
+// upstream's isPackaged logic) and owns its window frame
+// (ELECTRON_USE_SYSTEM_TITLE_BAR is gone). See setup_electron_env()
+// in scripts/launcher-common.sh.
+const LAUNCHER_INJECTED_ENV: Record<string, string> = {};
 
 // Top-level opt-in: when CLAUDE_HARNESS_USE_WAYLAND=1, every
 // launchClaude() call swaps the X11 flag set for the Wayland one and
@@ -154,20 +161,48 @@ function harnessUseWayland(): boolean {
 	return process.env.CLAUDE_HARNESS_USE_WAYLAND === '1';
 }
 
-const DEFAULT_INSTALL_PATHS = [
+// Layouts:
+//   'bare'            v3.x official co-located layout — a packaged app
+//                     binary with resources/app.asar beside it. The
+//                     binary loads its own asar; no positional app
+//                     path on argv, appDir is the binary's dir.
+//   'system-electron' 2.x layouts — a stock Electron binary that
+//                     needs the asar passed as the positional app
+//                     path; appDir is the package root four levels up.
+const DEFAULT_INSTALL_PATHS: AppPaths[] = [
+	{
+		electron: '/usr/lib/claude-desktop/claude-desktop',
+		asar: '/usr/lib/claude-desktop/resources/app.asar',
+		layout: 'bare',
+	},
 	{
 		electron: '/usr/lib/claude-desktop/node_modules/electron/dist/electron',
 		asar: '/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar',
+		layout: 'system-electron',
 	},
 	{
 		electron: '/opt/Claude/node_modules/electron/dist/electron',
 		asar: '/opt/Claude/node_modules/electron/dist/resources/app.asar',
+		layout: 'system-electron',
 	},
 ];
 
-interface AppPaths {
+export interface AppPaths {
 	electron: string;
 	asar: string;
+	layout: 'bare' | 'system-electron';
+}
+
+// Infer the layout for env-var-supplied paths: when the asar sits at
+// <binary dir>/resources/app.asar the binary is a packaged app (bare
+// layout); anything else is treated as a stock Electron + asar pair.
+export function inferLayout(
+	electronBin: string,
+	asar: string,
+): AppPaths['layout'] {
+	return dirname(asar) === join(dirname(electronBin), 'resources')
+		? 'bare'
+		: 'system-electron';
 }
 
 // Per-launch state needed by the SIGINT/SIGTERM cleanup. Tracks the
@@ -226,10 +261,81 @@ function ensureSignalHandlers(): void {
 	process.on('SIGTERM', sigtermHandler);
 }
 
+// Electron fuse wire format: the string sentinel below, then a
+// 1-byte schema version, a 1-byte fuse count, then one byte per fuse
+// ('0'=0x30 disabled, '1'=0x31 enabled). Fuse order is fixed by
+// Electron's schema; index 3 is EnableNodeCliInspectArguments, which
+// gates BOTH `--inspect*` CLI args AND the SIGUSR1 inspector-open
+// signal. The official 1.18286.0 build ships it OFF (hardened), so
+// the harness's L1 SIGUSR1 attach path is dead against it — the
+// file-probe + L2 (xprop/DBus) specs still work. See the README
+// "L1 testing" section.
+const FUSE_SENTINEL = 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX';
+const FUSE_IDX_INSPECT_ARGS = 3;
+
+const inspectFuseCache = new Map<string, boolean>();
+
+export function inspectorFuseEnabled(electronBin: string): boolean {
+	const cached = inspectFuseCache.get(electronBin);
+	if (cached !== undefined) return cached;
+
+	let enabled = true; // absent sentinel ⇒ un-fused dev/2.x binary
+	try {
+		const buf = readFileSync(electronBin);
+		const at = buf.indexOf(FUSE_SENTINEL, 0, 'latin1');
+		if (at >= 0) {
+			// skip sentinel + schema-version byte + count byte
+			const fuseByte = buf[at + FUSE_SENTINEL.length + 2 + FUSE_IDX_INSPECT_ARGS];
+			enabled = fuseByte === 0x31 || fuseByte === 0x01;
+		}
+	} catch {
+		// unreadable binary — assume enabled and let the SIGUSR1
+		// path surface any real failure rather than false-skipping.
+	}
+
+	inspectFuseCache.set(electronBin, enabled);
+	return enabled;
+}
+
+// Thrown by attachInspector() when the resolved binary has the
+// inspect fuse OFF. L1 specs should treat this as a clean skip
+// (`test.skip(!inspectorAvailable(), ...)` up front) rather than a
+// failure — the app itself is fine, the harness just can't attach.
+export class InspectorUnavailableError extends Error {
+	constructor(electronBin: string) {
+		super(
+			'Node inspector is fused off on this build ' +
+				`(${electronBin}): EnableNodeCliInspectArguments=OFF ` +
+				'disables both --inspect and the SIGUSR1 attach path the ' +
+				'harness L1 specs use. File-probe and L2 (xprop/DBus) ' +
+				'specs still work. See tools/test-harness/README.md ' +
+				'"How L1 testing works".',
+		);
+		this.name = 'InspectorUnavailableError';
+	}
+}
+
+// Convenience for spec-level guards: does the default-resolved
+// install support L1 inspector attach? Cheap (cached) — safe to call
+// at spec top for `test.skip(!inspectorAvailable(), reason)`.
+export function inspectorAvailable(): boolean {
+	try {
+		return inspectorFuseEnabled(resolveInstall().electron);
+	} catch {
+		return false;
+	}
+}
+
 function resolveInstall(): AppPaths {
 	const envBin = process.env.CLAUDE_DESKTOP_ELECTRON;
 	const envAsar = process.env.CLAUDE_DESKTOP_APP_ASAR;
-	if (envBin && envAsar) return { electron: envBin, asar: envAsar };
+	if (envBin && envAsar) {
+		return {
+			electron: envBin,
+			asar: envAsar,
+			layout: inferLayout(envBin, envAsar),
+		};
+	}
 	for (const candidate of DEFAULT_INSTALL_PATHS) {
 		if (existsSync(candidate.electron) && existsSync(candidate.asar)) {
 			return candidate;
@@ -296,8 +402,15 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 	}
 
 	await cleanupPreLaunch(isolation?.configDir);
-	const { electron: electronBin, asar } = resolveInstall();
-	const appDir = dirname(dirname(dirname(dirname(electronBin))));
+	const { electron: electronBin, asar, layout } = resolveInstall();
+	// bare: the packaged binary loads its own resources/app.asar — no
+	// positional app path. system-electron: stock Electron needs the
+	// asar on argv, and appDir is the package root four levels up.
+	const appDir =
+		layout === 'bare'
+			? dirname(electronBin)
+			: dirname(dirname(dirname(dirname(electronBin))));
+	const appArgv = layout === 'bare' ? [] : [asar];
 
 	const useWayland = harnessUseWayland();
 	const launcherFlags = useWayland
@@ -311,7 +424,7 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 
 	const proc = spawn(
 		electronBin,
-		[...launcherFlags, asar, ...(opts.args ?? [])],
+		[...launcherFlags, ...appArgv, ...(opts.args ?? [])],
 		{
 			cwd: appDir,
 			env: {
@@ -366,6 +479,15 @@ export async function launchClaude(opts: LaunchOptions = {}): Promise<ClaudeApp>
 	};
 
 	const attachInspector = async (timeoutMs = 15_000): Promise<InspectorClient> => {
+		// Guard BEFORE the signal: on a build with the
+		// EnableNodeCliInspectArguments fuse OFF, SIGUSR1 is not the
+		// inspector-activation signal — it takes the default
+		// disposition and KILLS the app. Fail fast with a precise
+		// diagnostic instead of nuking the process and hanging 15s on
+		// a port that will never open. See inspectorFuseEnabled().
+		if (!inspectorFuseEnabled(electronBin)) {
+			throw new InspectorUnavailableError(electronBin);
+		}
 		// Send SIGUSR1 to open the Node inspector at runtime — same code
 		// path as Developer → Enable Main Process Debugger menu item.
 		// Then poll http://127.0.0.1:9229/json/list until it answers.
