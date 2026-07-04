@@ -2,8 +2,9 @@
 #
 # Draft for the v3.0.0 official-deb rebase (ACQ-1); final shape is
 # @typedrat's call. Design contract: docs/learnings/nix.md ("Target
-# design for the rework"). nixpkgs precedent: signal-desktop, slack —
-# vendor .deb unpacked with dpkg and fixed up with autoPatchelfHook.
+# design for the rework"). nixpkgs precedent: discord, vscode — a
+# vendor tarball/.deb unpacked and fixed up with autoPatchelfHook,
+# keeping the vendored Chromium ELF (not run under a nixpkgs electron).
 #
 # Load-bearing invariants:
 #
@@ -30,6 +31,7 @@
   fetchurl,
   dpkg,
   autoPatchelfHook,
+  addDriverRunpath,
   # DT_NEEDED of the main Electron ELF (objdump -p on 1.18286.0)
   alsa-lib,
   at-spi2-atk,
@@ -57,9 +59,12 @@
   # DT_NEEDED of the bundled virtiofsd helper
   libcap_ng,
   libseccomp,
-  # dlopen'd by Chromium/Electron at runtime (not in DT_NEEDED, so
-  # autoPatchelf can't see them; appended to every ELF's runpath via
-  # runtimeDependencies — same approach as nixpkgs' signal-desktop)
+  # dlopen'd by the Electron main process at runtime (not in DT_NEEDED).
+  # runtimeDependencies lands these on the runpath of the main ELF only:
+  # autoPatchelf appends them to dynamic *executables*, not to the
+  # co-located shared libs. That covers dlopens issued from the main
+  # process; the GL dispatcher ANGLE dlopens from its own co-located libs
+  # needs libGL on every ELF's runpath instead (see appendRunpaths).
   libGL,
   libayatana-appindicator,
   libnotify,
@@ -209,6 +214,22 @@ stdenv.mkDerivation {
   preFixup = ''
     addAutoPatchelfSearchPath "$out/lib/claude-desktop"
   '';
+
+  # Chromium's bundled ANGLE (the co-located libEGL.so/libGLESv2.so)
+  # dlopen()s the glvnd dispatcher libEGL.so.1 by bare soname at
+  # GPU-init time; glvnd then self-locates the host GL driver under
+  # ${addDriverRunpath.driverLink}. A dlopen resolves against the
+  # *calling* object's runpath, and the co-located libs carry only their
+  # own DT_NEEDED there — not libGL — so the dispatcher is unfindable and
+  # the GPU process fails EGL init and crash-loops. appendRunpaths adds
+  # these to every patched ELF's runpath (runtimeDependencies would not:
+  # autoPatchelf applies those to executables only, missing the .so that
+  # issues the dlopen). Runpath, not a LD_LIBRARY_PATH wrapper, so the
+  # driver libs don't leak into the env of the MCP servers the app spawns.
+  appendRunpaths = [
+    "${lib.getLib libGL}/lib"
+    "${addDriverRunpath.driverLink}/lib"
+  ];
 
   meta = {
     description = "Claude Desktop for Linux (repackaged official .deb)";
