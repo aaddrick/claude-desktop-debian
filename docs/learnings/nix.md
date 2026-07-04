@@ -22,12 +22,13 @@ derivation so nobody re-introduces the hack it needed.
 
 ## Current state (v3.0.0 branch)
 
-- `nix/claude-desktop.nix` implements the design below. Build-verified
-  on x86_64 (both flake outputs, `autoPatchelf` fully satisfied);
-  **not** yet verified: runtime on real NixOS, the aarch64 leg, and
-  Cowork actually booting a VM. Open questions for @typedrat are
-  flagged inline in both nix files (qemu in the FHS `targetPkgs`,
-  aarch64 firmware naming, the dlopen `runtimeDependencies` set).
+- `nix/claude-desktop.nix` implements the design below. Build- **and
+  runtime**-verified on x86_64 (real NixOS, both flake outputs: the app
+  launches, GPU/EGL init is clean, locales load — see "The ANGLE GL
+  trap" below for the fix that got it there). **Not** yet verified: the
+  aarch64 leg, and Cowork actually booting a VM. Open questions for
+  @typedrat are flagged inline in both nix files (qemu in the FHS
+  `targetPkgs`, aarch64 firmware naming).
 - The Windows-installer derivation (7z-extract the exe, stock nixpkgs
   Electron, hand-built co-located resources tree, node-pty build) was
   deleted in the acquisition swap. Recover it from history:
@@ -61,9 +62,12 @@ Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md)
   `scripts/setup/official-deb.sh` (`OFFICIAL_DEB_POOL_*`,
   `OFFICIAL_DEB_SHA256_*`) are the same values in hex form.
 - **Unpack and `autoPatchelfHook` the official co-located tree.**
-  nixpkgs precedent: `signal-desktop`, `slack` — both repackage a
-  vendor `.deb` around a bundled Electron/Chromium ELF. The official
-  tree is bare co-located
+  nixpkgs precedent (verified against the nixpkgs tree): `discord` and
+  `vscode` — both unpack a vendor tarball and `autoPatchelfHook` the
+  bundled Chromium ELF in place. (`signal-desktop` is **not** precedent
+  despite older notes here saying so: it is a *source* build run under
+  nixpkgs `electron_42`, which Claude Desktop cannot use — see the
+  resourcesPath section.) The official tree is bare co-located
   (`/usr/lib/claude-desktop/{claude-desktop, chrome-sandbox,
   resources/app.asar}`), so the derivation patches the shipped ELF
   instead of marrying the app to a nixpkgs `electron`.
@@ -91,8 +95,40 @@ Settled by the implementation: `autoPatchelfHook` covers the full
 dependency surface (zero unsatisfied deps — main ELF, `virtiofsd`,
 `chrome-native-host`; `coworkd` is static Go and skipped), and
 `chrome-sandbox` SUID is dropped in favor of unprivileged user
-namespaces (the NixOS default; same stance as nixpkgs'
-signal-desktop/slack — no `--no-sandbox` anywhere).
+namespaces (the NixOS default; standard stance for nixpkgs'
+Chromium-based apps — no `--no-sandbox` anywhere).
+
+### The ANGLE GL trap
+
+The `autoPatchelf`-satisfied build still crash-looped at startup on
+real NixOS: the GPU process failed EGL init with `Could not dlopen
+native EGL: libEGL.so.1`, exited, and relaunched forever. Root cause,
+traced on 1.18286.0:
+
+- Chromium's bundled **ANGLE** lives in the co-located `libEGL.so` /
+  `libGLESv2.so`. At GPU init it `dlopen()`s the glvnd dispatcher
+  `libEGL.so.1` by bare soname.
+- A `dlopen` resolves against the **calling object's** `DT_RUNPATH`
+  (verified: `DT_RUNPATH` *is* honored for `dlopen`, unlike the common
+  "RPATH only" lore — but it is not transitive). The ANGLE libs carry
+  only their own `DT_NEEDED` on their runpath, not `libGL`, so the
+  dispatcher is unfindable.
+- `runtimeDependencies` does **not** fix this: `autoPatchelf` appends
+  it to dynamic *executables* only (`auto-patchelf.py`,
+  `if file_is_dynamic_executable: rpath += runtime_deps`), so it landed
+  `libGL` on the main ELF but never on the `.so` that issues the
+  `dlopen`.
+
+Fix: `appendRunpaths` (which `autoPatchelf` applies to *every* patched
+file) adds `${lib.getLib libGL}/lib` and
+`${addDriverRunpath.driverLink}/lib` to all runpaths. Once ANGLE can
+load glvnd's `libEGL.so.1`, NixOS-patched glvnd self-locates the vendor
+ICD under `/run/opengl-driver`, so the second hop needs no extra wiring.
+Chosen over a `makeWrapper --suffix LD_LIBRARY_PATH` (which nixpkgs'
+`discord` uses) because the app spawns MCP servers (`node`, `uv`,
+`docker`) — a wrapper would leak the driver tree into their environment;
+a runpath edit is scoped to the ELFs that need it. Verified: both flake
+outputs launch with clean GPU/EGL init on real NixOS x86_64 (nvidia).
 
 ### The SRI auto-bump contract
 
@@ -148,8 +184,18 @@ module top-level in the minified bundle — before any wrapper could
 correct the path. Claude Desktop is unusual among Electron apps in
 loading locale JSONs from `resourcesPath` at module init with no
 fallback, which is why the standard nixpkgs
-`makeWrapper electron --add-flags app.asar` pattern (Signal, Obsidian,
-Vesktop) was never enough here.
+`makeWrapper electron --add-flags app.asar` pattern (Obsidian, Vesktop)
+was never enough here.
+
+**And it's broader than locales.** Verified against the shipping
+1.18286.0 bundle: when `isPackaged`, `process.resourcesPath` (no
+fallback) also resolves the loose native helpers `virtiofsd`,
+`cowork-linux-helper`, and the `smol-bin.*.img` Cowork VM images — all
+shipped in `resources/` *outside* `app.asar`. Under a nixpkgs
+`electron`, `resourcesPath` points at electron's own dir and every one
+of these orphans, not just the locale JSONs. The locale loader is
+`function _0t(){return isPackaged?process.resourcesPath:…}` feeding a
+`readdirSync`/`readFileSync` of `${lang}.json`.
 
 **There is no override.** No Electron env var or CLI flag overrides
 `resourcesPath`; a `--resources-path` PR
