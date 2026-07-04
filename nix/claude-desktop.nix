@@ -60,11 +60,11 @@
   libcap_ng,
   libseccomp,
   # dlopen'd by the Electron main process at runtime (not in DT_NEEDED).
-  # runtimeDependencies lands these on the runpath of the main ELF only:
+  # runtimeDependencies lands these on the main ELF's runpath only:
   # autoPatchelf appends them to dynamic *executables*, not to the
-  # co-located shared libs. That covers dlopens issued from the main
-  # process; the GL dispatcher ANGLE dlopens from its own co-located libs
-  # needs libGL on every ELF's runpath instead (see appendRunpaths).
+  # co-located shared libs. That covers dlopens from the main process, but
+  # the co-located ANGLE libs issue their own dlopen and need libGL on
+  # every ELF's runpath instead (see appendRunpaths).
   libGL,
   libayatana-appindicator,
   libnotify,
