@@ -1,12 +1,12 @@
 # NixOS / Nix Flake Learnings
 
-The Nix derivation is a deliberate `throw` stub on the v3.0.0
-official-deb branch — every `nix build .#claude-desktop` (and the
-default `.#claude-desktop-fhs`) fails at eval until the official-deb
-rework lands (owner @typedrat). The stub's comment block carries the
-target design; this page expands it and preserves the resource-path
-knowledge from the deleted Windows-pipeline derivation so nobody
-re-introduces the hack it needed.
+The Nix derivation repackages the official Claude Desktop `.deb`
+(`fetchurl` + `autoPatchelfHook` over the bare co-located tree). The
+v3.0.0 implementation is a best-attempt draft (ACQ-1) — @typedrat owns
+the subsystem and the final shape. This page records the design
+contract the implementation follows, the SRI auto-bump sed anchors,
+and the resource-path knowledge from the deleted Windows-pipeline
+derivation so nobody re-introduces the hack it needed.
 
 **Source files:**
 
@@ -22,8 +22,12 @@ re-introduces the hack it needed.
 
 ## Current state (v3.0.0 branch)
 
-- `nix/claude-desktop.nix` is `{ lib }: throw ...`. The throw message
-  is the user-facing error; it points at the recovery command below.
+- `nix/claude-desktop.nix` implements the design below. Build-verified
+  on x86_64 (both flake outputs, `autoPatchelf` fully satisfied);
+  **not** yet verified: runtime on real NixOS, the aarch64 leg, and
+  Cowork actually booting a VM. Open questions for @typedrat are
+  flagged inline in both nix files (qemu in the FHS `targetPkgs`,
+  aarch64 firmware naming, the dlopen `runtimeDependencies` set).
 - The Windows-installer derivation (7z-extract the exe, stock nixpkgs
   Electron, hand-built co-located resources tree, node-pty build) was
   deleted in the acquisition swap. Recover it from history:
@@ -34,19 +38,21 @@ re-introduces the hack it needed.
 
 - `flake.nix` is decoupled from node-pty; `nix/node-pty.nix` was
   deleted. The official `.deb` ships its own native bindings, so
-  nothing in the flake compiles node modules anymore.
-- The flake outputs and overlay are still wired (`claude-desktop`,
-  `claude-desktop-fhs`, default = FHS env), so replacing the stub with
-  a real derivation needs no `flake.nix` changes.
-- `check-claude-version` has an "Update Nix SRI hashes" step that is
-  **stub-guarded**: it skips cleanly while the file has no
-  `version = "..."` line, and starts auto-bumping the moment the real
-  derivation lands (see below).
+  nothing in the flake compiles node modules anymore. The rework
+  needed no `flake.nix` changes (outputs/overlay wiring unchanged:
+  `claude-desktop`, `claude-desktop-fhs`, default = FHS env).
+- `check-claude-version`'s "Update Nix SRI hashes" step is **live**
+  now that the file carries a `version = "..."` line — keep the sed
+  contract below intact or the auto-bump corrupts the file.
+- Extraction gotcha the implementation hit: `dpkg-deb -x` **fails in
+  the Nix sandbox** because chrome-sandbox is recorded SUID in
+  `data.tar` and tar's mode-restore is refused; use
+  `dpkg-deb --fsys-tarfile | tar -x --no-same-owner
+  --no-same-permissions` instead.
 
-## Target design for the rework
+## The design contract
 
-Per the stub comment and
-[`official-deb-rebase-verification.md`](official-deb-rebase-verification.md):
+Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md):
 
 - **`fetchurl` the official `.deb`** from the official APT pool
   (`https://downloads.claude.ai/claude-desktop/apt/stable/pool/...`).
@@ -73,17 +79,20 @@ Per the stub comment and
   x86_64 → `/usr/share/OVMF/OVMF_CODE_4M.fd`,
   `/usr/share/OVMF/OVMF_CODE.fd`; arm64 →
   `/usr/share/AAVMF/AAVMF_CODE.fd`. The RPM grew compat symlinks for
-  this (CW-1); the Nix-side fix rides this derivation rework.
-  `nix/fhs.nix` does not provide OVMF today — whether the right shape
-  is an edk2 package in `targetPkgs` (if buildFHSEnv surfaces its
-  `share/` at the probed path) or explicit symlinks, the spike will
-  decide.
+  this (CW-1). `nix/fhs.nix` closes it with a `runCommand` shim in
+  `targetPkgs`: nixpkgs' `OVMF.fd` lands firmware at `FV/*.fd` — not
+  under `share/` — so a bare OVMF package never hits the probe; the
+  shim symlinks it to `share/OVMF/…` (x86_64, where both Debian names
+  alias the single 4M-sized nixpkgs build) and `share/AAVMF/…`
+  (aarch64, with a `QEMU_EFI.fd` fallback — unverified on real
+  aarch64), which buildFHSEnv links into `/usr/share` inside the env.
 
-Open questions the spike will settle: whether `autoPatchelfHook`
-covers the full dependency surface of the official Electron ELF plus
-the bundled helpers (`virtiofsd`, `chrome-native-host`; `coworkd` is
-static Go and needs nothing), and whether `chrome-sandbox` SUID is
-handled via the FHS env or dropped in favor of user namespaces.
+Settled by the implementation: `autoPatchelfHook` covers the full
+dependency surface (zero unsatisfied deps — main ELF, `virtiofsd`,
+`chrome-native-host`; `coworkd` is static Go and skipped), and
+`chrome-sandbox` SUID is dropped in favor of unprivileged user
+namespaces (the NixOS default; same stance as nixpkgs'
+signal-desktop/slack — no `--no-sandbox` anywhere).
 
 ### The SRI auto-bump contract
 
@@ -177,10 +186,10 @@ on NixOS or standalone Nix. Start the daemon manually with
 
 This validates build success and basic app startup, but is not a
 substitute for real NixOS testing (system integration, desktop
-environment, Cowork's KVM path). Note that until the @typedrat rework
-lands, any `nix build` in any environment fails at eval with the
-stub's throw message — that is the expected state, not a local setup
-problem.
+environment, Cowork's KVM path). The v3.0.0 x86_64 build verification
+ran exactly this way (container `nixtest`, Fedora 43 + Determinate
+Nix); the remaining validation gaps in "Current state" above are the
+things a container cannot prove.
 
 ## References
 

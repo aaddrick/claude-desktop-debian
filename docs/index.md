@@ -29,7 +29,7 @@ Hard-won knowledge from debugging real bugs. Consult before working on the relat
 - [**Cross-build: host vs target**](learnings/cross-build-host-vs-target.md) — tools that run during the build key on `uname -m`, artifacts key on `--arch`; the `Exec format error` class caught twice in the CI cutover
 - [**Packaging permissions**](learnings/packaging-permissions.md) — restrictive-umask traps across deb/rpm/AppImage (`app.asar.unpacked` traversability, `--root-owner-group`, the rpm `%defattr` file-mode trap)
 - [**APT/DNF Worker architecture**](learnings/apt-worker-architecture.md) — Cloudflare Worker + GitHub Releases redirect chain, credential ownership, heartbeat runbook
-- [**Nix packaging**](learnings/nix.md) — the derivation stub and its official-tree rework design, why the resource-path hack must not return, testing without NixOS
+- [**Nix packaging**](learnings/nix.md) — the official-deb derivation design contract, the live SRI auto-bump sed anchors, why the resource-path hack must not return, testing without NixOS
 - [**Wayland GlobalShortcuts portal**](learnings/wayland-global-shortcuts-portal.md) — why Quick Entry's hotkey is focus-bound on GNOME Wayland and the `CLAUDE_USE_WAYLAND` tri-state
 - [**Tray rebuild race**](learnings/tray-rebuild-race.md) — KDE SNI re-registration race; validated — the official build converged on the same in-place fix
 - [**Plugin install flow**](learnings/plugin-install.md) — Anthropic & Partners plugin gate logic and DevTools recipes

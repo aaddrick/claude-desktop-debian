@@ -107,7 +107,7 @@ Sub-decisions:
 ### Consequences
 
 - **BREAKING** launcher-surface changes recorded in the v3.0.0 CHANGELOG entry (titlebar/menu-bar/keep-awake/quit-on-close env vars gone, password-store explicit-only, glibc ≥ 2.34 for Cowork helpers).
-- The Nix derivation is a deliberate `throw` stub until the official-tree rework lands (owner @typedrat) — the one acquisition gap at cutover (ACQ-1).
+- The Nix derivation was reworked onto the official tree in the same arc (ACQ-1, best-attempt draft): build-verified on x86_64, with runtime/aarch64 validation and the final shape owned by @typedrat.
 - Upstream behavior we depend on is tripwired at build time (`apt_channel_pending`, `menuBarEnabled:!0`) instead of patched.
 - Redistribution posture: the official copyright is `License: Proprietary` with no grant; mirroring consumed `.deb`s into our releases is insurance, and the redistribution question goes to Anthropic before the new org name is public (user action).
 

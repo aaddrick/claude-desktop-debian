@@ -33,7 +33,7 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 - [`patching-minified-js.md`](docs/learnings/patching-minified-js.md) — general lessons from maintaining a long-lived patch suite against an actively re-minified upstream: anchor selection (literals over identifiers), the `\w` vs `$` identifier-capture trap, beautified false-negatives, idempotency guards, multi-site coordination, non-unique anchor disambiguation, and the SHA-256-pinned hypothesis-verification recipe — still load-bearing for the two survivor patches
 - [`cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) — the host-vs-target conflation class caught twice in the CI cutover: tools that run during the build key on `uname -m`, artifacts key on `--arch`; symptom is `Exec format error` on cross legs
 - [`packaging-permissions.md`](docs/learnings/packaging-permissions.md) — restrictive-umask permission traps across deb/rpm/AppImage: `app.asar.unpacked` traversability, `dpkg-deb --root-owner-group`, the rpm `%defattr` file-mode trap
-- [`nix.md`](docs/learnings/nix.md) — the Nix derivation stub and its official-tree rework design, why the old Electron resource-path hack must not return, testing without NixOS
+- [`nix.md`](docs/learnings/nix.md) — the official-deb Nix derivation: design contract, the live SRI auto-bump sed anchors, the sandbox SUID extraction trap, why the old Electron resource-path hack must not return, and testing without NixOS
 - [`apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) — APT/DNF binary distribution via Cloudflare Worker + GitHub Releases, redirect chain, credential ownership, heartbeat runbook
 - [`wayland-global-shortcuts-portal.md`](docs/learnings/wayland-global-shortcuts-portal.md) — why Quick Entry's hotkey is focus-bound on GNOME Wayland (mutter dropped XWayland global key grabs), the native-Wayland + `GlobalShortcutsPortal` launcher change (opt-in via `CLAUDE_USE_WAYLAND=1`; fixes GNOME ≤49, default GNOME stays on XWayland), the "only the last `--enable-features` switch wins → merge into one flag" trap, the tri-state `CLAUDE_USE_WAYLAND` escape hatch, and the proof that GNOME 50 / xdg-desktop-portal ≥1.20 is still blocked upstream because Electron/Chromium never calls the host `Registry.Register` app-id handshake ([electron#51875](https://github.com/electron/electron/issues/51875)); wlroots (Niri/Sway/Hyprland) lack a portal GlobalShortcuts backend entirely
 - [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when chat and Code/Agent panels are both active, root cause in upstream session managers, MCP-author workaround; now first-party-reproducible → upstream report drafted
@@ -395,7 +395,7 @@ nix build .#claude-desktop
 nix build .#claude-desktop-fhs
 ```
 
-Both currently fail by design: `nix/claude-desktop.nix` is a deliberate `throw` stub pending the official-tree derivation rework (owner @typedrat; see [`docs/learnings/nix.md`](docs/learnings/nix.md)).
+The derivation repackages the official `.deb` (`fetchurl` + `autoPatchelfHook`, no nixpkgs Electron). Build-verified on x86_64 only — runtime on real NixOS and the aarch64 leg are open validation items (owner @typedrat; design contract and testing recipe in [`docs/learnings/nix.md`](docs/learnings/nix.md)).
 
 ### Testing AppImage
 

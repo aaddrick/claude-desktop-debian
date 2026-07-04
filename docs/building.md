@@ -122,10 +122,13 @@ chmod +x ./claude-desktop-*.AppImage
 
 ## Nix
 
-The Nix derivation has not yet been reworked for the official-deb rebase. `nix/claude-desktop.nix` is currently a `throw` stub pending that rework (owner @typedrat), so `nix build .#claude-desktop` fails with a pointer message. For a working derivation, build from the last Windows-pipeline commit:
+The derivation (`nix/claude-desktop.nix`) repackages the official `.deb`: `fetchurl` from the official APT pool, `autoPatchelfHook` over the bare co-located tree, no nixpkgs Electron. The FHS output (`nix/fhs.nix`, the flake default) additionally provides MCP runtime dependencies and OVMF firmware at Cowork's hardcoded probe paths.
 
 ```bash
-git log --oneline -- nix/claude-desktop.nix
+nix build .#claude-desktop
+nix build .#claude-desktop-fhs
 ```
 
-Two facts about the eventual `--build nix` path that already hold on this branch: `build.sh --build nix` requires `--deb` (it never downloads inside the sandbox), and it stops after the patch stage — the Nix derivation is expected to handle installation itself.
+Build-verified on x86_64; runtime on real NixOS and the aarch64 leg are open validation items (owner @typedrat). Design contract, SRI auto-bump anchors, and a no-NixOS testing recipe: [`docs/learnings/nix.md`](learnings/nix.md).
+
+Two facts about the `--build nix` path that hold on this branch: `build.sh --build nix` requires `--deb` (it never downloads inside the sandbox), and it stops after the patch stage — the Nix derivation is expected to handle installation itself.
