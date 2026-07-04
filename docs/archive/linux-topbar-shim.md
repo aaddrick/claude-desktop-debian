@@ -1,5 +1,16 @@
 # Linux desktop topbar — design and history
 
+> **Archived (v3.0.0 rebase, 2026-07).** The wco-shim and hybrid
+> titlebar mode this document designs were deleted with the rebase
+> onto Anthropic's official Linux build: live verification (WCO-1,
+> 2026-07-03) showed the in-app topbar renders on unmodified official
+> builds — the remote bundle's `isWindows()` UA gate no longer hides
+> it on Linux. The three Electron bugs this investigation surfaced
+> (Bugs A/B/C below) were extracted to
+> [`docs/upstream-reports/electron-wco-linux-bugs.md`](../upstream-reports/electron-wco-linux-bugs.md)
+> for filing; the diagnostic recipes remain valid if the topbar ever
+> regresses.
+
 How claude.ai's in-app topbar (hamburger / sidebar / search / nav /
 Cowork ghost) is wired up on Linux, why the upstream frameless-WCO
 config doesn't work on X11, and how the **hybrid mode** (system

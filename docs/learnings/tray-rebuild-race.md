@@ -1,5 +1,13 @@
 # Tray icon rebuild race on OS theme change
 
+> [!NOTE]
+> **Status (v3.0.0 rebase, 2026-07): validated and converged.**
+> Anthropic's official Linux build ships the same in-place `setImage` +
+> `setContextMenu` fast-path this doc derived, so the
+> `scripts/patches/tray.sh` patch was deleted in v3.0.0 — references to
+> it below are historical. The file stays as the diagnosis record of
+> the KDE SNI re-registration race.
+
 Why destroy + delay + recreate isn't enough on KDE, and what the
 in-place fast-path does differently.
 

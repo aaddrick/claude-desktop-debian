@@ -2,54 +2,46 @@
 
 # Troubleshooting
 
-## Built-in Diagnostics
-
-Run the `--doctor` flag to check your system for common issues:
+Run the built-in doctor first — it detects most of the problems on this page and prints fix commands inline:
 
 ```bash
-# Deb install
+# Deb / RPM install
 claude-desktop --doctor
 
 # AppImage
 ./claude-desktop-*.AppImage --doctor
 ```
 
-This runs a series of checks and prints pass/fail results with
-suggested fixes:
+## Built-in Diagnostics
+
+`--doctor` runs this check set (from `scripts/doctor.sh`) and prints pass/fail results with suggested fixes:
 
 | Check | What it verifies |
 |-------|-----------------|
-| Installed version | Package version via dpkg |
-| Display server | Wayland/X11 detection and mode |
-| Input method | IBus/GTK immodule sanity (ibus-gtk3 installed, cache fresh, XWayland routing note) |
-| Electron binary | Existence and version |
-| Chrome sandbox | Correct permissions (4755/root) |
-| User namespaces | AppArmor userns restriction + Claude profile presence (Ubuntu 24.04+) |
+| Installed version | Package version from the manager that owns the install (rpm ownership of the binary is probed first, then dpkg) |
+| Version drift | Installed upstream version vs the newest in Anthropic's official APT pool (network best-effort; skipped offline) |
+| Package-name collision | Warns when Anthropic's official APT repo is configured in your sources — both pools ship a package named `claude-desktop`, and whichever version sorts higher wins on upgrade |
+| Display server | Wayland/X11 detection and the XWayland/native-Wayland mode in effect |
+| Input method | IBus/GTK immodule sanity (ibus-gtk3 installed, immodules cache fresh, XWayland-routes-IBus-through-XIM note) |
+| Legacy environment | Warns on 2.x variables no longer honored (`CLAUDE_TITLEBAR_STYLE`, `CLAUDE_MENU_BAR`, `CLAUDE_KEEP_AWAKE`); `CLAUDE_QUIT_ON_CLOSE` gets a pointer to its native replacement, Settings > General > System Tray |
+| Electron binary | The official ELF at `/usr/lib/claude-desktop/claude-desktop` exists and is executable |
+| Chrome sandbox | `/usr/lib/claude-desktop/chrome-sandbox` has 4755/root |
+| User namespaces | AppArmor userns restriction and whether the `claude-desktop` profile is loaded (Ubuntu 24.04+; run with `sudo` to confirm the kernel-loaded state) |
 | SingletonLock | Stale lock file detection |
+| Password store | Reports upstream `os_crypt` autodetect vs a `CLAUDE_PASSWORD_STORE` override (informational) |
 | MCP config | JSON validity and server count |
-| Node.js | Version (v20+ recommended for MCP) |
+| Node.js | Version (v20+ recommended for MCP servers) |
 | Desktop entry | `.desktop` file presence |
-| Disk space | Free space on config partition |
-| Log file | Log file size |
+| Disk space | Free space on the config partition |
+| Cowork: KVM | `/dev/kvm` present and read-write |
+| Cowork: vsock | `/dev/vhost-vsock` present |
+| Cowork: QEMU stack | Arch-matched `qemu-system-*` on `PATH`, firmware at the officially probed paths, virtiofsd (off-PATH locations tolerated), plus a one-line readiness summary |
+| Filename limit | `NAME_MAX` ≥ 200 under `~/.claude/projects` (catches eCryptfs) |
+| Cowork daemon (2.x leftover) | Orphaned `cowork-vm-service.js` from a 2.x install still holding locks |
+| Recent crashes | 3+ Electron coredumps in the last 7 days → GPU-FATAL pointer ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)) |
+| Log file | Launcher log size |
 
-Example output:
-```
-Claude Desktop Diagnostics
-================================
-
-[PASS] Installed version: 1.1.4498-1.3.15
-[PASS] Display server: Wayland (WAYLAND_DISPLAY=wayland-0)
-[PASS] Electron: found at /usr/lib/claude-desktop/node_modules/electron/dist/electron
-[PASS] Chrome sandbox: permissions OK
-[PASS] SingletonLock: no lock file (OK)
-[PASS] MCP config: valid JSON
-[PASS] Node.js: v22.14.0
-[PASS] Desktop entry: /usr/share/applications/claude-desktop.desktop
-[PASS] Disk space: 632284MB free
-[PASS] Log file: 1352KB
-
-All checks passed.
-```
+Setting `COWORK_VM_BACKEND=bwrap` additionally runs the legacy bubblewrap diagnostics for the parked `scripts/cowork-fallback/` path — the shipped client has no bwrap backend.
 
 When opening an issue, include the output of `--doctor` to help with diagnosis.
 
@@ -79,15 +71,15 @@ If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in
 2. Look for "Using X11 backend via XWayland" - this means hotkeys should work
 3. If you see "Using native Wayland backend", unset `CLAUDE_USE_WAYLAND` or ensure it's not set to `1`
 
-**Note:** Native Wayland mode doesn't support global hotkeys due to Electron/Chromium limitations with XDG GlobalShortcuts Portal.
+**Note:** Native Wayland mode routes the shortcut through the XDG GlobalShortcuts portal, which only works on some compositors (GNOME ≤ 49, KDE) due to Electron/Chromium limitations.
 
-See [configuration.md](configuration.md) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
+See [configuration.md](configuration.md#wayland-support) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
 
 ### Keyboard Input Doesn't Work (IBus / GTK Input Method)
 
 If typing into the chat does nothing, characters get swallowed, or
 dead-key sequences (e.g. ``` `e ``` → `è`) don't compose, your GTK
-input module integration with the Electron-bundled GTK is broken.
+input module integration with the bundled GTK is broken.
 Common symptoms:
 
 - No characters appear when typing into any text field
@@ -156,8 +148,8 @@ echo 'export CLAUDE_DISABLE_GPU=1' >> ~/.profile
 ```
 
 When `CLAUDE_DISABLE_GPU=1` is set, the launcher passes
-`--disable-gpu --disable-software-rasterizer` to Electron (see
-`scripts/launcher-common.sh`). This is the same pair of flags
+`--disable-gpu --disable-software-rasterizer` to the official binary
+(see `scripts/launcher-common.sh`). This is the same pair of flags
 applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
@@ -223,22 +215,131 @@ and
 
 ### AppImage Sandbox Warning
 
-AppImages run with `--no-sandbox` due to electron's chrome-sandbox requiring root privileges for unprivileged namespace creation. This is a known limitation of AppImage format with Electron applications.
+AppImages run with `--no-sandbox` because Electron's chrome-sandbox requires root privileges for unprivileged namespace creation, which the FUSE-mounted AppImage cannot provide. This is a known limitation of the AppImage format with Electron applications.
 
 For enhanced security, consider:
-- Using the .deb package instead
+- Using the .deb or .rpm package instead
 - Running the AppImage within a separate sandbox (e.g., bubblewrap)
 - Using Gear Lever's integrated AppImage management for better isolation
 
-### Cowork on Ubuntu 24.04+ (AppArmor Blocks User Namespaces)
+### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
 
-**Cause:** Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`. This blocks the user namespaces Cowork's bubblewrap sandbox needs.
+The `.deb` handles this automatically — this section is for the rare case
+where it doesn't. Ubuntu 24.04+ sets
+`apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
+Chromium's sandbox needs, which kills the app on startup before any window
+appears. The deb's `postinst` installs a scoped AppArmor profile
+(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the official
+Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
+packages do — so a normal install needs no action. (X11 sessions only:
+on Wayland the deb launcher runs with `--no-sandbox`, and AppImage builds
+always do, so neither can hit this crash.)
 
-**Symptom:** `claude-desktop --doctor` shows `Cowork isolation: host-direct (bwrap probe failed)`.
+You only need to act if the app still crashes on launch with:
 
-**Fix (`.deb` installs):** None needed. The `postinst` installs `/etc/apparmor.d/claude-desktop-bwrap`, granting `userns` to `/usr/bin/bwrap`. Still failing? Reinstall the package — the `postinst` recreates the profile.
+- `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . :
+  Permission denied (13)` in
+  `~/.cache/claude-desktop-debian/launcher.log` (the line number varies by
+  Electron version), and
+- a `Trace/breakpoint trap` / core dump (exit code 133).
 
-**Fix (AppImage, Nix, rpm, and manual installs):** The auto-install is deb-only; install the profile by hand:
+Run `sudo claude-desktop --doctor` first — the **User namespaces** check
+reports whether the profile is actually loaded into the kernel (reading the
+loaded set needs root; without `sudo` it can only confirm the profile is
+present on disk). To (re)install it manually:
+
+```bash
+sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile claude-desktop /usr/lib/claude-desktop/claude-desktop flags=(unconfined) {
+    userns,
+
+    include if exists <local/claude-desktop>
+}
+EOF
+
+sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
+```
+
+To customize the profile on a `.deb` install, put overrides in
+`/etc/apparmor.d/local/claude-desktop` — they survive upgrades; direct
+edits to the managed profile are rewritten by the `postinst` on every
+upgrade (a profile without the package's marker header is treated as
+hand-made and preserved instead).
+
+Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
+Chromium sandbox entirely, which the package is built to keep.
+
+**Security note:** the profile grants the unconfined profile plus the
+`userns` capability to the official Electron binary only, not system-wide —
+narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
+globally, which would lift the restriction for every program on the host.
+Review against your threat model before applying.
+
+### Cowork unavailable (doctor: "Cowork: unavailable until the KVM stack is complete")
+
+Cowork on the official Linux client is KVM-only — there is no bubblewrap or
+host-direct fallback. If Cowork won't start, run `claude-desktop --doctor`;
+the Cowork Mode section reports each missing piece with a fix:
+
+- **`/dev/kvm` not present** — enable hardware virtualization (VT-x/AMD-V)
+  in your BIOS/UEFI, then `sudo modprobe kvm`.
+- **`/dev/kvm` not read-write** — `sudo usermod -aG kvm $USER`, then log
+  out and back in.
+- **`/dev/vhost-vsock` missing** — `sudo modprobe vhost_vsock`; persist
+  with `echo vhost_vsock | sudo tee /etc/modules-load.d/vhost_vsock.conf`.
+- **`qemu-system-x86_64` (or `qemu-system-aarch64`) not on PATH** —
+  install your distro's QEMU/KVM packages; the doctor prints the exact
+  command.
+- **Firmware missing at the probed paths** — the official client hardcodes
+  its firmware probe list (`/usr/share/OVMF/OVMF_CODE_4M.fd`,
+  `/usr/share/OVMF/OVMF_CODE.fd`; arm64: `/usr/share/AAVMF/AAVMF_CODE.fd`)
+  with no env override, so edk2 firmware installed elsewhere is not found.
+  Our RPM package's `%post` creates a compat symlink at the probed path
+  automatically (CW-1); on other layouts, symlink your edk2 firmware to
+  one of the probed paths by hand.
+- **virtiofsd not found** — install it (Debian/Ubuntu:
+  `qemu-system-common`; Fedora: `virtiofsd`).
+
+### Cowork: virtiofsd not found (Fedora/RHEL)
+
+On Fedora and RHEL, `virtiofsd` installs to `/usr/libexec/virtiofsd`, which
+is outside `$PATH`. The `--doctor` check searches the well-known off-PATH
+locations (`/usr/libexec/virtiofsd`, `/usr/lib/qemu/virtiofsd`,
+`/usr/lib/virtiofsd`) and reports `found at ... (not on PATH)` in that case.
+The official client's virtiofsd spawn semantics haven't been verified
+against those off-PATH locations — if the doctor finds virtiofsd off PATH
+but Cowork still fails to start a VM, put it on `PATH`:
+
+```bash
+sudo ln -s /usr/libexec/virtiofsd /usr/local/bin/virtiofsd
+```
+
+### Cowork: cross-device link error on Fedora tmpfs /tmp
+
+On Fedora, `/tmp` is a tmpfs by default. VM bundle downloads may fail with `EXDEV: cross-device link not permitted` when moving files from `/tmp` to `~/.config/Claude/`. This was reported against the 2.x backend and has not been re-verified against the official client; if you hit it:
+
+**Fix:** Set `TMPDIR` to a directory on the same filesystem:
+
+```bash
+mkdir -p ~/.config/Claude/tmp
+TMPDIR=~/.config/Claude/tmp claude-desktop
+```
+
+Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` file.
+
+### Cowork on Ubuntu 24.04+: bwrap fallback probe fails (parked diagnostics only)
+
+This applies **only** to the parked bubblewrap fallback diagnostics
+(`COWORK_VM_BACKEND=bwrap` with the unshipped `scripts/cowork-fallback/`
+path). The shipped Cowork backend is KVM and is not affected by the
+user-namespace restriction. Ubuntu 24.04+ sets
+`apparmor_restrict_unprivileged_userns=1`, which blocks the user namespaces
+bwrap needs, so the doctor's `bubblewrap: sandbox probe failed` warning is
+expected there. If you are experimenting with the parked fallback, grant
+`userns` to bwrap with a hand-made profile:
 
 ```bash
 sudo tee /etc/apparmor.d/bwrap <<'EOF'
@@ -255,163 +356,11 @@ EOF
 sudo apparmor_parser -r /etc/apparmor.d/bwrap
 ```
 
-**Existing profiles win:** The `postinst` defers to any profile already attaching to `/usr/bin/bwrap` — the hand-made `/etc/apparmor.d/bwrap` above, or `bwrap-userns-restrict` from the `apparmor-profiles` package — rather than shadowing it with its unconfined-mode one. If such a profile blocks `userns`, resolve the conflict yourself before expecting Cowork isolation to work.
-
-**Customizing:** Put overrides in `/etc/apparmor.d/local/claude-desktop-bwrap` — they survive upgrades. Direct edits to the managed profile do not: the `postinst` rewrites any profile carrying its marker header on every upgrade, and removes it on purge.
-
-**Security:** The profile grants `userns` to `/usr/bin/bwrap` host-wide. Bubblewrap's own sandbox does the confining. Review against your threat model.
+The v3.0.0 packages no longer install a bwrap profile themselves; the deb's
+`postrm` still removes the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap`
+leftover on purge.
 
 **Credit:** [@hfyeh](https://github.com/hfyeh), [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
-
-### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
-
-The `.deb` handles this automatically — this section is for the rare case
-where it doesn't. Ubuntu 24.04+ sets
-`apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
-Chromium's sandbox needs (same root cause as the Cowork case above, but it
-kills the **main app** on startup before any window appears). The deb's
-`postinst` installs a scoped AppArmor profile
-(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the bundled
-Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
-packages do — so a normal install needs no action.
-
-You only need to act if the app still crashes on launch with:
-
-- `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . :
-  Permission denied (13)` in
-  `~/.cache/claude-desktop-debian/launcher.log` (the line number varies by
-  Electron version), and
-- a `Trace/breakpoint trap` / core dump (exit code 133).
-
-Run `sudo claude-desktop --doctor` first — the **User namespaces** check
-reports whether the profile is actually loaded into the kernel (reading the
-loaded set needs root; without `sudo` it can only confirm the profile is
-present on disk). To (re)install it manually:
-
-```bash
-sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
-abi <abi/4.0>,
-include <tunables/global>
-
-profile claude-desktop /usr/lib/claude-desktop/node_modules/electron/dist/electron flags=(unconfined) {
-    userns,
-
-    include if exists <local/claude-desktop>
-}
-EOF
-
-sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
-```
-
-To customize the profile on a `.deb` install, put overrides in
-`/etc/apparmor.d/local/claude-desktop` — they survive upgrades; direct
-edits to the managed profile are rewritten by the `postinst` on every
-upgrade.
-
-Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
-Chromium sandbox entirely, which the package is built to keep. (AppImage
-builds already launch with `--no-sandbox` because they can't ship a SUID
-helper, so they never hit this crash.)
-
-**Security note:** the profile grants the unconfined profile plus the
-`userns` capability to the bundled Electron binary only, not system-wide —
-narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
-globally, which would lift the restriction for every program on the host.
-Review against your threat model before applying.
-
-### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
-
-The `.deb` handles this automatically — this section is for the rare case
-where it doesn't. Ubuntu 24.04+ sets
-`apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
-Chromium's sandbox needs (same root cause as the Cowork case above, but it
-kills the **main app** on startup before any window appears). The deb's
-`postinst` installs a scoped AppArmor profile
-(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the bundled
-Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
-packages do — so a normal install needs no action.
-
-You only need to act if the app still crashes on launch with:
-
-- `FATAL:sandbox/linux/services/credentials.cc:131] Check failed: . :
-  Permission denied (13)` in
-  `~/.cache/claude-desktop-debian/launcher.log` (the line number varies by
-  Electron version), and
-- a `Trace/breakpoint trap` / core dump (exit code 133).
-
-Run `sudo claude-desktop --doctor` first — the **User namespaces** check
-reports whether the profile is actually loaded into the kernel (reading the
-loaded set needs root; without `sudo` it can only confirm the profile is
-present on disk). To (re)install it manually:
-
-```bash
-sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
-abi <abi/4.0>,
-include <tunables/global>
-
-profile claude-desktop /usr/lib/claude-desktop/node_modules/electron/dist/electron flags=(unconfined) {
-    userns,
-
-    include if exists <local/claude-desktop>
-}
-EOF
-
-sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
-```
-
-Don't use `--no-sandbox` as a permanent fix on the `.deb` — it disables the
-Chromium sandbox entirely, which the package is built to keep. (AppImage
-builds already launch with `--no-sandbox` because they can't ship a SUID
-helper, so they never hit this crash.)
-
-**Security note:** the profile grants the unconfined profile plus the
-`userns` capability to the bundled Electron binary only, not system-wide —
-narrower than relaxing `kernel.apparmor_restrict_unprivileged_userns`
-globally, which would lift the restriction for every program on the host.
-Review against your threat model before applying.
-
-### Cowork: "VM connection timeout after 60 seconds"
-
-If Cowork fails with a VM timeout, the KVM backend is selected but the guest VM cannot connect back to the host via vsock within the timeout window. Common causes:
-
-1. **First-boot initialization** — the guest VM may take longer than 60 seconds on first launch
-2. **vsock driver issues** — the host may be missing the `vhost_vsock` module (`sudo modprobe vhost_vsock`), or the guest initrd may lack `vmw_vsock_virtio_transport`
-
-**Fix:** Force the bubblewrap backend, which provides namespace-level isolation without a VM:
-
-```bash
-COWORK_VM_BACKEND=bwrap claude-desktop
-```
-
-See [configuration.md](configuration.md#cowork-backend) for how to make this permanent.
-
-### Cowork: virtiofsd not found (Fedora/RHEL)
-
-On Fedora and RHEL, `virtiofsd` installs to `/usr/libexec/virtiofsd` which is
-outside `$PATH`. The `--doctor` check detects it there automatically and will
-show `[PASS]`, but the KVM backend spawns `virtiofsd` by name at runtime and
-resolves it through `$PATH` only.
-
-**Fix:** Create a symlink so the KVM backend can find it at runtime:
-
-```bash
-sudo ln -s /usr/libexec/virtiofsd /usr/local/bin/virtiofsd
-```
-
-On Debian/Ubuntu, the same issue can occur with `/usr/lib/qemu/virtiofsd`.
-
-### Cowork: cross-device link error on Fedora tmpfs /tmp
-
-On Fedora, `/tmp` is a tmpfs by default. VM bundle downloads may fail with `EXDEV: cross-device link not permitted` when moving files from `/tmp` to `~/.config/Claude/`.
-
-**Fix:** Set `TMPDIR` to a directory on the same filesystem:
-
-```bash
-mkdir -p ~/.config/Claude/tmp
-TMPDIR=~/.config/Claude/tmp claude-desktop
-```
-
-Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` file.
 
 ### Cowork: ENAMETOOLONG on encrypted home (eCryptfs)
 
@@ -534,6 +483,24 @@ Credit: reported with detailed `--doctor` output by
 [@michelsfun](https://github.com/michelsfun); LUKS-volume workaround
 contributed by [@proffalken](https://github.com/proffalken) in
 [#590](https://github.com/aaddrick/claude-desktop-debian/issues/590).
+
+### Autostart ("Run on startup") launches without launcher policy
+
+When "Run on startup" is enabled, the official app writes its own XDG
+autostart entry pointing `Exec=` at the raw Electron binary (or, under
+AppImage, at the ephemeral `/tmp/.mount_claude*` path, which breaks
+entirely after the image unmounts). A login-time launch through that entry
+bypasses every launcher policy — Wayland backend selection, GPU-crash
+recovery, `--class`, `CLAUDE_PASSWORD_STORE`.
+
+**Fix:** launch Claude Desktop manually once. The launcher rewrites the
+autostart entry's `Exec=` to point at itself (`/usr/bin/claude-desktop`,
+or the AppImage path) on every start (AUTO-1, `heal_autostart_entry` in
+`scripts/launcher-common.sh`). The heal repeats per launch because the
+app rewrites the entry each time the Settings toggle is switched on; the
+toggle itself keeps working, since upstream's is-enabled check reads only
+file existence, never the `Exec` content. Entries pointing at a
+hand-rolled wrapper are left alone.
 
 ### Authentication Errors (401)
 

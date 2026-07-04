@@ -1,5 +1,12 @@
 # Cowork Mode Linux Implementation - Handover Document
 
+> **Archived (v3.0.0 rebase, 2026-07).** The patch-based Cowork stack
+> this document hands over was superseded by Anthropic's official
+> Linux build, which runs Cowork in its own KVM microVM. The bwrap
+> daemon and its patches are parked unwired under
+> `scripts/cowork-fallback/` as reference for the 3.1 non-KVM fallback
+> investigation (owner @RayCharlizard).
+
 ## Summary
 
 This work enables Claude Desktop's Cowork mode on Linux by patching the Electron app to use the Windows-style TypeScript VM client (instead of the macOS `@ant/claude-swift` native addon) and routing it through a Unix domain socket to a custom Node.js service daemon.

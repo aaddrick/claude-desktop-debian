@@ -2,23 +2,30 @@
 
 # Configuration
 
+The launcher reads a small set of opt-in `CLAUDE_*` environment variables; everything else — window frame, menu bar, close-to-tray, hardware acceleration — is a native setting in the official app.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (only Niri defaults to native Wayland). See [Wayland Support](#wayland-support). |
+| `CLAUDE_DISABLE_GPU` | unset (auto) | `1` = disable hardware acceleration (`--disable-gpu --disable-software-rasterizer`). `0` = suppress the sticky auto-recovery after a GPU-process crash. Unset = auto-apply the flags when the previous launch died with the GPU FATAL signature. See [GPU](#gpu-claude_disable_gpu). |
+| `CLAUDE_PASSWORD_STORE` | unset | Explicit escape hatch: when set, the value is passed verbatim as Chromium's `--password-store=`. When unset, the official build's `os_crypt` autodetection owns the decision. See [Password store](#password-store-claude_password_store). |
+| `CLAUDE_GTK_IM_MODULE` | unset | Propagated to `GTK_IM_MODULE` for Electron at startup; opt-in override for broken IBus/GTK input-method integration. See [Input method](#input-method-claude_gtk_im_module). |
+
+Since the v3.0.0 rebase onto the official Linux build, launcher policy is opt-in only: no default flag shadows an official code path. Several 2.x variables are therefore gone — see [Removed in v3.0.0](#removed-in-v300).
+
 ## MCP Configuration
 
 Model Context Protocol settings are stored in:
+
 ```
 ~/.config/Claude/claude_desktop_config.json
 ```
 
-## Environment Variables
+**Quit Claude Desktop before hand-editing this file, then reopen it.** The app rewrites the config on its own schedule while running, so edits made while it is open are clobbered on its next config write. `mcpServers` entries that were present at startup are loaded and survive restarts — the loss window is only hand-edits made against a running app.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (only Niri defaults to native Wayland). See [Wayland Support](#wayland-support) below. |
-| `CLAUDE_MENU_BAR` | unset (`auto`) | Controls menu bar behavior: `auto` (hidden, Alt toggles), `visible` / `1` (always shown), `hidden` / `0` (always hidden, Alt disabled). See [Menu Bar](#menu-bar) below. |
-| `CLAUDE_TITLEBAR_STYLE` | unset (`hybrid`) | Controls window decoration style: `hybrid` (system frame + in-app topbar), `native` (system frame, no in-app topbar), `hidden` (frameless WCO — broken on X11, kept for diagnostics). See [Titlebar Style](#titlebar-style) below. |
-| `COWORK_VM_BACKEND` | unset (auto-detect) | Force a specific Cowork isolation backend: `kvm` (full VM), `bwrap` (bubblewrap namespace sandbox), or `host` (no isolation). See [Cowork Backend](#cowork-backend) below. |
+Run `claude-desktop --doctor` to validate the JSON and see how many MCP servers are configured.
 
-### Wayland Support
+## Wayland Support
 
 On Wayland sessions the launcher picks a display backend per compositor:
 
@@ -47,172 +54,58 @@ export CLAUDE_USE_WAYLAND=1
 
 **Note:** portal-routed global shortcuts only work where the compositor's portal backend implements `org.freedesktop.portal.GlobalShortcuts`. Support is per-compositor and currently uneven — GNOME and KDE implement it (though the app-id requirement above — enforced for GlobalShortcuts since xdg-desktop-portal 1.21 — applies to all desktops, KDE included); wlroots compositors (Sway, Hyprland, Niri) and COSMIC currently ship no GlobalShortcuts backend, so the portal route is a no-op there until their portal gains one.
 
-### Menu Bar
+## GPU (CLAUDE_DISABLE_GPU)
 
-By default, the menu bar is hidden but can be toggled with the Alt key (`auto` mode). On KDE Plasma and other DEs where Alt is heavily used, this can cause layout shifts. Use `CLAUDE_MENU_BAR` to control the behavior:
+`CLAUDE_DISABLE_GPU=1` makes the launcher pass `--disable-gpu --disable-software-rasterizer` to the official binary — the same workaround as the in-app Settings hardware-acceleration toggle, persisted via the environment instead. When the variable is **unset** and the previous launch died with Chromium's GPU-process FATAL signature ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)), the launcher auto-applies the same flags and keeps them applied on subsequent launches (sticky recovery). Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback when retesting hardware acceleration after a driver fix. The flags are also applied automatically inside XRDP sessions. See [troubleshooting.md](troubleshooting.md#repeated-electron-crashes--gpu-process-fatal-583) for the full workflow.
 
-| Value | Menu visible | Alt toggles | Use case |
-|-------|-------------|-------------|----------|
-| unset / `auto` | No | Yes | Default — hidden, Alt toggles |
-| `visible` / `1` / `true` / `yes` / `on` | Yes | No | Stable layout, no shift on Alt |
-| `hidden` / `0` / `false` / `no` / `off` | No | No | Menu fully disabled, Alt free |
+## Password store (CLAUDE_PASSWORD_STORE)
+
+By default the launcher passes **no** `--password-store` flag: the official build's `os_crypt` autodetection owns the keyring decision (it deliberately declines weak persistence on some sessions rather than storing tokens unsafely). `CLAUDE_PASSWORD_STORE` is the documented escape hatch — when set, its value is passed verbatim as `--password-store=<value>` and overrides the autodetect:
 
 ```bash
-# Always show the menu bar (no layout shift on Alt)
-CLAUDE_MENU_BAR=visible claude-desktop
-
-# Or add to your environment permanently
-export CLAUDE_MENU_BAR=visible
+CLAUDE_PASSWORD_STORE=gnome-libsecret claude-desktop
 ```
 
-### Titlebar Style
+The doctor reports which mode is in effect (`Password store: upstream os_crypt autodetect (default)` or `forced to <value>`).
 
-Claude Desktop's web UI includes a custom topbar (hamburger menu, sidebar toggle, search, back/forward, Cowork ghost). On Windows / macOS the bundle gates rendering on `display-mode: window-controls-overlay`; on Linux a shim convinces the bundle to render anyway. Use `CLAUDE_TITLEBAR_STYLE` to choose the layout:
+## Input method (CLAUDE_GTK_IM_MODULE)
 
-| Value | Frame | In-app topbar | Window controls drawn by | Notes |
-|-------|-------|--------------|--------------------------|-------|
-| unset / `hybrid` | system | Yes | Desktop environment | **Default.** Stacked layout — DE-drawn titlebar on top, in-app topbar below. Topbar buttons clickable. |
-| `native` | system | No | Desktop environment | When the stacked layout looks wrong on your DE, or you don't need the in-app topbar. |
-| `hidden` | frameless | Yes | Chromium (WCO region) | Matches Windows / macOS upstream config. **Broken on Linux X11** — topbar buttons unresponsive due to a Chromium-level implicit drag region for `frame:false` windows. Kept for diagnostic / Wayland investigation; see [docs/learnings/linux-topbar-shim.md](learnings/linux-topbar-shim.md). |
+`CLAUDE_GTK_IM_MODULE` is propagated to `GTK_IM_MODULE` for Electron at startup, so a different GTK input module (e.g. `xim`) can be persisted without wrapping every launch. See [troubleshooting.md](troubleshooting.md#keyboard-input-doesnt-work-ibus--gtk-input-method) for symptoms and trade-offs.
 
-```bash
-# Switch to the bare native experience (no in-app topbar)
-CLAUDE_TITLEBAR_STYLE=native claude-desktop
+## Cowork (KVM-only)
 
-# Or add to your environment permanently
-export CLAUDE_TITLEBAR_STYLE=native
-```
+The official Linux client runs Cowork as a helper daemon driving QEMU/KVM — there is no bubblewrap or host-direct backend. The full stack the client needs on the host:
 
-This setting applies to the main window only. The Quick Entry and About windows are always frameless.
+| Component | Requirement | Doctor check |
+|-----------|-------------|--------------|
+| KVM | `/dev/kvm` present and read-write (`sudo usermod -aG kvm $USER` if not) | `_check_kvm` |
+| vsock | `/dev/vhost-vsock` present (`sudo modprobe vhost_vsock`) | `_check_vhost_vsock` |
+| QEMU | `qemu-system-x86_64` (or `qemu-system-aarch64` on arm64) on `PATH` | `_check_cowork_stack` |
+| Firmware | OVMF at one of the **hardcoded** probe paths: `/usr/share/OVMF/OVMF_CODE_4M.fd` or `/usr/share/OVMF/OVMF_CODE.fd` (arm64: `/usr/share/AAVMF/AAVMF_CODE.fd`). No env override exists — firmware installed at Fedora/Arch edk2 locations is not found without a compat symlink. Our RPM package's `%post` creates that symlink automatically (CW-1). | `_check_cowork_stack` |
+| virtiofsd | On `PATH` or at a well-known off-PATH location (`/usr/libexec/virtiofsd`, `/usr/lib/qemu/virtiofsd`, `/usr/lib/virtiofsd`) | `_check_cowork_stack` |
 
-Run `claude-desktop --doctor` to confirm the resolved titlebar style. The doctor output also flags `hidden` mode as broken on Linux and unrecognized values as fallbacks to `hybrid`.
+Run `claude-desktop --doctor` — the Cowork Mode section reports each component with a distro-specific install hint and a one-line readiness summary. A missing stack never fails the doctor; the app works fine without Cowork.
 
-## Cowork Backend
+The 2.x bubblewrap fallback is **not shipped**. The code is parked under `scripts/cowork-fallback/` for a 3.1 investigation; nothing there is executed, installed, or patched into any artifact. Setting `COWORK_VM_BACKEND=bwrap` does exactly one thing today: it makes `--doctor` run the legacy bwrap diagnostics for that parked path. Any other value is a 2.x knob the official client ignores.
 
-Cowork mode auto-detects the best available isolation backend:
+## Removed in v3.0.0
 
-| Priority | Backend | Isolation | Detection |
-|----------|---------|-----------|-----------|
-| 1 | bubblewrap | Namespace sandbox | `bwrap` installed and functional |
-| 2 | KVM | Full QEMU/KVM VM | `/dev/kvm` (r/w) + `qemu-system-x86_64` + `/dev/vhost-vsock` |
-| 3 | host | None (direct execution) | Always available |
+The v3.0.0 rebase deleted the patches that read these variables. The doctor's legacy-environment check warns when any of them is still set:
 
-To override auto-detection:
-
-```bash
-# Force bubblewrap (recommended if KVM times out)
-COWORK_VM_BACKEND=bwrap claude-desktop
-
-# Force host mode (no isolation)
-COWORK_VM_BACKEND=host claude-desktop
-
-# Make permanent via desktop entry override
-mkdir -p ~/.local/share/applications/
-cat > ~/.local/share/applications/claude-desktop.desktop << 'EOF'
-[Desktop Entry]
-Name=Claude
-Exec=env COWORK_VM_BACKEND=bwrap /usr/bin/claude-desktop %u
-Icon=claude-desktop
-Type=Application
-Terminal=false
-Categories=Office;Utility;
-MimeType=x-scheme-handler/claude;
-StartupWMClass=Claude
-EOF
-```
-
-Run `claude-desktop --doctor` to see which backend is selected and which dependencies are available.
-
-## Cowork Sandbox Mounts
-
-When using Cowork mode with the BubbleWrap (bwrap) backend, you can customize
-the sandbox mount points via `~/.config/Claude/claude_desktop_linux_config.json`
-(a dedicated config for the Linux port, separate from the official
-`claude_desktop_config.json`):
-
-```json
-{
-  "preferences": {
-    "coworkBwrapMounts": {
-      "additionalROBinds": ["/opt/my-tools", "/nix/store"],
-      "additionalBinds": ["/home/user/shared-data"],
-      "disabledDefaultBinds": ["/etc"]
-    }
-  }
-}
-```
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `additionalROBinds` | `(string \| {src, dst})[]` | Extra paths mounted read-only inside the sandbox. Accepts any absolute path except `/`, `/proc`, `/dev`, `/sys`. |
-| `additionalBinds` | `(string \| {src, dst})[]` | Extra paths mounted read-write inside the sandbox. **`src` is restricted to paths under `$HOME`** for security; `dst` is unconstrained. |
-| `disabledDefaultBinds` | `string[]` | Default mounts to skip. Cannot disable critical mounts (`/`, `/dev`, `/proc`). Use with caution: disabling `/usr` or `/etc` may break tools inside the sandbox. |
-
-### Distinct host/sandbox paths (`{src, dst}` form)
-
-By default a string entry like `"/opt/tools"` mounts the host path at the
-*same* path inside the sandbox. To map a host directory to a different path
-inside the sandbox, use the object form `{ "src": "...", "dst": "..." }`.
-
-The most common use case is making `/tmp` persistent across Bash tool calls.
-Each Bash invocation spawns a fresh `bwrap` with `--tmpfs /tmp` and
-`--die-with-parent`, so the default `/tmp` is wiped between calls. Mapping a
-host cache directory onto `/tmp` keeps state across calls without exposing the
-host's real `/tmp`:
-
-```json
-{
-  "preferences": {
-    "coworkBwrapMounts": {
-      "additionalBinds": [
-        { "src": "/home/user/.cache/claude-tmp", "dst": "/tmp" }
-      ],
-      "disabledDefaultBinds": ["/tmp"]
-    }
-  }
-}
-```
-
-`disabledDefaultBinds: ["/tmp"]` is required to remove the default
-`--tmpfs /tmp` so the bind takes effect.
-
-The string and object forms can be mixed freely in the same array.
-
-> **Caution:** Mapping `dst` onto a default RO mount (`/usr`, `/etc`, `/bin`,
-> `/sbin`, `/lib`, `/lib64`) silently replaces it inside the sandbox; you
-> almost never want this, and `--doctor` will warn if you do.
-
-### Security notes
-
-- Paths `/`, `/proc`, `/dev`, `/sys` (and their subpaths) are always rejected
-  for both `src` and `dst`
-- For read-write mounts (`additionalBinds`), `src` must be under your home
-  directory. `dst` has no `$HOME` constraint — that is the entire purpose of
-  the object form (e.g. mapping onto `/tmp`)
-- The core sandbox structure (`--tmpfs /`, `--unshare-pid`, `--die-with-parent`,
-  `--new-session`) cannot be modified
-- Mount order is enforced: user mounts cannot override security-critical
-  read-only mounts
-
-### Applying changes
-
-The daemon reads the configuration at startup. After editing the config file,
-restart the daemon:
-
-```bash
-pkill -f cowork-vm-service
-```
-
-The daemon will be automatically relaunched on the next Cowork session.
-
-### Diagnostics
-
-Run `claude-desktop --doctor` to see your custom mount configuration and any
-warnings about potentially dangerous settings.
+| 2.x variable | What replaces it |
+|--------------|------------------|
+| `CLAUDE_QUIT_ON_CLOSE` | Native setting: **Settings > General > System Tray** (on = close to tray, off = quit). |
+| `CLAUDE_MENU_BAR` | Native app setting; the official build keeps the menu bar on by default (the build's MB-1 tripwire watches for an upstream flip). |
+| `CLAUDE_TITLEBAR_STYLE` | Nothing — the official build owns its window frame; the topbar shim is gone. |
+| `CLAUDE_KEEP_AWAKE` | Nothing — the patch that read it was deleted with the Windows pipeline. |
+| `COWORK_VM_BACKEND` | Cowork is KVM-only. `bwrap` only switches `--doctor` to the parked-fallback diagnostics (see above); other values are ignored. |
 
 ## Application Logs
 
 Runtime logs are available at:
+
 ```
 ~/.cache/claude-desktop-debian/launcher.log
 ```
+
+Each launch also logs an `env={...}` block with the session and `CLAUDE_*` variables that drove the display and input decisions, so bug reports carry the context.

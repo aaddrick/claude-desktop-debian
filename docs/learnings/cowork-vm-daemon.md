@@ -1,5 +1,13 @@
 # Cowork VM Daemon — Learnings
 
+> [!NOTE]
+> **Status (v3.0.0 rebase, 2026-07): superseded on KVM hosts.** The
+> official client runs Cowork in a KVM microVM via its own `coworkd`;
+> the bwrap daemon described here is parked unwired under
+> [`scripts/cowork-fallback/`](../../scripts/cowork-fallback/) as
+> reference for the 3.1 non-KVM fallback investigation (owner
+> @RayCharlizard). Kept as the diagnosis record for that arc.
+
 ## Architecture Overview
 
 Cowork mode on Linux uses a custom Node.js daemon
@@ -123,60 +131,23 @@ Interpreting the log after a failure:
 
 ## Packaging — `app.asar.unpacked/` must be traversable by the run-time user
 
-The auto-launch fork is guarded by an existence check:
-
-```javascript
-const _d = _p.join(process.resourcesPath, "app.asar.unpacked",
-    "cowork-vm-service.js");
-if (_fs.existsSync(_d)) { /* fork daemon */ }
-```
-
-`fs.existsSync()` returns **false** when the directory can't be
-traversed, not only when the file is genuinely absent — and there is no
-`else`/`catch`, so the fork is skipped with zero log output. If the
-packaged `app.asar.unpacked/` ships as mode `0700` owned by the build
-uid (a restrictive build umask, plus `dpkg-deb` recording ownership
-verbatim when not run under fakeroot or `--root-owner-group`), the
-desktop user — a *different* uid — can't enter it. `existsSync` is
-false, the daemon never forks, and the client loops forever on `connect
-ENOENT`. The tell is that **both** the daemon log file and the
-`[cowork-autolaunch]` error line are absent: nothing was even attempted.
-
-Confirm what the run-time user actually sees, not what root sees:
-
-```bash
-svc=.../app.asar.unpacked/cowork-vm-service.js
-test -r "$svc" && echo OK || echo BLOCKED   # run as the desktop user
-stat -c '%A %U:%G' "$(dirname "$svc")"      # 0700 + foreign uid == broken
-```
-
-Fixed at the packaging boundary (not in the app code): `deb.sh` and
-`appimage.sh` normalize the staged tree to canonical modes (directories
-and executables `755`, other files `644`) before building, and the deb
-is built with `dpkg-deb --root-owner-group` so ownership is `root:root`.
-RPM has the same exposure through *file* modes: `%defattr(-, root,
-root, 0755)` forces directory modes in the payload, but the `-` in its
-first field preserves file modes verbatim from the buildroot, which
-`%install` populates with plain `cp -r` — so a `umask 077` build ships
-an unreadable `app.asar` and a non-executable electron binary (louder
-symptom: EACCES, since the forced `0755` keeps directories
-traversable). `rpm.sh` therefore normalizes file modes in `%install`
-too. To unstick an already-installed package without rebuilding:
-`sudo chmod -R o+rX /usr/lib/claude-desktop` (preserves the setuid
-`chrome-sandbox`).
+Generalized into [`packaging-permissions.md`](packaging-permissions.md) —
+the build-umask/ownership traps this bug uncovered and the current
+deb/rpm/AppImage normalization blocks that close them.
 
 ## Key Files
 
-- [`scripts/patches/cowork.sh`](../../scripts/patches/cowork.sh)
-  inside `patch_cowork_linux()` — Patch 6 (auto-launch + stdio pipe +
+- [`scripts/cowork-fallback/cowork.sh`](../../scripts/cowork-fallback/cowork.sh)
+  (parked; was `scripts/patches/cowork.sh`) inside
+  `patch_cowork_linux()` — Patch 6 (auto-launch + stdio pipe +
   rate limiter) and Patch 6b (reinstall array extension). Search for
   `# Patch 6` anchors; line numbers drift between upstream releases.
-- [`scripts/cowork-vm-service.js`](../../scripts/cowork-vm-service.js)
-  lines ~49-86 — log infrastructure, including `logLifecycle()`.
-- [`scripts/cowork-vm-service.js`](../../scripts/cowork-vm-service.js)
-  lines ~2399-2440 — signal handlers and entry point.
+- [`scripts/cowork-fallback/cowork-vm-service.js`](../../scripts/cowork-fallback/cowork-vm-service.js)
+  (parked) lines ~49-86 — log infrastructure, including `logLifecycle()`.
+- [`scripts/cowork-fallback/cowork-vm-service.js`](../../scripts/cowork-fallback/cowork-vm-service.js)
+  (parked) lines ~2399-2440 — signal handlers and entry point.
 - [`scripts/launcher-common.sh`](../../scripts/launcher-common.sh) — `--doctor` checks.
-- [`docs/cowork-linux-handover.md`](../cowork-linux-handover.md) — architecture reference.
+- [`docs/archive/cowork-linux-handover.md`](../archive/cowork-linux-handover.md) — architecture reference (archived).
 
 ## Diagnostic Commands
 

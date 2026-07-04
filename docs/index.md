@@ -10,7 +10,7 @@ claude-desktop --doctor
 
 ## Installation & building
 
-- [**Building from source**](building.md) — `./build.sh`, format flags, the Electron mirror env vars
+- [**Building from source**](building.md) — `./build.sh`, format flags, how the official `.deb` is pinned and extracted
 - [**Configuration**](configuration.md) — MCP config file locations, env vars, where state lives
 - [**Troubleshooting**](troubleshooting.md) — symptom-keyed fixes, `--doctor` warning index
 
@@ -24,16 +24,18 @@ claude-desktop --doctor
 
 Hard-won knowledge from debugging real bugs. Consult before working on the related subsystem; add a new entry when you discover something non-obvious that would save the next contributor (human or AI) significant time.
 
-- [**Official-deb rebase verification**](learnings/official-deb-rebase-verification.md) — patch-necessity matrix against the official Linux `.deb` and the install-layout facts the v3.0.0 rebase depends on
-- [**Patching minified JavaScript**](learnings/patching-minified-js.md) — anchor selection, the `\w` vs `$` capture trap, beautified false-negatives, idempotency guards
+- [**Official-deb rebase verification**](learnings/official-deb-rebase-verification.md) — patch-necessity matrix against the official Linux `.deb`, the install-layout facts the v3.0.0 rebase depends on, and the live pre-ship open-items checklist
+- [**Patching minified JavaScript**](learnings/patching-minified-js.md) — anchor selection, the `\w` vs `$` capture trap, beautified false-negatives, idempotency guards; still load-bearing for the two survivor patches
+- [**Cross-build: host vs target**](learnings/cross-build-host-vs-target.md) — tools that run during the build key on `uname -m`, artifacts key on `--arch`; the `Exec format error` class caught twice in the CI cutover
+- [**Packaging permissions**](learnings/packaging-permissions.md) — restrictive-umask traps across deb/rpm/AppImage (`app.asar.unpacked` traversability, `--root-owner-group`, the rpm `%defattr` file-mode trap)
 - [**APT/DNF Worker architecture**](learnings/apt-worker-architecture.md) — Cloudflare Worker + GitHub Releases redirect chain, credential ownership, heartbeat runbook
-- [**Nix packaging**](learnings/nix.md) — NixOS specifics, Electron resource path resolution, testing without NixOS
-- [**Linux topbar shim**](learnings/linux-topbar-shim.md) — why the in-app topbar is missing on Linux and the four gates that hide it
-- [**Tray rebuild race**](learnings/tray-rebuild-race.md) — KDE SNI re-registration race; the in-place `setImage`/`setContextMenu` fast path
+- [**Nix packaging**](learnings/nix.md) — the derivation stub and its official-tree rework design, why the resource-path hack must not return, testing without NixOS
+- [**Wayland GlobalShortcuts portal**](learnings/wayland-global-shortcuts-portal.md) — why Quick Entry's hotkey is focus-bound on GNOME Wayland and the `CLAUDE_USE_WAYLAND` tri-state
+- [**Tray rebuild race**](learnings/tray-rebuild-race.md) — KDE SNI re-registration race; validated — the official build converged on the same in-place fix
 - [**Plugin install flow**](learnings/plugin-install.md) — Anthropic & Partners plugin gate logic and DevTools recipes
-- [**Cowork VM daemon**](learnings/cowork-vm-daemon.md) — lifecycle, respawn logic, crash diagnosis
+- [**Cowork VM daemon**](learnings/cowork-vm-daemon.md) — the 2.x bwrap daemon; superseded on KVM hosts, reference for the 3.1 fallback investigation
 - [**MCP double-spawn**](learnings/mcp-double-spawn.md) — why stdio MCPs spawn twice with chat + Code/Agent panels open
-- [**Test harness — Electron hooks**](learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps get bypassed by the frame-fix Proxy
+- [**Test harness — Electron hooks**](learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps were bypassed by the (now-deleted) frame-fix Proxy; the prototype-hook pattern that remains correct
 - [**Test harness — AX-tree walker**](learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker
 
 ## Testing
@@ -47,7 +49,7 @@ Hard-won knowledge from debugging real bugs. Consult before working on the relat
 ## Operations
 
 - [**Issue triage bot**](issue-triage/README.md) — how the GitHub Actions issue-triage workflow works
-- [**Upstream bug reports**](upstream-reports/) — bugs we've filed against the upstream Electron app
+- [**Upstream bug reports**](upstream-reports/README.md) — the pending pile: drafts and filing status for bugs that belong upstream (Anthropic or Electron)
 
 ## Style guides
 
@@ -61,6 +63,9 @@ Hard-won knowledge from debugging real bugs. Consult before working on the relat
 - [**AGENTS.md**](../AGENTS.md) — vendor-neutral mirror of `CLAUDE.md` for non-Claude AI tools
 - [**SECURITY.md**](../SECURITY.md) — private vulnerability reporting
 
-## Cowork-Linux handover (historical)
+## Archive
 
-- [**Cowork-Linux handover**](cowork-linux-handover.md) — record of the original cowork Linux work, kept for the historical context. Day-to-day cowork docs live in [`learnings/cowork-vm-daemon.md`](learnings/cowork-vm-daemon.md).
+Docs whose subject no longer ships, kept with an obsolescence header because the diagnosis work is still worth reading.
+
+- [**Linux topbar shim**](archive/linux-topbar-shim.md) — the four topbar gates and the WCO/implicit-drag-region investigation; the shim was deleted in v3.0.0 (official builds render the topbar on Linux), and its three Electron bugs moved to [`upstream-reports/`](upstream-reports/README.md)
+- [**Cowork-Linux handover**](archive/cowork-linux-handover.md) — record of the original patch-based cowork Linux work, superseded by the official KVM path; the bwrap daemon is parked under `scripts/cowork-fallback/`

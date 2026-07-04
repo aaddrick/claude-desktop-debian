@@ -101,7 +101,9 @@ patches only" charter.
 
 ## What's Already Verified Clean
 
-- All 7 patches in `scripts/patches/*.sh` — zero references to
+- The asar patches in `scripts/patches/*.sh` (all 7 at the time of
+  this diagnosis; only quick-window and org-plugins survive the
+  v3.0.0 rebase) — zero references to
   MCP, mcpServer, LocalSessions, LocalAgentModeSessions,
   transportToClient, MessageChannelMain, n2t, hZ, oUt.
 - `scripts/launcher-common.sh` — no MCP or config-load logic.

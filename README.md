@@ -1,8 +1,12 @@
 # Claude Desktop for Linux
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), distribution-agnostic AppImages, an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch Linux, and a Nix flake for NixOS.
+This project repackages Claude Desktop for Linux formats Anthropic doesn't ship themselves: `.rpm` (Fedora/RHEL), distribution-agnostic AppImages, and an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch. A Nix flake is part of the project too, though it's temporarily out of service on this release (see the Nix section).
 
-**Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
+On 2026-06-30 Anthropic shipped a first-party Claude Desktop for Linux beta, distributed as a `.deb` (amd64 and arm64) from their own APT repository. Since v3.0.0, this project repackages that official Linux `.deb`. It no longer repackages the Windows installer.
+
+If you're on Debian or Ubuntu, Anthropic's own package may be all you need. On a plain `.deb` target we don't add much anymore. What this project still adds is the coverage the official release doesn't have, plus a launcher and a `--doctor` for the Linux environment quirks. The [Installation](#installation) section lays out what's ours and what's upstream.
+
+**Note:** This is an unofficial repackaging project. For official support, visit [Anthropic's website](https://www.anthropic.com). For issues with the packaging or the Linux launcher, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) here.
 
 **Documentation:** Full docs at [`docs/index.md`](docs/index.md). Release history in [`CHANGELOG.md`](CHANGELOG.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`SECURITY.md`](SECURITY.md).
 
@@ -16,13 +20,12 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 
 ## Features
 
-- **Native Linux Support**: Run Claude Desktop without virtualization or Wine
-- **MCP Support**: Full Model Context Protocol integration
-  Configuration file location: `~/.config/Claude/claude_desktop_config.json`
-- **System Integration**:
-  - Global hotkey support (Ctrl+Alt+Space) - works on X11 and Wayland (via XWayland)
-  - System tray integration
-  - Desktop environment integration
+- **Official app, extra formats**: repackages Anthropic's official Linux `.deb` into `.rpm`, AppImage, and AUR builds.
+- **MCP support**: full Model Context Protocol integration. Config lives at `~/.config/Claude/claude_desktop_config.json` (see [Configuration](#configuration)).
+- **Launcher for Linux quirks**: opt-in native Wayland (`CLAUDE_USE_WAYLAND=1`), GPU-crash auto-recovery, XRDP detection, IM-module override, and autostart-entry healing.
+- **`--doctor` diagnostics**: checks the display server, sandbox permissions, MCP config, stale locks, the KVM/Cowork stack, and official-version drift.
+- **Cowork on Linux**: runs when KVM (hardware virtualization) is available. The doctor reports readiness.
+- **System integration**: global hotkey (Ctrl+Alt+Space) on X11 and Wayland, system tray, and desktop-environment integration.
 
 ### Screenshots
 
@@ -35,6 +38,24 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 </p>
 
 ## Installation
+
+Anthropic serves the `.deb`. We serve everything else. Here's the split:
+
+| Format | Who serves it |
+|--------|---------------|
+| `.deb` (Debian/Ubuntu, amd64 + arm64) | Anthropic's official APT repo. Ours mirrors it with the launcher + doctor added. |
+| `.rpm` (Fedora/RHEL) | This project. |
+| AppImage (any distro) | This project. |
+| AUR (Arch) | This project (builds the AppImage). |
+| Nix flake (NixOS) | This project. Temporarily broken on v3.0.0 — see below. |
+
+On top of packaging, every format we build carries:
+
+- **Our launcher.** Opt-in native Wayland via `CLAUDE_USE_WAYLAND=1`, GPU-crash auto-recovery, XRDP detection, IM-module override, and autostart-entry healing.
+- **`claude-desktop --doctor`.** Diagnostics for the KVM/Cowork stack, official-version drift, name collisions, and config problems.
+- **Packaging fixes.** The RPM firmware compat symlink Cowork needs, and the Ubuntu 24.04+ AppArmor profile.
+
+The app itself is the official `app.asar`, shipped byte-identical except for two small Linux-gap patches: a Quick Entry focus fix for KDE (pending upstream) and an org-plugins path fix Linux is missing upstream.
 
 ### Using APT Repository (Debian/Ubuntu - Recommended)
 
@@ -101,6 +122,8 @@ The AUR package installs the AppImage build of Claude Desktop.
 
 ### Using Nix Flake (NixOS)
 
+> **⚠️ Status: temporarily broken on v3.0.0.** The rebase left `nix/claude-desktop.nix` as a deliberate stub while the flake is reworked for the official `.deb` layout (owner [@typedrat](https://github.com/typedrat)). `nix build` fails until that lands. The snippets below are correct for when it returns — hold off installing via Nix for now, or pin an earlier tag.
+
 Install directly from the flake:
 
 ```bash
@@ -146,11 +169,13 @@ Model Context Protocol settings are stored in:
 ~/.config/Claude/claude_desktop_config.json
 ```
 
+**Quit Claude Desktop before you hand-edit this file, then reopen it.** The app rewrites its own config while running, so edits you make with the app open get overwritten the next time it writes. Quit first, edit, then relaunch. Servers loaded at startup survive restarts fine — this only bites manual edits made against a running app.
+
 For additional configuration options including environment variables and Wayland support, see [docs/configuration.md](docs/configuration.md).
 
 ## Troubleshooting
 
-Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
+Run `claude-desktop --doctor` for built-in diagnostics. It checks the usual suspects: display server, sandbox permissions, MCP config, stale locks, and more. It also reports Cowork readiness. Cowork on Linux runs on a KVM-backed VM, so the doctor reports which of its dependencies (KVM, QEMU, OVMF firmware, vhost-vsock, virtiofsd) are installed or missing.
 
 For additional troubleshooting, uninstallation instructions, and log locations, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
