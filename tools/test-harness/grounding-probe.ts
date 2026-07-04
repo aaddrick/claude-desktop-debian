@@ -134,9 +134,9 @@ async function capture(
 	`);
 
 	// WebContents inventory — proves which BrowserViews / BrowserWindows
-	// exist at probe time. Note: BrowserWindow.getAllWindows() returns
-	// 0 because frame-fix-wrapper substitutes the class (see
-	// inspector.ts header comment) — webContents registry stays intact.
+	// exist at probe time. Uses the harness convention (see
+	// inspector.ts header): getAllWebContents(), never
+	// BrowserWindow.getAllWindows().
 	const webContents = await client.evalInMain<
 		Array<{ id: number; url: string; type: string }>
 	>(`
@@ -162,10 +162,10 @@ async function capture(
 		}));
 	`);
 
-	// Autostart resolution — T09. On Linux Electron's openAtLogin is a
-	// documented no-op; our wrapper installs an XDG Autostart shim
-	// (frame-fix-wrapper.js:376). The empirical check confirms which
-	// path is active.
+	// Autostart resolution — T09. The 2.x wrapper's XDG Autostart shim
+	// is gone since v3.0.0; whatever autostart behavior exists now
+	// comes from the official build / bundled Electron itself. The
+	// empirical check confirms which path (if any) is active.
 	const loginItems = await client.evalInMain<{
 		openAtLogin: boolean;
 		wasOpenedAtLogin?: boolean;

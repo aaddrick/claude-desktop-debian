@@ -1,0 +1,40 @@
+% ===== COVER =====
+\AddToShipoutPictureBG*{%
+  \AtPageLowerLeft{%
+    \begin{tikzpicture}[remember picture,overlay]
+      \shade[top color=base900, bottom color=base700, middle color=base800]
+        (current page.north west)
+        rectangle ([yshift=-150mm]current page.north east);
+      \begin{scope}
+        \clip (current page.north west) rectangle ([yshift=-150mm]current page.north east);
+        \shade[inner color=accent, outer color=base900, opacity=0.18]
+          ([xshift=-14mm,yshift=8mm]current page.north east) circle (62mm);
+      \end{scope}
+    \end{tikzpicture}}}
+\thispagestyle{reportftr}
+\vspace*{26mm}
+{\color{white}%
+  {\heavy\fontsize{20}{22}\selectfont aaddrick/claude-desktop-debian}\par
+  \vspace{18mm}
+  {\mono\footnotesize\addfontfeatures{LetterSpace=11.0}\textcolor{white!82}{PATCH SUITE DOSSIER / PROJECT HISTORY}}\par
+  \vspace{10pt}
+  {\heavy\fontsize{33}{36}\selectfont The Legacy Patch Suite: \\[2pt] A Natural History\par}
+  \vspace{11pt}
+  {\fontsize{13}{18}\selectfont\textcolor{white!88}{\parbox{135mm}{Every adaptation the repackage applies on \code{main}, from acquiring the upstream bytes to patching the bundle to shipping the package: why each exists, how it survived eighteen months of upstream re-minification, and what the official Linux build and the v3.0.0 rebase do to it.}}\par}
+}
+\vspace*{0pt}\vspace{16mm}
+
+\begin{covermeta}
+\metarow{Document}{CDL-ANT-0009 \textperiodcentered{} Rev B \textperiodcentered{} RELEASED}
+\metarow{Subject}{Dossier of the legacy Linux adaptation layer on \code{main}, unit by unit}
+\metarow{Focus}{Mechanism, origin, revision history, and fate under the official-.deb rebase for every unit}
+\metarow{Scope}{\code{main} @ \code{0c4e73f} (upstream 1.17377.1) vs the official \code{claude-desktop\_1.17377.2\_amd64.deb}; rebase branch \code{rebase/official-deb} @ \code{cafb4cc}}
+\metarow{Tools}{\code{git} pickaxe + \code{gh} issue/PR archaeology, CDL-ANT-0008 byte checks, a repo-wide environment catalog, and an 18-unit contrarian-gated research workflow}
+\metarow{Headline}{Ten of eighteen units die in the v3.0.0 rebase, redundant against the official Linux build; three survive, one is parked, one awaits a reproduction, and three are reworked rather than removed.}
+\metarow{Author}{Claude Fable 5 \textperiodcentered{} July 3, 2026}
+\metarow{Reviewed by}{Aaddrick Williams}
+\metarow{Rev B}{Live-hardware settlement of the addendum's open checks, July 3--4, 2026 (\S21)}
+\end{covermeta}
+\clearpage
+
+% ===== BODY =====

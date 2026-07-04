@@ -1,145 +1,162 @@
 #===============================================================================
-# Top-level app.asar patch orchestration: extract, wrap entry point, stub
-# native module, copy i18n and tray icons, then invoke per-feature patches.
+# app.asar patch orchestration for the official Linux tree.
+#
+# active_patches lists the asar patch functions that still justify
+# themselves against the official bytes — the patch-zero contract: the
+# default verdict for any patch is delete, and when the array is empty
+# the official app.asar ships byte-identical (no extract, no repack).
+#
+# Each entry is a function sourced from scripts/patches/*.sh that
+# operates on app.asar.contents/.vite/build/index.js relative to CWD;
+# patch_app_asar runs them with CWD = $app_staging_dir/resources.
 #
 # Sourced by: build.sh
 # Sourced globals:
-#   claude_extract_dir, app_staging_dir, asar_exec, source_dir
-# Modifies globals: (none directly — delegated patches may mutate electron_var)
+#   app_staging_dir, asar_exec, work_dir, project_root, WM_CLASS
+# Modifies globals: (none)
 #===============================================================================
 
-patch_app_asar() {
-	echo 'Processing app.asar...'
-	cp "$claude_extract_dir/lib/net45/resources/app.asar" "$app_staging_dir/" || exit 1
-	cp -a "$claude_extract_dir/lib/net45/resources/app.asar.unpacked" "$app_staging_dir/" || exit 1
-	cd "$app_staging_dir" || exit 1
-	"$asar_exec" extract app.asar app.asar.contents || exit 1
+# Survivor candidates per docs/learnings/official-deb-rebase-verification.md:
+#   patch_quick_window     — Electron-on-KDE stale-focus bug: official
+#                            bundle still hides without blur() (pending
+#                            Plasma repro; drop if it doesn't reproduce)
+#   patch_org_plugins_path — upstream platform switch has no linux case,
+#                            so MDM org plugins are dead on Linux without
+#                            this (filed upstream)
+active_patches=(
+	patch_quick_window
+	patch_org_plugins_path
+)
 
-	# Frame fix wrapper
-	echo 'Creating BrowserWindow frame fix wrapper...'
-	local original_main
-	original_main=$(node -e "const pkg = require('./app.asar.contents/package.json'); console.log(pkg.main);")
-	echo "Original main entry: $original_main"
+# AU-1/MB-1: build-time tripwires on upstream behavior we deleted
+# patches for. Each deleted patch used to WARN at patch time when its
+# anchor moved; with the patches gone, an upstream flip would land
+# silently. Grep the asar directly (asar stores file contents
+# uncompressed) so the check also runs in patch-zero mode, where the
+# archive is never extracted.
+#
+#   apt_channel_pending — the official updater early-returns on this
+#     marker while the APT channel is pending (decision D-001). If it
+#     disappears, upstream turned on self-updating, which fights the
+#     package manager — the 2.x autoUpdater-noop question is live again.
+#   menuBarEnabled:!0   — the settings default that keeps the menu bar
+#     on. If it disappears, upstream flipped the default the deleted
+#     menuBar patch used to enforce.
+#
+# Patterns tolerate optional whitespace so a beautified or re-minified
+# bundle still matches (see CLAUDE.md, Working with Minified JavaScript).
+_check_upstream_tripwires() {
+	local asar_path="$1"
 
-	cp "$source_dir/scripts/frame-fix-wrapper.js" app.asar.contents/frame-fix-wrapper.js || exit 1
-
-	cat > app.asar.contents/frame-fix-entry.js << EOFENTRY
-// Load frame fix first
-require('./frame-fix-wrapper.js');
-// Then load original main
-require('./${original_main}');
-EOFENTRY
-
-	# BrowserWindow frame/titleBarStyle patching is handled at runtime by
-	# frame-fix-wrapper.js via a Proxy on require('electron'). No sed patches
-	# needed — the wrapper detects popup vs main windows by their options and
-	# applies frame:true/false accordingly.
-
-	# Update package.json
-	echo 'Modifying package.json to load frame fix and add node-pty...'
-	local desktop_name='claude-desktop.desktop'
-	if [[ ${build_format:-} == 'appimage' ]]; then
-		desktop_name='io.github.aaddrick.claude-desktop-debian.desktop'
+	if ! LC_ALL=C grep -aq 'apt_channel_pending' "$asar_path"; then
+		echo 'Tripwire (AU-1): "apt_channel_pending" is gone from the' \
+			'official bundle — upstream may have enabled the' \
+			'autoupdater. Re-evaluate before shipping (see' \
+			'docs/decisions.md D-001).' >&2
+		exit 1
 	fi
-	node -e "
-const fs = require('fs');
-const pkg = require('./app.asar.contents/package.json');
-pkg.originalMain = pkg.main;
-pkg.main = 'frame-fix-entry.js';
-pkg.desktopName = process.argv[1];
-pkg.optionalDependencies = pkg.optionalDependencies || {};
-pkg.optionalDependencies['node-pty'] = '^1.0.0';
-fs.writeFileSync('./app.asar.contents/package.json', JSON.stringify(pkg, null, 2));
-console.log('Updated package.json: main entry, desktopName, and node-pty dependency');
-" "$desktop_name"
+
+	if ! LC_ALL=C grep -aqE 'menuBarEnabled:[[:space:]]*!0' "$asar_path"
+	then
+		echo 'Tripwire (MB-1): "menuBarEnabled:!0" is gone from the' \
+			'official bundle — upstream may have flipped the menu-bar' \
+			'default. Re-evaluate before shipping.' >&2
+		exit 1
+	fi
+
+	echo 'Upstream tripwires clear (autoupdater pending, menu bar on)'
+}
+
+# Read one field out of the asar's package.json without a full extract.
+_asar_package_json_field() {
+	local field="$1"
+	local asar_path="$2"
+	local meta_dir="$work_dir/asar-meta"
+
+	rm -rf "$meta_dir"
+	mkdir -p "$meta_dir" || return 1
+	(cd "$meta_dir" && "$asar_exec" extract-file "$asar_path" package.json) \
+		|| return 1
+	node -e 'console.log(require(process.argv[1])[process.argv[2]] ?? "")' \
+		"$meta_dir/package.json" "$field"
+}
+
+patch_app_asar() {
+	section_header 'Patch app.asar'
+
+	local resources_dir="$app_staging_dir/resources"
+	if [[ ! -f "$resources_dir/app.asar" ]]; then
+		echo "No app.asar at $resources_dir — upstream layout changed?" >&2
+		exit 1
+	fi
 
 	# Fail fast if upstream changed productName — a mismatch silently
 	# breaks StartupWMClass in every .desktop file we ship.
 	local product_name
-	product_name=$(node -e \
-		"console.log(require('./app.asar.contents/package.json').productName)")
+	product_name=$(_asar_package_json_field productName \
+		"$resources_dir/app.asar")
 	if [[ $product_name != "$WM_CLASS" ]]; then
 		echo "Error: upstream productName '$product_name' != WM_CLASS" \
 			"'$WM_CLASS' — update WM_CLASS in build.sh" >&2
 		exit 1
 	fi
+	echo "productName '$product_name' matches WM_CLASS"
 
-	# Create stub native module
-	echo 'Creating stub native module...'
-	mkdir -p app.asar.contents/node_modules/@ant/claude-native || exit 1
-	cp "$source_dir/scripts/claude-native-stub.js" \
-		app.asar.contents/node_modules/@ant/claude-native/index.js || exit 1
+	# Runs against the pristine bytes, before any patch touches them.
+	_check_upstream_tripwires "$resources_dir/app.asar"
 
-	mkdir -p app.asar.contents/resources/i18n || exit 1
-	cp "$claude_extract_dir/lib/net45/resources/"*-*.json app.asar.contents/resources/i18n/ || exit 1
+	if (( ${#active_patches[@]} == 0 )); then
+		echo 'active_patches is empty — shipping the official app.asar' \
+			'byte-identical (patch-zero)'
+		section_footer 'Patch app.asar'
+		return 0
+	fi
 
-	# Copy tray icons into asar so both packaged (process.resourcesPath)
-	# and unpackaged (app.getAppPath()) code paths can find them
-	cp "$claude_extract_dir/lib/net45/resources/Tray"* app.asar.contents/resources/ 2>/dev/null || \
-		echo 'Warning: No tray icon files found for asar inclusion'
+	echo "Active asar patches: ${active_patches[*]}"
+	cd "$resources_dir" || exit 1
+	"$asar_exec" extract app.asar app.asar.contents || exit 1
 
-	# Extract electron module variable name for tray patches
-	extract_electron_variable
+	local patch_fn
+	for patch_fn in "${active_patches[@]}"; do
+		"$patch_fn" || exit 1
+	done
 
-	# Fix incorrect nativeTheme variable references
-	fix_native_theme_references
+	# Repack, preserving upstream's unpacked set exactly. The unpack
+	# expression is derived from the shipped app.asar.unpacked tree
+	# rather than hardcoded, so upstream can add native helpers without
+	# breaking the build. asar pack honors only ONE --unpack expression,
+	# so every unpacked path is folded into a single brace glob.
+	local unpack_files unpack_glob
+	mapfile -t unpack_files < <(
+		cd app.asar.unpacked && find . -type f | sed 's|^\./||' | sort
+	)
+	if (( ${#unpack_files[@]} == 0 )); then
+		echo 'Warning: official app.asar.unpacked is empty —' \
+			'packing without --unpack'
+		"$asar_exec" pack app.asar.contents app.asar || exit 1
+	else
+		unpack_glob=$(IFS=,; echo "${unpack_files[*]}")
+		(( ${#unpack_files[@]} > 1 )) && unpack_glob="{$unpack_glob}"
+		"$asar_exec" pack app.asar.contents app.asar \
+			--unpack "$unpack_glob" || exit 1
 
-	# Patch tray menu handler
-	patch_tray_menu_handler
+		# The repack rewrote app.asar.unpacked; diverging from the
+		# upstream set means a native helper got inlined (or dropped)
+		# and would fail at runtime.
+		local repacked_files
+		mapfile -t repacked_files < <(
+			cd app.asar.unpacked && find . -type f | sed 's|^\./||' | sort
+		)
+		if [[ "${unpack_files[*]}" != "${repacked_files[*]}" ]]; then
+			echo 'Error: repacked app.asar.unpacked diverges from the' \
+				'upstream unpacked set' >&2
+			exit 1
+		fi
+	fi
 
-	# Patch tray icon selection
-	patch_tray_icon_selection
+	# The extracted contents must not leak into the packaged tree.
+	rm -rf app.asar.contents
 
-	# Inject fast-path that updates the tray icon in place on theme
-	# changes (avoids the KDE duplicate-SNI race on destroy+recreate)
-	patch_tray_inplace_update
-
-	# Patch menuBarEnabled to default to true when unset
-	patch_menu_bar_default
-
-	# Patch quick window
-	patch_quick_window
-
-	# Add Linux Claude Code support
-	patch_linux_claude_code
-
-	# Reject .asar paths in the directory-check helper so Electron's
-	# ASAR VFS shim doesn't misidentify app.asar as a folder and
-	# trigger false Cowork dispatch (#383, #622, #632).
-	patch_asar_path_filter
-
-	# Reject .asar paths in the argv file-drop collector so the
-	# existsSync branch doesn't dispatch app.asar as a file drop,
-	# triggering a permission prompt on every window reopen (#383, #622).
-	patch_asar_argv_file_drop_guard
-
-	# Patch Cowork mode for Linux (TypeScript VM client + Unix socket)
-	patch_cowork_linux
-
-	# Add Linux org-plugins path for MDM-managed plugin marketplace
-	patch_org_plugins_path
-
-	# Inject WCO shim into the BrowserView preload so claude.ai's
-	# desktop topbar renders on Linux. The shim spoofs the bundle's
-	# isWindows() UA check (load-bearing) plus matchMedia and
-	# windowControlsOverlay (defensive). See
-	# docs/learnings/linux-topbar-shim.md.
-	patch_wco_shim
-
-	# Preserve externally-added mcpServers across config writes (#400)
-	patch_config_write_merge
-
-	# Reject .asar paths in addTrustedFolder to reduce spurious config
-	# writes that amplify the stale-cache overwrite bug (#400)
-	patch_asar_trusted_folder_guard
-
-	# Filter .asar paths from --add-dir dispatch and session restore
-	# so corrupted pre-#640 sessions cannot crash local agent mode (#649)
-	patch_asar_additional_dirs_guard
-
-	# Copy cowork VM service daemon for Linux Cowork mode
-	echo 'Installing cowork VM service daemon...'
-	cp "$source_dir/scripts/cowork-vm-service.js" \
-		app.asar.contents/cowork-vm-service.js || exit 1
-	echo 'Cowork VM service daemon installed'
+	cd "$project_root" || exit 1
+	section_footer 'Patch app.asar'
 }

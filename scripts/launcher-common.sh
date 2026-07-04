@@ -16,8 +16,19 @@ setup_logging() {
 
 # Log a message to the log file
 # Usage: log_message "message"
+#
+# LOG-1: never persist OAuth authorization codes. A relaunch through the
+# login redirect carries claude://login/...?code=<secret> in argv, which
+# reaches both the "Arguments:" and "Executing:" lines. Strip the query
+# string of any claude://login token before writing, keeping the path for
+# context. Guarded so the common case pays no subprocess.
 log_message() {
-	echo "$1" >> "$log_file"
+	local msg="$1"
+	if [[ "$msg" == *claude://login* ]]; then
+		msg=$(printf '%s' "$msg" \
+			| sed -E 's#(claude://login[^ ?]*)\?[^ ]*#\1?<redacted>#g')
+	fi
+	echo "$msg" >> "$log_file"
 }
 
 # Log the session/IME environment vars that drive display and input
@@ -45,7 +56,6 @@ log_session_env() {
 		XMODIFIERS \
 		QT_IM_MODULE \
 		CLAUDE_USE_WAYLAND \
-		CLAUDE_TITLEBAR_STYLE \
 		CLAUDE_PASSWORD_STORE \
 		CLAUDE_GTK_IM_MODULE \
 		CLAUDE_DISABLE_GPU
@@ -110,72 +120,6 @@ check_display() {
 	[[ -n $DISPLAY || -n $WAYLAND_DISPLAY ]]
 }
 
-# Resolve CLAUDE_TITLEBAR_STYLE to one of {hybrid,native,hidden},
-# defaulting to 'hybrid' when unset or invalid. Echoed (not exported)
-# so callers can branch on it without polluting the environment.
-# 'hybrid' is the recommended Linux experience: native OS frame +
-# in-app topbar via the wco-shim. 'hidden' is upstream's frameless
-# WCO config; broken on Linux X11 (clicks unresponsive) but kept for
-# Wayland/diagnostic comparison.
-_resolve_titlebar_style() {
-	local raw="${CLAUDE_TITLEBAR_STYLE:-hybrid}"
-	raw="${raw,,}"
-	case "$raw" in
-		hybrid|hidden|native) echo "$raw" ;;
-		*) echo 'hybrid' ;;
-	esac
-}
-
-# Determine the best available Chromium password-store backend.
-#
-# Electron's safeStorage API and Chromium's cookie encryption both rely
-# on the OS credential store selected by --password-store. Without a
-# working store safeStorage.isEncryptionAvailable() returns false, OAuth
-# tokens are silently discarded on exit, and users must re-authenticate
-# on every launch (Cookies file stays 0 bytes). Fixes: #593
-#
-# Detection order (first match wins):
-#   CLAUDE_PASSWORD_STORE env var  — explicit user override
-#   kwallet6                        — KDE Plasma 6 keyring
-#   gnome-libsecret                 — GNOME Keyring / libsecret bridge
-#   basic                           — fixed internal key (always works)
-#
-# With 'basic' the stored data is encrypted with a fixed key. Tokens
-# remain protected by Linux filesystem permissions on ~/.config/Claude/.
-#
-# Assumes a D-Bus session bus is available; this is true for any
-# graphical login session.
-_detect_password_store() {
-	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
-		echo "$CLAUDE_PASSWORD_STORE"
-		return
-	fi
-
-	# kwallet6: KDE Plasma 6 keyring
-	if dbus-send --session --print-reply --reply-timeout=1000 \
-		--dest=org.kde.kwalletd6 \
-		/modules/kwalletd6 \
-		org.kde.KWallet.isEnabled 2>/dev/null \
-		| grep -q 'boolean true'
-	then
-		echo 'kwallet6'
-		return
-	fi
-
-	# gnome-libsecret: GNOME Keyring, KWallet 5 compat bridge, etc.
-	if dbus-send --session --print-reply --reply-timeout=1000 \
-		--dest=org.freedesktop.secrets \
-		/org/freedesktop/secrets \
-		org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1
-	then
-		echo 'gnome-libsecret'
-		return
-	fi
-
-	# No keyring accessible — fall back to fixed-key provider.
-	echo 'basic'
-}
-
 # Detect whether the previous launch ended in Chromium's
 # "GPU process isn't usable" crash signature (#583).
 #
@@ -225,7 +169,25 @@ _previous_launch_hit_gpu_fatal() {
 	' "$log_file"
 }
 
-# Build Electron arguments array based on display backend
+# Build Electron arguments array based on display backend.
+#
+# LAUNCHER POLICY — opt-in only. Since the v3.0.0 rebase the packaged
+# app is Anthropic's official Linux build, so the launcher must NOT
+# pass any default flag that shadows an official upstream code path
+# (window frame, titlebar, password store, feature flags). Every
+# default flag that remains has to justify itself against a concrete
+# Linux-environment gap; the tools/chromium-switch-smoke.sh guard
+# fails loudly if the effective switch list drifts without a
+# deliberate baseline update. Kept defaults, each with its reason:
+#   --class=$WM_CLASS         WM_CLASS/.desktop contract (#647, #652)
+#   XRDP auto GPU-off         blank window on remote GPU (#319)
+#   GPU-crash sticky recovery GPU process FATAL exhaustion (#583)
+#   Wayland backend selection CLAUDE_USE_WAYLAND tri-state (#226, #404)
+#   --no-sandbox              only where structurally required
+#                             (AppImage FUSE; deb/nix on Wayland)
+# --password-store is passed ONLY when CLAUDE_PASSWORD_STORE is set;
+# otherwise the official os_crypt autodetection owns the decision.
+#
 # Requires: is_wayland, use_x11_on_wayland to be set
 #           (call detect_display_backend first)
 # Sets: electron_args array
@@ -244,36 +206,20 @@ build_electron_args() {
 	# AppImage always needs --no-sandbox due to FUSE constraints
 	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
-	# CLAUDE_TITLEBAR_STYLE selects between:
-	#   hybrid (default) / native: --disable-features=CustomTitlebar
-	#           so Chromium's drawn CSD titlebar doesn't compete with
-	#           the DE-drawn one. Both modes use frame:true.
-	#   hidden: WindowControlsOverlay because WCO is off by default on
-	#           Linux Chromium (Win/macOS have it on by default).
-	#           Without it, titleBarOverlay is silently ignored at the
-	#           page level.
-	local _tb
-	_tb=$(_resolve_titlebar_style)
-	if [[ $_tb == 'hidden' ]]; then
-		enable_features+=('WindowControlsOverlay')
-	else
-		electron_args+=('--disable-features=CustomTitlebar')
-	fi
-
 	# WM_CLASS must match the .desktop StartupWMClass and upstream's
 	# productName. Ref: #647, #652
 	electron_args+=("--class=$WM_CLASS")
 
-	# Chromium's safeStorage API and cookie encryption both require a
-	# system keyring selected by --password-store. Without an explicit
-	# value, Electron may silently report encryption unavailable even
-	# when a keyring daemon is running, discarding OAuth tokens on exit
-	# and forcing re-authentication on every launch. We probe for the
-	# best available store at startup. Fixes: #593
-	local pw_store
-	pw_store=$(_detect_password_store)
-	electron_args+=("--password-store=${pw_store}")
-	log_message "Password store: ${pw_store}"
+	# Password store: the official build's os_crypt autodetection owns
+	# this decision by default (it deliberately declines weak persistence
+	# on some sessions rather than storing tokens unsafely). We only pass
+	# --password-store when the user sets CLAUDE_PASSWORD_STORE, the
+	# documented escape hatch — never a launcher-chosen default that would
+	# shadow the upstream autodetect. History: #593.
+	if [[ -n ${CLAUDE_PASSWORD_STORE:-} ]]; then
+		electron_args+=("--password-store=$CLAUDE_PASSWORD_STORE")
+		log_message "Password store: $CLAUDE_PASSWORD_STORE (env override)"
+	fi
 
 	# Remote XRDP sessions lack GPU acceleration and render a blank
 	# window when GPU compositing is enabled. Detect via XRDP_SESSION
@@ -373,9 +319,12 @@ build_electron_args() {
 _claude_desktop_ui_cmdline_matches() {
 	local cmdline="$1"
 
-	# Never the cowork daemon (defensive; it carries no --class) and
-	# never a Chromium helper: zygote, renderer, gpu, utility, etc.
+	# Never a cowork helper (defensive; neither carries --class) — the
+	# 2.x cowork-vm-service daemon nor the official Rust
+	# cowork-linux-helper — and never a Chromium helper: zygote,
+	# renderer, gpu, utility, etc.
 	[[ $cmdline == *cowork-vm-service* ]] && return 1
+	[[ $cmdline == *cowork-linux-helper* ]] && return 1
 	[[ $cmdline == *--type=* ]] && return 1
 
 	[[ $cmdline == *"--class=$WM_CLASS "* ]]
@@ -463,6 +412,11 @@ _desktop_helper_cmdline_matches() {
 		*cowork-vm-service.js*)
 			return 0
 			;;
+		*cowork-linux-helper*)
+			# Official Rust Cowork helper, spawned via
+			# process.resourcesPath (relocation-safe, so no fixed path).
+			return 0
+			;;
 		*"--user-data-dir=$config_dir "*)
 			return 0
 			;;
@@ -472,13 +426,20 @@ _desktop_helper_cmdline_matches() {
 		*/usr/lib/claude-desktop/*--type=*)
 			return 0
 			;;
+		*/usr/lib/claude-desktop-unofficial/*--type=*)
+			# Phase 3 package rename, landing in v3.0.0: our package
+			# installs to /usr/lib/claude-desktop-unofficial while the
+			# official arm above keeps matching Anthropic's install
+			# (and the AppImage internal tree).
+			return 0
+			;;
 	esac
 
 	return 1
 }
 
 _desktop_helper_candidate_pids() {
-	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/' 2>/dev/null
+	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|cowork-linux-helper|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop(-unofficial)?/' 2>/dev/null
 }
 
 cleanup_stale_desktop_helpers() {
@@ -592,6 +553,81 @@ cleanup_stale_cowork_socket() {
 	log_message "Removed stale cowork-vm-service socket (no daemon running)"
 }
 
+# AUTO-1: when "Run on startup" is enabled, the official app writes
+# its own XDG autostart entry with Exec=<process.execPath> --startup —
+# the raw Electron ELF (or, under AppImage, the ephemeral
+# /tmp/.mount_claude* path). Login launches would bypass every launcher
+# policy (Wayland opt-in, GPU recovery, --class, CLAUDE_PASSWORD_STORE),
+# and the AppImage path rots on unmount. Rewrite the Exec command to
+# the launcher on every start.
+#
+# Safe against the Settings toggle: upstream's is-enabled check reads
+# only file existence plus Hidden/X-GNOME-Autostart-enabled — never the
+# Exec content (verified on 1.18286.0 bytes). The app rewrites the
+# entry on each toggle-on, so the heal has to repeat per launch.
+#
+# $1 = absolute launcher path to point the entry at. Callers pass
+# /usr/bin/claude-desktop-unofficial (deb/rpm) or "$APPIMAGE" (AppRun;
+# empty when the AppImage runtime did not set it — no-op then).
+heal_autostart_entry() {
+	local launcher="$1"
+	local entry_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+	local entry="$entry_dir/claude-desktop.desktop"
+	local exec_line current args rest escaped new_line tmp line
+	local replaced=false
+
+	[[ -n $launcher && -f $entry ]] || return 0
+
+	exec_line=$(LC_ALL=C grep -m1 '^Exec=' "$entry") || return 0
+
+	# The command token: upstream writes it double-quoted; fall back to
+	# the first unquoted word for hand-edited entries.
+	if [[ $exec_line =~ ^Exec=\"([^\"]*)\"(.*)$ ]]; then
+		current="${BASH_REMATCH[1]}"
+		args="${BASH_REMATCH[2]}"
+	else
+		rest="${exec_line#Exec=}"
+		current="${rest%%[[:space:]]*}"
+		args="${rest#"$current"}"
+	fi
+
+	# Already healed, or pointing at something that is not the app
+	# itself (a hand-rolled wrapper): leave it alone.
+	[[ $current == "$launcher" ]] && return 0
+	case "$current" in
+		*/claude-desktop) ;;
+		*) return 0 ;;
+	esac
+
+	# Desktop-entry escaping, mirroring what upstream applies to its
+	# own execPath: backslash-escape \ " ` $, then % -> %%.
+	escaped="$launcher"
+	escaped=${escaped//\\/\\\\}
+	escaped=${escaped//\"/\\\"}
+	escaped=${escaped//\`/\\\`}
+	escaped=${escaped//\$/\\\$}
+	escaped=${escaped//%/%%}
+	new_line="Exec=\"$escaped\"$args"
+
+	# Rewrite only the first Exec line; keep everything else verbatim.
+	tmp="$entry.tmp.$$"
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $replaced == false && $line == Exec=* ]]; then
+			printf '%s\n' "$new_line"
+			replaced=true
+		else
+			printf '%s\n' "$line"
+		fi
+	done < "$entry" > "$tmp" || { rm -f "$tmp"; return 0; }
+	mv "$tmp" "$entry" || { rm -f "$tmp"; return 0; }
+
+	if [[ -n ${log_file:-} ]]; then
+		log_message \
+			"Healed autostart Exec: $current -> $launcher (AUTO-1)"
+	fi
+	return 0
+}
+
 cleanup_after_electron_exit() {
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers
@@ -635,18 +671,12 @@ run_electron_and_cleanup() {
 
 # Set common environment variables
 setup_electron_env() {
-	# ELECTRON_FORCE_IS_PACKAGED makes app.isPackaged return true, which
-	# causes the Claude app to resolve resources via process.resourcesPath.
-	# The Nix derivation creates a custom Electron tree with the binary
-	# copied and app resources co-located in resources/, so resourcesPath
-	# naturally points to the right place on all package types.
-	export ELECTRON_FORCE_IS_PACKAGED=true
-	# ELECTRON_USE_SYSTEM_TITLE_BAR=1 forces a system titlebar at the
-	# Electron level. Set in 'native' and 'hybrid' modes (both use
-	# frame:true); skipped in 'hidden' mode (frame:false + WCO config).
-	if [[ $(_resolve_titlebar_style) != 'hidden' ]]; then
-		export ELECTRON_USE_SYSTEM_TITLE_BAR=1
-	fi
+	# The official Linux build ships packaged, so ELECTRON_FORCE_IS_PACKAGED
+	# is dropped (forcing it would shadow upstream's own isPackaged logic),
+	# and the official build owns its window frame, so the
+	# ELECTRON_USE_SYSTEM_TITLE_BAR export is gone too. See the launcher
+	# policy note above build_electron_args.
+	#
 	# CLAUDE_GTK_IM_MODULE: opt-in override for users hit by broken
 	# IBus integration on Linux (#549). Propagated to GTK_IM_MODULE
 	# so e.g. `xim` can be persisted without wrapping every launch.

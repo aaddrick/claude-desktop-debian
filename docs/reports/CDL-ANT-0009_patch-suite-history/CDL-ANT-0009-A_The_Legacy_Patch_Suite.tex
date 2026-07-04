@@ -1,0 +1,46 @@
+% =============================================================================
+%  aaddrick/claude-desktop-debian -- The legacy patch suite: a natural history
+%  Report CDL-ANT-0009. Built on the NCL LaTeX report template (XeLaTeX).
+%
+%  This is the assembly file only. The preamble (imports, palette, fonts, and
+%  every shared macro/environment) lives in parts/preamble.tex; each numbered
+%  section lives in its own parts/NN-*.tex. Edit those; this file just orders
+%  them. Build with docs/reports/templates/latex/build/build.sh, which carries
+%  the parts/ directory into the compile.
+% =============================================================================
+\nonstopmode
+\input{parts/preamble.tex}
+
+\begin{document}
+\pagestyle{reportftr}
+% Prefer occasional loose lines over long inline-code tokens bleeding past the
+% right margin: let the breaker put an unbreakable \code{} token on a fresh line.
+\sloppy
+\emergencystretch=2.5em
+\hbadness=3000
+
+\input{parts/00-cover.tex}
+
+\input{parts/01-overview.tex}
+\input{parts/02-method.tex}
+\input{parts/03-chassis.tex}
+\input{parts/04-frame.tex}
+\input{parts/05-native-binding.tex}
+\input{parts/06-terminal.tex}
+\input{parts/07-tray.tex}
+\input{parts/08-quick-entry.tex}
+\input{parts/09-code-tab.tex}
+\input{parts/10-cowork.tex}
+\input{parts/11-org-plugins.tex}
+\input{parts/12-topbar.tex}
+\input{parts/13-config-writes.tex}
+\input{parts/14-acquisition.tex}
+\input{parts/15-launcher.tex}
+\input{parts/16-ssh-helpers.tex}
+\input{parts/17-icons.tex}
+\input{parts/18-sandbox.tex}
+\input{parts/19-fate-matrix.tex}
+\input{parts/20-closing.tex}
+\input{parts/21-reassessment.tex}
+
+\end{document}

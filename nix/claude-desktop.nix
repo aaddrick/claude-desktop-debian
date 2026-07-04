@@ -1,300 +1,217 @@
+# Claude Desktop for Linux, repackaged from Anthropic's official .deb.
+#
+# Draft for the v3.0.0 official-deb rebase (ACQ-1); final shape is
+# @typedrat's call. Design contract: docs/learnings/nix.md ("Target
+# design for the rework"). nixpkgs precedent: signal-desktop, slack —
+# vendor .deb unpacked with dpkg and fixed up with autoPatchelfHook.
+#
+# Load-bearing invariants:
+#
+#   - The official tree is bare co-located (usr/lib/claude-desktop/
+#     {claude-desktop, chrome-sandbox, resources/}). We copy that tree
+#     whole — the ELF is a real file, never a symlink — so
+#     /proc/self/exe resolves inside this store path and
+#     process.resourcesPath is correct by construction. No nixpkgs
+#     electron, no resourcesPath hack; docs/learnings/nix.md explains
+#     why that must not return.
+#
+#   - check-claude-version auto-bumps this file with anchored seds
+#     (docs/learnings/nix.md, "The SRI auto-bump contract"): it rewrites
+#     the version line and range-seds each arch block's SRI hash. Keep
+#     exactly one version assignment in this file and exactly one hash
+#     assignment inside each arch block, and never write the literal
+#     tokens the seds anchor on (version/hash followed by ` = "`)
+#     anywhere else — not even in a comment, or the bump corrupts it.
+#     The urls must derive from the version by interpolation so a bump
+#     keeps them in sync.
 {
   lib,
-  stdenvNoCC,
+  stdenv,
   fetchurl,
-  electron,
-  p7zip,
-  icoutils,
-  imagemagick,
-  nodejs,
-  asar,
-  makeDesktopItem,
-  python3,
-  bash,
-  getent,
-  node-pty,
+  dpkg,
+  autoPatchelfHook,
+  # DT_NEEDED of the main Electron ELF (objdump -p on 1.18286.0)
+  alsa-lib,
+  at-spi2-atk,
+  at-spi2-core,
+  atk,
+  cairo,
+  cups,
+  dbus,
+  expat,
+  glib,
+  gtk3,
+  libgbm,
+  libxkbcommon,
+  nspr,
+  nss,
+  pango,
+  systemd, # libudev.so.1
+  xorg,
+  # DT_NEEDED of the bundled virtiofsd helper
+  libcap_ng,
+  libseccomp,
+  # dlopen'd by Chromium/Electron at runtime (not in DT_NEEDED, so
+  # autoPatchelf can't see them; appended to every ELF's runpath via
+  # runtimeDependencies — same approach as nixpkgs' signal-desktop)
+  libGL,
+  libayatana-appindicator,
+  libnotify,
+  libpulseaudio,
+  libsecret,
+  libuuid, # in the official Depends (libuuid1); dlopen'd
+  pciutils,
+  pipewire,
+  wayland,
 }:
+
 let
-  pname = "claude-desktop";
+  # Bumped automatically by .github/workflows/check-claude-version.yml;
+  # mirrors OFFICIAL_DEB_VERSION in scripts/setup/official-deb.sh.
   version = "1.18286.0";
 
+  poolBase = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop";
+
+  # One url + one hash per arch block — the auto-bump range-seds from
+  # each arch name to the next closing brace, so nothing else in this
+  # file may put a hash assignment between an arch name and a closing
+  # brace (see the header comment).
   srcs = {
-    x86_64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/x64/1.18286.0/Claude-259c3fc2a647e4222ca15e99bba9b2649f31f051.exe";
-      hash = "sha256-n/rpKXCugr1tpkbN6Kr1Xz9pES7M1Qs9h/cb7wvcyeo=";
+    x86_64-linux = {
+      url = "${poolBase}/claude-desktop_${version}_amd64.deb";
+      hash = "sha256-jzFK0agKq1JxGo6qvAaq5I+zQfCt6koNcmTbXKudBTY=";
     };
-    aarch64-linux = fetchurl {
-      url = "https://downloads.claude.ai/releases/win32/arm64/1.18286.0/Claude-259c3fc2a647e4222ca15e99bba9b2649f31f051.exe";
-      hash = "sha256-yI9MROXkbHPg9iZ54h232Ax7wv1VtHL4rBeQOSp4eHM=";
+    aarch64-linux = {
+      url = "${poolBase}/claude-desktop_${version}_arm64.deb";
+      hash = "sha256-SCC5iankMzlWtsvq7icy3StJkE+6VAtHKWPIADyAhsc=";
     };
-  };
-
-  src = srcs.${stdenvNoCC.hostPlatform.system} or (throw "Unsupported system: ${stdenvNoCC.hostPlatform.system}");
-
-  sourceRoot = lib.cleanSourceWith {
-    src = ./..;
-    filter = path: type:
-      let rel = lib.removePrefix (toString ./.. + "/") path;
-      in !(lib.hasPrefix "build-reference" rel)
-      && !(lib.hasPrefix "logs" rel)
-      && !(lib.hasPrefix "test-build" rel)
-      && !(lib.hasPrefix "squashfs-root" rel)
-      && !(lib.hasPrefix "result" rel);
-  };
-
-  # The unwrapped electron derivation — contains the real ELF binary
-  # and Chromium resources (.pak files, locales/, etc.).
-  electronUnwrapped = electron.passthru.unwrapped or electron;
-  electronDir = "${electronUnwrapped}/libexec/electron";
-
-  desktopItem = makeDesktopItem {
-    name = "claude-desktop";
-    exec = "claude-desktop %u";
-    icon = "claude-desktop";
-    type = "Application";
-    terminal = false;
-    desktopName = "Claude";
-    genericName = "Claude Desktop";
-    startupWMClass = "Claude";
-    categories = [ "Office" "Utility" ];
-    mimeTypes = [ "x-scheme-handler/claude" ];
   };
 in
-stdenvNoCC.mkDerivation {
-  inherit pname version src;
+stdenv.mkDerivation {
+  pname = "claude-desktop";
+  inherit version;
+
+  src = fetchurl (
+    srcs.${stdenv.hostPlatform.system}
+      or (throw "claude-desktop: unsupported system ${stdenv.hostPlatform.system}")
+  );
 
   nativeBuildInputs = [
-    p7zip
-    nodejs
-    asar
-    icoutils
-    imagemagick
-    bash
-    python3
-    getent
+    dpkg
+    autoPatchelfHook
   ];
 
-  # The exe is not a standard archive — use manual unpack
-  dontUnpack = true;
+  buildInputs = [
+    alsa-lib
+    at-spi2-atk
+    at-spi2-core
+    atk
+    cairo
+    cups
+    dbus
+    expat
+    glib
+    gtk3
+    libcap_ng
+    libgbm
+    libseccomp
+    libxkbcommon
+    nspr
+    nss
+    pango
+    stdenv.cc.cc.lib # libstdc++ (node-pty), libgcc_s
+    systemd
+    xorg.libX11
+    xorg.libXcomposite
+    xorg.libXdamage
+    xorg.libXext
+    xorg.libXfixes
+    xorg.libXrandr
+    xorg.libxcb
+  ];
 
-  buildPhase = ''
-    runHook preBuild
+  runtimeDependencies = map lib.getLib [
+    libGL
+    libayatana-appindicator
+    libnotify
+    libpulseaudio
+    libsecret
+    libuuid
+    pciutils
+    pipewire
+    systemd
+    wayland
+    xorg.libXtst # in the official Depends (libxtst6); dlopen'd
+  ];
 
-    export HOME=$TMPDIR
-
-    # Copy exe to a writable location for build.sh
-    cp $src Claude-Setup.exe
-
-    # Run build.sh in nix mode — it handles extraction, patching, icon
-    # extraction, and asar repacking. --source-dir points at the repo
-    # root so build.sh can find scripts/.
-    bash ${sourceRoot}/build.sh \
-      --exe "$(pwd)/Claude-Setup.exe" \
-      --source-dir "${sourceRoot}" \
-      --node-pty-dir "${node-pty}/lib/node_modules/node-pty" \
-      --build nix \
-      --clean no
-
-    runHook postBuild
+  # Not `dpkg-deb -x`: chrome-sandbox is recorded SUID (rwsr-xr-x) in
+  # data.tar and tar's mode-restore fails inside the build sandbox.
+  # --no-same-permissions applies the umask instead, dropping the SUID
+  # bit that the store couldn't represent anyway (see the sandbox note
+  # below).
+  unpackPhase = ''
+    runHook preUnpack
+    dpkg-deb --fsys-tarfile "$src" \
+      | tar -x --no-same-owner --no-same-permissions
+    runHook postUnpack
   '';
+
+  dontConfigure = true;
+  dontBuild = true;
+
+  # The bundled ELFs are already stripped upstream; re-stripping a
+  # 200 MB Electron binary is slow and buys nothing.
+  dontStrip = true;
 
   installPhase = ''
     runHook preInstall
 
-    #==========================================================================
-    # Create a custom Electron tree with app resources co-located.
-    #
-    # On NixOS, the stock electron-unwrapped lives in a read-only store
-    # path.  Chromium computes process.resourcesPath from /proc/self/exe,
-    # so it always points to electron-unwrapped's resources/ dir — which
-    # doesn't contain the app's locale JSONs, tray icons, etc.  When
-    # ELECTRON_FORCE_IS_PACKAGED=true, the app reads en-US.json from
-    # resourcesPath at module load time (before frame-fix-wrapper.js can
-    # correct the path), causing an ENOENT crash.
-    #
-    # Solution: copy the Electron ELF binary into our own tree so that
-    # /proc/self/exe resolves here, then merge both Electron's and the
-    # app's resources into resources/.  Everything else (shared libs,
-    # .pak files, locales/) is symlinked to avoid duplication.
-    #==========================================================================
-    electron_tree=$out/lib/claude-desktop/electron
-
-    mkdir -p $electron_tree/resources
-
-    # Copy the ELF binary — MUST be a real copy (not symlink) so that
-    # /proc/self/exe resolves to our tree
-    cp ${electronDir}/electron $electron_tree/electron
-    chmod +x $electron_tree/electron
-
-    # Symlink everything else from electron-unwrapped
-    for item in ${electronDir}/*; do
-      name=$(basename "$item")
-      [[ "$name" = "electron" ]] && continue
-      [[ "$name" = "resources" ]] && continue
-      ln -s "$item" "$electron_tree/$name"
-    done
-
-    # Populate resources/ — start with Electron's own (default_app.asar)
-    for item in ${electronDir}/resources/*; do
-      ln -s "$item" "$electron_tree/resources/$(basename "$item")"
-    done
-
-    # Install app.asar and unpacked resources into the merged tree
-    cp build/electron-app/app.asar $electron_tree/resources/
-    cp -r build/electron-app/app.asar.unpacked $electron_tree/resources/
-
-    # Install tray icons into resources
-    for tray_icon in build/electron-app/nix-resources/Tray*; do
-      [[ -f "$tray_icon" ]] && cp "$tray_icon" $electron_tree/resources/
-    done
-
-    # Install SSH helpers into resources
-    if [[ -d build/electron-app/nix-resources/claude-ssh ]]; then
-      cp -r build/electron-app/nix-resources/claude-ssh \
-        $electron_tree/resources/
-    fi
-
-    # Install cowork resources (smol-bin, plugin shim)
-    for cowork_res in build/electron-app/nix-resources/smol-bin.*.vhdx \
-                      build/electron-app/nix-resources/cowork-plugin-shim.sh; do
-      if [[ -f "$cowork_res" ]]; then
-        cp "$cowork_res" $electron_tree/resources/
-        echo "Installed cowork resource: $(basename "$cowork_res")"
-      fi
-    done
-
-    # Install ion-dist static assets (app:// protocol handler root for
-    # Third-Party Inference setup — see issue #488)
-    if [[ -d build/electron-app/nix-resources/ion-dist ]]; then
-      cp -r build/electron-app/nix-resources/ion-dist \
-        $electron_tree/resources/
-      echo "Installed cowork resource: ion-dist"
-    fi
-
-    # Install locale JSON files into resources
-    for locale_json in build/claude-extract/lib/net45/resources/*-*.json; do
-      [[ -f "$locale_json" ]] \
-        && cp "$locale_json" $electron_tree/resources/
-    done
-
-    # Create the electron wrapper — replicates the env setup from the
-    # stock electron wrapper (GIO, GTK, GDK_PIXBUF, XDG_DATA_DIRS) but
-    # execs our custom binary.  We extract everything except the final
-    # exec line from the stock wrapper, then append our own exec.
-    head -n -1 ${electron}/bin/electron > $electron_tree/electron-wrapper
-    echo "exec \"$electron_tree/electron\" \"\$@\"" >> $electron_tree/electron-wrapper
-    chmod +x $electron_tree/electron-wrapper
-
-    # Update CHROME_DEVEL_SANDBOX to point to our tree's chrome-sandbox
-    substituteInPlace $electron_tree/electron-wrapper \
-      --replace-quiet "${electron}/libexec/electron/chrome-sandbox" \
-        "$electron_tree/chrome-sandbox"
-
-    #==========================================================================
-    # Standard install (icons, desktop file, launcher)
-    #==========================================================================
-
-    # Convenience symlink for resources dir (used by launcher, FHS, etc.)
-    ln -s $electron_tree/resources $out/lib/claude-desktop/resources
-
-    # Install icons
-    for size in 16 24 32 48 64 256; do
-      icon_dir=$out/share/icons/hicolor/"$size"x"$size"/apps
-      mkdir -p "$icon_dir"
-      icon=$(find build/ -name "claude_*''${size}x''${size}x32.png" 2>/dev/null | head -1)
-      if [[ -n "$icon" ]]; then
-        install -Dm644 "$icon" "$icon_dir/claude-desktop.png"
-      fi
-    done
-
-    # Install shared launcher library + doctor (launcher-common.sh
-    # sources doctor.sh at runtime, so both must live in the same dir)
-    install -Dm755 ${sourceRoot}/scripts/launcher-common.sh \
-      $out/lib/claude-desktop/launcher-common.sh
-    install -Dm755 ${sourceRoot}/scripts/doctor.sh \
-      $out/lib/claude-desktop/doctor.sh
-
-    # Install .desktop file
-    mkdir -p $out/share/applications
-    install -Dm644 ${desktopItem}/share/applications/* $out/share/applications/
-
-    # Create launcher script
-    mkdir -p $out/bin
-    cat > $out/bin/claude-desktop <<'LAUNCHER'
-#!/usr/bin/env bash
-# Claude Desktop launcher for NixOS
-
-electron_exec="ELECTRON_PLACEHOLDER"
-app_path="RESOURCES_PLACEHOLDER/app.asar"
-
-source "LAUNCHER_LIB_PLACEHOLDER"
-
-# Handle --doctor flag before anything else
-if [[ "''${1:-}" == '--doctor' ]]; then
-	run_doctor "$electron_exec"
-	exit $?
-fi
-
-# Setup logging and environment
-setup_logging || exit 1
-setup_electron_env
-cleanup_orphaned_cowork_daemon
-cleanup_stale_desktop_helpers
-cleanup_stale_lock
-cleanup_stale_cowork_socket
-
-# Log startup info
-log_message '--- Claude Desktop Launcher Start (NixOS) ---'
-log_message "Timestamp: $(date)"
-log_message "Arguments: $@"
-log_session_env
-
-# Check for display
-if ! check_display; then
-	log_message 'No display detected (TTY session)'
-	echo 'Error: Claude Desktop requires a graphical desktop environment.' >&2
-	echo 'Please run from within an X11 or Wayland session, not from a TTY.' >&2
-	exit 1
-fi
-
-# Detect display backend (handles CLAUDE_USE_WAYLAND)
-detect_display_backend
-
-# Build Electron arguments
-build_electron_args 'nix'
-
-# Intentionally NOT appended: app.asar sits in Electron's default
-# resources/ dir next to the binary, so Electron auto-loads it. Passing
-# the path again makes Electron treat it as a file-to-open, which the
-# app forwards to its file-drop handler, producing a spurious
-# "Attach app.asar?" prompt on launch and on every taskbar reopen
-# (the second-instance argv path). Omitting it is the root-cause fix.
-# See issue #696.
-log_message "App (auto-loaded by Electron): $app_path"
-
-# Execute Electron and keep the launcher alive so explicit quit can
-# clean up Desktop-owned helpers that outlive the Electron main process.
-log_message "Executing: $electron_exec ''${electron_args[*]} $*"
-run_electron_and_cleanup "$electron_exec" "''${electron_args[@]}" "$@"
-exit $?
-LAUNCHER
-    # Substitute placeholders — electron_exec points to our custom
-    # wrapper (which sets GTK/GIO env then execs our merged binary)
-    substituteInPlace $out/bin/claude-desktop \
-      --replace-fail "ELECTRON_PLACEHOLDER" "$electron_tree/electron-wrapper" \
-      --replace-fail "RESOURCES_PLACEHOLDER" "$electron_tree/resources" \
-      --replace-fail "LAUNCHER_LIB_PLACEHOLDER" "$out/lib/claude-desktop/launcher-common.sh"
-    chmod +x $out/bin/claude-desktop
+    # Ship the official install tree as-is:
+    #   lib/claude-desktop/…        bare co-located app tree
+    #   bin/claude-desktop          upstream's relative symlink into it
+    #                               (…/exe still resolves in-tree; the
+    #                               kernel follows the link to the real
+    #                               ELF inside this store path)
+    #   share/applications, icons/  consumed by nix/fhs.nix's
+    #                               extraInstallCommands
+    # The official .desktop already uses a PATH-relative
+    # `Exec=claude-desktop %U`, so it works from a profile or from the
+    # FHS wrapper without substitution.
+    mkdir -p $out
+    cp -a usr/lib usr/share usr/bin $out/
 
     runHook postInstall
   '';
 
-  meta = with lib; {
-    description = "Claude Desktop for Linux";
-    homepage = "https://github.com/aaddrick/claude-desktop-debian";
-    license = licenses.unfree;
-    platforms = [ "x86_64-linux" "aarch64-linux" ];
-    sourceProvenance = with sourceTypes; [ binaryNativeCode ];
+  # chrome-sandbox ships SUID in the official .deb, but the Nix store
+  # cannot carry SUID bits. On kernels with unprivileged user namespaces
+  # enabled (the NixOS default), Chromium prefers the namespace sandbox
+  # and never invokes the SUID helper, so we ship it 0755 and do NOT
+  # weaken sandboxing with --no-sandbox anywhere. Same stance as
+  # nixpkgs' signal-desktop/slack. Kernels with userns disabled will
+  # fail with Chromium's sandbox error; that is a host policy decision.
+  #
+  # autoPatchelf resolves the bundled co-located libs (libffmpeg.so,
+  # libEGL.so, libGLESv2.so, libvk_swiftshader.so, libvulkan.so.1) from
+  # the output tree itself; the explicit search path is belt and braces
+  # since the ELF's upstream RPATH is `$ORIGIN`.
+  #
+  # cowork-linux-helper (coworkd) is static Go — autoPatchelf skips it.
+  # virtiofsd and chrome-native-host are glibc >= 2.34 (fine on any
+  # current nixpkgs) and their DT_NEEDED are covered by buildInputs.
+  preFixup = ''
+    addAutoPatchelfSearchPath "$out/lib/claude-desktop"
+  '';
+
+  meta = {
+    description = "Claude Desktop for Linux (repackaged official .deb)";
+    homepage = "https://claude.ai";
+    downloadPage = "https://downloads.claude.ai/claude-desktop/apt/stable";
+    license = lib.licenses.unfree;
+    sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+    # Derived from srcs so the arch literals stay out of meta — the
+    # auto-bump's range seds anchor on those strings (see header).
+    platforms = builtins.attrNames srcs;
     mainProgram = "claude-desktop";
   };
 }

@@ -29,35 +29,6 @@ count_enable_features() {
 	echo "$n"
 }
 
-# Install a dbus-send stub at the front of PATH.
-#   kwallet6   — echoes 'boolean true', exits 0 (kwallet6 detectable)
-#   secrets-ok — fails for kwalletd6 dest, succeeds for all other dests
-#   fail       — always exits 1 with no output (no keyring accessible)
-_stub_dbus_send() {
-	mkdir -p "$TEST_TMP/bin"
-	case "${1:-fail}" in
-		kwallet6)
-			cat > "$TEST_TMP/bin/dbus-send" <<'STUB'
-#!/usr/bin/env bash
-echo 'boolean true'
-STUB
-			;;
-		secrets-ok)
-			cat > "$TEST_TMP/bin/dbus-send" <<'STUB'
-#!/usr/bin/env bash
-[[ "$*" == *kwalletd6* ]] && exit 1
-exit 0
-STUB
-			;;
-		*)
-			printf '#!/usr/bin/env bash\nexit 1\n' \
-				> "$TEST_TMP/bin/dbus-send"
-			;;
-	esac
-	chmod +x "$TEST_TMP/bin/dbus-send"
-	export PATH="$TEST_TMP/bin:$PATH"
-}
-
 setup() {
 	TEST_TMP=$(mktemp -d)
 	export TEST_TMP
@@ -85,7 +56,6 @@ setup() {
 	unset QT_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
-	CLAUDE_PASSWORD_STORE='basic'
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
@@ -138,6 +108,27 @@ teardown() {
 	[[ "${lines[1]}" == "test message two" ]]
 }
 
+@test "log_message: redacts OAuth code from claude://login argv (LOG-1)" {
+	setup_logging
+	# Both the "Arguments:" and "Executing:" lines carry $* verbatim.
+	log_message "Arguments: claude://login/google-auth?code=SECRET123&state=xyz"
+	log_message "Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude claude://login/google-auth?code=SECRET456"
+	run cat "$log_file"
+	[[ "$output" != *SECRET123* ]]
+	[[ "$output" != *SECRET456* ]]
+	[[ "$output" != *'code='* ]]
+	# Path is kept for context; only the query string is stripped.
+	[[ "${lines[0]}" == 'Arguments: claude://login/google-auth?<redacted>' ]]
+	[[ "${lines[1]}" == *'--class=Claude claude://login/google-auth?<redacted>' ]]
+}
+
+@test "log_message: leaves non-login messages untouched" {
+	setup_logging
+	log_message 'Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude'
+	run cat "$log_file"
+	[[ "${lines[0]}" == 'Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude' ]]
+}
+
 # =============================================================================
 # log_session_env
 # =============================================================================
@@ -152,7 +143,6 @@ teardown() {
 	XMODIFIERS='@im=ibus'
 	QT_IM_MODULE='ibus'
 	CLAUDE_USE_WAYLAND='1'
-	CLAUDE_TITLEBAR_STYLE='hybrid'
 	CLAUDE_PASSWORD_STORE='basic'
 	CLAUDE_GTK_IM_MODULE='xim'
 	CLAUDE_DISABLE_GPU='1'
@@ -161,6 +151,8 @@ teardown() {
 	run cat "$log_file"
 	# Exact-line match locks block structure (open/close braces on
 	# their own lines) and per-key formatting in one pass.
+	# CLAUDE_TITLEBAR_STYLE is no longer honored (v3.0.0 rebase) and was
+	# dropped from the key list.
 	[[ "${lines[0]}"  == 'env={' ]]
 	[[ "${lines[1]}"  == '  XDG_SESSION_TYPE=wayland' ]]
 	[[ "${lines[2]}"  == '  WAYLAND_DISPLAY=wayland-0' ]]
@@ -170,11 +162,10 @@ teardown() {
 	[[ "${lines[6]}"  == '  XMODIFIERS=@im=ibus' ]]
 	[[ "${lines[7]}"  == '  QT_IM_MODULE=ibus' ]]
 	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=1' ]]
-	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=hybrid' ]]
-	[[ "${lines[10]}" == '  CLAUDE_PASSWORD_STORE=basic' ]]
-	[[ "${lines[11]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
-	[[ "${lines[12]}" == '  CLAUDE_DISABLE_GPU=1' ]]
-	[[ "${lines[13]}" == '}' ]]
+	[[ "${lines[9]}"  == '  CLAUDE_PASSWORD_STORE=basic' ]]
+	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
+	[[ "${lines[11]}" == '  CLAUDE_DISABLE_GPU=1' ]]
+	[[ "${lines[12]}" == '}' ]]
 }
 
 @test "log_session_env: unset/empty values render as 'KEY=' (no value)" {
@@ -196,10 +187,9 @@ teardown() {
 	[[ "${lines[6]}"  == '  XMODIFIERS=' ]]
 	[[ "${lines[7]}"  == '  QT_IM_MODULE=' ]]
 	[[ "${lines[8]}"  == '  CLAUDE_USE_WAYLAND=' ]]
-	[[ "${lines[9]}"  == '  CLAUDE_TITLEBAR_STYLE=' ]]
-	[[ "${lines[10]}" == '  CLAUDE_PASSWORD_STORE=' ]]
-	[[ "${lines[11]}" == '  CLAUDE_GTK_IM_MODULE=' ]]
-	[[ "${lines[12]}" == '  CLAUDE_DISABLE_GPU=' ]]
+	[[ "${lines[9]}"  == '  CLAUDE_PASSWORD_STORE=' ]]
+	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=' ]]
+	[[ "${lines[11]}" == '  CLAUDE_DISABLE_GPU=' ]]
 }
 
 # =============================================================================
@@ -379,13 +369,37 @@ teardown() {
 	has_electron_arg '--class=Claude'
 }
 
-@test "build_electron_args: X11 deb - only CustomTitlebar disabled" {
+@test "build_electron_args: X11 deb defaults to a minimal argv (opt-in policy)" {
+	# The launcher is opt-in only: on a plain X11 deb session with no env
+	# overrides it must pass ONLY --class — nothing that shadows an
+	# official upstream code path (no titlebar/feature/password-store
+	# flag). This is the policy regression test; the switch-list smoke
+	# (tools/chromium-switch-smoke.sh) guards the same invariant in CI.
 	is_wayland=false
 	setup_logging
 	build_electron_args deb
-	has_electron_arg '--disable-features=CustomTitlebar'
+	[[ ${#electron_args[@]} -eq 1 ]]
+	[[ ${electron_args[0]} == '--class=Claude' ]]
+}
+
+@test "build_electron_args: CLAUDE_PASSWORD_STORE set - passes flag + logs it" {
+	is_wayland=false
+	CLAUDE_PASSWORD_STORE='gnome-libsecret'
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--password-store=gnome-libsecret'
+	run cat "$log_file"
+	[[ $output == *'Password store: gnome-libsecret (env override)'* ]]
+}
+
+@test "build_electron_args: CLAUDE_PASSWORD_STORE unset - no --password-store arg" {
+	# Default: the official os_crypt autodetect owns the decision, so the
+	# launcher must not emit a --password-store flag at all.
+	is_wayland=false
+	setup_logging
+	build_electron_args deb
 	# shellcheck disable=SC2314 # last command in test, ! works correctly
-	! has_electron_arg '--no-sandbox'
+	! has_electron_arg '--password-store=*'
 }
 
 @test "build_electron_args: X11 appimage - includes --no-sandbox" {
@@ -450,20 +464,6 @@ teardown() {
 	has_electron_arg '--enable-features=*GlobalShortcutsPortal*'
 }
 
-@test "build_electron_args: hidden titlebar + native Wayland - one merged --enable-features" {
-	# WindowControlsOverlay (hidden titlebar) and the wayland/portal
-	# features must coexist in a single flag rather than clobber.
-	CLAUDE_TITLEBAR_STYLE=hidden
-	is_wayland=true
-	use_x11_on_wayland=false
-	setup_logging
-	build_electron_args deb
-	[[ $(count_enable_features) -eq 1 ]]
-	has_electron_arg '*WindowControlsOverlay*'
-	has_electron_arg '*GlobalShortcutsPortal*'
-	has_electron_arg '*WaylandWindowDecorations*'
-}
-
 @test "build_electron_args: Wayland appimage - always includes --no-sandbox" {
 	is_wayland=true
 	use_x11_on_wayland=true
@@ -490,32 +490,11 @@ teardown() {
 
 # =============================================================================
 # setup_electron_env
+#
+# ELECTRON_FORCE_IS_PACKAGED and ELECTRON_USE_SYSTEM_TITLE_BAR were both
+# dropped in the v3.0.0 rebase: the official build ships packaged and
+# owns its own window frame, so the launcher no longer sets either.
 # =============================================================================
-
-@test "setup_electron_env: sets ELECTRON_FORCE_IS_PACKAGED" {
-	setup_electron_env
-	[[ $ELECTRON_FORCE_IS_PACKAGED == 'true' ]]
-}
-
-@test "setup_electron_env: sets ELECTRON_USE_SYSTEM_TITLE_BAR in hybrid mode (default)" {
-	setup_electron_env
-	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
-}
-
-@test "setup_electron_env: sets ELECTRON_USE_SYSTEM_TITLE_BAR in native mode" {
-	CLAUDE_TITLEBAR_STYLE=native setup_electron_env
-	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
-}
-
-@test "setup_electron_env: skips ELECTRON_USE_SYSTEM_TITLE_BAR in hidden mode" {
-	CLAUDE_TITLEBAR_STYLE=hidden setup_electron_env
-	[[ -z ${ELECTRON_USE_SYSTEM_TITLE_BAR:-} ]]
-}
-
-@test "setup_electron_env: skips ELECTRON_USE_SYSTEM_TITLE_BAR for invalid value (falls back to hybrid)" {
-	CLAUDE_TITLEBAR_STYLE=garbage setup_electron_env
-	[[ $ELECTRON_USE_SYSTEM_TITLE_BAR == '1' ]]
-}
 
 @test "setup_electron_env: CLAUDE_GTK_IM_MODULE set propagates to GTK_IM_MODULE" {
 	setup_logging
@@ -557,95 +536,6 @@ teardown() {
 	[[ $GTK_IM_MODULE == 'ibus' ]]
 	run cat "$log_file"
 	[[ $output != *'GTK_IM_MODULE override'* ]]
-}
-
-# =============================================================================
-# _resolve_titlebar_style
-# =============================================================================
-
-@test "_resolve_titlebar_style: returns 'hybrid' when unset" {
-	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
-}
-
-@test "_resolve_titlebar_style: returns 'hybrid' for hybrid" {
-	CLAUDE_TITLEBAR_STYLE=hybrid
-	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
-}
-
-@test "_resolve_titlebar_style: returns 'native' for native" {
-	CLAUDE_TITLEBAR_STYLE=native
-	[[ $(_resolve_titlebar_style) == 'native' ]]
-}
-
-@test "_resolve_titlebar_style: returns 'hidden' for hidden" {
-	CLAUDE_TITLEBAR_STYLE=hidden
-	[[ $(_resolve_titlebar_style) == 'hidden' ]]
-}
-
-@test "_resolve_titlebar_style: case-insensitive (HYBRID)" {
-	CLAUDE_TITLEBAR_STYLE=HYBRID
-	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
-}
-
-@test "_resolve_titlebar_style: case-insensitive (Native)" {
-	CLAUDE_TITLEBAR_STYLE=Native
-	[[ $(_resolve_titlebar_style) == 'native' ]]
-}
-
-@test "_resolve_titlebar_style: case-insensitive (Hidden)" {
-	CLAUDE_TITLEBAR_STYLE=Hidden
-	[[ $(_resolve_titlebar_style) == 'hidden' ]]
-}
-
-@test "_resolve_titlebar_style: falls back to hybrid for invalid value" {
-	CLAUDE_TITLEBAR_STYLE=garbage
-	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
-}
-
-@test "_resolve_titlebar_style: falls back to hybrid for empty value" {
-	CLAUDE_TITLEBAR_STYLE=''
-	[[ $(_resolve_titlebar_style) == 'hybrid' ]]
-}
-
-# =============================================================================
-# build_electron_args: titlebar mode flag selection
-# =============================================================================
-
-@test "build_electron_args: hybrid mode (default) disables CustomTitlebar" {
-	is_wayland=false
-	setup_logging
-	build_electron_args deb
-	has_electron_arg '--disable-features=CustomTitlebar'
-	# shellcheck disable=SC2314
-	! has_electron_arg '--enable-features=WindowControlsOverlay'
-}
-
-@test "build_electron_args: native mode disables CustomTitlebar" {
-	CLAUDE_TITLEBAR_STYLE=native
-	is_wayland=false
-	setup_logging
-	build_electron_args deb
-	has_electron_arg '--disable-features=CustomTitlebar'
-	# shellcheck disable=SC2314
-	! has_electron_arg '--enable-features=WindowControlsOverlay'
-}
-
-@test "build_electron_args: hidden mode enables WindowControlsOverlay" {
-	CLAUDE_TITLEBAR_STYLE=hidden
-	is_wayland=false
-	setup_logging
-	build_electron_args deb
-	has_electron_arg '--enable-features=WindowControlsOverlay'
-	# shellcheck disable=SC2314
-	! has_electron_arg '--disable-features=CustomTitlebar'
-}
-
-@test "build_electron_args: invalid titlebar value falls back to hybrid flags" {
-	CLAUDE_TITLEBAR_STYLE=garbage
-	is_wayland=false
-	setup_logging
-	build_electron_args deb
-	has_electron_arg '--disable-features=CustomTitlebar'
 }
 
 # =============================================================================
@@ -856,7 +746,7 @@ s.close()
 	local config_dir="$XDG_CONFIG_HOME/Claude"
 
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$config_dir"
+		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
 	# tr '\0' ' ' joins cmdline args with a trailing space, so the
@@ -870,7 +760,19 @@ s.close()
 	[[ $status -ne 0 ]]
 
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js"
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js"
+	[[ $status -eq 0 ]]
+
+	# Official Rust Cowork helper (spawned via process.resourcesPath).
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-linux-helper --socket /run/user/1000/cowork.sock"
+	[[ $status -eq 0 ]]
+
+	# Phase 3 package rename: our helpers now live under
+	# /usr/lib/claude-desktop-unofficial/ and must match alongside the
+	# official /usr/lib/claude-desktop/ arm above.
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop-unofficial/claude-desktop --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
 	run _desktop_helper_cmdline_matches \
@@ -878,7 +780,7 @@ s.close()
 	[[ $status -eq 0 ]]
 
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron /usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar"
+		"/usr/lib/claude-desktop/claude-desktop /usr/lib/claude-desktop/resources/app.asar"
 	[[ $status -ne 0 ]]
 
 	run _desktop_helper_cmdline_matches \
@@ -896,7 +798,7 @@ s.close()
 	# longer appears in any cmdline, so the --class flag from
 	# build_electron_args is the only stable UI signature.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --class=Claude --enable-features=WaylandWindowDecorations "
+		"/usr/lib/claude-desktop/claude-desktop --class=Claude --enable-features=WaylandWindowDecorations "
 	[[ $status -eq 0 ]]
 
 	# Another Electron app's asar path must not match.
@@ -912,12 +814,12 @@ s.close()
 	# Chromium helpers (--type=) never count as the UI, even if a
 	# --class flag leaked into their argv.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
+		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
 	[[ $status -ne 0 ]]
 
 	# The cowork daemon never counts as the UI.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
 	[[ $status -ne 0 ]]
 }
 
@@ -1068,38 +970,90 @@ STUB
 }
 
 # =============================================================================
-# _detect_password_store
+# heal_autostart_entry (AUTO-1): repoint the app-written XDG autostart
+# entry from the raw ELF / ephemeral AppImage mount to the launcher
 # =============================================================================
 
-@test "_detect_password_store: CLAUDE_PASSWORD_STORE env var wins without calling dbus-send" {
-	CLAUDE_PASSWORD_STORE='mystore'
-	# Stub dbus-send to fail — the early-return path must not reach it.
-	_stub_dbus_send fail
-	run _detect_password_store
-	[[ $status -eq 0 ]]
-	[[ $output == 'mystore' ]]
+_write_autostart() {
+	# $1 = Exec line; remaining upstream-shaped lines are fixed
+	mkdir -p "$XDG_CONFIG_HOME/autostart"
+	{
+		echo '[Desktop Entry]'
+		echo 'Type=Application'
+		echo 'Name=Claude'
+		echo "$1"
+		echo 'X-GNOME-Autostart-enabled=true'
+	} > "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
 }
 
-@test "_detect_password_store: falls back to kwallet6 when kwallet6 dbus-send call succeeds" {
-	unset CLAUDE_PASSWORD_STORE
-	_stub_dbus_send kwallet6
-	run _detect_password_store
-	[[ $status -eq 0 ]]
-	[[ $output == 'kwallet6' ]]
+_autostart_exec() {
+	grep '^Exec=' "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
 }
 
-@test "_detect_password_store: falls back to gnome-libsecret when kwallet6 fails but secrets ping succeeds" {
-	unset CLAUDE_PASSWORD_STORE
-	_stub_dbus_send secrets-ok
-	run _detect_password_store
-	[[ $status -eq 0 ]]
-	[[ $output == 'gnome-libsecret' ]]
+@test "heal_autostart_entry: rewrites the raw-ELF Exec to the launcher" {
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == \
+		'Exec="/usr/bin/claude-desktop-unofficial" --startup' ]]
 }
 
-@test "_detect_password_store: falls back to basic when both dbus-send calls fail" {
-	unset CLAUDE_PASSWORD_STORE
-	_stub_dbus_send fail
-	run _detect_password_store
+@test "heal_autostart_entry: rewrites an ephemeral AppImage mount path" {
+	_write_autostart \
+		'Exec="/tmp/.mount_claudeXYZ/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry "$HOME/Apps/Claude.AppImage"
+	[[ $(_autostart_exec) == "Exec=\"$HOME/Apps/Claude.AppImage\" --startup" ]]
+}
+
+@test "heal_autostart_entry: idempotent when already pointing at the launcher" {
+	_write_autostart 'Exec="/usr/bin/claude-desktop-unofficial" --startup'
+	local before after
+	before=$(cat "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop")
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	after=$(cat "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop")
+	[[ $before == "$after" ]]
+}
+
+@test "heal_autostart_entry: leaves a hand-rolled wrapper Exec alone" {
+	_write_autostart 'Exec="/home/user/bin/my-claude-wrapper" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == 'Exec="/home/user/bin/my-claude-wrapper" --startup' ]]
+}
+
+@test "heal_autostart_entry: handles an unquoted hand-edited Exec" {
+	_write_autostart 'Exec=/usr/lib/claude-desktop/claude-desktop --startup --foo'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == \
+		'Exec="/usr/bin/claude-desktop-unofficial" --startup --foo' ]]
+}
+
+@test "heal_autostart_entry: no-op when the entry file is absent" {
+	rm -rf "$XDG_CONFIG_HOME/autostart"
+	run heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	[[ $status -eq 0 ]]
-	[[ $output == 'basic' ]]
+	[[ ! -e "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop" ]]
+}
+
+@test "heal_autostart_entry: no-op when the launcher path is empty" {
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	run heal_autostart_entry ''
+	[[ $status -eq 0 ]]
+	[[ $(_autostart_exec) == 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup' ]]
+}
+
+@test "heal_autostart_entry: preserves non-Exec lines and escapes % in the path" {
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/opt/100%/claude-desktop'
+	[[ $(_autostart_exec) == 'Exec="/opt/100%%/claude-desktop" --startup' ]]
+	grep -q '^X-GNOME-Autostart-enabled=true$' \
+		"$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
+	grep -q '^Name=Claude$' \
+		"$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
+}
+
+@test "heal_autostart_entry: logs the heal when logging is set up" {
+	setup_logging
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	grep -q 'Healed autostart Exec' "$log_file"
+	grep -q 'AUTO-1' "$log_file"
 }

@@ -7,20 +7,20 @@ import { captureSessionEnv } from '../lib/diagnostics.js';
 
 // T09 — Autostart via XDG.
 //
-// frame-fix-wrapper.js installs a setLoginItemSettings shim on Linux
-// (Electron's openAtLogin is a no-op there — electron/electron#15198).
-// The shim resolves $XDG_CONFIG_HOME/autostart/claude-desktop.desktop
-// (falling back to ~/.config when the env var is unset/empty) and
-// writes a spec-compliant [Desktop Entry] block on `openAtLogin: true`,
-// unlinking it on `openAtLogin: false`.
+// The 2.x frame-fix-wrapper setLoginItemSettings shim is gone since
+// v3.0.0 — modern Electron implements setLoginItemSettings natively
+// on Linux (XDG autostart .desktop under $XDG_CONFIG_HOME/autostart;
+// the bundled 42.x is well past that support landing), so the
+// official build owns this path now. T09 pins the case-doc contract:
+// `setLoginItemSettings({ openAtLogin: true })` produces an autostart
+// .desktop file inside $XDG_CONFIG_HOME, and `openAtLogin: false`
+// removes it. The expected filename below is the case-doc's
+// `claude-desktop.desktop`; if the native implementation names it
+// differently, that's a real contract drift to surface, not to
+// paper over in the spec.
 //
 // Default isolation gives a per-test XDG_CONFIG_HOME, so the autostart
 // file lands inside the sandbox — no host-level cleanup needed.
-//
-// Code anchors:
-//   scripts/frame-fix-wrapper.js:566 — autostartPath construction
-//   scripts/frame-fix-wrapper.js:601 — buildAutostartContent()
-//   scripts/frame-fix-wrapper.js:627 — setLoginItemSettings shim
 
 // Cold-start + waitForReady('mainVisible') alone has a 90s budget,
 // so the default 60s test timeout is too tight. Two inspector evals
@@ -68,9 +68,9 @@ test('T09 — Autostart via XDG writes/removes desktop entry', async (
 
 		// Don't gate on 'mainVisible' — that requires a claude.ai
 		// webContents to exist, which depends on network reachability
-		// and isn't relevant to the autostart shim (installed at
-		// frame-fix-wrapper module-load time, well before the renderer
-		// loads claude.ai). All we need is the inspector attached.
+		// and isn't relevant to setLoginItemSettings (an app-level
+		// Electron API available as soon as the main process is up).
+		// All we need is the inspector attached.
 		await app.waitForX11Window();
 		const inspector = await app.attachInspector();
 

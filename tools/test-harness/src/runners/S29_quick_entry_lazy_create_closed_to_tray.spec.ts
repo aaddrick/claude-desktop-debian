@@ -58,9 +58,10 @@ test('S29 — Quick Entry popup is created lazily on first shortcut press (close
 		const mainWin = new MainWindow(inspector);
 		await qe.installInterceptor();
 
-		// Hide-to-tray. Project's frame-fix-wrapper turns the X-button
-		// close into hide(); we replicate that explicitly so the test
-		// doesn't depend on simulating window-manager close.
+		// Hide-to-tray. The official build turns the X-button close
+		// into hide() (close-to-tray — T08 pins that contract); we
+		// replicate the hidden state explicitly so the test doesn't
+		// depend on simulating window-manager close.
 		await mainWin.setState('hide');
 
 		const hiddenState = await mainWin.getState();

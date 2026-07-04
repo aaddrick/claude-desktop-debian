@@ -17,6 +17,7 @@ Decisions are not deleted. If a decision is revisited, the entry is marked `Supe
 | ID | Date | Status | Title |
 | --- | --- | --- | --- |
 | [D-001](#d-001--auto-update-stays-in-the-package-manager-lane) | 2026-04-21 | Accepted | Auto-update stays in the package-manager lane |
+| [D-002](#d-002--rebase-onto-the-official-linux-deb-patch-zero) | 2026-07-02 | Accepted | Rebase onto the official Linux .deb, patch-zero |
 
 ---
 
@@ -71,3 +72,54 @@ No cron-driven, systemd-timer-driven, or in-app rebuild-and-reinstall flows will
 - PR #475 — XRDP fix salvaged from PR #320: <https://github.com/aaddrick/claude-desktop-debian/pull/475>
 - Issue #319 — the XRDP bug that motivated PR #320: <https://github.com/aaddrick/claude-desktop-debian/issues/319>
 - Close comment on PR #320 articulating the direction: <https://github.com/aaddrick/claude-desktop-debian/pull/320#issuecomment-4288390494>
+
+---
+
+## D-002 — Rebase onto the official Linux .deb, patch-zero
+
+- **Status:** Accepted
+- **Decided:** 2026-07-02
+- **Owner:** @aaddrick
+- **Stakeholders:** All users; @typedrat (Nix); @RayCharlizard (Cowork); @sabiut (tests); external contributors proposing patches
+
+### Context
+
+Anthropic shipped a first-party **Claude Desktop for Linux beta** on 2026-06-30 (1.17377.1, Electron 42.5.1) via an APT repository. The teardown (report CDL-ANT-0008) verified it natively solves most of what this project's patch suite existed to fix — tray SNI race, frameless window, autoUpdater, native-binding stub, node-pty — and adds capability a Windows repackage cannot reproduce (KVM Cowork VM, Rust X11 input injection, browser native-messaging host). Continuing to repackage the Windows installer would mean maintaining a worse-behaved fork of the same app.
+
+### Decision
+
+**v3.0.0 repackages Anthropic's official Linux `.deb` instead of the Windows installer, in one hard cutover.** The Windows pipeline and every patch that is redundant against official bytes were deleted in a single arc (fallback: git history and the `pre-cutover-windows-pipeline` tag).
+
+Sub-decisions:
+
+1. **Patch-zero is the contract.** Every asar patch must justify itself against official bytes; the default verdict is delete. With an empty `active_patches` array the official `app.asar` ships byte-identical. Survivors as of the cutover: `quick-window` (KDE stale-focus, pending the QW-1 repro) and `org-plugins` (upstream has no `linux` case — filed upstream). Evidence: [`docs/learnings/official-deb-rebase-verification.md`](learnings/official-deb-rebase-verification.md) and report CDL-ANT-0009.
+2. **Launcher policy is opt-in only.** No default launcher flag may shadow an official code path; `tools/chromium-switch-smoke.sh` fails CI on switch-list drift. `--password-store` auto-detection was dropped for the same reason (explicit `CLAUDE_PASSWORD_STORE` passthrough stays).
+3. **Cowork is KVM-only in 3.0.0**, gated by doctor checks and honest messaging. The bwrap fallback is parked unwired (`scripts/cowork-fallback/`) as a separate 3.1 investigation behind a binary dispatcher (owner @RayCharlizard) — impersonating coworkd's undocumented socket protocol is off the 3.0.0 critical path.
+4. **Our `.deb` survives, renamed** (`claude-desktop-unofficial`, distinct install/AppArmor paths; AppStream ID frozen). *Amended 2026-07-04:* the rename ships **with v3.0.0 itself** rather than as a separate v2.1.0 buffer release — main's pipeline is broken against upstream ≥ 1.17377.2, so an interim legacy release would only delay the fix. The conflict metadata is **version-scoped** (`Conflicts:/Replaces: claude-desktop (<< 1.16000)`, rpm `Obsoletes: claude-desktop < 1.16000`): our legacy packages versioned ≤ 1.15200.x get cleanly swapped on upgrade, while Anthropic's official package (≥ 1.17377.1) is never matched — the two install side-by-side. They still share `~/.config/Claude` and its SingletonLock, so coexistence is install-level, not run-level.
+5. **deb end-of-life condition:** when Anthropic's APT channel flips live for general availability, re-evaluate our deb — thin launcher add-on (`Depends: claude-desktop`) or sunset. Until then we add value on every format (launcher, doctor, RPM/AppImage/Nix/AUR coverage).
+
+### Rationale
+
+- The official build is the same app, built by the vendor, with Linux-native fixes we previously reverse-engineered — every patch we keep is a liability against fast upstream re-minification (the pool shipped three releases in the branch's first week).
+- Formats Anthropic doesn't serve (RPM, AppImage, Nix, AUR) plus the launcher/doctor remain genuine value; a Windows repackage was not.
+- A hard cutover beats a dual pipeline: the patch matrix was verified byte-by-byte against pristine official bundles, and live-hardware verification (FF-1, WCO-1, LD-1, CF-1) settled the deletions the bytes couldn't.
+
+### Consequences
+
+- **BREAKING** launcher-surface changes recorded in the v3.0.0 CHANGELOG entry (titlebar/menu-bar/keep-awake/quit-on-close env vars gone, password-store explicit-only, glibc ≥ 2.34 for Cowork helpers).
+- The Nix derivation was reworked onto the official tree in the same arc (ACQ-1, best-attempt draft): build-verified on x86_64, with runtime/aarch64 validation and the final shape owned by @typedrat.
+- Upstream behavior we depend on is tripwired at build time (`apt_channel_pending`, `menuBarEnabled:!0`) instead of patched.
+- Redistribution posture: the official copyright is `License: Proprietary` with no grant; mirroring consumed `.deb`s into our releases is insurance, and the redistribution question goes to Anthropic before the new org name is public (user action).
+
+### Alternatives Considered
+
+- **Stay on the Windows repackage.** Rejected — permanently worse app (no KVM Cowork, no Rust native binding), same patch-rot treadmill.
+- **Dual pipeline (Windows + official).** Rejected — double CI, double patch matrix, no user benefit.
+- **Patch the official tree liberally.** Rejected — patch-zero with per-patch justification is the point; see sub-decision 1.
+- **Ship the bwrap Cowork fallback in 3.0.0.** Rejected — protocol-impersonation risk; descoped to 3.1 (sub-decision 3).
+
+### References
+
+- Teardown: report CDL-ANT-0008 (official Linux `.deb` teardown)
+- Patch-necessity matrix: [`docs/learnings/official-deb-rebase-verification.md`](learnings/official-deb-rebase-verification.md); history: report CDL-ANT-0009
+- D-001 — the official updater's `apt_channel_pending` early-return keeps updates in the package-manager lane, so D-001 stands unchanged

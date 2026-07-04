@@ -12,12 +12,12 @@ const exec = promisify(execFile);
 //
 // Tier-3 delivery probe. The earlier Tier-2 attempt
 // (`app.isDefaultProtocolClient('claude')`) doesn't work in the
-// harness: ELECTRON_FORCE_IS_PACKAGED=true makes `app.getName()`
-// resolve to `Claude`, so the runtime registration call is a no-op
-// and the API can't tell us anything useful. Instead we drive the
-// real OS path: install a `second-instance` listener in the main
-// process, fire `xdg-open 'claude://test/<marker>'` from a separate
-// process, and verify the URL appears in the captured argv.
+// harness: the packaged app's `app.getName()` resolves to `Claude`,
+// so the runtime registration call is a no-op and the API can't tell
+// us anything useful. Instead we drive the real OS path: install a
+// `second-instance` listener in the main process, fire
+// `xdg-open 'claude://test/<marker>'` from a separate process, and
+// verify the URL appears in the captured argv.
 //
 // Routing: `xdg-open` resolves `x-scheme-handler/claude` to
 // `claude-desktop.desktop` and execs claude-desktop. The new

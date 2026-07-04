@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createIsolation } from '../lib/isolation.js';
 
 // H-prefix runners are HARNESS self-tests — they validate the test
@@ -34,25 +34,50 @@ import { createIsolation } from '../lib/isolation.js';
 // Row-independent: the gate's Linux behavior is the same on every
 // row we ship to. Don't `skipUnlessRow`.
 
-// DEFAULT_INSTALL_PATHS mirror lib/electron.ts:123-132 — kept inline
-// rather than importing resolveInstall() so this canary can run even
-// if a future change to electron.ts breaks the import surface (the
-// canary should be the LEAST coupled spec to any moving part).
-const DEFAULT_INSTALL_PATHS: { electron: string; asar: string }[] = [
+// DEFAULT_INSTALL_PATHS mirror lib/electron.ts — kept inline rather
+// than importing resolveInstall() so this canary can run even if a
+// future change to electron.ts breaks the import surface (the canary
+// should be the LEAST coupled spec to any moving part). `bare` is the
+// v3.x official co-located layout: a packaged binary that loads its
+// own resources/app.asar (no positional app path, appDir = binary
+// dir); `system-electron` is the 2.x stock-Electron + asar pair.
+type Layout = 'bare' | 'system-electron';
+const DEFAULT_INSTALL_PATHS: {
+	electron: string;
+	asar: string;
+	layout: Layout;
+}[] = [
+	{
+		electron: '/usr/lib/claude-desktop/claude-desktop',
+		asar: '/usr/lib/claude-desktop/resources/app.asar',
+		layout: 'bare',
+	},
 	{
 		electron: '/usr/lib/claude-desktop/node_modules/electron/dist/electron',
 		asar: '/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar',
+		layout: 'system-electron',
 	},
 	{
 		electron: '/opt/Claude/node_modules/electron/dist/electron',
 		asar: '/opt/Claude/node_modules/electron/dist/resources/app.asar',
+		layout: 'system-electron',
 	},
 ];
 
-function resolveInstallInline(): { electron: string; asar: string } {
+function resolveInstallInline(): {
+	electron: string;
+	asar: string;
+	layout: Layout;
+} {
 	const envBin = process.env.CLAUDE_DESKTOP_ELECTRON;
 	const envAsar = process.env.CLAUDE_DESKTOP_APP_ASAR;
-	if (envBin && envAsar) return { electron: envBin, asar: envAsar };
+	if (envBin && envAsar) {
+		const layout: Layout =
+			dirname(envAsar) === join(dirname(envBin), 'resources')
+				? 'bare'
+				: 'system-electron';
+		return { electron: envBin, asar: envAsar, layout };
+	}
 	for (const candidate of DEFAULT_INSTALL_PATHS) {
 		if (existsSync(candidate.electron) && existsSync(candidate.asar)) {
 			return candidate;
@@ -70,8 +95,11 @@ test('H01 — CDP auth gate fires on --remote-debugging-port without token', asy
 	testInfo.annotations.push({ type: 'severity', description: 'Critical' });
 	testInfo.annotations.push({ type: 'surface', description: 'CDP auth gate' });
 
-	const { electron: electronBin, asar } = resolveInstallInline();
-	const appDir = dirname(dirname(dirname(dirname(electronBin))));
+	const { electron: electronBin, asar, layout } = resolveInstallInline();
+	const appDir =
+		layout === 'bare'
+			? dirname(electronBin)
+			: dirname(dirname(dirname(dirname(electronBin))));
 
 	// Fresh isolation — the gate trips before any persisted state is
 	// touched, but if anything sneaks past `process.exit(1)` we'd
@@ -84,7 +112,7 @@ test('H01 — CDP auth gate fires on --remote-debugging-port without token', asy
 	// the debug-port flag on argv so the gate fires.
 	const argv = [
 		'--remote-debugging-port=0',
-		asar,
+		...(layout === 'bare' ? [] : [asar]),
 	];
 
 	// Build env: scrub CLAUDE_CDP_AUTH so a developer who set it

@@ -1,41 +1,41 @@
 #!/usr/bin/env bash
 
 #===============================================================================
-# Claude Desktop Debian Build Script
-# Repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux
+# Claude Desktop Linux Build Script
+# Repackages Anthropic's official Claude Desktop for Linux .deb into the
+# formats Anthropic doesn't serve (RPM, AppImage, Nix) plus our own .deb.
 #===============================================================================
 
 # Global variables (set by functions, used throughout)
 architecture=''
 distro_family=''  # debian, rpm, nix, or unknown
-claude_download_url=''
-claude_exe_sha256=''
-claude_exe_filename=''
 version=''
-release_tag=''  # Optional release tag (e.g., v1.3.2+claude1.1.799) for unique package versions
+release_tag=''  # Optional release tag (e.g., v3.0.0+claude1.17377.2) for unique package versions
 build_format=''  # Will be set based on distro if not specified
 cleanup_action='yes'
 perform_cleanup=false
 test_flags_mode=false
-local_exe_path=''
-node_pty_dir=''
+local_deb_path=''
 source_dir=''
 original_user=''
 original_home=''
 project_root=''
 work_dir=''
 app_staging_dir=''
-chosen_electron_module_path=''
-electron_var=''
-electron_var_re=''
 asar_exec=''
 claude_extract_dir=''
-electron_resources_dest=''
-node_pty_build_dir=''
 final_output_path=''
+official_deb_url=''
+official_deb_sha256=''
+official_deb_filename=''
+official_deb_depends=''
+official_deb_recommends=''
 
-# Package metadata (constants)
-readonly PACKAGE_NAME='claude-desktop'
+# Package metadata (constants). The package is named
+# claude-desktop-unofficial so it can coexist with Anthropic's official
+# claude-desktop package; the ELF inside the install tree keeps the
+# upstream basename 'claude-desktop'.
+readonly PACKAGE_NAME='claude-desktop-unofficial'
 readonly WM_CLASS='Claude'
 export WM_CLASS
 readonly MAINTAINER='Claude Desktop Linux Maintainers'
@@ -48,36 +48,16 @@ source "$script_dir/scripts/_common.sh"
 source "$script_dir/scripts/setup/detect-host.sh"
 # shellcheck source=scripts/setup/dependencies.sh
 source "$script_dir/scripts/setup/dependencies.sh"
-# shellcheck source=scripts/setup/download.sh
-source "$script_dir/scripts/setup/download.sh"
-# shellcheck source=scripts/patches/_common.sh
-source "$script_dir/scripts/patches/_common.sh"
+# shellcheck source=scripts/setup/official-deb.sh
+source "$script_dir/scripts/setup/official-deb.sh"
 # shellcheck source=scripts/patches/app-asar.sh
 source "$script_dir/scripts/patches/app-asar.sh"
-# shellcheck source=scripts/patches/tray.sh
-source "$script_dir/scripts/patches/tray.sh"
 # shellcheck source=scripts/patches/quick-window.sh
 source "$script_dir/scripts/patches/quick-window.sh"
-# shellcheck source=scripts/patches/claude-code.sh
-source "$script_dir/scripts/patches/claude-code.sh"
-# shellcheck source=scripts/patches/cowork.sh
-source "$script_dir/scripts/patches/cowork.sh"
 # shellcheck source=scripts/patches/org-plugins.sh
 source "$script_dir/scripts/patches/org-plugins.sh"
-# shellcheck source=scripts/patches/wco-shim.sh
-source "$script_dir/scripts/patches/wco-shim.sh"
 # shellcheck source=scripts/patches/config.sh
 source "$script_dir/scripts/patches/config.sh"
-# shellcheck source=scripts/staging/electron.sh
-source "$script_dir/scripts/staging/electron.sh"
-# shellcheck source=scripts/staging/icons.sh
-source "$script_dir/scripts/staging/icons.sh"
-# shellcheck source=scripts/staging/locales.sh
-source "$script_dir/scripts/staging/locales.sh"
-# shellcheck source=scripts/staging/ssh-helpers.sh
-source "$script_dir/scripts/staging/ssh-helpers.sh"
-# shellcheck source=scripts/staging/cowork-resources.sh
-source "$script_dir/scripts/staging/cowork-resources.sh"
 
 #===============================================================================
 # Packaging Functions
@@ -131,6 +111,15 @@ run_packaging() {
 			output_path='Not Found'
 		fi
 
+		# The amd64 deb leg also emits a transitional dummy package for
+		# the claude-desktop -> claude-desktop-unofficial rename (built
+		# by deb.sh); move it next to the main .deb so CI picks it up.
+		local transitional_deb="$work_dir/claude-desktop_1.16000.0-1_all.deb"
+		if [[ $build_format == 'deb' && -f $transitional_deb ]]; then
+			mv "$transitional_deb" . || exit 1
+			echo "Transitional package created at: ./$(basename "$transitional_deb")"
+		fi
+
 	elif [[ $build_format == 'appimage' ]]; then
 		echo "Calling AppImage packaging script for $architecture..."
 		chmod +x "scripts/packaging/$script_name" || exit 1
@@ -156,7 +145,7 @@ run_packaging() {
 Name=Claude (AppImage)
 Comment=Claude Desktop (AppImage Version $version)
 Exec=$(basename "$output_path") %u
-Icon=claude-desktop
+Icon=$PACKAGE_NAME
 Type=Application
 Terminal=false
 Categories=Office;Utility;Network;
@@ -269,7 +258,7 @@ main() {
 
 	if [[ $build_format != 'nix' ]]; then
 		setup_nodejs
-		setup_electron_asar
+		setup_asar
 	else
 		# Nix provides node and asar in PATH
 		asar_exec=$(command -v asar)
@@ -279,32 +268,29 @@ main() {
 		fi
 	fi
 
-	# Phase 2: Download and extract
-	if [[ $build_format == 'nix' && -z $local_exe_path ]]; then
-		echo 'Error: --exe is required when --build nix is specified' >&2
+	# Phase 2: Fetch and extract the official .deb
+	if [[ $build_format == 'nix' && -z $local_deb_path ]]; then
+		echo 'Error: --deb is required when --build nix is specified' >&2
 		exit 1
 	fi
-	download_claude_installer
+	fetch_official_deb
 
-	# Phase 3: Patch and prepare
+	# The staged app dir IS the extracted official tree; the patch stage
+	# (if any patches are active) mutates it in place.
+	app_staging_dir="$claude_extract_dir/usr/lib/claude-desktop"
+
+	# Phase 3: Conditional patch stage (patch-zero when active_patches
+	# is empty — the official app.asar ships byte-identical)
 	patch_app_asar
-	install_node_pty
-	finalize_app_asar
-	if [[ $build_format != 'nix' ]]; then
-		stage_electron
-		copy_locale_files
-	else
-		# Nix installPhase handles Electron staging and locale files.
-		# Set a resources destination so process_icons and copy_ssh_helpers
-		# have somewhere to write; the Nix installPhase picks them up.
-		electron_resources_dest="$app_staging_dir/nix-resources"
-		mkdir -p "$electron_resources_dest" || exit 1
-	fi
-	process_icons
-	copy_ssh_helpers
-	copy_cowork_resources
 
 	cd "$project_root" || exit 1
+
+	# Packaging scripts read icons from the extracted share/ tree and
+	# re-emit the per-arch dependency contract from the official control
+	# file verbatim (arm64 recommends a different qemu stack than amd64).
+	export CLAUDE_EXTRACT_DIR="$claude_extract_dir"
+	export OFFICIAL_DEB_DEPENDS="$official_deb_depends"
+	export OFFICIAL_DEB_RECOMMENDS="$official_deb_recommends"
 
 	# Phase 4: Package
 	run_packaging

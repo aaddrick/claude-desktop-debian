@@ -23,22 +23,27 @@ This file is a fast reference for the highest-leverage rules and the project's a
 
 ## Project Overview
 
-This project repackages Claude Desktop (Electron app) for Debian/Ubuntu Linux, applying necessary patches for Linux compatibility.
+This project repackages **Anthropic's official Claude Desktop for Linux `.deb`** into the formats Anthropic doesn't serve (RPM, AppImage, Nix, AUR) plus our own `.deb`, and wraps every format in a launcher with Linux-environment fixes (Wayland opt-in, GPU-crash recovery, `--doctor` diagnostics). Since the v3.0.0 rebase (decision [D-002](docs/decisions.md)) the contract is **patch-zero**: the official `app.asar` ships byte-identical unless a patch justifies itself against official bytes as compensating a genuine Linux gap.
 
 ## Learnings
 
-The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical knowledge from debugging and fixing issues — things that aren't obvious from reading the code or docs alone. Consult these before working on related areas. Add new entries when you discover something non-obvious that would save future contributors (human or AI) significant time.
+The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical knowledge from debugging and fixing issues — things that aren't obvious from reading the code or docs alone. Consult these before working on related areas. Add new entries when you discover something non-obvious that would save future contributors (human or AI) significant time. Docs whose subject no longer ships live in [`docs/archive/`](docs/archive/) with an obsolescence header — they stay findable as diagnosis records.
 
-- [`nix.md`](docs/learnings/nix.md) — NixOS packaging, Electron resource path resolution, testing without NixOS
-- [`cowork-vm-daemon.md`](docs/learnings/cowork-vm-daemon.md) — Cowork VM daemon lifecycle, respawn logic, crash diagnosis
-- [`plugin-install.md`](docs/learnings/plugin-install.md) — Anthropic & Partners plugin install flow, gate logic, backend endpoints, and DevTools recipes
+- [`official-deb-rebase-verification.md`](docs/learnings/official-deb-rebase-verification.md) — patch-necessity matrix verified against Anthropic's official Linux `.deb` (which legacy patches the v3.0.0 rebase deletes, the two survivor candidates, and why), plus the install-layout facts the rebase depends on: `process.resourcesPath` helper resolution (relocation-safe), the hardcoded OVMF/AAVMF firmware probe list (not distro-safe), per-arch dependency contracts, SUID recording in `data.tar.xz`, and the official postinst's AppArmor + apt self-registration behavior; its "Open items" section is the live pre-ship checklist
+- [`patching-minified-js.md`](docs/learnings/patching-minified-js.md) — general lessons from maintaining a long-lived patch suite against an actively re-minified upstream: anchor selection (literals over identifiers), the `\w` vs `$` identifier-capture trap, beautified false-negatives, idempotency guards, multi-site coordination, non-unique anchor disambiguation, and the SHA-256-pinned hypothesis-verification recipe — still load-bearing for the two survivor patches
+- [`cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) — the host-vs-target conflation class caught twice in the CI cutover: tools that run during the build key on `uname -m`, artifacts key on `--arch`; symptom is `Exec format error` on cross legs
+- [`packaging-permissions.md`](docs/learnings/packaging-permissions.md) — restrictive-umask permission traps across deb/rpm/AppImage: `app.asar.unpacked` traversability, `dpkg-deb --root-owner-group`, the rpm `%defattr` file-mode trap
+- [`nix.md`](docs/learnings/nix.md) — the official-deb Nix derivation: design contract, the live SRI auto-bump sed anchors, the sandbox SUID extraction trap, why the old Electron resource-path hack must not return, and testing without NixOS
 - [`apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) — APT/DNF binary distribution via Cloudflare Worker + GitHub Releases, redirect chain, credential ownership, heartbeat runbook
-- [`tray-rebuild-race.md`](docs/learnings/tray-rebuild-race.md) — why destroy + recreate on `nativeTheme` updates briefly duplicates the tray icon on KDE Plasma, and the in-place `setImage` + `setContextMenu` fast-path that avoids the SNI re-registration race
-- [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when chat and Code/Agent panels are both active, root cause in upstream session managers, MCP-author workaround
-- [`linux-topbar-shim.md`](docs/learnings/linux-topbar-shim.md) — why claude.ai's in-app topbar is missing on Linux, the four gates that hide it, why the upstream `frame:false` + WCO config has unclickable buttons on X11 (Chromium-level implicit drag region), and the resolution: hybrid mode (system frame + UA-spoof shim → stacked layout, full button functionality)
-- [`test-harness-electron-hooks.md`](docs/learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps are silently bypassed by `frame-fix-wrapper`'s Proxy, and the prototype-method hook pattern that works (used by the Quick Entry test runners)
+- [`wayland-global-shortcuts-portal.md`](docs/learnings/wayland-global-shortcuts-portal.md) — why Quick Entry's hotkey is focus-bound on GNOME Wayland (mutter dropped XWayland global key grabs), the native-Wayland + `GlobalShortcutsPortal` launcher change (opt-in via `CLAUDE_USE_WAYLAND=1`; fixes GNOME ≤49, default GNOME stays on XWayland), the "only the last `--enable-features` switch wins → merge into one flag" trap, the tri-state `CLAUDE_USE_WAYLAND` escape hatch, and the proof that GNOME 50 / xdg-desktop-portal ≥1.20 is still blocked upstream because Electron/Chromium never calls the host `Registry.Register` app-id handshake ([electron#51875](https://github.com/electron/electron/issues/51875)); wlroots (Niri/Sway/Hyprland) lack a portal GlobalShortcuts backend entirely
+- [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when chat and Code/Agent panels are both active, root cause in upstream session managers, MCP-author workaround; now first-party-reproducible → upstream report drafted
+- [`plugin-install.md`](docs/learnings/plugin-install.md) — Anthropic & Partners plugin install flow, gate logic, backend endpoints, and DevTools recipes
+- [`tray-rebuild-race.md`](docs/learnings/tray-rebuild-race.md) — the KDE Plasma SNI re-registration race and the in-place `setImage` + `setContextMenu` fast-path; validated — the official build converged on the same fix, our tray patch is deleted
+- [`cowork-vm-daemon.md`](docs/learnings/cowork-vm-daemon.md) — the 2.x bwrap Cowork daemon lifecycle; superseded on KVM hosts by the official coworkd, kept as reference for the 3.1 fallback investigation
+- [`test-harness-electron-hooks.md`](docs/learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps were silently bypassed by the (now-deleted) frame-fix Proxy, and the prototype-method hook pattern that remains correct for harness code
 - [`test-harness-ax-tree-walker.md`](docs/learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker after the AX-tree migration: AX-enable async lag, navigateTo-to-same-URL no-op, claude.ai's flat `dialog>button[]` lists, the `more options for X` per-row shape, and sidebar virtualization vs the lookup-failure threshold
-- [`patching-minified-js.md`](docs/learnings/patching-minified-js.md) — general lessons from maintaining a long-lived patch suite against an actively re-minified upstream: anchor selection (literals over identifiers), the `\w` vs `$` identifier-capture trap, beautified false-negatives, idempotency guards, multi-site coordination, non-unique anchor disambiguation, and the SHA-256-pinned hypothesis-verification recipe
+
+Archived (still useful as diagnosis records): [`docs/archive/linux-topbar-shim.md`](docs/archive/linux-topbar-shim.md) — the four topbar gates and the WCO/implicit-drag-region investigation (shim deleted; official builds render the topbar on Linux, and Bugs A/B/C moved to [`docs/upstream-reports/`](docs/upstream-reports/)); [`docs/archive/cowork-linux-handover.md`](docs/archive/cowork-linux-handover.md) — the 2.x patch-based Cowork stack handover.
 
 ## Code Style
 
@@ -145,9 +150,9 @@ Co-Authored-By: Claude <claude@anthropic.com>
 
 ### Contributor Credits
 
-The README Acknowledgments section credits external contributors in chronological order (by merge date or fix date). Update it when:
+[`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md) credits external contributors in chronological order (by merge date or fix date); the README Acknowledgments section keeps only the three inspirational projects and links there. Update `ACKNOWLEDGMENTS.md` when:
 
-1. **Merging an external PR** — Add the author to the Acknowledgments list with a link to their GitHub profile and a brief description of their contribution.
+1. **Merging an external PR** — Add the author to the list with a link to their GitHub profile and a brief description of their contribution.
 2. **Implementing a fix suggested in an issue** — If an issue author (or commenter) provided a concrete fix, workaround, code snippet, or detailed technical analysis that was directly used, credit them too.
 
 Contributors are listed in chronological order: inspirational projects first (k3d3, emsi, leobuskin), then contributors ordered by when their contribution was merged or implemented.
@@ -156,7 +161,7 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 ### Important Guidelines
 
-1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` (one file per subsystem: `tray.sh`, `cowork.sh`, `claude-code.sh`, etc.); `build.sh` is only an orchestrator that sources them. Variable and function names are minified and **change between releases**.
+1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh` and `org-plugins.sh`; `config.sh` is kept unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Variable and function names are minified and **change between releases**; full anchor-craft lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
 
 2. **The beautified code in `build-reference/` has different spacing** than the actual minified code in the app. Patterns must handle both:
    - Minified: `oe.nativeTheme.on("updated",()=>{`
@@ -164,10 +169,11 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 3. **Use `-E` flag with sed** for extended regex support when patterns need grouping or alternation.
 
-4. **Extract variable names dynamically** rather than hardcoding them. Shared extraction helpers live in `scripts/patches/_common.sh`. Example:
+4. **Extract variable names dynamically** rather than hardcoding them. Example (from `scripts/patches/quick-window.sh`):
    ```bash
-   # Extract function name from a known pattern
-   TRAY_FUNC=$(grep -oP 'on\("menuBarEnabled",\(\)=>\{\K[$\w]+(?=\(\)\})' app.asar.contents/.vite/build/index.js)
+   # The minified Quick Entry window var, anchored on a stable literal
+   quick_var=$(grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))' \
+       app.asar.contents/.vite/build/index.js)
    ```
 
 5. **Handle optional whitespace** in regex patterns:
@@ -184,71 +190,71 @@ Contributors are listed in chronological order: inspirational projects first (k3
 - `build-reference/app-extracted/` - Extracted and beautified source for analysis
 - `build-reference/tray-icons/` - Tray icon assets for reference
 
-## Frame Fix Wrapper
+## Patch Orchestration (patch-zero)
 
-The app uses a wrapper system to intercept and fix Electron behavior for Linux:
+`scripts/patches/app-asar.sh` owns the asar patch stage:
 
-- **`frame-fix-wrapper.js`** - Intercepts `require('electron')` to patch BrowserWindow defaults (e.g., `frame: true` for proper window decorations on Linux)
-- **`frame-fix-entry.js`** - Entry point that loads the wrapper before the main app
+- **`active_patches` array** — the only place a patch gets wired in. Empty array ⇒ no extract, no repack, official `app.asar` ships byte-identical.
+- **productName guard** — the build fails if upstream's `productName` stops matching `WM_CLASS` (breaks `StartupWMClass` in every `.desktop` file).
+- **Upstream tripwires (AU-1/MB-1)** — the build fails if the official bundle stops shipping `apt_channel_pending` (autoupdater still pending, see [D-001](docs/decisions.md)) or `menuBarEnabled:!0` (menu-bar default). These replace the per-patch WARNINGs that left with the v3.0.0 deletions.
+- **Repack invariant** — the unpacked-file set is derived from the shipped `app.asar.unpacked` tree and must match after repack, so upstream native helpers can't silently inline.
 
-These are injected by `scripts/patches/app-asar.sh` (inside `patch_app_asar`) and referenced in `package.json`'s `main` field. The wrapper pattern allows fixing Electron behavior without modifying the minified app code directly.
+The 2.x frame-fix wrapper (`frame-fix-wrapper.js` `require('electron')` interception) is **gone** — the official build owns its window behavior. Any proposal to intercept Electron APIs again must clear the patch-zero bar in [D-002](docs/decisions.md).
 
 ## Setting Up build-reference
 
-If `build-reference/` is missing or you need to inspect source for a new version, follow these steps to download, extract, and beautify the source code.
+If `build-reference/` is missing or you need to inspect source for a new version, extract and beautify the bundle from the **official Linux `.deb`** (the Windows-installer recipe died with the v3.0.0 rebase).
 
 ### Prerequisites
 
 ```bash
-# Install required tools
-sudo apt install p7zip-full wget nodejs npm
+# Install required tools (ar comes from binutils)
+sudo apt install binutils wget xz-utils zstd nodejs npm
 
 # Install asar and prettier globally (or use npx)
 npm install -g @electron/asar prettier
 ```
 
-### Step 1: Download the Windows Installer
+### Step 1: Download the official .deb
 
-The Windows installer contains the app.asar which has the full Electron app source.
+The pinned version, pool path, and SHA-256 live in `scripts/setup/official-deb.sh` (`OFFICIAL_DEB_*`). To fetch the pinned amd64 build:
 
 ```bash
-# Create working directory
 mkdir -p build-reference && cd build-reference
 
-# Download URL pattern (update version as needed):
-# x64: https://downloads.claude.ai/releases/win32/x64/VERSION/Claude-COMMIT.exe
-# arm64: https://downloads.claude.ai/releases/win32/arm64/VERSION/Claude-COMMIT.exe
-
-# Example for version 1.1.381:
-wget -O Claude-Setup-x64.exe "https://downloads.claude.ai/releases/win32/x64/1.1.381/Claude-c2a39e9c82f5a4d51f511f53f532afd276312731.exe"
+# Read the current pin
+source ../scripts/setup/official-deb.sh 2>/dev/null || true
+wget -O claude-desktop.deb \
+  "https://downloads.claude.ai/claude-desktop/apt/stable/$OFFICIAL_DEB_POOL_AMD64"
+echo "$OFFICIAL_DEB_SHA256_AMD64  claude-desktop.deb" | sha256sum -c
 ```
 
-### Step 2: Extract the Installer
+To inspect the newest pool entry instead, resolve it from the Packages index (`resolve_official_deb` in `official-deb.sh` does the same thing):
 
 ```bash
-# Extract the exe (it's a 7z archive)
-7z x -y Claude-Setup-x64.exe -o"exe-contents"
+curl -fsS "https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages" \
+  | awk -v RS='' '/claude-desktop/' | grep -E '^(Version|Filename|SHA256):'
+```
 
-# Find and extract the nupkg
-cd exe-contents
-NUPKG=$(find . -name "AnthropicClaude-*.nupkg" | head -1)
-7z x -y "$NUPKG" -o"nupkg-contents"
-cd ..
+### Step 2: Extract the .deb
 
-# Copy out the important files
-cp exe-contents/nupkg-contents/lib/net45/resources/app.asar .
-cp -a exe-contents/nupkg-contents/lib/net45/resources/app.asar.unpacked .
+No dpkg required — `ar` + `tar` handle every member (the data member has shipped as both `.tar.zst` and `.tar.xz`; check with `ar t`):
 
-# Optional: copy tray icons for reference
-mkdir -p tray-icons
-cp exe-contents/nupkg-contents/lib/net45/resources/*.png tray-icons/ 2>/dev/null || true
-cp exe-contents/nupkg-contents/lib/net45/resources/*.ico tray-icons/ 2>/dev/null || true
+```bash
+ar t claude-desktop.deb                     # list members
+ar p claude-desktop.deb data.tar.xz | tar -J -x   # or --zstd for .tar.zst
+
+# The app tree lands at usr/lib/claude-desktop/
+cp usr/lib/claude-desktop/resources/app.asar .
+cp -a usr/lib/claude-desktop/resources/app.asar.unpacked .
+
+# Optional: hicolor icons for reference
+cp -a usr/share/icons/hicolor tray-icons
 ```
 
 ### Step 3: Extract app.asar
 
 ```bash
-# Extract the asar archive
 asar extract app.asar app-extracted
 ```
 
@@ -268,9 +274,8 @@ npx prettier --write app-extracted/.vite/build/mainWindow.js
 ### Step 5: Clean Up (Optional)
 
 ```bash
-# Remove intermediate files, keep only what's needed for reference
-rm -rf exe-contents
-rm Claude-Setup-x64.exe
+# Keep only what's needed for reference
+rm -rf usr claude-desktop.deb
 rm -rf app.asar app.asar.unpacked  # Keep only app-extracted
 ```
 
@@ -288,14 +293,12 @@ build-reference/
 │   │   └── renderer/
 │   │       └── ...
 │   ├── node_modules/
-│   │   └── @ant/claude-native/   # Native bindings (stubs)
+│   │   └── @ant/claude-native/   # Rust native binding (real on Linux)
 │   └── package.json
-├── tray-icons/
-│   ├── TrayIconTemplate.png      # Black icon (for light panels)
-│   ├── TrayIconTemplate-Dark.png # White icon (for dark panels)
-│   └── ...
-└── nupkg-contents/               # Optional: full extracted nupkg
+└── tray-icons/                   # Official hicolor icons (optional)
 ```
+
+Remember that patterns verified against beautified output need the whitespace-tolerant form when applied to the shipped minified bytes (see the guidelines above).
 
 ## Adding New Package Formats or Repositories
 
@@ -355,11 +358,13 @@ gh run download RUN_ID -n artifact-name
 
 ### Build Artifacts
 
-- `claude-desktop-VERSION-amd64.deb` - Debian package for x86_64
-- `claude-desktop-VERSION-amd64.AppImage` - AppImage for x86_64
-- `claude-desktop-VERSION-arm64.deb` - Debian package for ARM64
-- `claude-desktop-VERSION-arm64.AppImage` - AppImage for ARM64
-- `result/` - Nix build output (symlink, gitignored)
+- `claude-desktop-unofficial_VERSION_amd64.deb` / `claude-desktop-unofficial_VERSION_arm64.deb` - Debian packages
+- `claude-desktop_1.16000.0-1_all.deb` - transitional apt package (produced by the amd64 leg) that migrates legacy `claude-desktop` installs from our repo to `claude-desktop-unofficial`
+- `claude-desktop-unofficial-VERSION-1.x86_64.rpm` / `claude-desktop-unofficial-VERSION-1.aarch64.rpm` - RPM packages
+- `claude-desktop-unofficial-VERSION-amd64.AppImage` / `claude-desktop-unofficial-VERSION-arm64.AppImage` - AppImages (+ `.zsync` in CI)
+- `result/` - Nix build output (symlink, gitignored; the derivation is a stub until the @typedrat rework lands)
+
+One cross-building `build.yml` produces all of these from `ubuntu-latest` via the `--arch` input (see [`docs/learnings/cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) for the host-vs-target trap).
 
 ## Distribution
 
@@ -391,6 +396,8 @@ nix build .#claude-desktop
 nix build .#claude-desktop-fhs
 ```
 
+The derivation repackages the official `.deb` (`fetchurl` + `autoPatchelfHook`, no nixpkgs Electron). Build-verified on x86_64 only — runtime on real NixOS and the aarch64 leg are open validation items (owner @typedrat; design contract and testing recipe in [`docs/learnings/nix.md`](docs/learnings/nix.md)).
+
 ### Testing AppImage
 
 ```bash
@@ -407,8 +414,9 @@ nix build .#claude-desktop-fhs
 mount | grep claude
 # Example: /tmp/.mount_claudeXXXXXX
 
-# Extract the running app's asar for inspection
-npx asar extract /tmp/.mount_claudeXXXXXX/usr/lib/node_modules/electron/dist/resources/app.asar /tmp/claude-inspect
+# Extract the running app's asar for inspection (official bare
+# co-located layout: ELF + chrome-sandbox + resources/ side by side)
+npx asar extract /tmp/.mount_claudeXXXXXX/usr/lib/claude-desktop/resources/app.asar /tmp/claude-inspect
 
 # Search for patterns in the extracted code
 grep -n "pattern" /tmp/claude-inspect/.vite/build/index.js
@@ -464,7 +472,7 @@ git tag "v1.3.24+claude$(gh variable get CLAUDE_DESKTOP_VERSION)"
 git push origin "v1.3.24+claude$(gh variable get CLAUDE_DESKTOP_VERSION)"
 ```
 
-When upstream Claude Desktop updates, the `check-claude-version` workflow automatically updates `CLAUDE_DESKTOP_VERSION`, patches the URLs in `scripts/setup/detect-host.sh`, and creates a new tag — no manual intervention needed.
+When upstream Claude Desktop updates, the `check-claude-version` workflow resolves the newest entry from the official APT `Packages` indexes (both arches, with a cross-arch agreement gate), seds the `OFFICIAL_DEB_*` pins in `scripts/setup/official-deb.sh` (and the Nix SRI hashes once the derivation stops being a stub), updates `CLAUDE_DESKTOP_VERSION`, and creates a new tag — no manual intervention needed. **Do not run it by hand from a branch**: the auto-tag cuts a release with whatever `REPO_VERSION` is staged.
 
 ## Common Gotchas
 
@@ -475,18 +483,17 @@ When upstream Claude Desktop updates, the `check-claude-version` workflow automa
   pkill -9 -f "mount_claude"
   ```
 - **SingletonLock** - If app won't start, check for stale lock: `~/.config/Claude/SingletonLock`
-- **Node version** - Build requires Node.js; the script downloads its own if needed
-- **Nix hashes** - When Claude Desktop version changes, both the URLs in `scripts/setup/detect-host.sh` and `nix/claude-desktop.nix` (version, URLs, SRI hashes) must be updated. The CI handles this automatically.
-- **Claude Desktop version** - A GitHub Action automatically updates the `CLAUDE_DESKTOP_VERSION` repo variable and the URLs in `scripts/setup/detect-host.sh` on main when a new version is detected. Before committing `scripts/setup/detect-host.sh`, ensure your branch has the latest URLs:
+- **Node version** - Build requires Node.js; the script downloads its own if needed (keyed to the HOST arch — see the cross-build learning)
+- **Version pins** - The official `.deb` version, pool paths, and SHA-256 sums are pinned in `scripts/setup/official-deb.sh` (`OFFICIAL_DEB_*`), updated automatically by `check-claude-version` on main (which also seds the Nix SRI once the derivation lands). Before committing `scripts/setup/official-deb.sh`, ensure your branch carries the latest pins:
   ```bash
   # Check repo variable (source of truth)
   gh variable get CLAUDE_DESKTOP_VERSION
 
-  # Check current version in the detect_architecture case statement
-  grep -oP 'x64/\K[0-9]+\.[0-9]+\.[0-9]+' scripts/setup/detect-host.sh | head -1
+  # Check the pinned version on your branch
+  grep -oP "^OFFICIAL_DEB_VERSION='\K[^']+" scripts/setup/official-deb.sh
 
-  # If outdated, pull URLs from main branch
-  gh api repos/aaddrick/claude-desktop-debian/contents/scripts/setup/detect-host.sh?ref=main \
-    --jq '.content' | base64 -d | grep -E "claude_download_url="
+  # What the official pool currently serves
+  curl -fsS "https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages" \
+    | grep -E '^Version:' | sort -V | tail -1
   ```
-  Update both amd64 and arm64 URLs in `detect_architecture()` to match main
+- **data.tar compression varies** - Upstream has shipped both `data.tar.zst` and `data.tar.xz`; `_extract_deb_member` in `official-deb.sh` handles zst/xz/gz/plain, so never hardcode one

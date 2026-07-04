@@ -1,0 +1,18 @@
+\reportsection{16}{SSH helpers}{SSH Helpers: Staged for Windows, Gone with the Pipeline}
+
+\unithead{Mechanism}
+
+\reppar{\code{scripts/staging/ssh-helpers.sh}'s \code{copy\_ssh\_helpers} copies the upstream \code{claude-ssh} remote-helper binary and its \code{version.txt} out of the Windows-installer extraction tree (\code{lib/net45/resources/claude-ssh}, the Squirrel/.NET layout the pre-rebase acquisition pipeline extracted from) into \code{\$electron\_resources\_dest/claude-ssh}, staging only the arch-matching \code{claude-ssh-linux-\$architecture} binary rather than the installer's full macOS, Windows, and both-Linux-arch set, then re-asserts the exec bit with \code{chmod +x}. It is sourced by \code{build.sh} and invoked unconditionally for every build format (deb, rpm, AppImage, Nix), with the Nix format alone branching its destination to \code{\$app\_staging\_dir/nix-resources}. At runtime the staged directory resolves to \code{process.resourcesPath/claude-ssh/}, the exact path pre-rebase builds' SSH remote-connect flow read in order to deploy the helper onto a remote host.}
+
+\unithead{Origin}
+
+\reppar{Origin: issue \#235 ("Could not spawn \code{claude-ssh}", native binary missing from the Linux package), opened by @ayoahha 2026-02-17 with a decompiled trace of the failing \code{process.resourcesPath} lookup. A competing fix, PR \#249 by @rfxlamia (2026-02-22), copied the entire \code{claude-ssh/} tree across every platform and arch plus a verification script; it was closed unmerged 2026-02-28 in favor of \#268. PR \#268 merged 2026-02-28 as \code{fd24511}, introducing \code{copy\_ssh\_helpers} with the narrower arch-matching-only copy, citing a stated 12--18MB per-package saving over \#249's copy-everything approach.}
+
+\begin{chronology}
+2026-02 & \#235, \#268, \code{fd24511} & Origin: issue \#235 (@ayoahha) traced the missing binary; competing PR \#249 (@rfxlamia) copied the full multi-platform tree and was closed unmerged in favor of \#268, which created \code{copy\_ssh\_helpers()} with an arch-matching-only copy. \\
+2026-02 & \#266, \code{bd5a096}, \code{6a3aae6} & Nix-format support: destination first branched between the electron resources path and \code{nix-resources}, then collapsed back to one path by repointing \code{electron\_resources\_dest} itself for nix builds. \\
+2026-04 & \#443, \code{ff4821e} & Pure move: extracted verbatim into \code{scripts/staging/ssh-helpers.sh} during the build.sh subsystem split; no logic change. \\
+2026-07 & rebase, \code{d9cef9e} & Deleted wholesale with the rest of \code{scripts/staging/*} in the Phase 1 acquisition swap to the official \code{.deb}. \\
+\end{chronology}
+
+\methodbanner{\textbf{Fate under the rebase.} \bdel{} \code{scripts/staging} was deleted wholesale on the rebase branch, including \code{ssh-helpers.sh}; the official 1.17377.2 amd64 \code{.deb} contains no \code{claude-ssh} artifact anywhere in \code{data.tar.xz} (byte-verified 2026-07-03, one unrelated \code{Ssh} substring hit in an asset filename aside). Static analysis of that same package's \code{app.asar} finds a \code{ClaudeSSHManager} class that lazy-downloads \code{claude-ssh.zst} into a writable \code{userData} directory at connect time rather than reading \code{process.resourcesPath/claude-ssh/}, which no longer occurs anywhere in the bundle; whether official Linux actually completes a live SSH-remote connection through that download path, or lacks the capability some other way, has not been verified at runtime. \\[3pt]\textbf{Affects.} Per-arch (amd64/arm64 binary staging); DE-agnostic.}

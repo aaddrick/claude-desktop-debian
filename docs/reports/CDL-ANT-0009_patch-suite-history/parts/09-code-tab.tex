@@ -1,0 +1,24 @@
+\reportsection{09}{Code tab}{Claude Code: Two Lines in a Platform Switch}
+
+\unithead{Mechanism}
+
+\reppar{\code{scripts/patches/claude-code.sh} is a single 29-line function, \code{patch\_linux\_claude\_code}, invoked from \code{patch\_app\_asar} under the comment \code{\# Add Linux Claude Code support}. Its target is upstream's \code{getHostPlatform()} resolver in the minified main-process bundle, the switch that decides which Claude Code agent binary to fetch for the Code tab. Historically that switch returned only \code{darwin-*} and \code{win32-*} and threw \code{Unsupported platform: linux-x64} on Linux; the patch \textbf{splices Linux return branches into the switch}. An idempotency guard greps for an existing Linux branch first; then a "new format" path anchors on the arch-aware win32 return, captures the minified arch variable with \code{([[:alnum:]\_\$]+)}, and inserts before the \code{throw}:}
+
+\begin{codeblock}
+if(process.platform==="linux")return \1==="arm64"?"linux-arm64":"linux-x64";
+\end{codeblock}
+
+\reppar{A legacy path handles the older single-\code{win32-x64} shape using \code{process.arch} directly, and a non-fatal warning fires if neither anchor matches (leaving the Code tab broken at runtime rather than aborting the build).}
+
+\unithead{Origin}
+
+\reppar{The patch was born with upstream 1.0.1307, the release that introduced the Code preview. In \#143 (Code-preview support, merged November 2025) \code{jacobfrantz1} added the original inline guard-plus-sed to \code{build.sh}; no motivating issue exists, and the rationale is reconstructed from the PR body alone.}
+
+\begin{chronology}
+2025-11 & \#143, \code{5c5eb39} & Origin: inline guard-plus-sed spliced Linux return branches into \code{getHostPlatform()} inside \code{build.sh}, adapting to upstream 1.0.1307's new Code preview (\code{jacobfrantz1}). \\
+2026-02 & \#241, \#243 \code{db11bd0} & Anchor rot: upstream 1.1.3541 refactored \code{getHostPlatform()} for Windows arm64 support, rotting the origin anchor so the sed silently no-matched; @noctuum reported the Code tab completely broken. @IliyaBrook's fix introduced the dual-format detection, a broader idempotency guard, and the warning fallback. \\
+2026-05 & \#579, \code{3506c14} & Test harness pinned the \code{linux-arm64} fingerprint as a build regression check. \\
+2026-05 & \#644, \code{b40441c} & Regex-hardening audit: \code{\textbackslash w+} widened to \code{[\$\textbackslash w]+} so dollar-containing minified identifiers are not truncated. \\
+\end{chronology}
+
+\methodbanner{\textbf{Fate under the rebase.} \bdel{} The matrix verdict is unconditional: "delete: \code{getHostPlatform} has a native \code{linux-x64}/\code{linux-arm64} branch." The recorded 2026-07-02 audit of official \code{.deb} 1.17377.2 found the official bytes satisfying the legacy patch's own idempotency-guard string, \code{process.platform==="linux".*linux-arm64.*linux-x64}, natively; the teardown likewise records prebuilt \code{node-pty (linux-x64)} shipping for Code/agent shells. On \code{rebase/official-deb} the file is gone, deleted in \code{d9cef9e} among the eleven condemned patches, with no claude-code entry in \code{active\_patches} and no launcher or doctor compensation anywhere.\\[3pt]\textbf{Affects.} All Linux; the Code-tab platform switch, DE-agnostic.}

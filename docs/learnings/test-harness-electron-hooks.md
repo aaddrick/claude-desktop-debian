@@ -1,5 +1,13 @@
 # Hooking Electron from the test harness
 
+> [!NOTE]
+> **Status (v3.0.0 rebase, 2026-07):** `scripts/frame-fix-wrapper.js` —
+> the Proxy that silently bypassed constructor-level `BrowserWindow`
+> wraps — was deleted in v3.0.0; the app now runs the pristine official
+> bundle, so the trap diagnosed here no longer exists in our builds.
+> The prototype-method hook pattern below remains the correct approach
+> for harness code; the test-runner rework is @sabiut's arc.
+
 Why constructor-level `BrowserWindow` wraps don't work in this
 codebase, and the prototype-method hook that does.
 

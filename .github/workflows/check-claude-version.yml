@@ -22,239 +22,152 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GH_PAT }}
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
+      - name: Resolve newest official versions
+        id: resolve
         run: |
-          sudo apt-get update
-          sudo apt-get install -y p7zip-full wget zstd
-          pip install playwright requests
-          playwright install chromium
+          source scripts/_common.sh
+          source scripts/setup/official-deb.sh
 
-      - name: Resolve download URLs
-        id: resolve_urls
-        run: |
-          echo "Resolving Claude Desktop download URLs..."
-
-          # Run the resolver script - stdout has KEY=VALUE pairs, stderr has status messages
-          python scripts/resolve-download-url.py all --format both > resolved_urls.txt || true
-
-          echo "Resolved URLs:"
-          cat resolved_urls.txt
-
-          # Parse the output
-          AMD64_URL=$(grep "^AMD64_URL=" resolved_urls.txt | cut -d= -f2-)
-          ARM64_URL=$(grep "^ARM64_URL=" resolved_urls.txt | cut -d= -f2-)
-          AMD64_VERSION=$(grep "^AMD64_VERSION=" resolved_urls.txt | cut -d= -f2-)
-          ARM64_VERSION=$(grep "^ARM64_VERSION=" resolved_urls.txt | cut -d= -f2-)
-
-          echo "AMD64 URL: $AMD64_URL"
-          echo "ARM64 URL: $ARM64_URL"
-          echo "AMD64 Version: $AMD64_VERSION"
-          echo "ARM64 Version: $ARM64_VERSION"
-
-          # Use AMD64 version as the canonical version (they should match)
-          CLAUDE_VERSION="${AMD64_VERSION:-$ARM64_VERSION}"
-
-          if [ -z "$AMD64_URL" ]; then
-            echo "::error::Failed to resolve AMD64 download URL"
+          # amd64 is authoritative — a failure here fails the job.
+          if ! resolve_official_deb amd64; then
+            echo "::error::Failed to resolve amd64 official package"
             exit 1
           fi
+          {
+            echo "amd64_version=$resolved_official_version"
+            echo "amd64_filename=$resolved_official_filename"
+            echo "amd64_sha256=$resolved_official_sha256"
+          } >> "$GITHUB_OUTPUT"
 
-          echo "amd64_url=$AMD64_URL" >> $GITHUB_OUTPUT
-          echo "arm64_url=$ARM64_URL" >> $GITHUB_OUTPUT
-          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Get current URLs from scripts/setup/detect-host.sh
-        id: current_urls
-        run: |
-          # Extract current URLs from scripts/setup/detect-host.sh
-          # The scripts/setup/detect-host.sh case statement uses x86_64/aarch64 patterns with claude_download_url on the next line
-          CURRENT_AMD64_URL=$(grep -E "x86_64\)" -A1 scripts/setup/detect-host.sh | grep -oP "claude_download_url='\\K[^']+")
-          CURRENT_ARM64_URL=$(grep -E "aarch64\)" -A1 scripts/setup/detect-host.sh | grep -oP "claude_download_url='\\K[^']+")
-
-          echo "Current AMD64 URL: $CURRENT_AMD64_URL"
-          echo "Current ARM64 URL: $CURRENT_ARM64_URL"
-
-          echo "current_amd64_url=$CURRENT_AMD64_URL" >> $GITHUB_OUTPUT
-          echo "current_arm64_url=$CURRENT_ARM64_URL" >> $GITHUB_OUTPUT
+          # arm64 may lag the pool; a failure just leaves arm64_version
+          # empty, which the cross-arch gate treats as "not yet published".
+          if resolve_official_deb arm64; then
+            {
+              echo "arm64_version=$resolved_official_version"
+              echo "arm64_filename=$resolved_official_filename"
+              echo "arm64_sha256=$resolved_official_sha256"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Failed to resolve arm64 official package"
+          fi
 
       - name: Check if update needed
         id: check_update
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
-          NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
-          CURRENT_AMD64_URL="${{ steps.current_urls.outputs.current_amd64_url }}"
-          CURRENT_ARM64_URL="${{ steps.current_urls.outputs.current_arm64_url }}"
-          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
+          AMD64_VERSION="${{ steps.resolve.outputs.amd64_version }}"
+          ARM64_VERSION="${{ steps.resolve.outputs.arm64_version }}"
+          CURRENT_PIN=$(grep -oP "^OFFICIAL_DEB_VERSION='\K[^']+" \
+            scripts/setup/official-deb.sh)
           STORED_CLAUDE_VERSION="${{ vars.CLAUDE_DESKTOP_VERSION }}"
           REPO_VERSION="${{ vars.REPO_VERSION }}"
 
-          echo "Current stored Claude version: $STORED_CLAUDE_VERSION"
-          echo "Detected Claude version: $CLAUDE_VERSION"
+          echo "Resolved amd64 version: $AMD64_VERSION"
+          echo "Resolved arm64 version: $ARM64_VERSION"
+          echo "Current pin (OFFICIAL_DEB_VERSION): $CURRENT_PIN"
+          echo "Stored CLAUDE_DESKTOP_VERSION: $STORED_CLAUDE_VERSION"
           echo "Repository version: $REPO_VERSION"
 
+          # Cross-arch agreement gate: the official pool occasionally
+          # publishes one arch ahead of the other. Only bump when both
+          # arches expose the same version, so a half-published release
+          # never pins mismatched binaries.
+          if [[ "$AMD64_VERSION" != "$ARM64_VERSION" ]]; then
+            echo "pool lag — arches disagree" \
+              "(amd64='$AMD64_VERSION' arm64='$ARM64_VERSION');" \
+              "skipping until both publish"
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VER="$AMD64_VERSION"
           UPDATE_NEEDED=false
 
-          # Check if AMD64 URL changed
-          if [ "$NEW_AMD64_URL" != "$CURRENT_AMD64_URL" ]; then
-            echo "AMD64 URL has changed"
+          if [[ "$VER" != "$CURRENT_PIN" ]]; then
+            echo "Version differs from pin ($CURRENT_PIN -> $VER)"
+            UPDATE_NEEDED=true
+          fi
+          if [[ "$VER" != "$STORED_CLAUDE_VERSION" ]]; then
+            echo "Version differs from CLAUDE_DESKTOP_VERSION"
             UPDATE_NEEDED=true
           fi
 
-          # Check if ARM64 URL changed (only if we got a new one)
-          if [ -n "$NEW_ARM64_URL" ] && [ "$NEW_ARM64_URL" != "$CURRENT_ARM64_URL" ]; then
-            echo "ARM64 URL has changed"
-            UPDATE_NEEDED=true
-          fi
-
-          # Check if version changed
-          if [ -n "$CLAUDE_VERSION" ] && [ "$CLAUDE_VERSION" != "$STORED_CLAUDE_VERSION" ]; then
-            echo "Claude version has changed"
-            UPDATE_NEEDED=true
-          fi
-
-          if [ "$UPDATE_NEEDED" = "true" ]; then
-            echo "Update needed!"
-            echo "update_needed=true" >> $GITHUB_OUTPUT
-
-            # Construct the new tag
-            NEW_TAG="v${REPO_VERSION}+claude${CLAUDE_VERSION}"
-            echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-            echo "New tag will be: $NEW_TAG"
+          if [[ "$UPDATE_NEEDED" == "true" ]]; then
+            NEW_TAG="v${REPO_VERSION}+claude${VER}"
+            {
+              echo "update_needed=true"
+              echo "claude_version=$VER"
+              echo "new_tag=$NEW_TAG"
+            } >> "$GITHUB_OUTPUT"
+            echo "Update needed! New tag will be: $NEW_TAG"
           else
             echo "No updates needed"
-            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update scripts/setup/detect-host.sh with new URLs
+      - name: Update official-deb.sh pins
         if: steps.check_update.outputs.update_needed == 'true'
         run: |
-          NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
-          NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
-          CURRENT_AMD64_URL="${{ steps.current_urls.outputs.current_amd64_url }}"
-          CURRENT_ARM64_URL="${{ steps.current_urls.outputs.current_arm64_url }}"
+          VER="${{ steps.check_update.outputs.claude_version }}"
+          AMD64_FILENAME="${{ steps.resolve.outputs.amd64_filename }}"
+          AMD64_SHA256="${{ steps.resolve.outputs.amd64_sha256 }}"
+          ARM64_FILENAME="${{ steps.resolve.outputs.arm64_filename }}"
+          ARM64_SHA256="${{ steps.resolve.outputs.arm64_sha256 }}"
 
-          echo "Updating scripts/setup/detect-host.sh with new URLs..."
+          f="scripts/setup/official-deb.sh"
 
-          # Update AMD64 URL
-          if [ -n "$NEW_AMD64_URL" ] && [ "$NEW_AMD64_URL" != "$CURRENT_AMD64_URL" ]; then
-            echo "Updating AMD64 URL..."
-            # Escape special characters for sed
-            ESCAPED_CURRENT=$(printf '%s\n' "$CURRENT_AMD64_URL" | sed 's/[[\.*^$()+?{|]/\\&/g')
-            ESCAPED_NEW=$(printf '%s\n' "$NEW_AMD64_URL" | sed 's/[&/\]/\\&/g')
-            sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" scripts/setup/detect-host.sh
-          fi
+          # The resolver's Filename: field is already pool-relative, so it
+          # drops straight into the OFFICIAL_DEB_POOL_* pins. Each sed
+          # anchors on ^NAME= so the five pin lines rewrite unambiguously.
+          # '|' delimiter clears the '/' in the pool paths.
+          sed -i "s|^OFFICIAL_DEB_VERSION=.*|OFFICIAL_DEB_VERSION='$VER'|" "$f"
+          sed -i "s|^OFFICIAL_DEB_POOL_AMD64=.*|OFFICIAL_DEB_POOL_AMD64='$AMD64_FILENAME'|" "$f"
+          sed -i "s|^OFFICIAL_DEB_SHA256_AMD64=.*|OFFICIAL_DEB_SHA256_AMD64='$AMD64_SHA256'|" "$f"
+          sed -i "s|^OFFICIAL_DEB_POOL_ARM64=.*|OFFICIAL_DEB_POOL_ARM64='$ARM64_FILENAME'|" "$f"
+          sed -i "s|^OFFICIAL_DEB_SHA256_ARM64=.*|OFFICIAL_DEB_SHA256_ARM64='$ARM64_SHA256'|" "$f"
 
-          # Update ARM64 URL (if we have a new one)
-          if [ -n "$NEW_ARM64_URL" ] && [ "$NEW_ARM64_URL" != "$CURRENT_ARM64_URL" ]; then
-            echo "Updating ARM64 URL..."
-            ESCAPED_CURRENT=$(printf '%s\n' "$CURRENT_ARM64_URL" | sed 's/[[\.*^$()+?{|]/\\&/g')
-            ESCAPED_NEW=$(printf '%s\n' "$NEW_ARM64_URL" | sed 's/[&/\]/\\&/g')
-            sed -i "s|$ESCAPED_CURRENT|$ESCAPED_NEW|g" scripts/setup/detect-host.sh
-          fi
+          echo "Updated pins in $f:"
+          grep -E "^OFFICIAL_DEB_(VERSION|POOL|SHA256)" "$f"
 
-          echo "Updated scripts/setup/detect-host.sh URLs:"
-          grep "claude_download_url=" scripts/setup/detect-host.sh
-
-      - name: Compute SRI hashes for Nix
-        if: steps.check_update.outputs.update_needed == 'true'
-        id: nix_hashes
-        run: |
-          AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
-          ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
-
-          # Download to temp files first so a partial download doesn't
-          # produce a valid-looking but wrong SRI hash.
-          amd64_tmp=$(mktemp)
-          curl -fsSL -o "$amd64_tmp" "$AMD64_URL" || { echo "AMD64 download failed"; exit 1; }
-          AMD64_HEX=$(sha256sum "$amd64_tmp" | awk '{print $1}')
-          AMD64_HASH=$(echo "$AMD64_HEX" | xxd -r -p | base64 -w0)
-          rm "$amd64_tmp"
-          echo "amd64_sri=sha256-$AMD64_HASH" >> $GITHUB_OUTPUT
-          echo "amd64_sha256=$AMD64_HEX" >> $GITHUB_OUTPUT
-
-          if [ -n "$ARM64_URL" ]; then
-            arm64_tmp=$(mktemp)
-            curl -fsSL -o "$arm64_tmp" "$ARM64_URL" || { echo "ARM64 download failed"; exit 1; }
-            ARM64_HEX=$(sha256sum "$arm64_tmp" | awk '{print $1}')
-            ARM64_HASH=$(echo "$ARM64_HEX" | xxd -r -p | base64 -w0)
-            rm "$arm64_tmp"
-            echo "arm64_sri=sha256-$ARM64_HASH" >> $GITHUB_OUTPUT
-            echo "arm64_sha256=$ARM64_HEX" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Update scripts/setup/detect-host.sh SHA-256 checksums
+      - name: Update Nix SRI hashes
         if: steps.check_update.outputs.update_needed == 'true'
         run: |
-          AMD64_SHA256="${{ steps.nix_hashes.outputs.amd64_sha256 }}"
-          ARM64_SHA256="${{ steps.nix_hashes.outputs.arm64_sha256 }}"
-
-          echo "Updating scripts/setup/detect-host.sh SHA-256 checksums..."
-
-          # Update AMD64 hash (in x86_64 case block)
-          if [ -n "$AMD64_SHA256" ]; then
-            sed -i "/x86_64)/,/;;/{
-              s/claude_exe_sha256='[^']*'/claude_exe_sha256='$AMD64_SHA256'/
-            }" scripts/setup/detect-host.sh
-          fi
-
-          # Update ARM64 hash (in aarch64 case block)
-          if [ -n "$ARM64_SHA256" ]; then
-            sed -i "/aarch64)/,/;;/{
-              s/claude_exe_sha256='[^']*'/claude_exe_sha256='$ARM64_SHA256'/
-            }" scripts/setup/detect-host.sh
-          fi
-
-          echo "Updated scripts/setup/detect-host.sh checksums:"
-          grep "claude_exe_sha256=" scripts/setup/detect-host.sh
-
-      # VM bundle checksums removed — Patch 4 now injects empty linux
-      # file arrays since the VM backend is non-functional on Linux.
-      # See: #334 for context.
-
-      - name: Update Nix package
-        if: steps.check_update.outputs.update_needed == 'true'
-        run: |
-          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
-          NEW_AMD64_URL="${{ steps.resolve_urls.outputs.amd64_url }}"
-          NEW_ARM64_URL="${{ steps.resolve_urls.outputs.arm64_url }}"
-          AMD64_SRI="${{ steps.nix_hashes.outputs.amd64_sri }}"
-          ARM64_SRI="${{ steps.nix_hashes.outputs.arm64_sri }}"
-
           NIX_FILE="nix/claude-desktop.nix"
 
-          # Update version
-          sed -i "s/version = \"[^\"]*\"/version = \"$CLAUDE_VERSION\"/" "$NIX_FILE"
-
-          # Update amd64 URL and hash
-          AMD64_PATH=$(echo "$NEW_AMD64_URL" | sed 's|.*releases/|releases/|')
-          sed -i "s|releases/win32/x64/[^\"]*|$AMD64_PATH|" "$NIX_FILE"
-          # Range assumes each arch block (x86_64-linux/aarch64-linux) contains
-          # exactly one `hash = "..."` line before its closing `};`.
-          sed -i "/x86_64-linux/,/};/{s|hash = \"[^\"]*\"|hash = \"$AMD64_SRI\"|}" "$NIX_FILE"
-
-          # Update arm64 URL and hash
-          if [ -n "$NEW_ARM64_URL" ]; then
-            ARM64_PATH=$(echo "$NEW_ARM64_URL" | sed 's|.*releases/|releases/|')
-            sed -i "s|releases/win32/arm64/[^\"]*|$ARM64_PATH|" "$NIX_FILE"
-            sed -i "/aarch64-linux/,/};/{s|hash = \"[^\"]*\"|hash = \"$ARM64_SRI\"|}" "$NIX_FILE"
+          # The Nix derivation is a `throw` stub until @typedrat lands the
+          # official-deb rework. Skip cleanly until it exposes a real
+          # `version = "..."` line to anchor on.
+          if ! grep -q 'version = ' "$NIX_FILE"; then
+            echo "nix derivation is still a stub; skipping SRI update"
+            exit 0
           fi
 
-          echo "Updated $NIX_FILE:"
-          head -30 "$NIX_FILE"
+          VER="${{ steps.check_update.outputs.claude_version }}"
+          AMD64_SHA256="${{ steps.resolve.outputs.amd64_sha256 }}"
+          ARM64_SHA256="${{ steps.resolve.outputs.arm64_sha256 }}"
+
+          # The APT Packages index SHA-256 is authoritative — no download.
+          # Convert the hex digest to the SRI (base64) form Nix expects.
+          amd64_sri="sha256-$(echo "$AMD64_SHA256" | xxd -r -p | base64 -w0)"
+          arm64_sri="sha256-$(echo "$ARM64_SHA256" | xxd -r -p | base64 -w0)"
+
+          sed -i "s|version = \"[^\"]*\"|version = \"$VER\"|" "$NIX_FILE"
+
+          # Expected per-arch block shape once the derivation lands:
+          #   x86_64-linux = { url = "..."; hash = "sha256-..."; };
+          #   aarch64-linux = { url = "..."; hash = "sha256-..."; };
+          # Each arch block holds exactly one `hash = "..."` before its
+          # closing `};`, so the range sed rewrites only that arch's hash.
+          sed -i "/x86_64-linux/,/};/{s|hash = \"[^\"]*\"|hash = \"$amd64_sri\"|}" "$NIX_FILE"
+          sed -i "/aarch64-linux/,/};/{s|hash = \"[^\"]*\"|hash = \"$arm64_sri\"|}" "$NIX_FILE"
+
+          echo "Updated $NIX_FILE (version + per-arch SRI hashes)"
 
       - name: Commit and push changes
         if: steps.check_update.outputs.update_needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          CLAUDE_VERSION="${{ steps.resolve_urls.outputs.claude_version }}"
+          VER="${{ steps.check_update.outputs.claude_version }}"
           NEW_TAG="${{ steps.check_update.outputs.new_tag }}"
 
           # Check if we have a PAT
@@ -268,14 +181,16 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Check if there are changes to commit
-          if git diff --quiet scripts/setup/detect-host.sh nix/claude-desktop.nix; then
-            echo "No changes to scripts/setup/detect-host.sh or nix/claude-desktop.nix"
+          if git diff --quiet scripts/setup/official-deb.sh nix/claude-desktop.nix; then
+            echo "No changes to scripts/setup/official-deb.sh or nix/claude-desktop.nix"
           else
-            git add scripts/setup/detect-host.sh nix/claude-desktop.nix
+            git add scripts/setup/official-deb.sh nix/claude-desktop.nix
             git commit -m "$(cat <<COMMIT_MSG
-          Update Claude Desktop download URLs to version $CLAUDE_VERSION
+          Update Claude Desktop to version $VER
 
-          Updated download URLs resolved from official redirect endpoints.
+          Bumped the official .deb pins (version, pool paths, SHA-256) and
+          the Nix SRI hashes to the newest release in Anthropic's official
+          APT pool.
 
           🤖 Generated with [Claude Code](https://claude.com/claude-code)
           COMMIT_MSG
@@ -285,12 +200,12 @@ jobs:
           fi
 
           # Update the version variable
-          gh variable set CLAUDE_DESKTOP_VERSION --body "$CLAUDE_VERSION"
+          gh variable set CLAUDE_DESKTOP_VERSION --body "$VER"
 
           echo "Creating and pushing new tag: $NEW_TAG"
 
           # Create annotated tag
-          git tag -a "$NEW_TAG" -m "Update to Claude Desktop $CLAUDE_VERSION"
+          git tag -a "$NEW_TAG" -m "Update to Claude Desktop $VER"
 
           # Push the tag
           git push origin "$NEW_TAG"

@@ -147,9 +147,13 @@ test('S30 — Quick Entry shortcut becomes a no-op after full app exit', async (
 	// Run BEFORE the shortcut injection so a respawn can't taint
 	// any of these signals.
 
-	// (a) No leftover cowork-vm-service pids. Pre-launch cleanup
-	// pkills these (cleanupPreLaunch in lib/electron.ts); a clean
-	// shutdown should have already torn them down.
+	// (a) No leftover 2.x cowork-vm-service pids (defensive — the
+	// daemon died with the v3.0.0 rebase, but pre-launch cleanup
+	// still pkills strays, mirroring the launcher's migration-era
+	// cleanup). The official cowork-linux-helper is deliberately
+	// NOT probed here: a pid-unscoped pgrep would false-positive on
+	// a concurrently running host instance. Pid-scoped helper
+	// lifecycle coverage is 3.1-followup territory.
 	const coworkPids = await pgrepPids('cowork-vm-service\\.js');
 	const coworkPidsRemaining = Array.from(coworkPids);
 

@@ -7,8 +7,19 @@ architecture, decisions, and rationale.
 
 ## Status
 
-Seventy-four specs wired (36 cross-env T-tests, 33 env-specific S-tests,
-5 H-prefix harness self-tests).
+Specs wired across cross-env T-tests, env-specific S-tests, and
+H-prefix harness self-tests.
+
+> **Against the official v3.0.0+ build, the L1 (inspector-attach)
+> specs are blocked** — the shipped Electron fuses the Node inspector
+> off (`EnableNodeCliInspectArguments=OFF`). File-probe and L2
+> (xprop/DBus) specs still run. Full detail and the working/blocked
+> split: [L1 attach is fused off](#l1-attach-is-fused-off-on-the-official-build-post-v300).
+> Path/flag/layout facts below were re-verified against official
+> 1.18286.0; some spec-body notes still reference 2.x mechanisms that
+> the official build now owns natively (close-to-tray, tray fast-path,
+> autostart) — those specs pin the user-visible CONTRACT, not the old
+> patch.
 
 | Test | What it checks | Layer |
 |------|----------------|-------|
@@ -56,10 +67,12 @@ Seventy-four specs wired (36 cross-env T-tests, 33 env-specific S-tests,
 | [T38](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | Bundled `index.js` contains `LocalSessions_$_openInEditor` eipc channel name (Tier 1 fingerprint) | file probe |
 | [T38b](../../docs/testing/cases/code-tab-handoff.md#t38--continue-in-ide) | After `seedFromHost` + `userLoaded`, the `LocalSessions_$_openInEditor` eipc handler is registered on the claude.ai webContents (Tier 2 runtime sibling of T38) | L1 (eipc registry) |
 | H01 | CDP auth gate exits with code 1 when spawned with `--remote-debugging-port` and no `CLAUDE_CDP_AUTH` token | spawn probe |
-| H02 | `frame-fix-wrapper.js` + `frame-fix-entry.js` injected into `app.asar` (Proxy + main-field reference) | file probe |
-| H03 | Build-pipeline patch fingerprints all present in `app.asar` (KDE gate, frame-fix inject, tray, cowork, claude-code) | file probe |
-| H04 | cowork daemon spawns under app and exits with app — soft-skips on rows where it isn't gated to spawn | pgrep delta |
+| H03 | Active-patch fingerprints present in `app.asar` (quick-window `XDG_CURRENT_DESKTOP` gate, org-plugins Linux case) + `productName` guard — tracks the `active_patches` array (patch-zero, D-002) | file probe |
 | H05 | UI-drift canary against the AX-tree fingerprint walker (requires `CLAUDE_TEST_USE_HOST_CONFIG=1`) | L1 (AX) |
+
+H02 (frame-fix injection) and H04 (2.x cowork-vm-service daemon
+lifecycle) were **deleted** in the official-deb rebase — the wrapper
+and that daemon no longer ship. T10 (cowork respawn) went with them.
 | [S01](../../docs/testing/cases/distribution.md#s01--appimage-launches-without-manual-libfuse2t64) | AppImage launches without `libfuse.so.2` complaint (skips on non-AppImage rows) | spawn + stderr grep |
 | [S02](../../docs/testing/cases/distribution.md#s02--xdg_current_desktopubuntugnome-prefix-form-doesnt-break-de-detection) | No strict `==` equality against `XDG_CURRENT_DESKTOP` in launcher / patches (regression detector) | source-tree probe |
 | [S03](../../docs/testing/cases/distribution.md#s03--deb-install-pulls-runtime-deps) | `dpkg-query Depends:` field non-empty (currently fails as upstream-contract regression detector) | dpkg-query |
@@ -364,7 +377,38 @@ preconditions and the build pipeline's invariants (CDP gate alive,
 patches landed, daemon lifecycle clean). Cheap, run in <1s each
 except H04 which launches the app.
 
-## How L1 testing works (the SIGUSR1 path)
+## L1 attach is fused off on the official build (post-v3.0.0)
+
+**The official Linux build ships Electron with the
+`EnableNodeCliInspectArguments` fuse OFF.** That single fuse disables
+`--inspect*` CLI args AND the `SIGUSR1` inspector-open signal — the
+exact mechanism the L1 attach path below relies on. Sending `SIGUSR1`
+to a fused build doesn't open the inspector; it takes the default
+disposition and *kills the app*. The other injection routes are
+closed too: `RunAsNode` OFF, `EnableNodeOptionsEnvironmentVariable`
+OFF, and `EnableEmbeddedAsarIntegrityValidation` + `OnlyLoadAppFromAsar`
+ON (so a repacked asar with dev hooks fails integrity validation).
+Read the live fuse state with `inspectorFuseEnabled()` in
+`lib/electron.ts`.
+
+Consequence for the suite against the official build:
+
+- **File-probe specs** (H01, H03, S09, S21–S28, S33, T11/T14a/T18 and
+  the T22/T30–T38 fingerprint probes) — **work.** They read the
+  installed `app.asar` directly, no attach.
+- **L2 specs** (T01 launch, T03 tray SNI count, T04 decorations,
+  T23 notification via `dbus-monitor`) — **work.** xprop / DBus, no
+  attach.
+- **L1 specs** (everything that calls `app.attachInspector()` or
+  `app.waitForReady('mainVisible' | …)`) — **blocked.**
+  `attachInspector()` now fails fast with `InspectorUnavailableError`
+  instead of killing the app and hanging. Guard them up front with
+  `test.skip(!inspectorAvailable(), …)` — **migration pending, see the
+  repo handover.** To exercise L1 locally you need a build with the
+  inspect fuse ON (a dev/harness build, not the shipped official
+  binary).
+
+The historical SIGUSR1 path, for reference and for un-fused builds:
 
 The shipped Electron has a CDP auth gate that exits the app whenever
 `--remote-debugging-port` or `--remote-debugging-pipe` is on argv and a
@@ -372,9 +416,9 @@ valid `CLAUDE_CDP_AUTH` token isn't in env. Both Playwright's
 `_electron.launch()` and `chromium.connectOverCDP()` inject the gated
 flag, so both are blocked.
 
-The gate doesn't check `--inspect` or runtime `SIGUSR1`, which is the
-same code path as the in-app `Developer → Enable Main Process Debugger`
-menu item. So:
+On an un-fused build the gate doesn't check `--inspect` or runtime
+`SIGUSR1`, which is the same code path as the in-app `Developer →
+Enable Main Process Debugger` menu item. So:
 
 1. `launchClaude()` spawns Electron with no debug-port flags (gate
    asleep) and waits for the X11 window.
@@ -390,10 +434,13 @@ From the inspector you can:
 
 Two gotchas worth knowing:
 
-- `BrowserWindow.getAllWindows()` returns 0 because frame-fix-wrapper
-  substitutes the BrowserWindow class. Use `webContents.getAllWebContents()`
-  instead — works correctly and includes both the shell window and the
-  embedded claude.ai BrowserView.
+- Reach windows via `webContents.getAllWebContents()` +
+  `BrowserWindow.fromWebContents()`, not `BrowserWindow.getAllWindows()`.
+  The 2.x frame-fix Proxy broke the static registry outright (returned
+  0); the wrapper is gone since v3.0.0, but the webContents path worked
+  across both eras and every consumer already uses it — so it stays the
+  convention. It includes both the shell window and the embedded
+  claude.ai BrowserView.
 - `Runtime.evaluate` with `awaitPromise: true` returns empty objects for
   awaited Promise resolutions. `inspector.evalInMain<T>()` returns
   `JSON.stringify(value)` from the IIFE and parses on the caller side
@@ -408,10 +455,14 @@ Full writeup with rationale and tradeoffs:
 that connects to a live Claude Desktop and dumps the runtime state
 backing the load-bearing claims in
 [`docs/testing/cases/`](../../docs/testing/cases/). It exists because
-static grep against the 546k-line beautified bundle has known blind
-spots (lazy `import()`s, dynamic handler tables, conditional wiring),
-and some claims (S26 autoUpdater gate, S20 powerSaveBlocker path) can
-only be verified at runtime.
+static grep against the beautified bundle has known blind spots (lazy
+`import()`s, dynamic handler tables, conditional wiring), and some
+claims (S26 autoUpdater gate, S20 powerSaveBlocker path) can only be
+verified at runtime.
+
+**Like the L1 specs, this needs inspector attach — so it does not run
+against the fused official build.** See
+[L1 attach is fused off](#l1-attach-is-fused-off-on-the-official-build-post-v300).
 
 ```sh
 # Self-contained: launchClaude() + capture + tear down
@@ -440,7 +491,7 @@ is a snapshot of what's currently on screen.
 ## Adding a test
 
 1. Pick the `T##` / `S##` from [`docs/testing/cases/`](../../docs/testing/cases/).
-2. Drop `src/runners/T##_short_name.spec.ts`. Use the existing five as templates — match the layer (L1 / L2) to the test's assertion shape.
+2. Drop `src/runners/T##_short_name.spec.ts`. Use an existing spec of the same layer as a template — match the layer (L1 / L2) to the test's assertion shape. Prefer a file-probe or L2 shape where the assertion allows: L1 specs can't run against the fused official build.
 3. First line of the test body: `skipUnlessRow(testInfo, ['KDE-W', ...])`. JUnit `<skipped>` → matrix `-`, never `✗` for a row that doesn't apply.
 4. Tag the test with `severity` and `surface` annotations so the JUnit output carries them.
 5. Capture diagnostics via `testInfo.attach()` — these become Decision 7 "always-on" captures regardless of pass/fail. For tests that need richer state on failure, wrap your scenarios in a results-collector and attach a single JSON dump (S31's pattern).
@@ -448,12 +499,13 @@ is a snapshot of what's currently on screen.
 
 ### Hooking Electron — read this before reaching for `BrowserWindow`
 
-`scripts/frame-fix-wrapper.js` returns the `electron` module wrapped
-in a `Proxy` whose `get` trap returns a closure-captured
-`PatchedBrowserWindow`. **Constructor-level wraps don't work** — your
-`electron.BrowserWindow = WrappedCtor` write lands on the underlying
-module but the Proxy keeps returning `PatchedBrowserWindow` on
-read, so the wrap is bypassed. The reliable hook is at the
+**Constructor-level wraps are unreliable** — an
+`electron.BrowserWindow = WrappedCtor` write is only seen by call
+sites that read the property *after* the write; any module-level
+destructure or subclass captured earlier bypasses it. (The 2.x
+frame-fix Proxy made this failure total — its `get` trap always
+returned the closure-captured `PatchedBrowserWindow`; the wrapper is
+gone now, but the timing hazard remains.) The reliable hook is at the
 **prototype-method level**:
 
 ```ts
@@ -471,4 +523,9 @@ Construction-time options (`transparent: true`, `frame: false`,
 etc.) aren't observable through this hook — use runtime
 equivalents instead (`getBackgroundColor()`, `getContentBounds()
 vs getBounds()`, `isAlwaysOnTop()`). `lib/quickentry.ts` is the
-worked example.
+worked example. Full rationale:
+[`docs/learnings/test-harness-electron-hooks.md`](../../docs/learnings/test-harness-electron-hooks.md).
+
+Note: this whole section only applies on a build where L1 attach is
+possible. On the fused official build it's moot — see
+[L1 attach is fused off](#l1-attach-is-fused-off-on-the-official-build-post-v300).

@@ -12,10 +12,12 @@
 //   - Renderer access via webContents.executeJavaScript()
 //   - Main-process mocks (e.g. dialog.showOpenDialog for T17)
 //
-// Caveat: `BrowserWindow.getAllWindows()` returns 0 because frame-fix-
-// wrapper substitutes the BrowserWindow class and the substitution
-// breaks the static registry. Use `webContents.getAllWebContents()`
-// instead — that registry stays intact.
+// Convention: use `webContents.getAllWebContents()` +
+// `BrowserWindow.fromWebContents()` to reach windows, not
+// `BrowserWindow.getAllWindows()`. The 2.x frame-fix Proxy broke the
+// static registry outright (returned 0); the wrapper is gone since
+// v3.0.0, but the webContents path worked across both eras and every
+// consumer already uses it, so it stays the standard.
 
 interface PendingCall {
 	resolve: (value: unknown) => void;

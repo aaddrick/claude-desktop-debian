@@ -66,20 +66,35 @@ assert_command_succeeds() {
 }
 
 # Validate app contents inside an Electron resources directory.
+# Since the v3.0.0 patch-zero rebase the asar is the OFFICIAL bundle
+# (byte-identical unless a survivor patch ran), so this asserts the
+# upstream shape — no frame-fix files, no injected desktopName, no
+# stubbed claude-native. See docs/decisions.md D-002.
 # $1 = path to the resources/ dir containing app.asar
-# $2 = expected desktopName in app/package.json
 validate_app_contents() {
 	local resources_dir="$1"
-	local expected_desktop_name="${2:-claude-desktop.desktop}"
 
 	assert_file_exists "$resources_dir/app.asar"
 	assert_dir_exists "$resources_dir/app.asar.unpacked"
 
-	# Check unpacked contents (always available, no asar tool needed)
-	assert_file_exists \
-		"$resources_dir/app.asar.unpacked/node_modules/@ant/claude-native/index.js"
-	assert_file_exists \
-		"$resources_dir/app.asar.unpacked/cowork-vm-service.js"
+	# Official unpacked set: the real Rust native binding plus the
+	# node-pty prebuild (arch-dependent subdir, hence find). The 2.x
+	# stub index.js / cowork-vm-service.js are gone by design.
+	local native_binding pty_prebuild
+	native_binding=$(find "$resources_dir/app.asar.unpacked" \
+		-name 'claude-native-binding.node' -type f | head -1)
+	if [[ -n $native_binding ]]; then
+		pass 'Unpacked: claude-native-binding.node present'
+	else
+		fail 'Unpacked: claude-native-binding.node missing'
+	fi
+	pty_prebuild=$(find "$resources_dir/app.asar.unpacked" \
+		-name 'pty.node' -type f | head -1)
+	if [[ -n $pty_prebuild ]]; then
+		pass 'Unpacked: node-pty prebuild present'
+	else
+		fail 'Unpacked: node-pty prebuild missing'
+	fi
 
 	# Extract app.asar for deeper inspection if tools available
 	local extract_dir
@@ -96,43 +111,27 @@ validate_app_contents() {
 	fi
 
 	if [[ $extracted == true ]]; then
-		# frame-fix files present
-		assert_file_exists "$extract_dir/app/frame-fix-wrapper.js"
-		assert_file_exists "$extract_dir/app/frame-fix-entry.js"
-
-		# package.json main points to frame-fix-entry.js
+		# Upstream entry point (main has shipped as index.js and
+		# index.pre.js across releases — assert the stable prefix,
+		# not the exact filename)
 		assert_contains "$extract_dir/app/package.json" \
-			'frame-fix-entry.js' \
-			"package.json main field references frame-fix-entry.js"
+			'"main": ".vite/build/' \
+			'package.json main points into .vite/build/'
 
-		# package.json desktopName matches the installed desktop file
+		# productName drives WM_CLASS; the build guard asserts the
+		# same invariant at patch time (app-asar.sh)
 		assert_contains "$extract_dir/app/package.json" \
-			"\"desktopName\": \"$expected_desktop_name\"" \
-			"package.json desktopName matches $expected_desktop_name"
+			'"productName": "Claude"' \
+			'package.json productName is Claude'
 
-		# .vite/build/index.js exists (main process code)
-		assert_file_exists "$extract_dir/app/.vite/build/index.js"
-
-		# claude-native stub exists inside asar
-		assert_file_exists \
-			"$extract_dir/app/node_modules/@ant/claude-native/index.js"
-
-		# cowork-vm-service.js exists inside asar
-		assert_file_exists "$extract_dir/app/cowork-vm-service.js"
-
-		# frame-fix-entry.js loads the wrapper
-		assert_contains "$extract_dir/app/frame-fix-entry.js" \
-			'frame-fix-wrapper' \
-			"frame-fix-entry.js loads wrapper"
-
-		# Tray icons present in resources
-		local tray_count
-		tray_count=$(find "$extract_dir/app/resources/" \
-			-name 'Tray*' 2>/dev/null | wc -l)
-		if [[ $tray_count -gt 0 ]]; then
-			pass "Tray icons present ($tray_count files)"
+		# Main process bundle exists
+		local main_bundle
+		main_bundle=$(find "$extract_dir/app/.vite/build" \
+			-maxdepth 1 -name 'index*.js' -type f | head -1)
+		if [[ -n $main_bundle ]]; then
+			pass 'Main process bundle present in .vite/build/'
 		else
-			fail "No tray icons found in app resources"
+			fail 'No index*.js in .vite/build/'
 		fi
 	else
 		pass "Skipping asar extraction (tool not available)"
@@ -142,16 +141,16 @@ validate_app_contents() {
 }
 
 # Headless launch smoke test. Boots the packaged app under Xvfb + dbus
-# and waits for the frame-fix readiness marker
-# ('[Frame Fix] Patches built successfully'), which scripts/frame-fix-
-# wrapper.js emits on the FIRST require('electron') — i.e. before
-# app.whenReady(), not after full startup. Reaching it proves the asar
-# loaded and the wrapper's electron interception ran without a
-# SyntaxError (the #666 class) — note a hang after this point would
-# still pass. Catches startup-only regressions (asar/wrapper syntax
-# errors, bad patch anchors that yield a SyntaxError) that pure
-# structure checks miss. Ref: #670 (deb/rpm),
-# #646 (AppImage readiness-poll pattern this generalizes).
+# and waits for the launcher's 'Executing:' log line (written
+# immediately before exec'ing the official ELF), then requires the
+# process group to survive a grace window. The 2.x frame-fix readiness
+# marker died with the wrapper (patch-zero rebase) — the official
+# bundle prints no deterministic startup line, so "reached exec and
+# didn't crash within the grace period" is the honest contract now.
+# Catches launcher breakage and immediate-exit startup regressions
+# (bad patch anchors that yield a SyntaxError exit the main process
+# within a second or two). Ref: #670 (deb/rpm), #646 (AppImage
+# readiness-poll pattern this generalizes).
 #
 # Scope: main-process startup only. GPU/renderer crashes (#583-class)
 # leave the main process alive and pass — Xvfb has no GPU, so Electron
@@ -249,11 +248,11 @@ run_launch_smoke_test() {
 	"${runner[@]}" >"$xvfb_log" 2>&1 &
 	_smoke_launch_pid=$!
 
-	# Poll for the readiness marker or early process death, up to 30s.
-	# Replaces a flat sleep: faster on healthy startups, less flaky on
-	# noisy runners.
-	local readiness_marker='[Frame Fix] Patches built successfully'
-	local readiness_timeout=30 deadline saw_marker=0
+	# Poll for the launcher's pre-exec marker or early process death,
+	# up to 30s; then hold a grace window in which an immediate app
+	# crash (SyntaxError-class, bad ELF) still fails the test.
+	local readiness_marker='Executing: '
+	local readiness_timeout=30 grace=8 deadline saw_marker=0
 	deadline=$((SECONDS + readiness_timeout))
 	while ((SECONDS < deadline)); do
 		if [[ -f $launcher_log ]] \
@@ -264,6 +263,24 @@ run_launch_smoke_test() {
 		kill -0 "$_smoke_launch_pid" 2>/dev/null || break
 		sleep 0.5
 	done
+
+	if ((saw_marker == 1)); then
+		# Grace window: the launcher exec'd the app — now require it
+		# to stay alive (the launcher logs the exit code if it dies).
+		deadline=$((SECONDS + grace))
+		while ((SECONDS < deadline)); do
+			if [[ -f $launcher_log ]] && grep -qF \
+				'Electron exited with code:' "$launcher_log"; then
+				saw_marker=0
+				break
+			fi
+			if ! kill -0 "$_smoke_launch_pid" 2>/dev/null; then
+				saw_marker=0
+				break
+			fi
+			sleep 0.5
+		done
+	fi
 
 	if ((saw_marker == 1)); then
 		pass "$label reached ready state under Xvfb"

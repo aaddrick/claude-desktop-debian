@@ -1,0 +1,77 @@
+name: Build Package (Reusable)
+
+# Single cross-building reusable workflow. Repackaging Anthropic's
+# prebuilt official .deb is arch-independent (no compilation), so both
+# amd64 and arm64 build on ubuntu-latest; build.sh fetches the official
+# .deb for `--arch` and re-emits it in the requested format.
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: "Target architecture (amd64 or arm64)"
+        required: true
+        type: string
+      build_flags:
+        description: 'Flags to pass to build.sh (e.g., "--build appimage --clean no")'
+        required: false
+        type: string
+        default: ""
+      artifact_suffix:
+        description: "Suffix for the artifact name (e.g., deb, appimage, rpm)"
+        required: true
+        type: string
+      release_tag:
+        description: "Optional release tag (e.g., v1.3.2+claude1.1.799) to derive wrapper version"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ${{ inputs.artifact_suffix == 'rpm' && 'fedora:42' || '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install dependencies (Fedora)
+        if: inputs.artifact_suffix == 'rpm'
+        run: |
+          dnf install -y git findutils
+
+      - name: Install FUSE for AppImageTool (Ubuntu)
+        if: inputs.artifact_suffix != 'rpm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
+      - name: Make build script executable
+        run: chmod +x ./build.sh
+
+      - name: Run build script
+        run: |
+          tag_flag=()
+          if [[ -n "${{ inputs.release_tag }}" ]]; then
+            tag_flag=(--release-tag "${{ inputs.release_tag }}")
+          fi
+          # build_flags is intentionally unquoted so its space-separated
+          # flags word-split into separate argv entries.
+          ./build.sh ${{ inputs.build_flags }} --arch ${{ inputs.arch }} "${tag_flag[@]}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Our artifacts carry the claude-desktop-unofficial name. The
+        # amd64 deb leg additionally emits the transitional dummy
+        # claude-desktop_<ver>_all.deb (Depends: claude-desktop-unofficial)
+        # that migrates legacy apt installs — the second glob picks it up.
+        with:
+          name: package-${{ inputs.arch }}-${{ inputs.artifact_suffix }}
+          path: |
+            claude-desktop-unofficial_*.deb
+            claude-desktop_*_all.deb
+            claude-desktop-unofficial-*.rpm
+            claude-desktop-unofficial-*.AppImage
+            claude-desktop-unofficial-*.AppImage.zsync
+          if-no-files-found: error

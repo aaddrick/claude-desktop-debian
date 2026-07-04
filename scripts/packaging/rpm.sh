@@ -18,6 +18,11 @@ echo "Version: $version"
 if [[ $version == *-* ]]; then
 	rpm_version="${version%%-*}"
 	rpm_release="${version#*-}"
+	# RPM Release field cannot contain hyphens either. The wrapper
+	# suffix appended in official-deb.sh can itself carry an RC suffix
+	# (e.g. "3.0.0-rc1"), which lands entirely in rpm_release here since
+	# the split above only cuts on the first hyphen.
+	rpm_release="${rpm_release//-/.}"
 	echo "RPM Version: $rpm_version"
 	echo "RPM Release: $rpm_release"
 else
@@ -59,11 +64,11 @@ mkdir -p "$staging_dir" || exit 1
 
 # --- Create Desktop Entry ---
 echo 'Creating desktop entry...'
-cat > "$staging_dir/claude-desktop.desktop" << EOF
+cat > "$staging_dir/$package_name.desktop" << EOF
 [Desktop Entry]
 Name=Claude
-Exec=/usr/bin/claude-desktop %u
-Icon=claude-desktop
+Exec=/usr/bin/$package_name %u
+Icon=$package_name
 Type=Application
 Terminal=false
 Categories=Office;Utility;
@@ -77,16 +82,19 @@ cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
-cat > "$staging_dir/claude-desktop" << EOF
+cat > "$staging_dir/$package_name" << EOF
 #!/usr/bin/env bash
 
 # Source shared launcher library
 source "/usr/lib/$package_name/launcher-common.sh"
 
+# The official Electron binary; it auto-loads the co-located
+# resources/app.asar, so no app path is ever passed (issue #696).
+app_exec="/usr/lib/$package_name/claude-desktop"
+
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
-	run_doctor "\$local_electron_path"
+	run_doctor "\$app_exec"
 	exit \$?
 fi
 
@@ -94,13 +102,11 @@ fi
 setup_logging || exit 1
 setup_electron_env
 
-# App path
-app_path="/usr/lib/$package_name/node_modules/electron/dist/resources/app.asar"
-
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
+heal_autostart_entry "/usr/bin/$package_name"
 
 # Log startup info
 log_message '--- Claude Desktop Launcher Start ---'
@@ -122,79 +128,70 @@ if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
 
-# Determine Electron executable path
-electron_exec='electron'
-using_global_electron=false
-local_electron_path="/usr/lib/$package_name/node_modules/electron/dist/electron"
-if [[ -f \$local_electron_path ]]; then
-	electron_exec="\$local_electron_path"
-	log_message "Using local Electron: \$electron_exec"
-else
-	if command -v electron &> /dev/null; then
-		using_global_electron=true
-		log_message "Using global Electron: \$electron_exec"
-	else
-		log_message 'Error: Electron executable not found'
-		if command -v zenity &> /dev/null; then
-			zenity --error \
-				--text='Claude Desktop cannot start because the Electron framework is missing.'
-		elif command -v kdialog &> /dev/null; then
-			kdialog --error \
-				'Claude Desktop cannot start because the Electron framework is missing.'
-		fi
-		exit 1
-	fi
+if [[ ! -x \$app_exec ]]; then
+	log_message "Error: Claude Desktop binary not found at \$app_exec"
+	echo "Error: Claude Desktop binary not found at \$app_exec" >&2
+	exit 1
 fi
 
-# Build electron args - use 'deb' type (same sandbox behavior)
+# Build Chromium switches - use 'deb' type (same sandbox behavior)
 build_electron_args 'deb'
-
-# Bundled Electron: app.asar sits in its default resources/ dir next
-# to the binary, so Electron auto-loads it. Passing the path again
-# makes Electron treat it as a file-to-open, which the app forwards
-# to its file-drop handler, producing a spurious "Attach app.asar?"
-# prompt on launch and on every taskbar reopen (the second-instance
-# argv path). Omitting it is the root-cause fix. See issue #696.
-# Global (PATH) Electron has no co-located app.asar and would boot
-# its default_app welcome screen instead — only there the explicit
-# app path is load-bearing and must stay.
-if [[ \$using_global_electron == true ]]; then
-	electron_args+=("\$app_path")
-	log_message "App (explicit arg, global Electron): \$app_path"
-else
-	log_message "App (auto-loaded by Electron): \$app_path"
-fi
 
 # Change to application directory
 app_dir="/usr/lib/$package_name"
 log_message "Changing directory to \$app_dir"
 cd "\$app_dir" || { log_message "Failed to cd to \$app_dir"; exit 1; }
 
-# Execute Electron and keep the launcher alive so explicit quit can
-# clean up Desktop-owned helpers that outlive the Electron main process.
-log_message "Executing: \$electron_exec \${electron_args[*]} \$*"
-run_electron_and_cleanup "\$electron_exec" "\${electron_args[@]}" "\$@"
+# Execute the official binary and keep the launcher alive so explicit
+# quit can clean up Desktop-owned helpers that outlive the main process.
+log_message "Executing: \$app_exec \${electron_args[*]} \$*"
+run_electron_and_cleanup "\$app_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
-chmod +x "$staging_dir/claude-desktop"
+chmod +x "$staging_dir/$package_name"
 
 # --- Create RPM Spec File ---
 echo 'Creating RPM spec file...'
 
-# Build icon installation commands
+# Build icon installation commands from the official hicolor tree. The
+# source basename stays upstream's claude-desktop.png; the destination
+# is renamed to $package_name.png so our files never collide with the
+# icons installed by Anthropic's official claude-desktop package.
 icon_install_cmds=""
-declare -A icon_files=(
-	[16]=13 [24]=11 [32]=10 [48]=8 [64]=7 [256]=6
-)
+official_hicolor="${CLAUDE_EXTRACT_DIR:?}/usr/share/icons/hicolor"
 
-for size in "${!icon_files[@]}"; do
-	icon_source_path="$work_dir/claude_${icon_files[$size]}_${size}x${size}x32.png"
-	if [[ -f $icon_source_path ]]; then
-		icon_install_cmds+="mkdir -p %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps
-install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps/claude-desktop.png
+for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
+	[[ -f $icon_source_path ]] || continue
+	size_dir=$(basename "$(dirname "$(dirname "$icon_source_path")")")
+	icon_install_cmds+="install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size_dir}/apps/${package_name}.png
 "
-	fi
 done
+
+# CW-1: the official Cowork client probes a hardcoded, Debian-layout
+# firmware list (x64: /usr/share/OVMF/OVMF_CODE{_4M,}.fd, arm64:
+# /usr/share/AAVMF/AAVMF_CODE.fd) with no env override. Fedora ships
+# its own /usr/share/OVMF compat layer, but other RPM hosts (openSUSE,
+# Arch-derived layouts) put edk2 firmware elsewhere, so Cowork breaks
+# out of the box there. The %post scriptlet below creates a compat
+# symlink at the probed path when no probed path exists but a known
+# edk2/qemu layout does; %postun removes it on erase (never a real
+# file, never another package's symlink). Filed upstream as the
+# OVMF-probe-rigidity report.
+if [[ $rpm_arch == 'aarch64' ]]; then
+	fw_probe_dir='/usr/share/AAVMF'
+	fw_probe_list='/usr/share/AAVMF/AAVMF_CODE.fd'
+	fw_link_name='AAVMF_CODE.fd'
+	fw_candidates='/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw'
+	fw_candidates+=' /usr/share/qemu/aavmf-aarch64-code.bin'
+else
+	fw_probe_dir='/usr/share/OVMF'
+	fw_probe_list='/usr/share/OVMF/OVMF_CODE_4M.fd'
+	fw_probe_list+=' /usr/share/OVMF/OVMF_CODE.fd'
+	fw_link_name='OVMF_CODE_4M.fd'
+	fw_candidates='/usr/share/edk2/ovmf/OVMF_CODE.fd'
+	fw_candidates+=' /usr/share/edk2/x64/OVMF_CODE.4m.fd'
+	fw_candidates+=' /usr/share/qemu/ovmf-x86_64-code.bin'
+fi
 
 cat > "$rpmbuild_dir/SPECS/$package_name.spec" << SPECEOF
 Name:           $package_name
@@ -204,6 +201,12 @@ Summary:        $description
 
 License:        Proprietary
 URL:            https://claude.ai
+
+# The 'claude-desktop' name is our legacy repack (<= 1.15200.x); no
+# official rpm exists. Obsoletes gives dnf the automatic rename
+# upgrade path; the bound mirrors the deb Conflicts/Replaces scope.
+Obsoletes:      claude-desktop < 1.16000
+Provides:       claude-desktop = %{version}-%{release}
 
 # Disable automatic dependency scanning (we bundle everything)
 AutoReqProv:    no
@@ -232,10 +235,9 @@ mkdir -p %{buildroot}/usr/bin
 # Install icons
 $icon_install_cmds
 
-# Copy application files
-cp -r $app_staging_dir/node_modules %{buildroot}/usr/lib/$package_name/
-cp $app_staging_dir/app.asar %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
-cp -r $app_staging_dir/app.asar.unpacked %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/resources/
+# Copy application files (the extracted official usr/lib/claude-desktop
+# tree: Electron ELF, chrome-sandbox, resources/, locales/, ...)
+cp -a $app_staging_dir/. %{buildroot}/usr/lib/$package_name/
 
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)
@@ -244,13 +246,13 @@ sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "%{buildroot}/usr/lib/$package_name/launcher-
 cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 
 # Install desktop entry
-install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
+install -Dm 644 $staging_dir/$package_name.desktop %{buildroot}/usr/share/applications/$package_name.desktop
 
 # Install AppStream metainfo (GNOME Software / KDE Discover)
 install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
 
 # Install launcher script
-install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
+install -Dm 755 $staging_dir/$package_name %{buildroot}/usr/bin/$package_name
 
 # Normalize file modes — the cp -r above honors the build umask, and
 # the "-" first field of %defattr ships buildroot *file* modes verbatim
@@ -262,23 +264,63 @@ find %{buildroot}/usr/lib/$package_name -type f -exec chmod u=rwX,go=rX {} +
 # Set the chrome-sandbox suid bit in the buildroot so the /usr/lib
 # directory walk in %files records 4755 in the payload (preserves #539
 # without the "File listed twice" warning #609 — see %files block).
-chmod 4755 %{buildroot}/usr/lib/$package_name/node_modules/electron/dist/chrome-sandbox
+# The official data.tar records the bit, but our non-root ar|tar
+# extraction strips it.
+chmod 4755 %{buildroot}/usr/lib/$package_name/chrome-sandbox
 
 %post
 # Update desktop database for MIME types
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
+# Cowork firmware compat symlink (CW-1): the official client probes a
+# hardcoded Debian-layout firmware list with no env override. If no
+# probed path exists but a known edk2/qemu layout does, bridge it.
+fw_have=''
+for fw_probe in $fw_probe_list; do
+    if [ -e "\$fw_probe" ]; then
+        fw_have=1
+        break
+    fi
+done
+if [ -z "\$fw_have" ]; then
+    for fw_src in $fw_candidates; do
+        if [ -e "\$fw_src" ]; then
+            if mkdir -p $fw_probe_dir 2>/dev/null \\
+                && ln -sf "\$fw_src" $fw_probe_dir/$fw_link_name 2>/dev/null
+            then
+                echo "Cowork firmware compat symlink: $fw_probe_dir/$fw_link_name -> \$fw_src"
+            fi
+            break
+        fi
+    done
+fi
+
 %postun
 # Update desktop database after removal
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
+# CW-1 cleanup on erase only (\$1 = 0; upgrades keep the symlink).
+# Remove the compat symlink only when it is ours: a symlink no rpm
+# package owns (distro compat links — e.g. Fedora's directory-level
+# /usr/share/OVMF — are package-owned and must survive), pointing at
+# one of the layouts %post bridges.
+if [ "\$1" -eq 0 ] && [ -L $fw_probe_dir/$fw_link_name ] \\
+    && ! rpm -qf $fw_probe_dir/$fw_link_name >/dev/null 2>&1; then
+    case "\$(readlink $fw_probe_dir/$fw_link_name)" in
+        /usr/share/edk2/*|/usr/share/qemu/*)
+            rm -f $fw_probe_dir/$fw_link_name
+            rmdir $fw_probe_dir 2>/dev/null || true
+            ;;
+    esac
+fi
+
 %files
 %defattr(-, root, root, 0755)
-%attr(755, root, root) /usr/bin/claude-desktop
+%attr(755, root, root) /usr/bin/$package_name
 /usr/lib/$package_name
-/usr/share/applications/claude-desktop.desktop
+/usr/share/applications/$package_name.desktop
 /usr/share/metainfo/$metainfo_name
-/usr/share/icons/hicolor/*/apps/claude-desktop.png
+/usr/share/icons/hicolor/*/apps/${package_name}.png
 SPECEOF
 
 echo 'RPM spec file created'

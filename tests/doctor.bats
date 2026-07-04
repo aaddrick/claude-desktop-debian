@@ -23,6 +23,7 @@ setup() {
 	unset GTK_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
+	unset _DOCTOR_SECRET_BACKEND
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -34,11 +35,6 @@ setup() {
 	# to stub it unless they're exercising the package-check branch.
 	# Override in-test for rc=0 (installed) or rc=1 (missing).
 	_pkg_installed() { return 2; }
-
-	# Default stub for _detect_password_store (defined in
-	# launcher-common.sh, not sourced here). Tests that exercise
-	# _doctor_check_password_store override this in-test if needed.
-	_detect_password_store() { echo 'basic'; }
 }
 
 teardown() {
@@ -261,7 +257,7 @@ SHIM
 	local saved_path="$PATH"
 	export PATH="/no-such-dir-for-test"
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	export PATH="$saved_path"
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
@@ -271,16 +267,16 @@ SHIM
 	# Listing has the header line only, no entry rows.
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
 }
 
 @test "_doctor_check_recent_crashes: 1 crash — info line, no warn" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 21.6M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'Recent Electron crashes: 1'* ]]
 	[[ $output != *'[WARN]'* ]]
@@ -288,11 +284,11 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 
 @test "_doctor_check_recent_crashes: 3+ crashes — warn + #583 pointer" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M
-Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 22.8M
-Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 12.4M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 21.6M
+Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 22.8M
+Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 12.4M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'Recent Electron crashes: 3'* ]]
@@ -310,7 +306,7 @@ Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/slack/elec
 Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
 Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'may be from other Electron apps'* ]]
@@ -318,7 +314,7 @@ Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/elec
 
 @test "_doctor_check_recent_crashes: empty electron_path falls back" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 21.6M'
 	# Caller didn't pass an electron_path — helper still counts and
 	# emits the info line based on the unfiltered total.
 	run _doctor_check_recent_crashes ''
@@ -433,25 +429,105 @@ SHIM
 
 # =============================================================================
 # _doctor_check_password_store
+#
+# Since the v3.0.0 rebase the launcher no longer probes a keyring: the
+# official build's os_crypt autodetect owns the decision, and
+# CLAUDE_PASSWORD_STORE is the only knob. This is informational only —
+# no PASS/FAIL.
 # =============================================================================
 
-@test "_doctor_check_password_store: output contains 'Password store:' with a valid backend" {
-	# setup() already stubs _detect_password_store to return 'basic'.
+@test "_doctor_check_password_store: unset reports upstream autodetect (no PASS/FAIL)" {
+	# CLAUDE_PASSWORD_STORE unset by setup().
 	run _doctor_check_password_store
 	[[ $status -eq 0 ]]
-	[[ $output == *'[PASS]'* ]]
-	[[ $output == *'Password store:'* ]]
-	[[ $output == *'basic'* ]]
+	[[ $output == *'os_crypt autodetect'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
 }
 
-@test "_doctor_check_password_store: warns, not PASS, when detection returns empty" {
-	# An empty backend means detection failed (e.g. sourcing-order
-	# regression) — it must not surface as a green PASS with a blank value.
-	_detect_password_store() { echo ''; }
+@test "_doctor_check_password_store: set reports the forced override (no PASS/FAIL)" {
+	CLAUDE_PASSWORD_STORE='gnome-libsecret'
 	run _doctor_check_password_store
 	[[ $status -eq 0 ]]
-	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'forced to gnome-libsecret'* ]]
+	[[ $output == *'overrides upstream autodetection'* ]]
 	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_keyring_persistence (LD-3)
+#
+# Advisory data-at-rest warning for keyring-less sessions: without a
+# reachable Secret Service / KWallet, os_crypt falls back to the
+# plaintext 'basic' backend. Never a FAIL. Probe outcome forced via
+# _DOCTOR_SECRET_BACKEND (present|absent).
+# =============================================================================
+
+@test "_doctor_check_keyring_persistence: reachable backend passes" {
+	export _DOCTOR_SECRET_BACKEND='present'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'org.freedesktop.secrets'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+}
+
+@test "_doctor_check_keyring_persistence: absent backend warns unencrypted-at-rest (advisory)" {
+	export _DOCTOR_SECRET_BACKEND='absent'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'no Secret Service or KWallet'* ]]
+	[[ $output == *'basic'* ]]
+	[[ $output == *'unencrypted at rest'* ]]
+	[[ $output != *'[FAIL]'* ]]
+}
+
+@test "_doctor_check_keyring_persistence: forced real backend skips the probe silently" {
+	CLAUDE_PASSWORD_STORE='gnome-libsecret'
+	export _DOCTOR_SECRET_BACKEND='absent'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_keyring_persistence: forced basic warns even with a backend present" {
+	CLAUDE_PASSWORD_STORE='basic'
+	export _DOCTOR_SECRET_BACKEND='present'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'CLAUDE_PASSWORD_STORE=basic'* ]]
+	[[ $output == *'unencrypted at rest'* ]]
+}
+
+@test "_doctor_check_keyring_persistence: no session bus reports unable-to-probe info only" {
+	# No hook: force the real probe down the rc=2 path by removing
+	# every bus signal — no DBUS address, no $XDG_RUNTIME_DIR/bus
+	# socket.
+	unset DBUS_SESSION_BUS_ADDRESS
+	export XDG_RUNTIME_DIR="$TEST_TMP/empty-runtime"
+	mkdir -p "$XDG_RUNTIME_DIR"
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'unable to probe the session bus'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+}
+
+@test "_secret_backend_reachable: kwallet name in the bus listing counts as reachable" {
+	# Real probe path with a stubbed busctl: a KDE session where
+	# only kwalletd6 (not Secret Service) is on the bus.
+	export DBUS_SESSION_BUS_ADDRESS='unix:path=/dev/null'
+	busctl() { printf 'org.kde.kwalletd6 123 - - - - -\n'; }
+	run _secret_backend_reachable
+	[[ $status -eq 0 ]]
+	[[ $output == 'org.kde.kwalletd6' ]]
 }
 
 # =============================================================================
@@ -559,7 +635,7 @@ _hide_pkg_tools() {
 	dpkg-query() { printf '1.5354.0'; }
 
 	run _doctor_check_pkg_version \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'Installed version: 1.11847.5-2.0.19'* ]]
@@ -611,4 +687,309 @@ _hide_pkg_tools() {
 	run _doctor_check_pkg_version ''
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
+}
+
+# =============================================================================
+# _check_legacy_env: 2.x knobs no longer honored (post-rebase)
+# =============================================================================
+
+@test "_check_legacy_env: silent when no legacy knobs are set" {
+	unset CLAUDE_TITLEBAR_STYLE CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE \
+		CLAUDE_QUIT_ON_CLOSE
+	run _check_legacy_env
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_legacy_env: warns for each set legacy knob" {
+	unset CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE CLAUDE_QUIT_ON_CLOSE
+	CLAUDE_TITLEBAR_STYLE='hybrid'
+	run _check_legacy_env
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'CLAUDE_TITLEBAR_STYLE'* ]]
+	[[ $output == *'no longer honored'* ]]
+	[[ $output != *'CLAUDE_MENU_BAR'* ]]
+}
+
+@test "_check_legacy_env: CLAUDE_QUIT_ON_CLOSE points at the tray toggle" {
+	unset CLAUDE_TITLEBAR_STYLE CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE
+	CLAUDE_QUIT_ON_CLOSE='1'
+	run _check_legacy_env
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'CLAUDE_QUIT_ON_CLOSE'* ]]
+	[[ $output == *'System Tray'* ]]
+}
+
+# =============================================================================
+# _check_kvm: /dev/kvm presence + access (device path via _DOCTOR_KVM_DEV)
+# =============================================================================
+
+@test "_check_kvm: missing device warns that Cowork requires KVM" {
+	export _DOCTOR_KVM_DEV="$TEST_TMP/no-such-kvm"
+	run _check_kvm
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'Cowork requires KVM'* ]]
+}
+
+@test "_check_kvm: present and read-write passes" {
+	export _DOCTOR_KVM_DEV="$TEST_TMP/kvm-rw"
+	: > "$_DOCTOR_KVM_DEV"
+	run _check_kvm
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'present and accessible'* ]]
+}
+
+@test "_check_kvm: present but not read-write warns with group hint" {
+	# -r/-w are actual-access checks; root bypasses mode bits, so this
+	# scenario is only meaningful for a non-root tester.
+	[[ $EUID -eq 0 ]] && skip 'permission bits not enforced for root'
+	export _DOCTOR_KVM_DEV="$TEST_TMP/kvm-ro"
+	: > "$_DOCTOR_KVM_DEV"
+	chmod 0000 "$_DOCTOR_KVM_DEV"
+	run _check_kvm
+	chmod 0644 "$_DOCTOR_KVM_DEV"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'not read-write'* ]]
+	[[ $output == *'usermod -aG kvm'* ]]
+}
+
+# =============================================================================
+# _check_vhost_vsock: /dev/vhost-vsock (device path via _DOCTOR_VSOCK_DEV)
+# =============================================================================
+
+@test "_check_vhost_vsock: present passes" {
+	export _DOCTOR_VSOCK_DEV="$TEST_TMP/vsock"
+	: > "$_DOCTOR_VSOCK_DEV"
+	run _check_vhost_vsock
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+}
+
+@test "_check_vhost_vsock: absent warns with modprobe fix" {
+	export _DOCTOR_VSOCK_DEV="$TEST_TMP/no-vsock"
+	run _check_vhost_vsock
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'modprobe vhost_vsock'* ]]
+	[[ $output == *'modules-load.d'* ]]
+}
+
+# =============================================================================
+# _check_cowork_stack: firmware probe (paths via _DOCTOR_OVMF_PATHS)
+# =============================================================================
+
+@test "_check_cowork_stack: firmware found at an official probe path passes" {
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/OVMF_CODE.fd"
+	: > "$_DOCTOR_OVMF_PATHS"
+	run _check_cowork_stack debian
+	[[ $status -eq 0 ]]
+	[[ $output == *"Firmware: $_DOCTOR_OVMF_PATHS"* ]]
+	[[ $output != *'none of the official probe paths'* ]]
+}
+
+@test "_check_cowork_stack: firmware absent from probe list warns (distro-layout note)" {
+	# A firmware file that exists elsewhere must NOT count — only the
+	# official probe paths do. Point the probe list at a nonexistent path.
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/nope/OVMF_CODE.fd"
+	run _check_cowork_stack debian
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'none of the official probe paths'* ]]
+	[[ $output == *'edk2 layouts'* ]]
+}
+
+# =============================================================================
+# _check_official_drift: pool version comparison (curl stubbed)
+# =============================================================================
+
+# A curl stub emitting a one-stanza Packages index for a given pool
+# version. The version is stashed in a global the stub reads at call
+# time (avoids eval); args are ignored — tests don't exercise the URL.
+_stub_curl_packages() {
+	_STUB_PKG_VERSION="$1"
+	curl() {
+		cat <<PKGS
+Package: claude-desktop
+Version: $_STUB_PKG_VERSION
+Filename: pool/main/c/claude-desktop/claude-desktop_${_STUB_PKG_VERSION}_amd64.deb
+SHA256: deadbeefdeadbeef
+Size: 123456
+PKGS
+	}
+}
+
+@test "_check_official_drift: skipped when curl is unavailable" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'curl' ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'skipped'* ]]
+	[[ $output == *'curl not available'* ]]
+}
+
+@test "_check_official_drift: offline (curl fails) is a skip, not a failure" {
+	curl() { return 1; }
+	_installed_pkg_version='1.17377.2-3.0.0'
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'skipped'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_check_official_drift: installed matches pool — PASS in sync" {
+	_stub_curl_packages '1.17377.9'
+	_installed_pkg_version='1.17377.9-3.0.0'
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'in sync'* ]]
+	[[ $output == *'1.17377.9'* ]]
+}
+
+@test "_check_official_drift: installed behind pool — WARN with both versions" {
+	_stub_curl_packages '1.17377.9'
+	_installed_pkg_version='1.17000.0-3.0.0'
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'official pool has 1.17377.9'* ]]
+	[[ $output == *'this install packages 1.17000.0'* ]]
+}
+
+@test "_check_official_drift: unknown installed version reports newest only" {
+	_stub_curl_packages '1.17377.9'
+	_installed_pkg_version=''
+	run _check_official_drift
+	[[ $status -eq 0 ]]
+	[[ $output == *'1.17377.9'* ]]
+	[[ $output == *'installed version unknown'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _check_name_collision: classify an installed dpkg claude-desktop
+# (official Anthropic package, or a pre-rename install of ours)
+# (sources dir via _DOCTOR_APT_SOURCES_DIR; deb-family only)
+# =============================================================================
+
+# Stub dpkg-query answering the ${Maintainer} and ${Version} probes for
+# the package claude-desktop. $1 = maintainer, $2 = version; empty
+# values model "package not installed" (query fails).
+_stub_dpkg_query() {
+	_STUB_DPKG_MAINTAINER="$1"
+	_STUB_DPKG_VERSION="$2"
+	dpkg-query() {
+		case "$2" in
+			*Maintainer*)
+				[[ -n $_STUB_DPKG_MAINTAINER ]] || return 1
+				printf '%s' "$_STUB_DPKG_MAINTAINER"
+				;;
+			*Version*)
+				[[ -n $_STUB_DPKG_VERSION ]] || return 1
+				printf '%s' "$_STUB_DPKG_VERSION"
+				;;
+			*)
+				return 1
+				;;
+		esac
+	}
+}
+
+# Stub dpkg supporting only `--compare-versions A lt B`, via sort -V —
+# the doctor host running these tests may not ship real dpkg.
+_stub_dpkg_compare() {
+	dpkg() {
+		[[ $1 == '--compare-versions' && $3 == 'lt' ]] || return 2
+		[[ $2 != "$4" ]] || return 1
+		[[ $(printf '%s\n%s\n' "$2" "$4" | sort -V | head -1) \
+			== "$2" ]]
+	}
+}
+
+# Drop the official-repo fixture into the overridable sources dir.
+_write_official_apt_source() {
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	cat > "$_DOCTOR_APT_SOURCES_DIR/claude-desktop.list" <<'LIST'
+deb [signed-by=/usr/share/keyrings/claude.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main
+LIST
+}
+
+@test "_check_name_collision: silent when dpkg-query is absent" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'dpkg-query' ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_name_collision: silent when no claude-desktop is installed (repo alone is fine)" {
+	# Post-rename there is no same-name collision: Anthropic's repo
+	# being configured is not by itself worth a message.
+	_stub_dpkg_query '' ''
+	_write_official_apt_source
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_name_collision: official install (Anthropic maintainer) — info, not warn" {
+	_stub_dpkg_query 'Anthropic, PBC <support@anthropic.com>' \
+		'1.18286.0'
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *"Anthropic's official claude-desktop"* ]]
+	[[ $output == *'SingletonLock'* ]]
+	[[ $output == *'only one can run at a time'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_name_collision: official install detected via apt source when maintainer probe is inconclusive" {
+	# Maintainer string does not say Anthropic, but the version is
+	# post-rename and their apt source is configured — classify as
+	# the official package via the repo signal.
+	_stub_dpkg_query 'Claude Desktop Team <noreply@example.com>' \
+		'1.18286.0'
+	_stub_dpkg_compare
+	_write_official_apt_source
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *"Anthropic's official claude-desktop"* ]]
+	[[ $output == *'SingletonLock'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_name_collision: legacy pre-rename package warns with migration hint" {
+	# Our old package kept the name claude-desktop and versions
+	# << 1.16000; the rename to claude-desktop-unofficial means a
+	# lingering install deserves a warn plus the migration path.
+	_stub_dpkg_query 'aaddrick <aaddrick@gmail.com>' '1.11847.5'
+	_stub_dpkg_compare
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'pre-rename'* ]]
+	[[ $output == *'1.11847.5'* ]]
+	[[ $output == *'sudo apt install claude-desktop-unofficial'* ]]
 }

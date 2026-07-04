@@ -11,10 +11,7 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
 
       perSystem = { pkgs, system, ... }: let
-        node-pty = pkgs.callPackage ./nix/node-pty.nix { };
-        claude-desktop = pkgs.callPackage ./nix/claude-desktop.nix {
-          inherit node-pty;
-        };
+        claude-desktop = pkgs.callPackage ./nix/claude-desktop.nix { };
         claude-desktop-fhs = pkgs.callPackage ./nix/fhs.nix {
           inherit claude-desktop;
         };
@@ -33,12 +30,8 @@
       };
 
       flake = {
-        overlays.default = final: prev: let
-          node-pty = final.callPackage ./nix/node-pty.nix { };
-        in {
-          claude-desktop = final.callPackage ./nix/claude-desktop.nix {
-            inherit node-pty;
-          };
+        overlays.default = final: prev: {
+          claude-desktop = final.callPackage ./nix/claude-desktop.nix { };
           claude-desktop-fhs = final.callPackage ./nix/fhs.nix {
             claude-desktop = final.claude-desktop;
           };
