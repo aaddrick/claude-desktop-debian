@@ -107,6 +107,7 @@ cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
 heal_autostart_entry "/usr/bin/$package_name"
+backup_user_config
 
 # Log startup info
 log_message '--- Claude Desktop Launcher Start ---'

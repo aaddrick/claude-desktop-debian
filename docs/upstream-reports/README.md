@@ -7,6 +7,7 @@ goes through the voice workflow first.
 
 | report | target | status | source |
 |---|---|---|---|
+| config + Cowork store stub-wipe | anthropics/claude-code | **FILED** — [anthropics/claude-code#74288](https://github.com/anthropics/claude-code/issues/74288) (2026-07-04); reopen case for #32345/#34359/#56296/#59640/#63651 with the mechanism traced to 1.18286.0 line numbers; needs the within-3-days author comment + upvotes to survive the dupe bot; launcher-side backup ships downstream meanwhile | [`../learnings/config-wipe-guard.md`](../learnings/config-wipe-guard.md) |
 | stdio MCP double-spawn | anthropics/claude-code | **drafted** — [`546-mcp-double-spawn.md`](546-mcp-double-spawn.md); now first-party-reproducible on the official Linux build | [`../learnings/mcp-double-spawn.md`](../learnings/mcp-double-spawn.md) |
 | WCO Linux bugs A/B/C (media query, BrowserView isolation, implicit drag region) | electron/electron | **drafted** — [`electron-wco-linux-bugs.md`](electron-wco-linux-bugs.md); needs Fiddle re-verification on current Electron first | [`../archive/linux-topbar-shim.md`](../archive/linux-topbar-shim.md) |
 | XWayland default defeats GlobalShortcutsPortal (no `Registry.Register` app-id handshake) | electron/electron | **not drafted** — upstream issue [electron#51875](https://github.com/electron/electron/issues/51875) already tracks the handshake gap; ours would add the GNOME 50 / portal ≥1.20 evidence | [`../learnings/wayland-global-shortcuts-portal.md`](../learnings/wayland-global-shortcuts-portal.md) |

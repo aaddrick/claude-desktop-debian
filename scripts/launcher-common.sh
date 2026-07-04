@@ -553,6 +553,71 @@ cleanup_stale_cowork_socket() {
 	log_message "Removed stale cowork-vm-service socket (no daemon running)"
 }
 
+# P1 (#768): rotate out-of-band backups of the user config and the
+# per-account Cowork store index files before launch, so the
+# poisoned-cache / corrupt-load wipe class is recoverable. Upstream's
+# config loader silently falls back to {} on a failed cold-start read
+# and then serializes the whole cached object over the file on the next
+# settings write; the Cowork stores (spaces / remote-session-spaces /
+# scheduled-tasks) share the same rewrite-from-memory shape. See
+# anthropics/claude-code #32345 / #59640 / #63651 and
+# docs/learnings/config-wipe-guard.md.
+#
+# We cannot fix upstream's write path from the launcher, but this keeps
+# the last few good copies out of band. It runs BEFORE Electron starts,
+# so it captures the previous session's (good) state; after an
+# in-session wipe the good copy is still down the rotation. This is the
+# patch-zero-clean primary fix — it covers every wipe mode (corrupt
+# JSON, ENOENT, single-bad-entry Zod) that an in-band asar guard would
+# miss. Rotation keeps $keep copies per file and only rotates on a
+# real change, so it neither churns nor evicts the pre-wipe copy on
+# every launch. Fail-safe: never blocks launch.
+backup_user_config() {
+	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
+	local backup_dir
+	backup_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian"
+	backup_dir="$backup_dir/config-backups"
+	local keep=5
+
+	mkdir -p "$backup_dir" 2>/dev/null || return 0
+
+	local -a sources=("$config_dir/claude_desktop_config.json")
+
+	# The Cowork stores live under nested account/org UUID dirs. An
+	# unmatched glob stays literal and is filtered by the -f test.
+	local lam="$config_dir/local-agent-mode-sessions"
+	if [[ -d $lam ]]; then
+		local f
+		for f in "$lam"/*/*/spaces.json \
+			"$lam"/*/*/remote-session-spaces.json \
+			"$lam"/*/*/scheduled-tasks.json; do
+			[[ -f $f ]] && sources+=("$f")
+		done
+	fi
+
+	local src flat newest i
+	for src in "${sources[@]}"; do
+		[[ -f $src ]] || continue
+
+		# Flatten the path under config_dir into one backup filename.
+		flat="${src#"$config_dir"/}"
+		flat="${flat//\//__}"
+		newest="$backup_dir/$flat.1"
+
+		# Unchanged since the newest backup: nothing to rotate.
+		[[ -f $newest ]] && cmp -s "$src" "$newest" && continue
+
+		# Shift .1..(keep-1) down one slot, dropping the oldest.
+		for (( i = keep - 1; i >= 1; i-- )); do
+			[[ -f "$backup_dir/$flat.$i" ]] && \
+				mv -f "$backup_dir/$flat.$i" \
+					"$backup_dir/$flat.$((i + 1))" 2>/dev/null
+		done
+		cp -f "$src" "$newest" 2>/dev/null && \
+			log_message "Backed up $flat (keep $keep)"
+	done
+}
+
 # AUTO-1: when "Run on startup" is enabled, the official app writes
 # its own XDG autostart entry with Exec=<process.execPath> --startup —
 # the raw Electron ELF (or, under AppImage, the ephemeral

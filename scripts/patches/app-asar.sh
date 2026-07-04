@@ -17,16 +17,26 @@
 #===============================================================================
 
 # Survivor candidates per docs/learnings/official-deb-rebase-verification.md:
-#   patch_quick_window     — Electron-on-KDE stale-focus bug: official
-#                            bundle still hides without blur() (pending
-#                            Plasma repro; drop if it doesn't reproduce)
-#   patch_org_plugins_path — upstream platform switch has no linux case,
-#                            so MDM org plugins are dead on Linux without
-#                            this (filed upstream)
+#   patch_quick_window       — Electron-on-KDE stale-focus bug: official
+#                              bundle still hides without blur() (pending
+#                              Plasma repro; drop if it doesn't reproduce)
+#   patch_org_plugins_path   — upstream platform switch has no linux case,
+#                              so MDM org plugins are dead on Linux without
+#                              this (filed upstream)
 active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
 )
+
+# The #768 config-wipe guard (config.sh) is NOT wired: a contrarian
+# review (see docs/learnings/config-wipe-guard.md) established that the
+# primary fix is launcher-side backup rotation (backup_user_config in
+# launcher-common.sh) — patch-zero-clean, out of app.asar, and covers
+# the corrupt-JSON / ENOENT / single-bad-entry Zod modes an in-band
+# guard misses. config.sh stays sourced-but-parked as the ready-to-arm
+# fallback. Its sibling local-stores.sh was deleted outright: its
+# "does-not-JSON-parse" rule missed the throwing Zod loader (WBn.parse)
+# that produces spaces.json's real wipe.
 
 # AU-1/MB-1: build-time tripwires on upstream behavior we deleted
 # patches for. Each deleted patch used to WARN at patch time when its

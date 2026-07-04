@@ -37,6 +37,7 @@ Hard-won knowledge from debugging real bugs. Consult before working on the relat
 - [**MCP double-spawn**](learnings/mcp-double-spawn.md) — why stdio MCPs spawn twice with chat + Code/Agent panels open
 - [**Test harness — Electron hooks**](learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps were bypassed by the (now-deleted) frame-fix Proxy; the prototype-hook pattern that remains correct
 - [**Test harness — AX-tree walker**](learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker
+- [**Config-wipe recovery**](learnings/config-wipe-guard.md) — the poisoned-cache `claude_desktop_config.json` wipe, the renderer's grouping-state storage chain, the launcher-side backup rotation that recovers it (patch-zero-clean), and why the in-band asar guard is parked
 
 ## Testing
 
