@@ -23,6 +23,7 @@ setup() {
 	unset GTK_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
+	unset _DOCTOR_SECRET_BACKEND
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -454,6 +455,79 @@ SHIM
 	[[ $output != *'[PASS]'* ]]
 	[[ $output != *'[FAIL]'* ]]
 	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_keyring_persistence (LD-3)
+#
+# Advisory data-at-rest warning for keyring-less sessions: without a
+# reachable Secret Service / KWallet, os_crypt falls back to the
+# plaintext 'basic' backend. Never a FAIL. Probe outcome forced via
+# _DOCTOR_SECRET_BACKEND (present|absent).
+# =============================================================================
+
+@test "_doctor_check_keyring_persistence: reachable backend passes" {
+	export _DOCTOR_SECRET_BACKEND='present'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'org.freedesktop.secrets'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+}
+
+@test "_doctor_check_keyring_persistence: absent backend warns unencrypted-at-rest (advisory)" {
+	export _DOCTOR_SECRET_BACKEND='absent'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'no Secret Service or KWallet'* ]]
+	[[ $output == *'basic'* ]]
+	[[ $output == *'unencrypted at rest'* ]]
+	[[ $output != *'[FAIL]'* ]]
+}
+
+@test "_doctor_check_keyring_persistence: forced real backend skips the probe silently" {
+	CLAUDE_PASSWORD_STORE='gnome-libsecret'
+	export _DOCTOR_SECRET_BACKEND='absent'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_keyring_persistence: forced basic warns even with a backend present" {
+	CLAUDE_PASSWORD_STORE='basic'
+	export _DOCTOR_SECRET_BACKEND='present'
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'CLAUDE_PASSWORD_STORE=basic'* ]]
+	[[ $output == *'unencrypted at rest'* ]]
+}
+
+@test "_doctor_check_keyring_persistence: no session bus reports unable-to-probe info only" {
+	# No hook: force the real probe down the rc=2 path by removing
+	# every bus signal — no DBUS address, no $XDG_RUNTIME_DIR/bus
+	# socket.
+	unset DBUS_SESSION_BUS_ADDRESS
+	export XDG_RUNTIME_DIR="$TEST_TMP/empty-runtime"
+	mkdir -p "$XDG_RUNTIME_DIR"
+	run _doctor_check_keyring_persistence
+	[[ $status -eq 0 ]]
+	[[ $output == *'unable to probe the session bus'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+}
+
+@test "_secret_backend_reachable: kwallet name in the bus listing counts as reachable" {
+	# Real probe path with a stubbed busctl: a KDE session where
+	# only kwalletd6 (not Secret Service) is on the bus.
+	export DBUS_SESSION_BUS_ADDRESS='unix:path=/dev/null'
+	busctl() { printf 'org.kde.kwalletd6 123 - - - - -\n'; }
+	run _secret_backend_reachable
+	[[ $status -eq 0 ]]
+	[[ $output == 'org.kde.kwalletd6' ]]
 }
 
 # =============================================================================
