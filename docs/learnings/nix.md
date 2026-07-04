@@ -105,8 +105,10 @@ Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md)
   `AAVMF_{CODE,VARS}.fd` — verified present; the old `QEMU_EFI.fd`
   fallback was dropped, it is unpadded and has no matching VARS name).
   A build-time guard fails loudly if a source `FV/*.fd` is gone rather
-  than ship a dangling symlink that only bites at VM boot. Both arches'
-  shim output is verified; a live VM boot is not.
+  than ship a dangling symlink that only bites at VM boot — a
+  build-behavior change for pinned aarch64 consumers, chosen because
+  there is no clean fallback. Both arches' shim output is verified, and
+  x86_64 now boots a VM live with it; aarch64 stays unverified.
 - **The FHS env must also ship qemu.** Cowork's VM-boot gate checks a
   second requirement beyond firmware: `qemuPath`, found by searching
   PATH for `qemu-system-x86_64` / `qemu-system-aarch64`. `coworkd`
