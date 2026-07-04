@@ -39,7 +39,7 @@ let
   ovmfCompat =
     let
       link = src: dst: ''
-        test -e ${OVMF.fd}/FV/${src} || {
+        [[ -e ${OVMF.fd}/FV/${src} ]] || {
           echo "ovmfCompat: ${OVMF.fd}/FV/${src} missing; OVMF layout changed" >&2
           exit 1
         }
