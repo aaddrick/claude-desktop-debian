@@ -1,0 +1,24 @@
+\reportsection{08}{Quick entry}{Quick Entry: The One-Line Hack That Refused to Die}
+
+\unithead{Mechanism}
+
+\reppar{\code{patch\_quick\_window} in \code{scripts/patches/quick-window.sh} is a two-part runtime patch of the minified main-process bundle (\code{app.asar.contents/.vite/build/index.js}) that works around Electron's stale \code{BrowserWindow.isFocused()} on Linux/KDE, so the main window actually reappears after a Quick Entry submit. Part one anchors on the unique \code{setAlwaysOnTop(!0,"pop-up-menu")} call to extract the popup's minified variable, then rewrites the \code{||VAR.hide()} short-circuit into a desktop-environment ternary: when \code{XDG\_CURRENT\_DESKTOP} contains \code{kde}, \code{blur()} runs before \code{hide()}, forcing \code{isFocused()} honest. Part two anchors on two surviving log strings, \code{'Navigating to existing chat'} and \code{'Creating new chat with submit\_quick\_entry'}, and within 1500 characters of each swaps upstream's \textbf{don't-show-if-already-focused gate} from the focus check to a visibility check, again KDE-only. Both halves carry idempotency guards, and a failed symbol extraction exits nonzero so the build prints a warning rather than silently passing (hardened in May 2026).}
+
+\begin{codeblock}
+||((process.env.XDG_CURRENT_DESKTOP||"").toLowerCase().includes("kde")
+   ? (VAR.blur(),VAR.hide()) : VAR.hide())
+\end{codeblock}
+
+\unithead{Origin}
+
+\reppar{The origin was six lines. In December 2025, @malins reported \#144 (Quick Entry submit silently disappears, Kubuntu/KDE); jacobfrantz1's PR \#147, merged in January 2026, added a literal \code{s/e.hide()/e.blur(),e.hide()/} to \code{build.sh}, hardcoding the minified variable \code{e}.}
+
+\begin{chronology}
+2026-01--2026-04 & \#144; \#147 & That seed rotted: an unrecorded upstream re-minification renamed \code{e}, and the patch silently no-oped, quietly regressing \#144. \\
+2026-04 & PR \#390, \code{32660be} & Rewrote the patch with dynamic symbol extraction and added the second, show()-site half, then promptly regressed GNOME. \\
+2026-04 & \#393; PR \#406, \code{ab33960} & @Andrej730 confirmed in \#393 (Quick Entry broken on Ubuntu 24.04) that removing the patch restored Quick Entry there, so PR \#406 gated both halves to KDE; the commit called it "a temporary gate" pending a bisection of which half regresses GNOME. No such bisection landed: \#393 remains open, and the gate persisted as-is. \\
+2026-04 & PR \#420; PR \#496 (fixes \#495), \code{d4db728} & @Andrej730 stayed the unit's steward: a readability refactor in PR \#420, then PR \#496 fixing \#495 (patch partially failing) after upstream 1.3883.0's minifier hoisted a \code{var e;} declaration that broke \code{visFnRe}; the fix made the prefix optional, verified end-to-end on Nobara KDE Plasma 6 Wayland. \\
+2026-05 & PR \#644, \code{b40441c} & Identifier hardening closed the arc, applying the guidelines chronicled in the chassis section: \code{\textbackslash w+} became \code{[\$\textbackslash w]+}, and whitespace tolerance joined the \code{||hide()} anchors. \\
+\end{chronology}
+
+\methodbanner{\textbf{Fate under the rebase.} \bverify{} The accessibility reassessment moves this from survivor candidate to \bverify{} (keep-pending repro). Re-verified against pristine official 1.18286.0, the quick-window variable is now \code{ms}: the \code{||VAR.hide()} anchor is present with the \code{VAR.blur()} count still zero, so the stale-\code{isFocused()} condition is structurally unchanged in the official Linux build (the var was \code{Ns} on 1.17377.2; the anchor survived the bump). \code{probe\_quick\_window} in \code{tools/patch-necessity-audit.sh} reproduces this mechanically. The defect lives in Electron's Linux \code{isFocused()}, not in app bytes, so the bytes cannot prove it still reproduces: whether the KDE stale-focus bug actually fires against the official build is a static inference, not a runtime observation. The patch therefore stays wired as one of exactly two survivors in \code{active\_patches} on \code{rebase/official-deb} (byte-identical to \code{main}; the Phase 2 build against 1.17377.2 amd64 extracted the symbol plus both show() anchors and applied cleanly); open check \textbf{QW-1} (KDE Plasma X11 and Wayland repro) decides keep-versus-drop. Deletion is clearly wrong, the \#144 regression being historically confirmed; the open question is keep-still-helps versus keep-now-a-liability if Electron has quietly made \code{isFocused()} honest.\\[3pt]\textbf{Affects.} KDE Plasma only by design (the Electron stale-\code{isFocused()} bug); GNOME regressed and was gated out (\#393/\#406).}

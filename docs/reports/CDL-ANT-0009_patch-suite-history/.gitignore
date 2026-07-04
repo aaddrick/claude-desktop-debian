@@ -1,0 +1,5 @@
+# The verification tracking file is a working journal (layered live-run
+# corrections), not a report deliverable. Its settled conclusions were
+# distilled into the report's §21 addendum and the patch-necessity matrix in
+# docs/learnings/official-deb-rebase-verification.md. Kept on disk, out of git.
+verdict-verification-tracking.md

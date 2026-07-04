@@ -1,0 +1,23 @@
+\reportsection{11}{Org plugins}{Org Plugins: The Two-Commit Survivor}
+
+\unithead{Mechanism}
+
+\reppar{\code{scripts/patches/org-plugins.sh} is a single function, \code{patch\_org\_plugins\_path}, that fixes a platform switch upstream never finished. The minified \code{index.js} resolves the MDM-managed plugin-marketplace directory (used in third-party inference mode) via \code{switch(process.platform)} with only \code{darwin} and \code{win32} cases; \code{default:} returns \code{null}, which every downstream caller reads as \textbf{feature off}. The patch splices a Linux case returning \code{/etc/claude/org-plugins}, a path the in-file comment defends as FHS-correct for MDM configuration and consistent with Claude Code's \code{/etc/claude-code/}. Three steps run against \code{app.asar.contents/.vite/build/index.js}: an idempotency guard that skips if the injected case already exists ("upstream may add one in the future"), a presence probe on the darwin string \code{Application Support/Claude/org-plugins} that warns to stderr and skips gracefully if absent, and the compound insertion anchor, unique to this switch, with \code{\textbackslash s*} tolerating minified and beautified spacing:}
+
+\begin{codeblock}
+sed -i -E 's/("org-plugins"\)\s*;\s*)(default\s*:\s*return\s+null)/\1case"linux":return"\/etc\/claude\/org-plugins";\2/'
+\end{codeblock}
+
+\reppar{Every anchor is a string literal or keyword, so the patch needs \textbf{no dynamic identifier extraction} and is immune to identifier re-minification by construction.}
+
+\unithead{Origin}
+
+\reppar{Born May 24, 2026 (commit \code{337e9a4}) from \#607 (org-plugins has no Linux default), opened ten days earlier by @johncrn, who ran upstream 1.7196.0 in 3P inference mode, read the code himself, and asked for exactly this fix; even a symlink to the mac-style folder left the marketplace undetectable. The triage bot corroborated: resolver \code{pD()} with no \code{case "linux"}, and the \code{/etc/claude-code} precedent for the path choice. Note the disambiguation: \code{docs/learnings/plugin-install.md} covers the adjacent remote-marketplace install gate (\#396, Anthropic \& Partners plugins), not this unit.}
+
+\begin{chronology}
+2026-05 & \#607/\#639, \code{337e9a4} & Origin: Linux case spliced into the platform switch, closing \#607 the same minute; shipped in v2.0.13. \\
+2026-05 & \code{428777a} & Same-day fixup (also PR \#639): redirected the two skip-path warnings to stderr; rationale unrecorded, plausibly stream discipline. \\
+2026-05\textendash{}2026-07 & \#677 & Zero anchor repairs ever: the string-literal anchors survived every re-minification from 1.7196.0 through official 1.17377.2; a build log attached to \#677 confirms success on 1.9659.2 in passing. \\
+\end{chronology}
+
+\methodbanner{\textbf{Fate under the rebase.} \bsurv{} The reassessment firms this from survivor candidate to a settled \bsurv{}. Re-verified against pristine official 1.18286.0, the platform switch reads \code{"org-plugins");default:return null} with \textbf{no linux case} (count 0), so MDM org plugins are dead on Linux upstream and keeping the patch preserves our \code{/etc/claude/org-plugins} behavior; keep-cost is near zero (a self-defusing idempotency guard). An earlier audit that reported a ``native linux case'' was a \emph{patched-tree} false positive, the probe matching our own injected case, which is why the pristine \code{.deb} is the byte of record. Commit \code{d9cef9e} wired \code{patch\_org\_plugins\_path} into the new \code{active\_patches} array while the module itself stays byte-identical to main. Retirement is designed in: if Anthropic ever adds a Linux case, the idempotency guard and a \code{not-needed} probe verdict retire it automatically. One caveat: the \code{app-asar.sh} comment says ``(filed upstream)'', but no such filing is traceable anywhere; the report remains planned, not proven.\\[3pt]\textbf{Affects.} All Linux; the MDM \code{/etc/claude/org-plugins} path, DE-agnostic (third-party inference mode).}

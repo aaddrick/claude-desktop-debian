@@ -8,10 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+v3.0.0 — rebased onto Anthropic's official first-party Claude Desktop for Linux `.deb` (pin 1.17377.2), replacing the Windows-installer repackaging and most of the legacy patch suite. Fill the `#XXX` placeholders with the PR number when it opens.
+
+### Changed
+
+- **BREAKING:** The packaging pipeline now consumes Anthropic's official Linux `.deb` instead of repackaging the Windows installer. `build.sh` resolves the newest pool entry via the APT `Packages` index, SHA-256 verifies it, and extracts with `ar`/`tar` (no `dpkg`, so RPM-family hosts still build). The official `app.asar` ships byte-identical in the common case — `app-asar.sh` is a thin orchestrator with an `active_patches` array, and only genuine Linux gaps are patched (see Removed). Full delete/keep rationale, byte-verified against the pristine bundle, is in [`docs/learnings/official-deb-rebase-verification.md`](docs/learnings/official-deb-rebase-verification.md) and report CDL-ANT-0009. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- **BREAKING:** `--password-store` is no longer auto-detected. It is passed only when `CLAUDE_PASSWORD_STORE` is set; otherwise Chromium's official `os_crypt` autodetect owns the default. Governing rule of the rework: no default launcher flag may shadow an official code path. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- **BREAKING:** The build flag `--exe` is now `--deb`, and `--node-pty-dir` is removed.
+- `claude-desktop --doctor` reworked for the official layout: new checks for the KVM/Cowork stack (`/dev/kvm`, `/dev/vhost-vsock`, OVMF/AAVMF firmware), official-version drift (embedded `Packages` resolver, network-optional), name collision with Anthropic's own package, and set-but-dead legacy env vars. chrome-sandbox / pkg-version / AppArmor checks moved to the bare co-located ELF. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- CI: `check-claude-version` resolves upstream via the `Packages` index instead of Playwright; `build-amd64` and `build-arm64` collapse into one cross-building `build.yml`; RC tags (`v*-rc*`) publish as prerelease and skip the repo jobs; a new `mirror-official-deb` job archives every consumed official `.deb` to its release. New `tools/chromium-switch-smoke.sh` + checked-in baseline fail CI if the effective launcher switch list drifts. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+
+### Removed
+
+- **BREAKING:** Launcher env vars `CLAUDE_TITLEBAR_STYLE`, `ELECTRON_USE_SYSTEM_TITLE_BAR`, `CLAUDE_MENU_BAR`, `CLAUDE_KEEP_AWAKE`, and `CLAUDE_QUIT_ON_CLOSE` — the official build handles these natively (close-to-tray moved to **Settings ▸ General ▸ System Tray**, on = tray / off = quit). The doctor warns if it sees a dead one still set. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- 11 legacy patches now redundant against the official Linux build: the frame-fix wrapper (incl. the autoUpdater no-op), the claude-native Rust-binding stub, the tray patches (`tray.sh`), the WCO shim, `claude-code.sh`, the node-pty rebuild (+ `nix/node-pty.nix`), the menuBarEnabled default, the cowork/`.config` `.asar` guards, and the i18n + tray-icon asar copies. Two Linux-specific survivors stay: `quick-window` (KDE stale-focus) and `org-plugins` (upstream has no Linux case). ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- The Windows-installer acquisition path: `download.sh`, the Playwright `resolve-download-url.py`, `fetch-electron-binary.js`, and `scripts/staging/*`. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+
 ### Fixed
 
-- The tray in-place fast-path applies again on Claude Desktop 1.13576+ (verified against 1.15962.0). The "yukonSilver"-era refactor restructured the tray rebuild block — the destroy/recreate is now guarded by `if(X=[],Y=!1,TRAY&&(TRAY.destroy()…),!enabled)` instead of `;if(TRAY&&(TRAY.destroy()`, and the context menu became a prebuilt object (`M=BUILDER();TRAY.setContextMenu(M)`) with a leading `setContextMenu(null)` menu-clear. The patch's `head -1` latched that `null` clear, so the menu builder never resolved, the #680 WARNING fired, and the fast-path was skipped — silently re-arming the #515 KDE/Plasma duplicate-icon StatusNotifier race because tray patches warn-and-continue. The menu-function resolver now walks every `setContextMenu` argument, skips the `null` clear, and resolves the real builder; the injection anchors on the `;if(` that opens the destroy statement so it lands in both the old and new shapes. New `tests/tray-patches.bats` covers builder resolution, injection placement, idempotency, the loud-fail-on-missing-anchor path, and the menu-bar-default cases. ([#746](https://github.com/aaddrick/claude-desktop-debian/issues/746) investigation)
-- `patch_menu_bar_default` no longer reports a bare "pattern not found" on 1.13576+. Upstream moved `menuBarEnabled` behind a settings getter backed by a defaults map that already ships `menuBarEnabled:!0`, so the legacy `!!`-default rewrite is a no-op by design. The patch now distinguishes that case from a genuine miss and warns loudly only if neither the legacy anchor nor the upstream default is present (i.e. the default ever flips back to off).
+- Artifact tests (`tests/test-artifact-{deb,rpm,appimage}.sh`) no longer assert the old `node_modules/electron/dist/` on-disk layout, which the official bare co-located tree (`/usr/lib/claude-desktop/{claude-desktop,chrome-sandbox,resources}`) does not ship — they are repointed to the real layout, so the release-gating artifact jobs pass against the rebase packages. (SB-1, [#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+
+### Security
+
+- The launcher no longer writes the login OAuth authorization code to `launcher.log`. A relaunch through the auth redirect carried `claude://login/…?code=<code>` in argv, which the `Executing:`/`Arguments:` log lines recorded verbatim; the `log_message` chokepoint now strips the query string of any `claude://login` token. Low residual risk (single-use, redeemed), but a plaintext secret should not land in a log. (LOG-1, [#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+
+> **Known gap:** the Nix build is a deliberate `throw` stub (`nix/claude-desktop.nix`) pending the Nix rework (owner [@typedrat](https://github.com/typedrat)); `nix build` fails until it lands. deb, RPM, and AppImage are the working outputs.
 
 ## [v2.0.22] — 2026-06-25
 

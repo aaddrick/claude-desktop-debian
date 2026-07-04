@@ -1,0 +1,36 @@
+
+\clearpage
+\reportsection{19}{Fate matrix}{Eighteen Units, Five Outcomes}
+
+\reppar{The matrix reduces the adaptation layer to one row per unit: when it was born, the issues and pull requests that defined it, its verdict under the patch-necessity audit of official 1.17377.2 (re-verified against pristine 1.18286.0 under the accessibility reassessment of section 21), the environments it is sensitive to (reverse-looked-up from the repo-wide catalog), and what handles the problem now. \bdel{} means the official build makes the patch redundant; \bsurv{} means the patch stays wired in \code{active\_patches} because upstream still has the gap; \bverify{} means the verdict hinges on a live reproduction the \code{.deb} bytes cannot settle, so the unit may be deleted, kept unwired, or kept wired, but a named open check decides; \bpark{} means moved out of the build into a fallback tree for a later arc; \brework{} means rebuilt rather than removed. Three rows carry a \bverify{} badge from that reassessment, \code{frame-fix} and \code{wco-shim} as delete-with-residual-risk and \code{quick-window} as a wired keep-pending-repro; section 21 records the reasoning.}
+
+\tabcap{The legacy adaptation layer at retirement, eighteen units. Born = first commit of the unit's logic. Refs = defining issues/PRs, not exhaustive. Env = catalog-derived sensitivity.}
+{\scriptsize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.22}
+\rowcolors{3}{paperalt}{white}\ltflushleft
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{22mm} p{9mm} >{\raggedright\arraybackslash}p{22mm} p{15mm} >{\raggedright\arraybackslash}p{30mm} >{\raggedright\arraybackslash}p{\dimexpr\linewidth-98mm-12\tabcolsep\relax}@{}}
+\headrowbg
+\thd{Unit} & \thd{Born} & \thd{Refs} & \thd{Verdict} & \thd{Env} & \multicolumn{1}{l@{}}{\thd{Disposition under v3.0.0}} \\
+\endfirsthead
+\contbanner{6}{Fate matrix continued}
+\headrowbg
+\thd{Unit} & \thd{Born} & \thd{Refs} & \thd{Verdict} & \thd{Env} & \multicolumn{1}{l@{}}{\thd{Disposition under v3.0.0}} \\
+\endhead
+\tname{Chassis} & 2024-12 & \#179, \#218, \#219, \#220 & \brework & All Linux; packaging layer & Thin orchestrator; empty \code{active\_patches} \arrow{} byte-identical repack; derived \code{--unpack} glob; WM\_CLASS fail-fast survives upgraded. \\
+\tname{frame-fix-wrapper} & 2025-11 & \#127, \#228, \#232, \#451, \#567 & \bverify & GNOME, KDE, wlroots; X11 + Wayland & Frame core and updater no-op are byte-moot (deleted); the audit returns \code{check} on 1.18286.0 (\code{frame:!1} 3x), so the \textasciitilde 18 accreted Electron-runtime fixes (\#416/\#605/\#128/\#623) move to verify pending FF-1. \\
+\tname{claude-native stub} & 2024-12 & \#729 & \bdel & All Linux; DE-agnostic & Real Rust NAPI ELF ships in \code{app.asar.unpacked} (X11 input, \code{openat2}, \code{SO\_PEERCRED}). \\
+\tname{node-pty} & 2026-01 & \#152, \#421, \#401 & \bdel & All Linux; build-time & Prebuilt \code{linux-x64/pty.node} ships in \code{app.asar.unpacked}. \\
+\tname{tray.sh} & 2025-11 & \#135, \#163, \#515, \#679 & \bdel & KDE, GNOME (SNI trays) & Official rebuild is in-place \code{setImage} keyed on icon-path change, plus purpose-made Linux icons; the community diagnosis, converged upstream. \\
+\tname{menuBar default} & 2026-02 & \#218, \#644, \#750 & \bdel & Any tray desktop & Official defaults map ships \code{menuBarEnabled:!0}. \\
+\tname{quick-window} & 2025-12 & \#144, \#147, \#390, \#406 & \bverify & KDE Plasma only & Anchor present in official 1.18286.0 bytes (var \code{ms}) with no \code{blur()}; stays wired in \code{active\_patches} pending KDE Plasma repro QW-1. \\
+\tname{claude-code} & 2025-11 & \#143, \#241, \#243 & \bdel & All Linux; DE-agnostic & Official \code{getHostPlatform} has native \code{linux-x64}/\code{linux-arm64} branches. \\
+\tname{asar guards (cowork)} & 2026-05 & \#383, \#622, \#632, \#668 & \bdel & All Linux; launcher argv & Official launcher is a bare ELF symlink; no \code{app.asar} argv ever reaches the helpers. \\
+\tname{cowork reroute + daemon} & 2026-02 & \#198, \#259, \#288, \#337 & \bpark & KVM hosts; OVMF-sensitive & Moved to \code{scripts/cowork-fallback/}; 3.0.0 ships KVM-only with doctor guidance; bwrap-vs-\code{coworkd} protocol is the 3.1 investigation. \\
+\tname{org-plugins} & 2026-05 & \#607, \#639 & \bsurv & All Linux; MDM path & Official switch still returns \code{null} on Linux (confirmed pristine 1.18286.0, no linux case); \code{/etc/claude/org-plugins} preserved; keep-cost near zero, upstream report still planned. \\
+\tname{wco-shim} & 2026-05 & \#538 & \bverify & All Linux equally & Local WCO half dead (audit \code{not-needed}, mainView refs 0); the remote \code{isWindows()} UA gate is server-side, so the topbar half moves to verify pending WCO-1. \\
+\tname{config writes (\#400)} & 2026-05 & \#400, \#649, \#685, \#723 & \bverify & All Linux; DE-agnostic & Both \code{.asar} guards die with the asar-argv root cause; the \code{mcpServers} merge is kept unwired pending a live reproduction. \\
+\tname{acquisition} & 2024-12 & \#143, \#151, \#310 & \brework & Per-arch, not per-distro & Official \code{.deb} from the \code{apt/stable} pool, SHA-256 pinned, \code{ar}/\code{tar} extraction; Playwright resolver retired; Nix side a \code{throw} stub. \\
+\tname{launcher + doctor} & 2025-06 & \#102, \#141, \#690 & \brework & All desktops; Wayland/XRDP edges & Opt-in-only policy; launchers exec the official binary; titlebar/password-store machinery deleted; six new doctor checks (\code{\_check\_kvm} \ldots). \\
+\tname{ssh-helpers} & 2026-02 & \#235, \#268 & \bdel & Per-arch; DE-agnostic & No \code{claude-ssh} artifact anywhere in the official \code{.deb}; runtime capability path unverified. \\
+\tname{icon staging} & 2024-12 & \#134, \#163 & \bdel & All desktops; KDE/Fedora panels & Official ships \code{TrayIconLinux(-Dark).png} plus a full \code{hicolor} set, copied verbatim. \\
+\tname{sandbox shims} & 2025-03 & \#539, \#595, \#687, \#694 & \bsurv & RPM SUID; Ubuntu 24.04+ userns & Non-root \code{ar}/\code{tar} strips the recorded SUID bit; the postinst re-assert restores it. AppImage forces \code{--no-sandbox}. \\
+\end{longtable}}

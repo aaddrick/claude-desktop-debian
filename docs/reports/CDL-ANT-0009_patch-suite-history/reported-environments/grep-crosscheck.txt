@@ -1,0 +1,10 @@
+DISTROS: Ubuntu 175, Debian 345, Fedora 115, Arch 78, Manjaro 2, CachyOS 17,
+Pop!_OS 12, Linux Mint 30, openSUSE 14, NixOS 40, Gentoo 5, Kali 6, Zorin 4,
+Nobara 26, Bazzite 5, Devuan 1, Raspberry Pi 2, Tuxedo 1, RHEL/CentOS 20
+DE: GNOME 114, KDE/Plasma 110, XFCE 15, Cinnamon 20, MATE 3, LXQt 1, COSMIC 10
+COMPOSITOR: Wayland 131, X11 142, XWayland 75, Mutter 6, KWin 8, Sway 15,
+Hyprland 21, Niri 14, wlroots 5, River 2, i3 15, bspwm 1, dwm 2, xmonad 2
+FORMAT: deb 133, AppImage 232, RPM/dnf 156, Flatpak 7, Snap 7, Nix 84, AUR 34,
+pacman 2, source 12, tarball 8
+VERSIONS(rough): Ubuntu22.04 20, Ubuntu24.04 87, Ubuntu25.x 10, Debian12 11,
+Debian13/trixie 17, Fedora42 6, Plasma6 28

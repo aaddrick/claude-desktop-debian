@@ -56,3 +56,9 @@ graphify-out/
 # Root-level scratch extracts from app inspection
 /frame-fix-wrapper.js
 /index.js
+# Official app manifest extracted from the .deb during a build/inspection
+/package.json
+
+# Working scratch (session plans/reports, MCP tool state) — never repo content
+/.tmp/
+/.playwright-mcp/

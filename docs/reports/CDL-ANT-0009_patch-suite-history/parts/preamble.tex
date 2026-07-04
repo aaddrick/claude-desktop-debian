@@ -1,0 +1,176 @@
+% =============================================================================
+%  Preamble for report CDL-ANT-0009 -- imports, palette, fonts, and the shared
+%  macros/environments every section is built from. Included by the main file
+%  (CDL-ANT-0009-A_The_Legacy_Patch_Suite.tex) before \begin{document}.
+%
+%  All report furniture (cover meta table, revision-history chronologies, the
+%  fate matrix, method banners, badges) is defined here so every instance
+%  renders from one definition. House style: no em dashes; en dashes only for
+%  numeric ranges.
+% =============================================================================
+\documentclass[11pt]{article}
+\usepackage[letterpaper,top=13mm,bottom=16mm,left=13mm,right=13mm,footskip=9mm]{geometry}
+\usepackage{fontspec}
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{array}
+\usepackage{hhline}
+\usepackage{needspace}
+\usepackage{tikz}
+\usetikzlibrary{shadings,fadings,positioning,arrows.meta}
+\usepackage{eso-pic}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{fancyvrb}
+\usepackage[colorlinks=true,urlcolor=accent,linkcolor=accent]{hyperref}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+
+% ---- Graphite + Copper palette ----
+\definecolor{base900}{HTML}{1A1B1E}
+\definecolor{base800}{HTML}{24262A}
+\definecolor{base700}{HTML}{30343A}
+\definecolor{base600}{HTML}{3A3D44}
+\definecolor{baseMid}{HTML}{5C616A}
+\definecolor{ink}{HTML}{181B20}
+\definecolor{muted}{HTML}{43505D}
+\definecolor{faint}{HTML}{6B7480}
+\definecolor{line}{HTML}{E2E4E8}
+\definecolor{linestrong}{HTML}{CDD0D6}
+\definecolor{paperalt}{HTML}{F5F6F8}
+\definecolor{accent}{HTML}{B05B33}
+\definecolor{accentsoft}{HTML}{E2B89C}
+\definecolor{accentbg}{HTML}{FAF1EA}
+\definecolor{accentink}{HTML}{7C3E20}
+
+% ---- fonts ----
+\setmainfont{Public Sans}[
+  UprightFont={* Regular}, BoldFont={* Bold},
+  ItalicFont={* Italic}, BoldItalicFont={* Bold Italic}]
+\newfontfamily\heavy{Public Sans}[UprightFont={* ExtraBold}]
+\setmonofont{IBM Plex Mono}[Scale=0.92,
+  UprightFont={* Regular}, BoldFont={* SemiBold}]
+\newfontfamily\symfont{DejaVu Sans}
+\newcommand{\mono}{\ttfamily}
+\newcommand{\arrow}{{\symfont\char"2192}}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\linespread{1.12}
+\color{ink}
+
+% ---- body paragraph ----
+\newcommand{\reppar}[1]{{\fontsize{10.5}{15.2}\selectfont #1\par}\vspace{8pt}}
+% inline code (escape _, &, %, #, $, ~, ^ manually in the argument)
+\newcommand{\code}[1]{{\mono\small #1}}
+
+% ---- mono eyebrow ----
+\newcommand{\eyebrow}[1]{{\mono\footnotesize\color{baseMid}\addfontfeatures{LetterSpace=8.0}\MakeUppercase{#1}}}
+
+% ---- section header ----
+\newcommand{\reportsection}[3]{%
+  \vspace{14pt}%
+  {\mono\footnotesize\color{baseMid}\addfontfeatures{LetterSpace=8.0}\MakeUppercase{#1\, \textbullet\, #2}}\par
+  \vspace{3pt}%
+  {\heavy\fontsize{17}{19}\selectfont\color{base900} #3\par}
+  \vspace{4pt}{\color{accent}\hrule height 1.6pt}\vspace{9pt}%
+}
+
+% ---- figure caption ----
+\newcommand{\figcap}[1]{\par\vspace{4pt}%
+  {\color{faint}\fontsize{8.5}{11}\selectfont #1\par}}
+
+% ---- table helpers ----
+\newcommand{\tabcap}[1]{{\mono\color{faint}\fontsize{8.4}{11}\selectfont #1\par}\vspace{5pt}}
+\newcommand{\thd}[1]{{\mono\bfseries\footnotesize\color{white}\MakeUppercase{#1}}}
+\newcommand{\thdr}[1]{\multicolumn{1}{r}{\thd{#1}}}
+\newcommand{\tname}[1]{\textbf{\color{base700}#1}}
+\newcommand{\pct}[1]{{\mono\color{faint}\small #1}}
+
+% ---- shared table primitives (every report table is built from these) ----
+% Dark header-row fill, used by both the chronology and the fate matrix.
+\newcommand{\headrowbg}{\rowcolor{base800}}
+% Left-align a longtable (the default centres it); used by chronology + matrix.
+\newcommand{\ltflushleft}{\setlength\LTleft{0pt}\setlength\LTright{\fill}}
+% Continuation banner spanning #1 columns, titled #2, printed at the top of
+% every carried-over longtable page. Single line, so an l-cell is safe.
+\newcommand{\contbanner}[2]{\multicolumn{#1}{@{}l@{}}{\subheadfont{#2}}\\*[3pt]}
+
+% ---- unit subhead (Mechanism / Origin / Revision history) ----
+% \subheadfont is the shared look; \unithead adds the surrounding spacing.
+\newcommand{\subheadfont}[1]{{\mono\bfseries\fontsize{8.2}{10}\selectfont\color{accentink}\addfontfeatures{LetterSpace=6.0}\MakeUppercase{#1}}}
+\newcommand{\unithead}[1]{\vspace{2pt}\subheadfont{#1}\par\vspace{4pt}}
+
+% ---- revision chronology --------------------------------------------------
+% A self-titling longtable: it prints its own "Revision history" subhead, then
+% a When/Refs/Event table that may break across pages. The leading \Needspace
+% keeps the subhead + header + first row together (no orphaned heading); on
+% every continuation page \endhead reprints a "Revision history continued"
+% banner above a fresh column header, matching the fate matrix in section 19.
+\newenvironment{chronology}{%
+  \par\Needspace*{7\baselineskip}%
+  \unithead{Revision history}%
+  \footnotesize\setlength{\tabcolsep}{5pt}\renewcommand{\arraystretch}{1.3}%
+  \rowcolors{2}{paperalt}{white}\ltflushleft
+  \begin{longtable}{@{}>{\raggedright\arraybackslash}p{13mm} >{\raggedright\arraybackslash}p{30mm} >{\raggedright\arraybackslash}p{\dimexpr\linewidth-43mm-6\tabcolsep\relax}@{}}%
+    \headrowbg\thd{When} & \thd{Refs} & \thd{Event} \\*
+  \endfirsthead
+    \contbanner{3}{Revision history continued}%
+    \headrowbg\thd{When} & \thd{Refs} & \thd{Event} \\*
+  \endhead
+}{%
+  \end{longtable}\par\vspace{9pt}%
+}
+
+% ---- cover meta table -----------------------------------------------------
+% Two-column key/value block: shaded key column, ragged value column. Rules are
+% drawn with \hhline (not \hline) so the shaded column cannot paint over the
+% rule between two tall wrapped cells, and \arrayrulecolor keeps them subtle.
+\newenvironment{covermeta}{%
+  \renewcommand{\arraystretch}{1.6}\setlength{\tabcolsep}{10pt}%
+  \arrayrulecolor{linestrong}%
+  \noindent\begin{tabular}{@{}>{\columncolor{paperalt}}m{32mm} >{\raggedright\arraybackslash}m{\dimexpr\linewidth-32mm-2\tabcolsep-2\arrayrulewidth\relax}@{}}%
+  \hhline{--}%
+}{%
+  \end{tabular}\arrayrulecolor{black}%
+}
+\newcommand{\metarow}[2]{\kvk{#1} & #2 \\ \hhline{--}}
+
+% ---- copper method-note banner ----
+\newcommand{\methodbanner}[1]{%
+  \begingroup\setlength{\fboxsep}{11pt}%
+  \noindent\fcolorbox{accentsoft}{accentbg}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{%
+      \color{accentink}\fontsize{9.4}{13.5}\selectfont #1}}\par\endgroup\vspace{8pt}}
+
+% ---- code block (copper left rule, Plex Mono) ----
+\DefineVerbatimEnvironment{codeblock}{Verbatim}%
+  {fontsize=\footnotesize,frame=leftline,framerule=1.4pt,%
+   rulecolor=\color{accent},framesep=9pt,xleftmargin=2pt,%
+   formatcom=\color{base700}}
+
+% ---- verdict badges ----
+\newcommand{\badge}[2]{{\mono\bfseries\fontsize{7.4}{8}\selectfont\setlength{\fboxsep}{1.5pt}\raisebox{0.5pt}{\colorbox{#1}{\color{white}\,\MakeUppercase{#2}\,}}}}
+\newcommand{\bdel}{\badge{base700}{delete}}
+\newcommand{\bsurv}{\badge{accent}{survivor}}
+\newcommand{\bverify}{\badge{baseMid}{verify}}
+\newcommand{\bpark}{\badge{base600}{parked}}
+\newcommand{\brework}{\badge{base600}{reworked}}
+
+% ---- title-block key label ----
+\newcommand{\kvk}[1]{{\mono\bfseries\footnotesize\color{base700}\MakeUppercase{#1}}}
+
+% ---- running footer ----
+\fancypagestyle{reportftr}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+  \fancyfoot[C]{\parbox{\linewidth}{%
+    {\color{linestrong}\hrule}\vspace{4pt}%
+    {\mono\color{faint}\fontsize{7.6}{10}\selectfont CDL-ANT-0009 \textperiodcentered{} The Legacy Patch Suite: A Natural History \hfill aaddrick/claude-desktop-debian \textperiodcentered{} July 3, 2026 \textperiodcentered{} p.\,\thepage}%
+  }}%
+}
