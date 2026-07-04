@@ -278,9 +278,14 @@ echo 'Building AppImage...'
 output_filename="${package_name}-${version}-${architecture}.AppImage"
 output_path="$work_dir/$output_filename"
 
-# ARCH tells appimagetool which runtime to embed and must match the
-# TARGET architecture (canonical uname-style name), which can differ
-# from the host running the tool during a cross-build.
+# ARCH names the TARGET architecture (canonical uname-style), which can
+# differ from the host running the tool during a cross-build. It only
+# covers naming/validation: appimagetool ALWAYS embeds the runtime stub
+# bundled with the tool itself, which is host-arch. On a cross-build
+# that bakes an x86_64 stub into an arm64 AppImage, which then can't
+# start on target hardware (caught by test-artifacts on the first
+# native-arm64 run). Fetch the TARGET-arch runtime from the same
+# release as the tool and force it in with --runtime-file.
 case "$architecture" in
 	amd64) export ARCH='x86_64' ;;
 	arm64) export ARCH='aarch64' ;;
@@ -291,12 +296,24 @@ case "$architecture" in
 esac
 echo "Using ARCH=$ARCH"
 
+runtime_path="$work_dir/appimage-runtime-${ARCH}"
+if [[ ! -f $runtime_path ]]; then
+	runtime_url="https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-${ARCH}"
+	echo "Downloading AppImage runtime for ${ARCH}..."
+	if ! wget -q -O "$runtime_path" "$runtime_url"; then
+		echo "Failed to download AppImage runtime from $runtime_url" >&2
+		rm -f "$runtime_path"
+		exit 1
+	fi
+fi
+
 # Local build - no update information
 if [[ $GITHUB_ACTIONS != 'true' ]]; then
 	echo 'Running locally - building AppImage without update information'
 	echo '(Update info and zsync files are only generated in GitHub Actions for releases)'
 
-	if ! "$appimagetool_path" "$appdir_path" "$output_path"; then
+	if ! "$appimagetool_path" --runtime-file "$runtime_path" \
+		"$appdir_path" "$output_path"; then
 		echo "Failed to build AppImage using $appimagetool_path" >&2
 		exit 1
 	fi
@@ -330,7 +347,8 @@ fi
 update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
 echo "Update info: $update_info"
 
-if ! "$appimagetool_path" --updateinformation "$update_info" "$appdir_path" "$output_path"; then
+if ! "$appimagetool_path" --runtime-file "$runtime_path" \
+	--updateinformation "$update_info" "$appdir_path" "$output_path"; then
 	echo "Failed to build AppImage using $appimagetool_path" >&2
 	exit 1
 fi

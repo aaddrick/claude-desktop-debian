@@ -37,6 +37,7 @@ v3.0.0 — rebased onto Anthropic's official first-party Claude Desktop for Linu
 
 ### Fixed
 
+- Cross-built arm64 AppImages embedded an x86_64 first-stage runtime stub, so they could not start on arm64 hardware: appimagetool always embeds the runtime bundled with the tool itself (host-arch) — the `ARCH` export only covers naming/validation. The build now downloads the target-arch runtime from the same AppImageKit release and passes `--runtime-file` explicitly. Caught by the first native-arm64 run of the artifact tests. ([#763](https://github.com/aaddrick/claude-desktop-debian/pull/763))
 - Artifact tests (`tests/test-artifact-{deb,rpm,appimage}.sh`) no longer assert the old `node_modules/electron/dist/` on-disk layout, which the official bare co-located tree (`/usr/lib/claude-desktop/{claude-desktop,chrome-sandbox,resources}`) does not ship — they are repointed to the real layout, so the release-gating artifact jobs pass against the rebase packages. (SB-1, [#763](https://github.com/aaddrick/claude-desktop-debian/pull/763))
 
 ### Security

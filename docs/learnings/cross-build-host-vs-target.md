@@ -5,7 +5,8 @@
 Anything that *runs during the build* keys on `uname -m` (the host);
 anything *embedded in the artifact* keys on the `--arch` target —
 conflating the two downloads a tool the runner cannot exec. This class
-was caught twice during the v3.0.0 CI cutover (Phases 4+5).
+was caught three times during the v3.0.0 CI cutover: twice as loud
+`Exec format error` (Phases 4+5), once as the silent variant below.
 
 **Source files:**
 
@@ -72,16 +73,37 @@ Target side, later in the same script — the runtime that ships inside
 the artifact:
 
 ```bash
-# ARCH tells appimagetool which runtime to embed and must match the
-# TARGET architecture (canonical uname-style name), which can differ
-# from the host running the tool during a cross-build.
 case "$architecture" in
 	amd64) export ARCH='x86_64' ;;
 	arm64) export ARCH='aarch64' ;;
 esac
 ```
 
-One script, two arch variables, zero overlap. `setup_nodejs` in
+One script, two arch variables, zero overlap.
+
+## The silent variant: tools that embed host-arch bytes
+
+The `ARCH` export above is NOT enough for the AppImage runtime. The
+third instance of this class had no `Exec format error` at build time:
+appimagetool always embeds the runtime stub bundled with the *tool
+itself* (host-arch) — `ARCH` only covers arch naming/validation, and
+the tool doesn't even accept `aarch64` as an env value (its internal
+name is `arm_aarch64`; real AppDirs work because the arch is guessed
+from payload ELFs). A cross-built arm64 AppImage therefore shipped an
+x86_64 first-stage stub and could not start on any arm64 machine. The
+build "succeeded"; only executing the artifact on target hardware
+(the first native-arm64 `test-artifacts` run) exposed it.
+
+The fix forces the target runtime explicitly — download
+`runtime-${ARCH}` from the same AppImageKit release as the tool and
+pass `--runtime-file "$runtime_path"` to every appimagetool
+invocation (see `appimage.sh`).
+
+The general lesson: a host-arch *tool* that writes bytes into the
+artifact may default those bytes to its own arch. `readelf -h` the
+shipped stub, don't trust the tool's arch flags — and prefer artifact
+tests that *execute* the artifact on target-arch hardware over
+build-time assertions. `setup_nodejs` in
 `scripts/setup/dependencies.sh` follows the same host-side pattern for
 its Node tarball ("Node is build-host tooling: it runs asar here and
 never ships in the package").
