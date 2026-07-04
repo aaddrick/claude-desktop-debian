@@ -84,18 +84,29 @@ Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md)
 - **`buildFHSEnv` (`nix/fhs.nix`) stays the default output.** MCP
   servers spawned by the app expect an FHS world (`nodejs`, `uv`,
   `docker`, ...); that rationale is unchanged from the Windows era.
-- **The FHS env must bind-provide OVMF firmware at the probed path.**
-  Cowork's firmware probe list is hardcoded with no env override:
-  x86_64 → `/usr/share/OVMF/OVMF_CODE_4M.fd`,
+- **The FHS env must bind-provide the OVMF CODE+VARS pair at the probed
+  path.** Cowork's firmware probe list is hardcoded with no env
+  override: x86_64 → `/usr/share/OVMF/OVMF_CODE_4M.fd`,
   `/usr/share/OVMF/OVMF_CODE.fd`; arm64 →
-  `/usr/share/AAVMF/AAVMF_CODE.fd`. The RPM grew compat symlinks for
-  this (CW-1). `nix/fhs.nix` closes it with a `runCommand` shim in
-  `targetPkgs`: nixpkgs' `OVMF.fd` lands firmware at `FV/*.fd` — not
-  under `share/` — so a bare OVMF package never hits the probe; the
-  shim symlinks it to `share/OVMF/…` (x86_64, where both Debian names
-  alias the single 4M-sized nixpkgs build) and `share/AAVMF/…`
-  (aarch64, with a `QEMU_EFI.fd` fallback — unverified on real
-  aarch64), which buildFHSEnv links into `/usr/share` inside the env.
+  `/usr/share/AAVMF/AAVMF_CODE.fd`. It then derives the **writable VARS
+  template** beside the CODE file it found by renaming
+  `OVMF_CODE`→`OVMF_VARS` / `AAVMF_CODE`→`AAVMF_VARS`
+  (`Qgi = A => A.replace("OVMF_CODE","OVMF_VARS").replace("AAVMF_CODE","AAVMF_VARS")`)
+  and copies it per VM to seed efivars — `coworkd` aborts with *"no EFI
+  variable-store template configured"* if that sibling is missing. So
+  the shim must ship **both halves**; deb/rpm get away with a CODE-only
+  symlink (CW-1) only because the distro's edk2 package already drops
+  `OVMF_VARS` beside it. `nix/fhs.nix` closes it with a `runCommand`
+  shim in `targetPkgs`: nixpkgs' `OVMF.fd` lands firmware at `FV/*.fd` —
+  not under `share/` — so a bare OVMF never hits the probe; the shim
+  symlinks the matched CODE+VARS pair into `share/OVMF/…` (x86_64, both
+  Debian names aliased onto the single 4M-sized nixpkgs build) and
+  `share/AAVMF/…` (aarch64: nixpkgs ships 64 MiB pflash-padded
+  `AAVMF_{CODE,VARS}.fd` — verified present; the old `QEMU_EFI.fd`
+  fallback was dropped, it is unpadded and has no matching VARS name).
+  A build-time guard fails loudly if a source `FV/*.fd` is gone rather
+  than ship a dangling symlink that only bites at VM boot. Both arches'
+  shim output is verified; a live VM boot is not.
 - **The FHS env must also ship qemu.** Cowork's VM-boot gate checks a
   second requirement beyond firmware: `qemuPath`, found by searching
   PATH for `qemu-system-x86_64` / `qemu-system-aarch64`. `coworkd`
