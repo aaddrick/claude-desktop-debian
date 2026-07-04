@@ -46,10 +46,28 @@ const RPM_RE = new RegExp(
 		'(?<claudeVer>[\\d.]+)-(?<repoVer>[\\d.]+)-\\d+\\.[^.]+\\.rpm)$'
 );
 
+// Pre-rename (v2.x-era) pool paths and asset names. The Worker deploys
+// on merge to main, but gh-pages metadata keeps pointing at these until
+// the first renamed release regenerates the repo — and apt/dnf clients
+// with cached metadata point at them for a while after. The old assets
+// live on their releases forever, so keep these routes permanently.
+const LEGACY_DEB_RE = new RegExp(
+	'^/pool/main/c/claude-desktop/(?<asset>claude-desktop_' +
+		'(?<claudeVer>[^-]+)-(?<repoVer>[^_]+)_(?:amd64|arm64)\\.deb)$'
+);
+const LEGACY_RPM_RE = new RegExp(
+	'^/rpm/(?:x86_64|aarch64)/(?<asset>claude-desktop-' +
+		'(?<claudeVer>[\\d.]+)-(?<repoVer>[\\d.]+)-\\d+\\.[^.]+\\.rpm)$'
+);
+
 export default {
 	async fetch(request) {
 		const url = new URL(request.url);
-		const m = DEB_RE.exec(url.pathname) || RPM_RE.exec(url.pathname);
+		const m =
+			DEB_RE.exec(url.pathname) ||
+			RPM_RE.exec(url.pathname) ||
+			LEGACY_DEB_RE.exec(url.pathname) ||
+			LEGACY_RPM_RE.exec(url.pathname);
 		if (m) {
 			const { asset, claudeVer, repoVer } = m.groups;
 			const tag = `v${repoVer}+claude${claudeVer}`;
