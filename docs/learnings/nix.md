@@ -25,13 +25,16 @@ derivation so nobody re-introduces the hack it needed.
 - `nix/claude-desktop.nix` implements the design below. Build- **and
   runtime**-verified on x86_64 + **nvidia** (real NixOS, both flake
   outputs: the app launches, GPU/EGL init is clean, locales load — see
-  "The ANGLE GL trap" below for the fix that got it there). **Not** yet
-  verified: **mesa** (Intel/AMD, i.e. most NixOS users — the failing path
-  is ANGLE's native-GL backend, and mesa picks backends differently, so
-  it's the one GL config that didn't get exercised), the aarch64 leg, and
-  Cowork actually booting a VM. Open questions for @typedrat are flagged
-  inline in both nix files (qemu in the FHS `targetPkgs`, aarch64 firmware
-  naming).
+  "The ANGLE GL trap" below for the fix that got it there). Cowork now
+  boots a VM on x86_64 too: both gate requirements — `qemuPath` and
+  `firmwarePath` — are satisfied in the FHS env, and a live boot with
+  KVM acceleration and usermode networking has been confirmed on a host
+  that already grants kvm-group access and has `vhost_vsock` loaded.
+  **Not** yet verified: **mesa** (Intel/AMD, i.e. most NixOS users — the
+  failing path is ANGLE's native-GL backend, and mesa picks backends
+  differently, so it's the one GL config that didn't get exercised) and
+  the aarch64 leg. One open question stays flagged inline: aarch64
+  firmware naming in `nix/fhs.nix`.
 - The Windows-installer derivation (7z-extract the exe, stock nixpkgs
   Electron, hand-built co-located resources tree, node-pty build) was
   deleted in the acquisition swap. Recover it from history:
@@ -93,6 +96,22 @@ Per [`official-deb-rebase-verification.md`](official-deb-rebase-verification.md)
   alias the single 4M-sized nixpkgs build) and `share/AAVMF/…`
   (aarch64, with a `QEMU_EFI.fd` fallback — unverified on real
   aarch64), which buildFHSEnv links into `/usr/share` inside the env.
+- **The FHS env must also ship qemu.** Cowork's VM-boot gate checks a
+  second requirement beyond firmware: `qemuPath`, found by searching
+  PATH for `qemu-system-x86_64` / `qemu-system-aarch64`. `coworkd`
+  (static Go) then launches a real `accel=kvm` guest — pflash OVMF,
+  `vhost-vsock-pci`, virtiofsd `--shared-dir`, slirp usermode net.
+  `nix/fhs.nix` adds `qemu_kvm` (the host-cpu-only build, ~1.5 GB
+  closure vs 2.1 GB for the all-targets `qemu`) to `targetPkgs`, which
+  lands the arch's `qemu-system-*` on `/usr/bin`. `/dev/kvm` and
+  `/dev/vhost-vsock` are reachable inside the env — buildFHSEnv binds
+  the whole `/dev` (`--dev-bind /dev /dev`) — but the host still has to
+  provide them: `/dev/kvm` is `root:kvm 0660`, so a user outside the
+  `kvm` group gets `EACCES` and coworkd's `accel=kvm` fails, and
+  `/dev/vhost-vsock` doesn't exist until `vhost_vsock` is loaded (not a
+  NixOS default). `--doctor` flags both. Firmware alone is necessary but
+  not sufficient: without qemu the gate returns `requirement_missing`
+  and the VM never boots.
 
 Settled by the implementation: `autoPatchelfHook` covers the full
 dependency surface (zero unsatisfied deps — main ELF, `virtiofsd`,
