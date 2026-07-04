@@ -11,6 +11,7 @@
   glibc,
   uv,
   OVMF,
+  qemu_kvm,
 }:
 
 let
@@ -52,10 +53,16 @@ in
 buildFHSEnv {
   name = "claude-desktop";
 
-  # Open question (@typedrat): Cowork also needs qemu-system-{x86_64,
-  # aarch64} on PATH inside the env to actually boot the VM — firmware
-  # alone only satisfies the probe. qemu is a large closure, so it is
-  # deliberately NOT added here pending her call.
+  # Cowork gates VM boot on BOTH a firmwarePath (the ovmfCompat shim
+  # above) and a qemuPath — it searches PATH for qemu-system-x86_64 /
+  # qemu-system-aarch64, and coworkd launches a real accel=kvm guest
+  # (pflash OVMF, vhost-vsock, virtiofsd --shared-dir). qemu_kvm is the
+  # host-cpu-only build, so it ships exactly that arch's binary (~1.5 GB
+  # closure vs 2.1 GB for the all-targets qemu). /dev/kvm and
+  # /dev/vhost-vsock are reachable inside the env — buildFHSEnv binds the
+  # whole /dev (--dev-bind /dev /dev) — but the host must still grant
+  # kvm-group access (/dev/kvm is root:kvm 0660, else EACCES) and load
+  # vhost_vsock (no node until the module is in); --doctor flags both.
   targetPkgs = pkgs: [
     bubblewrap
     claude-desktop
@@ -65,6 +72,7 @@ buildFHSEnv {
     nodejs
     openssl
     ovmfCompat
+    qemu_kvm
     uv
   ];
 
