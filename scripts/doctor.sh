@@ -780,6 +780,17 @@ _check_legacy_env() {
 				'rebase onto the official build'
 		fi
 	done
+
+	# LD-2: close-to-tray left with frame-fix-wrapper.js, but the
+	# official build supersedes it natively — deliberately a no-op, not
+	# a regression, so it gets its own pointer instead of the generic
+	# warning above.
+	if [[ -n ${CLAUDE_QUIT_ON_CLOSE:-} ]]; then
+		_warn 'CLAUDE_QUIT_ON_CLOSE is set but no longer honored since' \
+			'the v3.0.0 rebase onto the official build'
+		_info 'Close behavior is now a native setting: Settings >' \
+			'General > System Tray (on = close to tray, off = quit)'
+	fi
 }
 
 # Cowork isolation on the official client is KVM-only. Report whether

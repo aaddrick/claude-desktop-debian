@@ -157,6 +157,28 @@ residual risk; they do not un-delete shipped code.
   toggle."
 - **SB-1** — artifact tests repointed to the bare co-located layout
   (this PR); the bats/doctor example strings repointed for realism.
+- **LD-2** — **fixed (this PR):** `_check_legacy_env` now calls out
+  `CLAUDE_QUIT_ON_CLOSE` as a deliberate no-op and points at the native
+  Settings ▸ General ▸ System Tray toggle.
+- **AU-1/MB-1** — **fixed (this PR):** `patch_app_asar` greps the
+  pristine asar for `apt_channel_pending` and `menuBarEnabled:!0` and
+  fails the build if either anchor disappears, so an upstream
+  autoupdater/menu-bar flip is caught at build time instead of landing
+  silently.
+- **AUTO-1** — **fixed (this PR):** `heal_autostart_entry` in
+  `launcher-common.sh` rewrites the app-written autostart `Exec` (the
+  raw ELF, or the ephemeral `/tmp/.mount_claude*` path under AppImage)
+  to the launcher on every start. Safe against the Settings toggle:
+  upstream's is-enabled check reads only file existence plus
+  `Hidden`/`X-GNOME-Autostart-enabled`, never the Exec content
+  (verified on 1.18286.0 bytes).
+- **CW-1** — **fixed (this PR):** the RPM `%post` creates a compat
+  symlink at the probed firmware path (`OVMF_CODE_4M.fd` /
+  `AAVMF_CODE.fd`) when no probed path exists but a known edk2/qemu
+  layout does; `%postun` removes it on erase only when it is unowned
+  and points at a bridged layout. deb needs nothing (the official
+  Recommends `ovmf` matches the probe); AppImage stays
+  doctor-messaging; the Nix FHS bind rides the @typedrat derivation.
 - Runtime switch passthrough — confirmed on niri forced to native Wayland
   (`--ozone-platform=wayland`, `--enable-wayland-ime`, `WaylandWindowDecorations`
   all take; clean repaint through fullscreen⇄tile, no GPU fallback).
@@ -184,17 +206,10 @@ residual risk; they do not un-delete shipped code.
 - **LOG-1** — **fixed (this PR):** `log_message` now redacts the query
   string of any `claude://login` argv token, so OAuth codes stop landing in
   `launcher.log`.
-- **LD-2** — note `CLAUDE_QUIT_ON_CLOSE` as a no-op in `_check_legacy_env`
-  and point to the tray toggle (doc + one-line doctor hint).
-- **AU-1/MB-1** — build tripwires on `apt_channel_pending` /
-  `menuBarEnabled:!0` so a future upstream flip is caught at build time.
 - **LD-3** — a doctor keyring/persistence warning: probe for a reachable
   Secret Service and, when absent, note the token is stored unencrypted
-  under `basic`. Pairs with LD-1.
-- **AUTO-1** — the openAtLogin autostart entry execs the raw ELF
-  (`/usr/lib/claude-desktop/claude-desktop --startup`), bypassing the
-  launcher's env/flag policy; rewrite `Exec` to `/usr/bin/claude-desktop`.
-- **CW-1** — Cowork OVMF compat-symlink for non-Debian KVM hosts.
+  under `basic`. Pairs with LD-1. Net-new doctor surface → aaddrick's
+  scope call, not built unilaterally.
 - **MCP-DOC-1** — README: quit Claude Desktop before hand-editing
   `claude_desktop_config.json` (direct consequence of CF-1).
 - **SHORTCUT-1 / SWAY-1 / OMARCHY-1 / GPU-1 / S10** — environment-scoped

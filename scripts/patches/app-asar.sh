@@ -28,6 +28,45 @@ active_patches=(
 	patch_org_plugins_path
 )
 
+# AU-1/MB-1: build-time tripwires on upstream behavior we deleted
+# patches for. Each deleted patch used to WARN at patch time when its
+# anchor moved; with the patches gone, an upstream flip would land
+# silently. Grep the asar directly (asar stores file contents
+# uncompressed) so the check also runs in patch-zero mode, where the
+# archive is never extracted.
+#
+#   apt_channel_pending — the official updater early-returns on this
+#     marker while the APT channel is pending (decision D-001). If it
+#     disappears, upstream turned on self-updating, which fights the
+#     package manager — the 2.x autoUpdater-noop question is live again.
+#   menuBarEnabled:!0   — the settings default that keeps the menu bar
+#     on. If it disappears, upstream flipped the default the deleted
+#     menuBar patch used to enforce.
+#
+# Patterns tolerate optional whitespace so a beautified or re-minified
+# bundle still matches (see CLAUDE.md, Working with Minified JavaScript).
+_check_upstream_tripwires() {
+	local asar_path="$1"
+
+	if ! LC_ALL=C grep -aq 'apt_channel_pending' "$asar_path"; then
+		echo 'Tripwire (AU-1): "apt_channel_pending" is gone from the' \
+			'official bundle — upstream may have enabled the' \
+			'autoupdater. Re-evaluate before shipping (see' \
+			'docs/decisions.md D-001).' >&2
+		exit 1
+	fi
+
+	if ! LC_ALL=C grep -aqE 'menuBarEnabled:[[:space:]]*!0' "$asar_path"
+	then
+		echo 'Tripwire (MB-1): "menuBarEnabled:!0" is gone from the' \
+			'official bundle — upstream may have flipped the menu-bar' \
+			'default. Re-evaluate before shipping.' >&2
+		exit 1
+	fi
+
+	echo 'Upstream tripwires clear (autoupdater pending, menu bar on)'
+}
+
 # Read one field out of the asar's package.json without a full extract.
 _asar_package_json_field() {
 	local field="$1"
@@ -62,6 +101,9 @@ patch_app_asar() {
 		exit 1
 	fi
 	echo "productName '$product_name' matches WM_CLASS"
+
+	# Runs against the pristine bytes, before any patch touches them.
+	_check_upstream_tripwires "$resources_dir/app.asar"
 
 	if (( ${#active_patches[@]} == 0 )); then
 		echo 'active_patches is empty — shipping the official app.asar' \

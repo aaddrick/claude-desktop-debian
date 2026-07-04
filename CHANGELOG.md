@@ -8,7 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
-v3.0.0 — rebased onto Anthropic's official first-party Claude Desktop for Linux `.deb` (pin 1.17377.2), replacing the Windows-installer repackaging and most of the legacy patch suite. Fill the `#XXX` placeholders with the PR number when it opens.
+v3.0.0 — rebased onto Anthropic's official first-party Claude Desktop for Linux `.deb` (pin 1.18286.0), replacing the Windows-installer repackaging and most of the legacy patch suite. Fill the `#XXX` placeholders with the PR number when it opens.
+
+### Added
+
+- Build-time tripwires on upstream behavior we deleted patches for: the build now fails if the official bundle stops shipping the `apt_channel_pending` autoupdater marker (upstream turning on self-updating would fight the package manager — see [D-001](docs/decisions.md)) or the `menuBarEnabled:!0` menu-bar default. Replaces the per-patch WARNINGs that left with each deletion. (AU-1/MB-1, [#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- The launcher self-heals the "Run on startup" autostart entry. The official app writes `~/.config/autostart/claude-desktop.desktop` with `Exec=<its own ELF> --startup`, which bypasses the launcher's env/flag policy (Wayland opt-in, GPU recovery, `--class`, `CLAUDE_PASSWORD_STORE`) — and under AppImage points at an ephemeral `/tmp/.mount_claude*` path that rots on unmount. Each launch now repoints the entry's `Exec` at the launcher (deb/rpm: `/usr/bin/claude-desktop`; AppImage: the persistent `$APPIMAGE` path). The Settings toggle is unaffected — static analysis of the official bundle shows its is-enabled check never reads the `Exec` content. (AUTO-1, [#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- The RPM bridges Cowork's hardcoded firmware probe on non-Debian layouts: `%post` creates a compat symlink at the probed path (`/usr/share/OVMF/OVMF_CODE_4M.fd`, arm64 `/usr/share/AAVMF/AAVMF_CODE.fd`) when no probed path exists but a known edk2/qemu location does; erase removes it only if it is ours. Fedora already ships its own compat layer and is untouched. (CW-1, [#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
 
 ### Changed
 
@@ -20,7 +26,7 @@ v3.0.0 — rebased onto Anthropic's official first-party Claude Desktop for Linu
 
 ### Removed
 
-- **BREAKING:** Launcher env vars `CLAUDE_TITLEBAR_STYLE`, `ELECTRON_USE_SYSTEM_TITLE_BAR`, `CLAUDE_MENU_BAR`, `CLAUDE_KEEP_AWAKE`, and `CLAUDE_QUIT_ON_CLOSE` — the official build handles these natively (close-to-tray moved to **Settings ▸ General ▸ System Tray**, on = tray / off = quit). The doctor warns if it sees a dead one still set. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
+- **BREAKING:** Launcher env vars `CLAUDE_TITLEBAR_STYLE`, `ELECTRON_USE_SYSTEM_TITLE_BAR`, `CLAUDE_MENU_BAR`, `CLAUDE_KEEP_AWAKE`, and `CLAUDE_QUIT_ON_CLOSE` — the official build handles these natively (close-to-tray moved to **Settings ▸ General ▸ System Tray**, on = tray / off = quit). The doctor warns if it sees a dead one still set, and points `CLAUDE_QUIT_ON_CLOSE` at the tray toggle specifically. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
 - 11 legacy patches now redundant against the official Linux build: the frame-fix wrapper (incl. the autoUpdater no-op), the claude-native Rust-binding stub, the tray patches (`tray.sh`), the WCO shim, `claude-code.sh`, the node-pty rebuild (+ `nix/node-pty.nix`), the menuBarEnabled default, the cowork/`.config` `.asar` guards, and the i18n + tray-icon asar copies. Two Linux-specific survivors stay: `quick-window` (KDE stale-focus) and `org-plugins` (upstream has no Linux case). ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
 - The Windows-installer acquisition path: `download.sh`, the Playwright `resolve-download-url.py`, `fetch-electron-binary.js`, and `scripts/staging/*`. ([#XXX](https://github.com/aaddrick/claude-desktop-debian/pulls))
 

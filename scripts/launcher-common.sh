@@ -552,6 +552,81 @@ cleanup_stale_cowork_socket() {
 	log_message "Removed stale cowork-vm-service socket (no daemon running)"
 }
 
+# AUTO-1: when "Run on startup" is enabled, the official app writes
+# its own XDG autostart entry with Exec=<process.execPath> --startup —
+# the raw Electron ELF (or, under AppImage, the ephemeral
+# /tmp/.mount_claude* path). Login launches would bypass every launcher
+# policy (Wayland opt-in, GPU recovery, --class, CLAUDE_PASSWORD_STORE),
+# and the AppImage path rots on unmount. Rewrite the Exec command to
+# the launcher on every start.
+#
+# Safe against the Settings toggle: upstream's is-enabled check reads
+# only file existence plus Hidden/X-GNOME-Autostart-enabled — never the
+# Exec content (verified on 1.18286.0 bytes). The app rewrites the
+# entry on each toggle-on, so the heal has to repeat per launch.
+#
+# $1 = absolute launcher path to point the entry at. Callers pass
+# /usr/bin/claude-desktop (deb/rpm) or "$APPIMAGE" (AppRun; empty when
+# the AppImage runtime did not set it — no-op then).
+heal_autostart_entry() {
+	local launcher="$1"
+	local entry_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+	local entry="$entry_dir/claude-desktop.desktop"
+	local exec_line current args rest escaped new_line tmp line
+	local replaced=false
+
+	[[ -n $launcher && -f $entry ]] || return 0
+
+	exec_line=$(LC_ALL=C grep -m1 '^Exec=' "$entry") || return 0
+
+	# The command token: upstream writes it double-quoted; fall back to
+	# the first unquoted word for hand-edited entries.
+	if [[ $exec_line =~ ^Exec=\"([^\"]*)\"(.*)$ ]]; then
+		current="${BASH_REMATCH[1]}"
+		args="${BASH_REMATCH[2]}"
+	else
+		rest="${exec_line#Exec=}"
+		current="${rest%%[[:space:]]*}"
+		args="${rest#"$current"}"
+	fi
+
+	# Already healed, or pointing at something that is not the app
+	# itself (a hand-rolled wrapper): leave it alone.
+	[[ $current == "$launcher" ]] && return 0
+	case "$current" in
+		*/claude-desktop) ;;
+		*) return 0 ;;
+	esac
+
+	# Desktop-entry escaping, mirroring what upstream applies to its
+	# own execPath: backslash-escape \ " ` $, then % -> %%.
+	escaped="$launcher"
+	escaped=${escaped//\\/\\\\}
+	escaped=${escaped//\"/\\\"}
+	escaped=${escaped//\`/\\\`}
+	escaped=${escaped//\$/\\\$}
+	escaped=${escaped//%/%%}
+	new_line="Exec=\"$escaped\"$args"
+
+	# Rewrite only the first Exec line; keep everything else verbatim.
+	tmp="$entry.tmp.$$"
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $replaced == false && $line == Exec=* ]]; then
+			printf '%s\n' "$new_line"
+			replaced=true
+		else
+			printf '%s\n' "$line"
+		fi
+	done < "$entry" > "$tmp" || { rm -f "$tmp"; return 0; }
+	mv "$tmp" "$entry" || { rm -f "$tmp"; return 0; }
+
+	if [[ -n ${log_file:-} ]]; then
+		log_message \
+			"Healed autostart Exec: $current -> $launcher (AUTO-1)"
+	fi
+	return 0
+}
+
 cleanup_after_electron_exit() {
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers

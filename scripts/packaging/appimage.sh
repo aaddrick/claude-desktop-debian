@@ -79,6 +79,9 @@ cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
+# APPIMAGE is set by the AppImage runtime to the persistent image path;
+# an extracted/direct run leaves it unset and the heal no-ops.
+heal_autostart_entry "${APPIMAGE:-}"
 
 # Detect display backend
 detect_display_backend

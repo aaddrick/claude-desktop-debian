@@ -106,6 +106,7 @@ cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
+heal_autostart_entry '/usr/bin/claude-desktop'
 
 # Log startup info
 log_message '--- Claude Desktop Launcher Start ---'
@@ -162,6 +163,32 @@ for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
 	icon_install_cmds+="install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size_dir}/apps/claude-desktop.png
 "
 done
+
+# CW-1: the official Cowork client probes a hardcoded, Debian-layout
+# firmware list (x64: /usr/share/OVMF/OVMF_CODE{_4M,}.fd, arm64:
+# /usr/share/AAVMF/AAVMF_CODE.fd) with no env override. Fedora ships
+# its own /usr/share/OVMF compat layer, but other RPM hosts (openSUSE,
+# Arch-derived layouts) put edk2 firmware elsewhere, so Cowork breaks
+# out of the box there. The %post scriptlet below creates a compat
+# symlink at the probed path when no probed path exists but a known
+# edk2/qemu layout does; %postun removes it on erase (never a real
+# file, never another package's symlink). Filed upstream as the
+# OVMF-probe-rigidity report.
+if [[ $rpm_arch == 'aarch64' ]]; then
+	fw_probe_dir='/usr/share/AAVMF'
+	fw_probe_list='/usr/share/AAVMF/AAVMF_CODE.fd'
+	fw_link_name='AAVMF_CODE.fd'
+	fw_candidates='/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw'
+	fw_candidates+=' /usr/share/qemu/aavmf-aarch64-code.bin'
+else
+	fw_probe_dir='/usr/share/OVMF'
+	fw_probe_list='/usr/share/OVMF/OVMF_CODE_4M.fd'
+	fw_probe_list+=' /usr/share/OVMF/OVMF_CODE.fd'
+	fw_link_name='OVMF_CODE_4M.fd'
+	fw_candidates='/usr/share/edk2/ovmf/OVMF_CODE.fd'
+	fw_candidates+=' /usr/share/edk2/x64/OVMF_CODE.4m.fd'
+	fw_candidates+=' /usr/share/qemu/ovmf-x86_64-code.bin'
+fi
 
 cat > "$rpmbuild_dir/SPECS/$package_name.spec" << SPECEOF
 Name:           $package_name
@@ -236,9 +263,47 @@ chmod 4755 %{buildroot}/usr/lib/$package_name/chrome-sandbox
 # Update desktop database for MIME types
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
+# Cowork firmware compat symlink (CW-1): the official client probes a
+# hardcoded Debian-layout firmware list with no env override. If no
+# probed path exists but a known edk2/qemu layout does, bridge it.
+fw_have=''
+for fw_probe in $fw_probe_list; do
+    if [ -e "\$fw_probe" ]; then
+        fw_have=1
+        break
+    fi
+done
+if [ -z "\$fw_have" ]; then
+    for fw_src in $fw_candidates; do
+        if [ -e "\$fw_src" ]; then
+            if mkdir -p $fw_probe_dir 2>/dev/null \\
+                && ln -sf "\$fw_src" $fw_probe_dir/$fw_link_name 2>/dev/null
+            then
+                echo "Cowork firmware compat symlink: $fw_probe_dir/$fw_link_name -> \$fw_src"
+            fi
+            break
+        fi
+    done
+fi
+
 %postun
 # Update desktop database after removal
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
+
+# CW-1 cleanup on erase only (\$1 = 0; upgrades keep the symlink).
+# Remove the compat symlink only when it is ours: a symlink no rpm
+# package owns (distro compat links — e.g. Fedora's directory-level
+# /usr/share/OVMF — are package-owned and must survive), pointing at
+# one of the layouts %post bridges.
+if [ "\$1" -eq 0 ] && [ -L $fw_probe_dir/$fw_link_name ] \\
+    && ! rpm -qf $fw_probe_dir/$fw_link_name >/dev/null 2>&1; then
+    case "\$(readlink $fw_probe_dir/$fw_link_name)" in
+        /usr/share/edk2/*|/usr/share/qemu/*)
+            rm -f $fw_probe_dir/$fw_link_name
+            rmdir $fw_probe_dir 2>/dev/null || true
+            ;;
+    esac
+fi
 
 %files
 %defattr(-, root, root, 0755)

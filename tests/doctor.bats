@@ -620,14 +620,15 @@ _hide_pkg_tools() {
 # =============================================================================
 
 @test "_check_legacy_env: silent when no legacy knobs are set" {
-	unset CLAUDE_TITLEBAR_STYLE CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE
+	unset CLAUDE_TITLEBAR_STYLE CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE \
+		CLAUDE_QUIT_ON_CLOSE
 	run _check_legacy_env
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
 }
 
 @test "_check_legacy_env: warns for each set legacy knob" {
-	unset CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE
+	unset CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE CLAUDE_QUIT_ON_CLOSE
 	CLAUDE_TITLEBAR_STYLE='hybrid'
 	run _check_legacy_env
 	[[ $status -eq 0 ]]
@@ -635,6 +636,16 @@ _hide_pkg_tools() {
 	[[ $output == *'CLAUDE_TITLEBAR_STYLE'* ]]
 	[[ $output == *'no longer honored'* ]]
 	[[ $output != *'CLAUDE_MENU_BAR'* ]]
+}
+
+@test "_check_legacy_env: CLAUDE_QUIT_ON_CLOSE points at the tray toggle" {
+	unset CLAUDE_TITLEBAR_STYLE CLAUDE_MENU_BAR CLAUDE_KEEP_AWAKE
+	CLAUDE_QUIT_ON_CLOSE='1'
+	run _check_legacy_env
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'CLAUDE_QUIT_ON_CLOSE'* ]]
+	[[ $output == *'System Tray'* ]]
 }
 
 # =============================================================================

@@ -967,3 +967,90 @@ STUB
 	result=$(_electron_version "$TEST_TMP/electron/electron") || true
 	[[ -z $result ]]
 }
+
+# =============================================================================
+# heal_autostart_entry (AUTO-1): repoint the app-written XDG autostart
+# entry from the raw ELF / ephemeral AppImage mount to the launcher
+# =============================================================================
+
+_write_autostart() {
+	# $1 = Exec line; remaining upstream-shaped lines are fixed
+	mkdir -p "$XDG_CONFIG_HOME/autostart"
+	{
+		echo '[Desktop Entry]'
+		echo 'Type=Application'
+		echo 'Name=Claude'
+		echo "$1"
+		echo 'X-GNOME-Autostart-enabled=true'
+	} > "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
+}
+
+_autostart_exec() {
+	grep '^Exec=' "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
+}
+
+@test "heal_autostart_entry: rewrites the raw-ELF Exec to the launcher" {
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop'
+	[[ $(_autostart_exec) == 'Exec="/usr/bin/claude-desktop" --startup' ]]
+}
+
+@test "heal_autostart_entry: rewrites an ephemeral AppImage mount path" {
+	_write_autostart \
+		'Exec="/tmp/.mount_claudeXYZ/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry "$HOME/Apps/Claude.AppImage"
+	[[ $(_autostart_exec) == "Exec=\"$HOME/Apps/Claude.AppImage\" --startup" ]]
+}
+
+@test "heal_autostart_entry: idempotent when already pointing at the launcher" {
+	_write_autostart 'Exec="/usr/bin/claude-desktop" --startup'
+	local before after
+	before=$(cat "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop")
+	heal_autostart_entry '/usr/bin/claude-desktop'
+	after=$(cat "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop")
+	[[ $before == "$after" ]]
+}
+
+@test "heal_autostart_entry: leaves a hand-rolled wrapper Exec alone" {
+	_write_autostart 'Exec="/home/user/bin/my-claude-wrapper" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop'
+	[[ $(_autostart_exec) == 'Exec="/home/user/bin/my-claude-wrapper" --startup' ]]
+}
+
+@test "heal_autostart_entry: handles an unquoted hand-edited Exec" {
+	_write_autostart 'Exec=/usr/lib/claude-desktop/claude-desktop --startup --foo'
+	heal_autostart_entry '/usr/bin/claude-desktop'
+	[[ $(_autostart_exec) == 'Exec="/usr/bin/claude-desktop" --startup --foo' ]]
+}
+
+@test "heal_autostart_entry: no-op when the entry file is absent" {
+	rm -rf "$XDG_CONFIG_HOME/autostart"
+	run heal_autostart_entry '/usr/bin/claude-desktop'
+	[[ $status -eq 0 ]]
+	[[ ! -e "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop" ]]
+}
+
+@test "heal_autostart_entry: no-op when the launcher path is empty" {
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	run heal_autostart_entry ''
+	[[ $status -eq 0 ]]
+	[[ $(_autostart_exec) == 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup' ]]
+}
+
+@test "heal_autostart_entry: preserves non-Exec lines and escapes % in the path" {
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/opt/100%/claude-desktop'
+	[[ $(_autostart_exec) == 'Exec="/opt/100%%/claude-desktop" --startup' ]]
+	grep -q '^X-GNOME-Autostart-enabled=true$' \
+		"$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
+	grep -q '^Name=Claude$' \
+		"$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
+}
+
+@test "heal_autostart_entry: logs the heal when logging is set up" {
+	setup_logging
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop'
+	grep -q 'Healed autostart Exec' "$log_file"
+	grep -q 'AUTO-1' "$log_file"
+}

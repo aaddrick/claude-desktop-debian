@@ -95,6 +95,16 @@ assert_contains '/usr/bin/claude-desktop' 'run_doctor' \
 assert_contains '/usr/bin/claude-desktop' 'build_electron_args' \
 	"Launcher calls build_electron_args"
 
+# --- CW-1: Cowork firmware compat shim in the scriptlets ---
+# The runtime effect needs an edk2 layout the container doesn't have;
+# assert the scriptlet content instead.
+rpm_scripts=$(rpm -q --scripts claude-desktop 2>/dev/null)
+if [[ $rpm_scripts == *'Cowork firmware compat symlink'* ]]; then
+	pass "%post carries the CW-1 firmware compat shim"
+else
+	fail "%post is missing the CW-1 firmware compat shim"
+fi
+
 # --- App contents (asar) ---
 resources_dir='/usr/lib/claude-desktop/resources'
 validate_app_contents "$resources_dir"
