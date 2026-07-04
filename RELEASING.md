@@ -9,7 +9,7 @@ There are two flavors of release:
 
 ## Pre-release checklist
 
-1. **CI is green on `main`.** All required workflows (CI, tests, shellcheck, codespell) passed on the commit you're about to tag.
+1. **CI is green on `main`.** All required workflows (CI, tests, shellcheck) passed on the commit you're about to tag.
 
    ```bash
    gh run list --branch main --limit 5

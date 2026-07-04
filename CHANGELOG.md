@@ -33,6 +33,7 @@ v3.0.0 — rebased onto Anthropic's official first-party Claude Desktop for Linu
 - **BREAKING:** Launcher env vars `CLAUDE_TITLEBAR_STYLE`, `ELECTRON_USE_SYSTEM_TITLE_BAR`, `CLAUDE_MENU_BAR`, `CLAUDE_KEEP_AWAKE`, and `CLAUDE_QUIT_ON_CLOSE` — the official build handles these natively (close-to-tray moved to **Settings ▸ General ▸ System Tray**, on = tray / off = quit). The doctor warns if it sees a dead one still set, and points `CLAUDE_QUIT_ON_CLOSE` at the tray toggle specifically. ([#763](https://github.com/aaddrick/claude-desktop-debian/pull/763))
 - 11 legacy patches now redundant against the official Linux build: the frame-fix wrapper (incl. the autoUpdater no-op), the claude-native Rust-binding stub, the tray patches (`tray.sh`), the WCO shim, `claude-code.sh`, the node-pty rebuild (+ `nix/node-pty.nix`), the menuBarEnabled default, the cowork/`.config` `.asar` guards, and the i18n + tray-icon asar copies. Two Linux-specific survivors stay: `quick-window` (KDE stale-focus) and `org-plugins` (upstream has no Linux case). ([#763](https://github.com/aaddrick/claude-desktop-debian/pull/763))
 - The Windows-installer acquisition path: `download.sh`, the Playwright `resolve-download-url.py`, `fetch-electron-binary.js`, and `scripts/staging/*`. ([#763](https://github.com/aaddrick/claude-desktop-debian/pull/763))
+- The codespell workflow (`.github/workflows/codespell.yml`) and `.codespellrc`. ([#763](https://github.com/aaddrick/claude-desktop-debian/pull/763))
 
 ### Fixed
 
