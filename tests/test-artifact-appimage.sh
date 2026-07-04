@@ -87,7 +87,10 @@ assert_file_exists \
 	"$appdir/usr/share/metainfo/${component_id}.appdata.xml"
 
 # --- Electron binary ---
-electron_path="$appdir/usr/lib/node_modules/electron/dist/electron"
+# Official tree is bare co-located under usr/lib/claude-desktop (ELF +
+# chrome-sandbox + resources/); no node_modules/electron/dist wrapper —
+# see appimage.sh `cp -a` and app_exec.
+electron_path="$appdir/usr/lib/claude-desktop/claude-desktop"
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
 
@@ -103,7 +106,7 @@ assert_contains "$appdir/AppRun" 'build_electron_args' \
 	"AppRun calls build_electron_args"
 
 # --- App contents (asar) ---
-resources_dir="$appdir/usr/lib/node_modules/electron/dist/resources"
+resources_dir="$appdir/usr/lib/claude-desktop/resources"
 validate_app_contents "$resources_dir" "${component_id}.desktop"
 
 # --- Doctor smoke test ---

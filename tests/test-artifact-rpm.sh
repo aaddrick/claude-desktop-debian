@@ -48,8 +48,10 @@ assert_file_exists \
 assert_dir_exists '/usr/lib/claude-desktop'
 assert_file_exists '/usr/lib/claude-desktop/launcher-common.sh'
 
-# Electron binary
-electron_path='/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+# Electron binary. Official tree is bare co-located under
+# /usr/lib/claude-desktop (ELF + chrome-sandbox + resources/), with no
+# node_modules/electron/dist wrapper — see rpm.sh `cp -a`.
+electron_path='/usr/lib/claude-desktop/claude-desktop'
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
 
@@ -58,7 +60,7 @@ assert_executable "$electron_path"
 # guards against any regression that strips the suid bit — including
 # (but not limited to) reverting to a %post chmod, which silently
 # no-ops if the scriptlet is skipped (--noscripts, layered images).
-chrome_sandbox='/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+chrome_sandbox='/usr/lib/claude-desktop/chrome-sandbox'
 assert_file_exists "$chrome_sandbox"
 assert_setuid "$chrome_sandbox"
 
@@ -94,7 +96,7 @@ assert_contains '/usr/bin/claude-desktop' 'build_electron_args' \
 	"Launcher calls build_electron_args"
 
 # --- App contents (asar) ---
-resources_dir='/usr/lib/claude-desktop/node_modules/electron/dist/resources'
+resources_dir='/usr/lib/claude-desktop/resources'
 validate_app_contents "$resources_dir"
 
 # app.asar.unpacked must be world-traversable and root-owned, or

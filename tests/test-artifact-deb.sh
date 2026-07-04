@@ -60,19 +60,22 @@ assert_file_exists \
 assert_dir_exists '/usr/lib/claude-desktop'
 assert_file_exists '/usr/lib/claude-desktop/launcher-common.sh'
 
-# Electron binary
-electron_path='/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+# Electron binary. The official tree is bare co-located: the ELF, its
+# chrome-sandbox, and resources/ live directly under /usr/lib/claude-desktop
+# — there is no node_modules/electron/dist wrapper (rebase onto the
+# official .deb; see deb.sh `cp -a "$app_staging_dir/."`).
+electron_path='/usr/lib/claude-desktop/claude-desktop'
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
 
 # chrome-sandbox
 assert_file_exists \
-	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+	'/usr/lib/claude-desktop/chrome-sandbox'
 
 # The build's permission normalization clears the setuid bit; postinst
 # must re-assert 4755 or the Electron sandbox breaks silently (#695).
 assert_setuid \
-	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+	'/usr/lib/claude-desktop/chrome-sandbox'
 
 # --- Desktop entry validation ---
 desktop_file='/usr/share/applications/claude-desktop.desktop'
@@ -112,7 +115,7 @@ assert_contains '/usr/bin/claude-desktop' 'build_electron_args' \
 	"Launcher calls build_electron_args"
 
 # --- App contents (asar) ---
-resources_dir='/usr/lib/claude-desktop/node_modules/electron/dist/resources'
+resources_dir='/usr/lib/claude-desktop/resources'
 validate_app_contents "$resources_dir"
 
 # app.asar.unpacked must be world-traversable and root-owned, or

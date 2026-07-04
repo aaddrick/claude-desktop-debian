@@ -108,6 +108,27 @@ teardown() {
 	[[ "${lines[1]}" == "test message two" ]]
 }
 
+@test "log_message: redacts OAuth code from claude://login argv (LOG-1)" {
+	setup_logging
+	# Both the "Arguments:" and "Executing:" lines carry $* verbatim.
+	log_message "Arguments: claude://login/google-auth?code=SECRET123&state=xyz"
+	log_message "Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude claude://login/google-auth?code=SECRET456"
+	run cat "$log_file"
+	[[ "$output" != *SECRET123* ]]
+	[[ "$output" != *SECRET456* ]]
+	[[ "$output" != *'code='* ]]
+	# Path is kept for context; only the query string is stripped.
+	[[ "${lines[0]}" == 'Arguments: claude://login/google-auth?<redacted>' ]]
+	[[ "${lines[1]}" == *'--class=Claude claude://login/google-auth?<redacted>' ]]
+}
+
+@test "log_message: leaves non-login messages untouched" {
+	setup_logging
+	log_message 'Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude'
+	run cat "$log_file"
+	[[ "${lines[0]}" == 'Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude' ]]
+}
+
 # =============================================================================
 # log_session_env
 # =============================================================================
@@ -725,7 +746,7 @@ s.close()
 	local config_dir="$XDG_CONFIG_HOME/Claude"
 
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$config_dir"
+		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
 	# tr '\0' ' ' joins cmdline args with a trailing space, so the
@@ -739,7 +760,7 @@ s.close()
 	[[ $status -ne 0 ]]
 
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js"
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js"
 	[[ $status -eq 0 ]]
 
 	# Official Rust Cowork helper (spawned via process.resourcesPath).
@@ -758,7 +779,7 @@ s.close()
 	[[ $status -eq 0 ]]
 
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron /usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar"
+		"/usr/lib/claude-desktop/claude-desktop /usr/lib/claude-desktop/resources/app.asar"
 	[[ $status -ne 0 ]]
 
 	run _desktop_helper_cmdline_matches \
@@ -776,7 +797,7 @@ s.close()
 	# longer appears in any cmdline, so the --class flag from
 	# build_electron_args is the only stable UI signature.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --class=Claude --enable-features=WaylandWindowDecorations "
+		"/usr/lib/claude-desktop/claude-desktop --class=Claude --enable-features=WaylandWindowDecorations "
 	[[ $status -eq 0 ]]
 
 	# Another Electron app's asar path must not match.
@@ -792,12 +813,12 @@ s.close()
 	# Chromium helpers (--type=) never count as the UI, even if a
 	# --class flag leaked into their argv.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/electron --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
+		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
 	[[ $status -ne 0 ]]
 
 	# The cowork daemon never counts as the UI.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/node_modules/electron/dist/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
 	[[ $status -ne 0 ]]
 }
 

@@ -16,8 +16,19 @@ setup_logging() {
 
 # Log a message to the log file
 # Usage: log_message "message"
+#
+# LOG-1: never persist OAuth authorization codes. A relaunch through the
+# login redirect carries claude://login/...?code=<secret> in argv, which
+# reaches both the "Arguments:" and "Executing:" lines. Strip the query
+# string of any claude://login token before writing, keeping the path for
+# context. Guarded so the common case pays no subprocess.
 log_message() {
-	echo "$1" >> "$log_file"
+	local msg="$1"
+	if [[ "$msg" == *claude://login* ]]; then
+		msg=$(printf '%s' "$msg" \
+			| sed -E 's#(claude://login[^ ?]*)\?[^ ]*#\1?<redacted>#g')
+	fi
+	echo "$msg" >> "$log_file"
 }
 
 # Log the session/IME environment vars that drive display and input

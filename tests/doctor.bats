@@ -256,7 +256,7 @@ SHIM
 	local saved_path="$PATH"
 	export PATH="/no-such-dir-for-test"
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop/claude-desktop'
 	export PATH="$saved_path"
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
@@ -266,16 +266,16 @@ SHIM
 	# Listing has the header line only, no entry rows.
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
 }
 
 @test "_doctor_check_recent_crashes: 1 crash — info line, no warn" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 21.6M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'Recent Electron crashes: 1'* ]]
 	[[ $output != *'[WARN]'* ]]
@@ -283,11 +283,11 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 
 @test "_doctor_check_recent_crashes: 3+ crashes — warn + #583 pointer" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M
-Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 22.8M
-Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 12.4M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 21.6M
+Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 22.8M
+Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 12.4M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'Recent Electron crashes: 3'* ]]
@@ -305,7 +305,7 @@ Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/slack/elec
 Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
 Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'may be from other Electron apps'* ]]
@@ -313,7 +313,7 @@ Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/elec
 
 @test "_doctor_check_recent_crashes: empty electron_path falls back" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/node_modules/electron/dist/electron 21.6M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 21.6M'
 	# Caller didn't pass an electron_path — helper still counts and
 	# emits the info line based on the unfiltered total.
 	run _doctor_check_recent_crashes ''
@@ -561,7 +561,7 @@ _hide_pkg_tools() {
 	dpkg-query() { printf '1.5354.0'; }
 
 	run _doctor_check_pkg_version \
-		'/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+		'/usr/lib/claude-desktop/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'Installed version: 1.11847.5-2.0.19'* ]]
