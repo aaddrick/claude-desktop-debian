@@ -426,10 +426,11 @@ _desktop_helper_cmdline_matches() {
 		*/usr/lib/claude-desktop/*--type=*)
 			return 0
 			;;
-		*/usr/lib/claude-desktop-linux/*--type=*)
-			# Phase 3 install-path rename (claude-desktop-linux) lands
-			# after this arc; matching it now keeps helper cleanup
-			# working across the rename.
+		*/usr/lib/claude-desktop-unofficial/*--type=*)
+			# Phase 3 package rename, landing in v3.0.0: our package
+			# installs to /usr/lib/claude-desktop-unofficial while the
+			# official arm above keeps matching Anthropic's install
+			# (and the AppImage internal tree).
 			return 0
 			;;
 	esac
@@ -438,7 +439,7 @@ _desktop_helper_cmdline_matches() {
 }
 
 _desktop_helper_candidate_pids() {
-	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|cowork-linux-helper|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop(-linux)?/' 2>/dev/null
+	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|cowork-linux-helper|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop(-unofficial)?/' 2>/dev/null
 }
 
 cleanup_stale_desktop_helpers() {
@@ -566,8 +567,8 @@ cleanup_stale_cowork_socket() {
 # entry on each toggle-on, so the heal has to repeat per launch.
 #
 # $1 = absolute launcher path to point the entry at. Callers pass
-# /usr/bin/claude-desktop (deb/rpm) or "$APPIMAGE" (AppRun; empty when
-# the AppImage runtime did not set it — no-op then).
+# /usr/bin/claude-desktop-unofficial (deb/rpm) or "$APPIMAGE" (AppRun;
+# empty when the AppImage runtime did not set it — no-op then).
 heal_autostart_entry() {
 	local launcher="$1"
 	local entry_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"

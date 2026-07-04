@@ -33,11 +33,11 @@ The official `.deb` covers one packaging target. What it leaves out is a long ta
 
 ## Installation
 
-Anthropic serves the `.deb`. We serve everything else. Here's the split:
+Anthropic serves the `.deb`. We serve everything else. Since v3.0.0 our packages are named `claude-desktop-unofficial`, so they install side-by-side with Anthropic's official `claude-desktop` — but both share `~/.config/Claude`, so only one can run at a time. Here's the split:
 
 | Format | Who serves it |
 |--------|---------------|
-| `.deb` (Debian/Ubuntu, amd64 + arm64) | Anthropic's official APT repo. Ours mirrors it with the launcher + doctor added. |
+| `.deb` (Debian/Ubuntu, amd64 + arm64) | Anthropic's official APT repo. Ours mirrors it as `claude-desktop-unofficial` (launcher + doctor added), so it can sit beside the official package. |
 | `.rpm` (Fedora/RHEL) | This project. |
 | AppImage (any distro) | This project. |
 | AUR (Arch) | This project (builds the AppImage). |
@@ -46,7 +46,7 @@ Anthropic serves the `.deb`. We serve everything else. Here's the split:
 On top of packaging, every format we build carries:
 
 - **Our launcher.** Opt-in native Wayland via `CLAUDE_USE_WAYLAND=1`, GPU-crash auto-recovery, XRDP detection, IM-module override, and autostart-entry healing.
-- **`claude-desktop --doctor`.** Diagnostics for the KVM/Cowork stack, official-version drift, name collisions, and config problems.
+- **`claude-desktop-unofficial --doctor`.** Diagnostics for the KVM/Cowork stack, official-version drift, name collisions, and config problems.
 - **Packaging fixes.** The RPM firmware compat symlink Cowork needs, and the Ubuntu 24.04+ AppArmor profile.
 
 The app itself is the official `app.asar`, shipped byte-identical except for two small Linux-gap patches: a Quick Entry focus fix for KDE (pending upstream) and an org-plugins path fix Linux is missing upstream.
@@ -57,14 +57,14 @@ Add the repository for automatic updates via `apt`:
 
 ```bash
 # Add the GPG key
-curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
+curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop-unofficial.gpg
 
 # Add the repository
-echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list
+echo "deb [signed-by=/usr/share/keyrings/claude-desktop-unofficial.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop-unofficial.list
 
 # Update and install
 sudo apt update
-sudo apt install claude-desktop
+sudo apt install claude-desktop-unofficial
 ```
 
 Future updates will be installed automatically with your regular system updates (`sudo apt upgrade`).
@@ -75,10 +75,10 @@ Add the repository for automatic updates via `dnf`:
 
 ```bash
 # Add the repository
-sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo
+sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop-unofficial.repo -o /etc/yum.repos.d/claude-desktop-unofficial.repo
 
 # Install
-sudo dnf install claude-desktop
+sudo dnf install claude-desktop-unofficial
 ```
 
 Future updates will be installed automatically with your regular system updates (`sudo dnf upgrade`).
@@ -150,7 +150,7 @@ For additional configuration options including environment variables and Wayland
 
 ## Troubleshooting
 
-Run `claude-desktop --doctor` for built-in diagnostics. It checks the usual suspects: display server, sandbox permissions, MCP config, stale locks, and more. It also reports Cowork readiness. Cowork on Linux runs on a KVM-backed VM, so the doctor reports which of its dependencies (KVM, QEMU, OVMF firmware, vhost-vsock, virtiofsd) are installed or missing.
+Run `claude-desktop-unofficial --doctor` for built-in diagnostics. It checks the usual suspects: display server, sandbox permissions, MCP config, stale locks, and more. It also reports Cowork readiness. Cowork on Linux runs on a KVM-backed VM, so the doctor reports which of its dependencies (KVM, QEMU, OVMF firmware, vhost-vsock, virtiofsd) are installed or missing.
 
 For additional troubleshooting, uninstallation instructions, and log locations, see [docs/troubleshooting.md](docs/troubleshooting.md).
 

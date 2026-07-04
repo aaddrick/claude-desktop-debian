@@ -69,7 +69,7 @@ residual risk; they do not un-delete shipped code.
   `cowork-linux-helper` via `process.resourcesPath` when packaged (function
   `t_t()`), not a hardcoded path, and coworkd's own strings contain no
   `/usr/lib/claude-desktop` references (static Go binary). Moving the tree
-  to `/usr/lib/claude-desktop-linux` is safe for Cowork.
+  to `/usr/lib/claude-desktop-unofficial` is safe for Cowork.
 - **OVMF firmware probe is NOT relocation-safe across distros.** Hardcoded
   probe list, no env override: x86_64 →
   `/usr/share/OVMF/OVMF_CODE_4M.fd`, `/usr/share/OVMF/OVMF_CODE.fd`;

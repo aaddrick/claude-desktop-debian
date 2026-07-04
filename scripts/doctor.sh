@@ -714,8 +714,13 @@ _doctor_check_pkg_version() {
 
 	if [[ -z $probe_path ]]; then
 		# Official layout: bare ELF at the package root (no
-		# node_modules/electron/dist tree anymore).
-		probe_path='/usr/lib/claude-desktop/claude-desktop'
+		# node_modules/electron/dist tree anymore). Prefer our
+		# renamed install (claude-desktop-unofficial, Phase 3);
+		# fall back to Anthropic's official install path.
+		probe_path='/usr/lib/claude-desktop-unofficial/claude-desktop'
+		if [[ ! -e $probe_path ]]; then
+			probe_path='/usr/lib/claude-desktop/claude-desktop'
+		fi
 	fi
 
 	# rpm branch: query the file, not the package name, so the answer
@@ -733,9 +738,12 @@ _doctor_check_pkg_version() {
 	fi
 
 	# dpkg branch: only consulted when rpm does not own the install.
+	# Our deb is claude-desktop-unofficial since the Phase 3 rename;
+	# plain claude-desktop is Anthropic's official package on dpkg
+	# hosts and is not ours to report here.
 	if command -v dpkg-query &>/dev/null; then
 		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop 2>/dev/null) || pkg_version=''
+			claude-desktop-unofficial 2>/dev/null) || pkg_version=''
 		if [[ -n $pkg_version ]]; then
 			_installed_pkg_version="$pkg_version"
 			_pass "Installed version: $pkg_version"
@@ -747,7 +755,8 @@ _doctor_check_pkg_version() {
 	# when a package tool exists; with none there is nothing to say.
 	if command -v rpm &>/dev/null \
 		|| command -v dpkg-query &>/dev/null; then
-		_warn 'claude-desktop not found via dpkg/rpm (AppImage?)'
+		_warn 'claude-desktop-unofficial not found via dpkg/rpm' \
+			'(AppImage?)'
 	fi
 }
 
@@ -818,9 +827,12 @@ _check_official_drift() {
 	fi
 }
 
-# Warn when both Anthropic's official APT repo and this project could
-# ship a package named claude-desktop (whichever version sorts higher
-# wins on upgrade). deb-family only; silent when dpkg-query is absent.
+# Classify a dpkg package named claude-desktop. Since the Phase 3
+# rename our package is claude-desktop-unofficial, so that name now
+# identifies either Anthropic's official package (fine — just note the
+# shared profile dir) or a leftover pre-rename (< 1.16000) install of
+# this project (warn, with the migration hint). deb-family only;
+# silent when dpkg-query is absent or nothing detectable is installed.
 # The sources.list.d directory is overridable via _DOCTOR_APT_SOURCES_DIR
 # so tests can point at a fixture tree.
 _check_name_collision() {
@@ -846,21 +858,41 @@ _check_name_collision() {
 		done
 	fi
 
-	if $repo_found; then
-		_warn "Package-name collision: Anthropic's APT repo and this" \
-			'project both ship a package named claude-desktop'
-		_info 'Whichever version sorts higher wins on upgrade.'
-		_info 'See which pool a version comes from:' \
-			'apt policy claude-desktop'
-	fi
-
-	# (b) Who owns the installed claude-desktop?
-	local maintainer
+	# (b) Is a package named claude-desktop installed, and whose is it?
+	local maintainer version
 	maintainer=$(dpkg-query -W -f='${Maintainer}' claude-desktop \
 		2>/dev/null) || maintainer=''
+	version=$(dpkg-query -W -f='${Version}' claude-desktop \
+		2>/dev/null) || version=''
+	[[ -n $maintainer || -n $version ]] || return 0
+
+	# Anthropic's official package alongside ours: not a conflict —
+	# both apps share ~/.config/Claude and its SingletonLock, so only
+	# one can run at a time.
 	if [[ $maintainer == *Anthropic* ]]; then
-		_info "Installed claude-desktop is Anthropic's official package" \
-			"(Maintainer: $maintainer)"
+		_info "Anthropic's official claude-desktop package is also" \
+			'installed. Both apps share ~/.config/Claude and its' \
+			'SingletonLock, so only one can run at a time.'
+		return 0
+	fi
+
+	# Pre-rename install of this project (< 1.16000, before the
+	# claude-desktop-unofficial rename) still lingering in dpkg.
+	if command -v dpkg &>/dev/null && [[ -n $version ]] \
+		&& dpkg --compare-versions "$version" lt 1.16000; then
+		_warn "Installed claude-desktop ($version) is this project's" \
+			'pre-rename package'
+		_info 'Migrate: sudo apt install claude-desktop-unofficial' \
+			'(Conflicts/Replaces removes the old package)'
+		return 0
+	fi
+
+	# Not legacy and not Anthropic by maintainer — but with their apt
+	# source configured, an installed claude-desktop is theirs.
+	if $repo_found; then
+		_info "Anthropic's official claude-desktop package is also" \
+			'installed. Both apps share ~/.config/Claude and its' \
+			'SingletonLock, so only one can run at a time.'
 	fi
 }
 
@@ -1178,11 +1210,13 @@ run_doctor() {
 	# invoking build's binary): the profile pins this exact path, so only
 	# a deb install is confined by it. AppImage always runs --no-sandbox
 	# and Nix binaries live in the store — neither can hit the crash.
-	local _deb_electron='/usr/lib/claude-desktop/claude-desktop'
+	local _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
 	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
 		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
-		# (PACKAGE_NAME in build.sh).
-		local _aa_profile='/etc/apparmor.d/claude-desktop'
+		# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since
+		# the Phase 3 rename; plain claude-desktop is the official
+		# package's profile, registered by Anthropic's own postinst).
+		local _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
 		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
 		# securityfs marks this file world-readable (0444), but the kernel
 		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
@@ -1194,7 +1228,8 @@ run_doctor() {
 			# Authoritative: we actually read the kernel's loaded profile
 			# set (needs root), so report the real load state — not
 			# mere presence on disk.
-			if printf '%s\n' "$_loaded_set" | grep -q '^claude-desktop '; then
+			if printf '%s\n' "$_loaded_set" \
+				| grep -q '^claude-desktop-unofficial '; then
 				_pass 'User namespaces: restricted, AppArmor profile loaded'
 			else
 				_warn 'User namespaces: restricted by AppArmor,' \
@@ -1312,7 +1347,8 @@ print(len(servers))
 	fi
 
 	# -- Desktop integration --
-	local desktop_file='/usr/share/applications/claude-desktop.desktop'
+	local desktop_file
+	desktop_file='/usr/share/applications/claude-desktop-unofficial.desktop'
 	if [[ -f $desktop_file ]]; then
 		_pass "Desktop entry: $desktop_file"
 	else

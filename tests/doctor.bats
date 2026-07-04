@@ -257,7 +257,7 @@ SHIM
 	local saved_path="$PATH"
 	export PATH="/no-such-dir-for-test"
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/claude-desktop'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	export PATH="$saved_path"
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
@@ -267,16 +267,16 @@ SHIM
 	# Listing has the header line only, no entry rows.
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/claude-desktop'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ -z $output ]]
 }
 
 @test "_doctor_check_recent_crashes: 1 crash — info line, no warn" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 21.6M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 21.6M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/claude-desktop'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'Recent Electron crashes: 1'* ]]
 	[[ $output != *'[WARN]'* ]]
@@ -284,11 +284,11 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 
 @test "_doctor_check_recent_crashes: 3+ crashes — warn + #583 pointer" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 21.6M
-Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 22.8M
-Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 12.4M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 21.6M
+Mon 2026-05-04 07:44:48 EDT 930532 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 22.8M
+Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 12.4M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/claude-desktop'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'Recent Electron crashes: 3'* ]]
@@ -306,7 +306,7 @@ Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/slack/elec
 Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
 Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M'
 	run _doctor_check_recent_crashes \
-		'/usr/lib/claude-desktop/claude-desktop'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'may be from other Electron apps'* ]]
@@ -314,7 +314,7 @@ Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/elec
 
 @test "_doctor_check_recent_crashes: empty electron_path falls back" {
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop/claude-desktop 21.6M'
+Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-desktop-unofficial/claude-desktop 21.6M'
 	# Caller didn't pass an electron_path — helper still counts and
 	# emits the info line based on the unfiltered total.
 	run _doctor_check_recent_crashes ''
@@ -635,7 +635,7 @@ _hide_pkg_tools() {
 	dpkg-query() { printf '1.5354.0'; }
 
 	run _doctor_check_pkg_version \
-		'/usr/lib/claude-desktop/claude-desktop'
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'Installed version: 1.11847.5-2.0.19'* ]]
@@ -878,9 +878,53 @@ PKGS
 }
 
 # =============================================================================
-# _check_name_collision: Anthropic repo / package-name overlap
+# _check_name_collision: classify an installed dpkg claude-desktop
+# (official Anthropic package, or a pre-rename install of ours)
 # (sources dir via _DOCTOR_APT_SOURCES_DIR; deb-family only)
 # =============================================================================
+
+# Stub dpkg-query answering the ${Maintainer} and ${Version} probes for
+# the package claude-desktop. $1 = maintainer, $2 = version; empty
+# values model "package not installed" (query fails).
+_stub_dpkg_query() {
+	_STUB_DPKG_MAINTAINER="$1"
+	_STUB_DPKG_VERSION="$2"
+	dpkg-query() {
+		case "$2" in
+			*Maintainer*)
+				[[ -n $_STUB_DPKG_MAINTAINER ]] || return 1
+				printf '%s' "$_STUB_DPKG_MAINTAINER"
+				;;
+			*Version*)
+				[[ -n $_STUB_DPKG_VERSION ]] || return 1
+				printf '%s' "$_STUB_DPKG_VERSION"
+				;;
+			*)
+				return 1
+				;;
+		esac
+	}
+}
+
+# Stub dpkg supporting only `--compare-versions A lt B`, via sort -V —
+# the doctor host running these tests may not ship real dpkg.
+_stub_dpkg_compare() {
+	dpkg() {
+		[[ $1 == '--compare-versions' && $3 == 'lt' ]] || return 2
+		[[ $2 != "$4" ]] || return 1
+		[[ $(printf '%s\n%s\n' "$2" "$4" | sort -V | head -1) \
+			== "$2" ]]
+	}
+}
+
+# Drop the official-repo fixture into the overridable sources dir.
+_write_official_apt_source() {
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	cat > "$_DOCTOR_APT_SOURCES_DIR/claude-desktop.list" <<'LIST'
+deb [signed-by=/usr/share/keyrings/claude.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main
+LIST
+}
 
 @test "_check_name_collision: silent when dpkg-query is absent" {
 	command() {
@@ -896,25 +940,56 @@ PKGS
 	[[ -z $output ]]
 }
 
-@test "_check_name_collision: warns when Anthropic's APT repo is configured" {
-	dpkg-query() { printf ''; }
+@test "_check_name_collision: silent when no claude-desktop is installed (repo alone is fine)" {
+	# Post-rename there is no same-name collision: Anthropic's repo
+	# being configured is not by itself worth a message.
+	_stub_dpkg_query '' ''
+	_write_official_apt_source
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_name_collision: official install (Anthropic maintainer) — info, not warn" {
+	_stub_dpkg_query 'Anthropic, PBC <support@anthropic.com>' \
+		'1.18286.0'
 	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
 	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
-	cat > "$_DOCTOR_APT_SOURCES_DIR/claude-desktop.list" <<'LIST'
-deb [signed-by=/usr/share/keyrings/claude.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main
-LIST
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *"Anthropic's official claude-desktop"* ]]
+	[[ $output == *'SingletonLock'* ]]
+	[[ $output == *'only one can run at a time'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_name_collision: official install detected via apt source when maintainer probe is inconclusive" {
+	# Maintainer string does not say Anthropic, but the version is
+	# post-rename and their apt source is configured — classify as
+	# the official package via the repo signal.
+	_stub_dpkg_query 'Claude Desktop Team <noreply@example.com>' \
+		'1.18286.0'
+	_stub_dpkg_compare
+	_write_official_apt_source
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ $output == *"Anthropic's official claude-desktop"* ]]
+	[[ $output == *'SingletonLock'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_name_collision: legacy pre-rename package warns with migration hint" {
+	# Our old package kept the name claude-desktop and versions
+	# << 1.16000; the rename to claude-desktop-unofficial means a
+	# lingering install deserves a warn plus the migration path.
+	_stub_dpkg_query 'aaddrick <aaddrick@gmail.com>' '1.11847.5'
+	_stub_dpkg_compare
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
 	run _check_name_collision
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
-	[[ $output == *'collision'* ]]
-	[[ $output == *'apt policy claude-desktop'* ]]
-}
-
-@test "_check_name_collision: reports Anthropic ownership of the installed package" {
-	dpkg-query() { printf 'Anthropic, PBC <support@anthropic.com>'; }
-	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
-	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
-	run _check_name_collision
-	[[ $status -eq 0 ]]
-	[[ $output == *"Anthropic's official package"* ]]
+	[[ $output == *'pre-rename'* ]]
+	[[ $output == *'1.11847.5'* ]]
+	[[ $output == *'sudo apt install claude-desktop-unofficial'* ]]
 }

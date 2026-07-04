@@ -62,11 +62,16 @@ jobs:
 
       - name: Upload Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Our artifacts carry the claude-desktop-unofficial name. The
+        # amd64 deb leg additionally emits the transitional dummy
+        # claude-desktop_<ver>_all.deb (Depends: claude-desktop-unofficial)
+        # that migrates legacy apt installs — the second glob picks it up.
         with:
           name: package-${{ inputs.arch }}-${{ inputs.artifact_suffix }}
           path: |
-            claude-desktop_*.deb
-            claude-desktop-*.rpm
-            claude-desktop-*.AppImage
-            claude-desktop-*.AppImage.zsync
+            claude-desktop-unofficial_*.deb
+            claude-desktop_*_all.deb
+            claude-desktop-unofficial-*.rpm
+            claude-desktop-unofficial-*.AppImage
+            claude-desktop-unofficial-*.AppImage.zsync
           if-no-files-found: error

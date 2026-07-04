@@ -6,10 +6,10 @@ Run the built-in doctor first — it detects most of the problems on this page a
 
 ```bash
 # Deb / RPM install
-claude-desktop --doctor
+claude-desktop-unofficial --doctor
 
 # AppImage
-./claude-desktop-*.AppImage --doctor
+./claude-desktop-unofficial-*.AppImage --doctor
 ```
 
 ## Built-in Diagnostics
@@ -20,13 +20,13 @@ claude-desktop --doctor
 |-------|-----------------|
 | Installed version | Package version from the manager that owns the install (rpm ownership of the binary is probed first, then dpkg) |
 | Version drift | Installed upstream version vs the newest in Anthropic's official APT pool (network best-effort; skipped offline) |
-| Package-name collision | Warns when Anthropic's official APT repo is configured in your sources — both pools ship a package named `claude-desktop`, and whichever version sorts higher wins on upgrade |
+| Package-name collision | Warns when a legacy pre-rename `claude-desktop` install from this project sits alongside Anthropic's official APT repo — before the rename to `claude-desktop-unofficial` both pools shipped a package named `claude-desktop`, and whichever version sorts higher wins on upgrade |
 | Display server | Wayland/X11 detection and the XWayland/native-Wayland mode in effect |
 | Input method | IBus/GTK immodule sanity (ibus-gtk3 installed, immodules cache fresh, XWayland-routes-IBus-through-XIM note) |
 | Legacy environment | Warns on 2.x variables no longer honored (`CLAUDE_TITLEBAR_STYLE`, `CLAUDE_MENU_BAR`, `CLAUDE_KEEP_AWAKE`); `CLAUDE_QUIT_ON_CLOSE` gets a pointer to its native replacement, Settings > General > System Tray |
-| Electron binary | The official ELF at `/usr/lib/claude-desktop/claude-desktop` exists and is executable |
-| Chrome sandbox | `/usr/lib/claude-desktop/chrome-sandbox` has 4755/root |
-| User namespaces | AppArmor userns restriction and whether the `claude-desktop` profile is loaded (Ubuntu 24.04+; run with `sudo` to confirm the kernel-loaded state) |
+| Electron binary | The official ELF at `/usr/lib/claude-desktop-unofficial/claude-desktop` exists and is executable |
+| Chrome sandbox | `/usr/lib/claude-desktop-unofficial/chrome-sandbox` has 4755/root |
+| User namespaces | AppArmor userns restriction and whether the `claude-desktop-unofficial` profile is loaded (Ubuntu 24.04+; run with `sudo` to confirm the kernel-loaded state) |
 | SingletonLock | Stale lock file detection |
 | Password store | Reports upstream `os_crypt` autodetect vs a `CLAUDE_PASSWORD_STORE` override (informational) |
 | MCP config | JSON validity and server count |
@@ -87,7 +87,7 @@ Common symptoms:
 - CJK input methods (IBus, Fcitx) not engaging
 - Compose key / dead-key sequences silently drop
 
-**First step: run `claude-desktop --doctor`.** It checks for the
+**First step: run `claude-desktop-unofficial --doctor`.** It checks for the
 common misconfigurations and prints fix commands inline:
 
 - `ibus-gtk3` package missing while `GTK_IM_MODULE=ibus`
@@ -104,7 +104,7 @@ at startup:
 
 ```bash
 # Bypass IBus entirely — uses the X Input Method (XIM) protocol
-CLAUDE_GTK_IM_MODULE=xim claude-desktop
+CLAUDE_GTK_IM_MODULE=xim claude-desktop-unofficial
 
 # To make it persistent, export it from your shell profile:
 # echo 'export CLAUDE_GTK_IM_MODULE=xim' >> ~/.profile
@@ -128,7 +128,7 @@ compose, prefer fixing the IBus/Fcitx integration instead.
 
 If Claude Desktop crashes repeatedly on launch or shortly after,
 the most common cause on Linux is the Chromium GPU process hitting
-a FATAL exhaustion path. `claude-desktop --doctor` surfaces this
+a FATAL exhaustion path. `claude-desktop-unofficial --doctor` surfaces this
 when `systemd-coredump` shows 3+ Electron crashes in the last 7
 days, pointing at this issue.
 
@@ -141,7 +141,7 @@ Two ways to disable hardware acceleration as a workaround:
 
 ```bash
 # One-off:
-CLAUDE_DISABLE_GPU=1 claude-desktop
+CLAUDE_DISABLE_GPU=1 claude-desktop-unofficial
 
 # Persistent (shell profile):
 echo 'export CLAUDE_DISABLE_GPU=1' >> ~/.profile
@@ -177,7 +177,7 @@ Intel Iris Xe graphics (TigerLake-LP GT2), force Mesa's reference
 software rasterizer:
 
 ```bash
-MESA_LOADER_DRIVER_OVERRIDE=softpipe claude-desktop
+MESA_LOADER_DRIVER_OVERRIDE=softpipe claude-desktop-unofficial
 ```
 
 The failing launch logs this signature in
@@ -191,9 +191,9 @@ KMS: DRM_IOCTL_MODE_CREATE_DUMB failed: Permission denied
 the CPU with no acceleration of any kind and is noticeably slow.
 Before reaching for it:
 
-1. `CLAUDE_DISABLE_GPU=1 claude-desktop` — disables hardware
-   acceleration entirely (see the previous section).
-2. `LIBGL_ALWAYS_SOFTWARE=1 claude-desktop` — selects llvmpipe,
+1. `CLAUDE_DISABLE_GPU=1 claude-desktop-unofficial` — disables
+   hardware acceleration entirely (see the previous section).
+2. `LIBGL_ALWAYS_SOFTWARE=1 claude-desktop-unofficial` — selects llvmpipe,
    Mesa's supported software fallback, several times faster than
    softpipe.
 
@@ -229,7 +229,7 @@ where it doesn't. Ubuntu 24.04+ sets
 `apparmor_restrict_unprivileged_userns=1`, blocking the user namespaces
 Chromium's sandbox needs, which kills the app on startup before any window
 appears. The deb's `postinst` installs a scoped AppArmor profile
-(`/etc/apparmor.d/claude-desktop`) that grants `userns` to the official
+(`/etc/apparmor.d/claude-desktop-unofficial`) that grants `userns` to the official
 Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
 packages do — so a normal install needs no action. (X11 sessions only:
 on Wayland the deb launcher runs with `--no-sandbox`, and AppImage builds
@@ -243,28 +243,28 @@ You only need to act if the app still crashes on launch with:
   Electron version), and
 - a `Trace/breakpoint trap` / core dump (exit code 133).
 
-Run `sudo claude-desktop --doctor` first — the **User namespaces** check
+Run `sudo claude-desktop-unofficial --doctor` first — the **User namespaces** check
 reports whether the profile is actually loaded into the kernel (reading the
 loaded set needs root; without `sudo` it can only confirm the profile is
 present on disk). To (re)install it manually:
 
 ```bash
-sudo tee /etc/apparmor.d/claude-desktop <<'EOF'
+sudo tee /etc/apparmor.d/claude-desktop-unofficial <<'EOF'
 abi <abi/4.0>,
 include <tunables/global>
 
-profile claude-desktop /usr/lib/claude-desktop/claude-desktop flags=(unconfined) {
+profile claude-desktop-unofficial /usr/lib/claude-desktop-unofficial/claude-desktop flags=(unconfined) {
     userns,
 
-    include if exists <local/claude-desktop>
+    include if exists <local/claude-desktop-unofficial>
 }
 EOF
 
-sudo apparmor_parser -r /etc/apparmor.d/claude-desktop
+sudo apparmor_parser -r /etc/apparmor.d/claude-desktop-unofficial
 ```
 
 To customize the profile on a `.deb` install, put overrides in
-`/etc/apparmor.d/local/claude-desktop` — they survive upgrades; direct
+`/etc/apparmor.d/local/claude-desktop-unofficial` — they survive upgrades; direct
 edits to the managed profile are rewritten by the `postinst` on every
 upgrade (a profile without the package's marker header is treated as
 hand-made and preserved instead).
@@ -281,7 +281,8 @@ Review against your threat model before applying.
 ### Cowork unavailable (doctor: "Cowork: unavailable until the KVM stack is complete")
 
 Cowork on the official Linux client is KVM-only — there is no bubblewrap or
-host-direct fallback. If Cowork won't start, run `claude-desktop --doctor`;
+host-direct fallback. If Cowork won't start, run
+`claude-desktop-unofficial --doctor`;
 the Cowork Mode section reports each missing piece with a fix:
 
 - **`/dev/kvm` not present** — enable hardware virtualization (VT-x/AMD-V)
@@ -325,7 +326,7 @@ On Fedora, `/tmp` is a tmpfs by default. VM bundle downloads may fail with `EXDE
 
 ```bash
 mkdir -p ~/.config/Claude/tmp
-TMPDIR=~/.config/Claude/tmp claude-desktop
+TMPDIR=~/.config/Claude/tmp claude-desktop-unofficial
 ```
 
 Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` file.
@@ -358,7 +359,8 @@ sudo apparmor_parser -r /etc/apparmor.d/bwrap
 
 The v3.0.0 packages no longer install a bwrap profile themselves; the deb's
 `postrm` still removes the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap`
-leftover on purge.
+leftover (and a `claude-desktop-unofficial-bwrap` sibling, if one exists)
+on purge.
 
 **Credit:** [@hfyeh](https://github.com/hfyeh), [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
 
@@ -378,7 +380,7 @@ cowork sessions the host CWD is the deeply nested outputs dir under
 which sanitizes to ~180 chars — fits ext4 but exceeds the eCryptfs
 143-char ceiling.
 
-**Diagnosis:** `claude-desktop --doctor` detects this automatically
+**Diagnosis:** `claude-desktop-unofficial --doctor` detects this automatically
 and emits a `[WARN] Filename limit: NAME_MAX=143…` line, plus an
 eCryptfs-specific hint when the filesystem type matches. You can
 also check by hand:
@@ -494,8 +496,9 @@ bypasses every launcher policy — Wayland backend selection, GPU-crash
 recovery, `--class`, `CLAUDE_PASSWORD_STORE`.
 
 **Fix:** launch Claude Desktop manually once. The launcher rewrites the
-autostart entry's `Exec=` to point at itself (`/usr/bin/claude-desktop`,
-or the AppImage path) on every start (AUTO-1, `heal_autostart_entry` in
+autostart entry's `Exec=` to point at itself
+(`/usr/bin/claude-desktop-unofficial`, or the AppImage path) on every
+start (AUTO-1, `heal_autostart_entry` in
 `scripts/launcher-common.sh`). The heal repeats per launch because the
 app rewrites the entry each time the Settings toggle is switched on; the
 toggle itself keeps working, since upstream's is-enabled check reads only
@@ -522,22 +525,38 @@ A scripted solution is also available at the bottom of [this comment](https://gi
 
 ```bash
 # Remove package
-sudo apt remove claude-desktop
+sudo apt remove claude-desktop-unofficial
 
 # Remove the repository and GPG key
-sudo rm /etc/apt/sources.list.d/claude-desktop.list
-sudo rm /usr/share/keyrings/claude-desktop.gpg
+sudo rm /etc/apt/sources.list.d/claude-desktop-unofficial.list
+sudo rm /usr/share/keyrings/claude-desktop-unofficial.gpg
 ```
 
 ### For DNF repository installations (Fedora/RHEL)
 
 ```bash
 # Remove package
-sudo dnf remove claude-desktop
+sudo dnf remove claude-desktop-unofficial
 
 # Remove the repository
-sudo rm /etc/yum.repos.d/claude-desktop.repo
+sudo rm /etc/yum.repos.d/claude-desktop-unofficial.repo
 ```
+
+### For legacy pre-rename installations (`claude-desktop` from this project)
+
+Installs from before the rename to `claude-desktop-unofficial` used the
+package name `claude-desktop` — the same name Anthropic's official
+package uses. Check whose package you have before removing anything:
+
+```bash
+dpkg -s claude-desktop | grep '^Version:'   # rpm -q claude-desktop on Fedora
+```
+
+A version below `1.16000` is this project's legacy package; remove it
+with `sudo apt remove claude-desktop` (or `sudo dnf remove
+claude-desktop`). A version of `1.17377.1` or higher is **Anthropic's
+official package** — leave it alone unless you mean to uninstall the
+official app too.
 
 ### For AUR installations (Arch Linux)
 
@@ -556,19 +575,19 @@ sudo pacman -R claude-desktop-appimage
 
 ```bash
 # Remove package
-sudo apt remove claude-desktop
-# Or: sudo dpkg -r claude-desktop
+sudo apt remove claude-desktop-unofficial
+# Or: sudo dpkg -r claude-desktop-unofficial
 
 # Remove package and configuration
-sudo dpkg -P claude-desktop
+sudo dpkg -P claude-desktop-unofficial
 ```
 
 ### For .rpm packages
 
 ```bash
 # Remove package
-sudo dnf remove claude-desktop
-# Or: sudo rpm -e claude-desktop
+sudo dnf remove claude-desktop-unofficial
+# Or: sudo rpm -e claude-desktop-unofficial
 ```
 
 ### For AppImages

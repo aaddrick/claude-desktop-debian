@@ -323,6 +323,10 @@ if ! command -v zsyncmake &> /dev/null; then
 fi
 
 # Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
+# The 'claude-desktop-*' wildcard is deliberately NOT renamed along with
+# $package_name: it matches both the old claude-desktop-* and the new
+# claude-desktop-unofficial-* artifact names, so AppImages installed
+# before the rename keep self-updating. Do not narrow it.
 update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
 echo "Update info: $update_info"
 

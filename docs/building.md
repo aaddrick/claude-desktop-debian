@@ -90,8 +90,8 @@ When patches do run, the repack preserves upstream's `app.asar.unpacked` set exa
 ### For .deb packages (Debian/Ubuntu)
 
 ```bash
-sudo apt install ./claude-desktop_VERSION_ARCHITECTURE.deb
-# Or: sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
+sudo apt install ./claude-desktop-unofficial_VERSION_ARCHITECTURE.deb
+# Or: sudo dpkg -i ./claude-desktop-unofficial_VERSION_ARCHITECTURE.deb
 
 # If you encounter dependency issues:
 sudo apt --fix-broken install
@@ -100,18 +100,18 @@ sudo apt --fix-broken install
 ### For .rpm packages (Fedora/RHEL)
 
 ```bash
-sudo dnf install ./claude-desktop-VERSION-1.ARCH.rpm
-# Or: sudo rpm -i ./claude-desktop-VERSION-1.ARCH.rpm
+sudo dnf install ./claude-desktop-unofficial-VERSION-1.ARCH.rpm
+# Or: sudo rpm -i ./claude-desktop-unofficial-VERSION-1.ARCH.rpm
 ```
 
 ### For AppImages
 
 ```bash
 # Make executable
-chmod +x ./claude-desktop-*.AppImage
+chmod +x ./claude-desktop-unofficial-*.AppImage
 
 # Run directly
-./claude-desktop-*.AppImage
+./claude-desktop-unofficial-*.AppImage
 
 # Or integrate with your system using Gear Lever
 ```

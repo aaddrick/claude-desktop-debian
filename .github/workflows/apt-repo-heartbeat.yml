@@ -24,7 +24,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        format: [deb, rpm]
+        # deb-transitional probes the fixed-version dummy package
+        # (Package: claude-desktop → Depends: claude-desktop-unofficial)
+        # that migrates legacy apt installs; its Worker redirect goes
+        # via releases/latest and gets one extra hop.
+        format: [deb, rpm, deb-transitional]
     runs-on: ubuntu-latest
     env:
       WORKER_DOMAIN: pkg.claude-desktop-debian.dev
@@ -53,10 +57,14 @@ jobs:
           repoVer="${tag#v}"; repoVer="${repoVer%+claude*}"
           claudeVer="${tag#*+claude}"
           if [[ "${{ matrix.format }}" == "deb" ]]; then
-            asset="claude-desktop_${claudeVer}-${repoVer}_amd64.deb"
+            asset="claude-desktop-unofficial_${claudeVer}-${repoVer}_amd64.deb"
+            url="https://aaddrick.github.io/claude-desktop-debian/pool/main/c/claude-desktop-unofficial/${asset}"
+          elif [[ "${{ matrix.format }}" == "deb-transitional" ]]; then
+            # Fixed-version dummy deb; filename is release-independent
+            asset="claude-desktop_1.16000.0-1_all.deb"
             url="https://aaddrick.github.io/claude-desktop-debian/pool/main/c/claude-desktop/${asset}"
           else
-            asset="claude-desktop-${claudeVer}-${repoVer}-1.x86_64.rpm"
+            asset="claude-desktop-unofficial-${claudeVer}-${repoVer}-1.x86_64.rpm"
             url="https://aaddrick.github.io/claude-desktop-debian/rpm/x86_64/${asset}"
           fi
           {
@@ -93,7 +101,19 @@ jobs:
             "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/"
             "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
+          if [[ "$FORMAT" == "deb-transitional" ]]; then
+            # The transitional deb's fixed version encodes no release
+            # tag, so the Worker sends it to releases/latest/download,
+            # which GitHub resolves with one extra 302.
+            expected_hops=(
+              "https?://${WORKER_DOMAIN}/"
+              "https://github\\.com/aaddrick/claude-desktop-debian/releases/latest/download/"
+              "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/"
+              "https://(objects|release-assets)\\.githubusercontent\\.com/"
+            )
+          fi
           url="$URL"
+          release_url=""
           for i in "${!expected_hops[@]}"; do
             hop_status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
             redirect_url=$(curl -s -o /dev/null -w '%{redirect_url}' "$url")
@@ -108,13 +128,19 @@ jobs:
               echo "::error::  got:      ${redirect_url}"
               exit 1
             fi
+            # Remember the tag-bearing releases/download hop for the
+            # size check (needed for the transitional deb, whose chain
+            # may land on a different tag than the newest listed one).
+            if [[ "$redirect_url" == */releases/download/* ]]; then
+              release_url="$redirect_url"
+            fi
             url="$redirect_url"
           done
 
           # Fetch the asset and validate its format
           curl -fsSL -o "/tmp/${ASSET}" "$URL"
 
-          if [[ "$FORMAT" == "deb" ]]; then
+          if [[ "$FORMAT" == deb* ]]; then
             if ! file "/tmp/${ASSET}" | grep -q 'Debian binary package'; then
               echo "::error::Fetched file is not a valid Debian package"
               exit 1
@@ -128,8 +154,18 @@ jobs:
             fi
           fi
 
-          # Size match against the Releases asset
-          asset_size=$(gh release view "$TAG" \
+          # Size match against the Releases asset. The transitional deb
+          # rides releases/latest, which skips prereleases and so may
+          # resolve to an older tag than `gh release list` returns —
+          # take the tag from the chain it actually walked instead.
+          release_tag="$TAG"
+          if [[ "$FORMAT" == "deb-transitional" ]]; then
+            release_tag="${release_url#*/releases/download/}"
+            release_tag="${release_tag%%/*}"
+            release_tag="${release_tag//%2B/+}"  # GitHub may URL-encode '+'
+          fi
+
+          asset_size=$(gh release view "$release_tag" \
             --repo aaddrick/claude-desktop-debian \
             --json assets \
             --jq ".assets[] | select(.name == \"${ASSET}\") | .size")

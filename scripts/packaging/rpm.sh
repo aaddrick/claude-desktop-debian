@@ -64,11 +64,11 @@ mkdir -p "$staging_dir" || exit 1
 
 # --- Create Desktop Entry ---
 echo 'Creating desktop entry...'
-cat > "$staging_dir/claude-desktop.desktop" << EOF
+cat > "$staging_dir/$package_name.desktop" << EOF
 [Desktop Entry]
 Name=Claude
-Exec=/usr/bin/claude-desktop %u
-Icon=claude-desktop
+Exec=/usr/bin/$package_name %u
+Icon=$package_name
 Type=Application
 Terminal=false
 Categories=Office;Utility;
@@ -82,7 +82,7 @@ cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
-cat > "$staging_dir/claude-desktop" << EOF
+cat > "$staging_dir/$package_name" << EOF
 #!/usr/bin/env bash
 
 # Source shared launcher library
@@ -106,7 +106,7 @@ cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
-heal_autostart_entry '/usr/bin/claude-desktop'
+heal_autostart_entry "/usr/bin/$package_name"
 
 # Log startup info
 log_message '--- Claude Desktop Launcher Start ---'
@@ -148,19 +148,22 @@ log_message "Executing: \$app_exec \${electron_args[*]} \$*"
 run_electron_and_cleanup "\$app_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
-chmod +x "$staging_dir/claude-desktop"
+chmod +x "$staging_dir/$package_name"
 
 # --- Create RPM Spec File ---
 echo 'Creating RPM spec file...'
 
-# Build icon installation commands from the official hicolor tree
+# Build icon installation commands from the official hicolor tree. The
+# source basename stays upstream's claude-desktop.png; the destination
+# is renamed to $package_name.png so our files never collide with the
+# icons installed by Anthropic's official claude-desktop package.
 icon_install_cmds=""
 official_hicolor="${CLAUDE_EXTRACT_DIR:?}/usr/share/icons/hicolor"
 
 for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
 	[[ -f $icon_source_path ]] || continue
 	size_dir=$(basename "$(dirname "$(dirname "$icon_source_path")")")
-	icon_install_cmds+="install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size_dir}/apps/claude-desktop.png
+	icon_install_cmds+="install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size_dir}/apps/${package_name}.png
 "
 done
 
@@ -198,6 +201,12 @@ Summary:        $description
 
 License:        Proprietary
 URL:            https://claude.ai
+
+# The 'claude-desktop' name is our legacy repack (<= 1.15200.x); no
+# official rpm exists. Obsoletes gives dnf the automatic rename
+# upgrade path; the bound mirrors the deb Conflicts/Replaces scope.
+Obsoletes:      claude-desktop < 1.16000
+Provides:       claude-desktop = %{version}-%{release}
 
 # Disable automatic dependency scanning (we bundle everything)
 AutoReqProv:    no
@@ -237,13 +246,13 @@ sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "%{buildroot}/usr/lib/$package_name/launcher-
 cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 
 # Install desktop entry
-install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
+install -Dm 644 $staging_dir/$package_name.desktop %{buildroot}/usr/share/applications/$package_name.desktop
 
 # Install AppStream metainfo (GNOME Software / KDE Discover)
 install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
 
 # Install launcher script
-install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
+install -Dm 755 $staging_dir/$package_name %{buildroot}/usr/bin/$package_name
 
 # Normalize file modes — the cp -r above honors the build umask, and
 # the "-" first field of %defattr ships buildroot *file* modes verbatim
@@ -307,11 +316,11 @@ fi
 
 %files
 %defattr(-, root, root, 0755)
-%attr(755, root, root) /usr/bin/claude-desktop
+%attr(755, root, root) /usr/bin/$package_name
 /usr/lib/$package_name
-/usr/share/applications/claude-desktop.desktop
+/usr/share/applications/$package_name.desktop
 /usr/share/metainfo/$metainfo_name
-/usr/share/icons/hicolor/*/apps/claude-desktop.png
+/usr/share/icons/hicolor/*/apps/${package_name}.png
 SPECEOF
 
 echo 'RPM spec file created'

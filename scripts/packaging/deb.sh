@@ -32,7 +32,10 @@ mkdir -p "$install_dir/bin" || exit 1
 
 # --- Icon Installation ---
 echo 'Installing icons...'
-# The official tree ships hicolor PNGs (16-256px); install them verbatim.
+# The official tree ships hicolor PNGs (16-256px). The source basename
+# stays upstream's claude-desktop.png, but the destination is renamed to
+# $package_name.png so our files never collide with the icons installed
+# by Anthropic's official claude-desktop package.
 official_hicolor="${CLAUDE_EXTRACT_DIR:?}/usr/share/icons/hicolor"
 found_icons=false
 for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
@@ -40,7 +43,7 @@ for icon_source_path in "$official_hicolor"/*/apps/claude-desktop.png; do
 	size_dir=$(basename "$(dirname "$(dirname "$icon_source_path")")")
 	echo "Installing $size_dir icon..."
 	install -Dm 644 "$icon_source_path" \
-		"$install_dir/share/icons/hicolor/$size_dir/apps/claude-desktop.png" || exit 1
+		"$install_dir/share/icons/hicolor/$size_dir/apps/$package_name.png" || exit 1
 	found_icons=true
 done
 if [[ $found_icons == false ]]; then
@@ -66,11 +69,11 @@ echo 'Shared launcher library + doctor copied'
 
 # --- Create Desktop Entry ---
 echo 'Creating desktop entry...'
-cat > "$install_dir/share/applications/claude-desktop.desktop" << EOF
+cat > "$install_dir/share/applications/$package_name.desktop" << EOF
 [Desktop Entry]
 Name=Claude
-Exec=/usr/bin/claude-desktop %u
-Icon=claude-desktop
+Exec=/usr/bin/$package_name %u
+Icon=$package_name
 Type=Application
 Terminal=false
 Categories=Office;Utility;
@@ -88,7 +91,7 @@ echo 'AppStream metainfo installed'
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
-cat > "$install_dir/bin/claude-desktop" << EOF
+cat > "$install_dir/bin/$package_name" << EOF
 #!/usr/bin/env bash
 
 # Source shared launcher library
@@ -112,7 +115,7 @@ cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
-heal_autostart_entry '/usr/bin/claude-desktop'
+heal_autostart_entry "/usr/bin/$package_name"
 
 # Log startup info
 log_message '--- Claude Desktop Launcher Start ---'
@@ -154,7 +157,7 @@ log_message "Executing: \$app_exec \${electron_args[*]} \$*"
 run_electron_and_cleanup "\$app_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
-chmod +x "$install_dir/bin/claude-desktop" || exit 1
+chmod +x "$install_dir/bin/$package_name" || exit 1
 echo 'Launcher script created'
 
 # --- Create Control File ---
@@ -170,6 +173,15 @@ echo 'Creating control file...'
 	echo 'Section: utils'
 	echo 'Priority: optional'
 	echo "Architecture: $architecture"
+	# The 'claude-desktop' name is shared by two other packages: our own
+	# legacy repack (<= 1.15200.x) and Anthropic's official package
+	# (>= 1.17377.1). The relation must stay version-scoped to hit only
+	# the legacy repack — unscoped, apt would remove the official package
+	# on install. The bound also sits below the 1.16000.0-1 transitional
+	# dummy built at the end of this script, so the dummy and this
+	# package can coexist during the rename upgrade.
+	echo 'Conflicts: claude-desktop (<< 1.16000)'
+	echo 'Replaces: claude-desktop (<< 1.16000)'
 	if [[ -n ${OFFICIAL_DEB_DEPENDS:-} ]]; then
 		echo "Depends: $OFFICIAL_DEB_DEPENDS"
 	fi
@@ -280,10 +292,16 @@ echo 'Creating postrm script...'
 # also fires on purge and abort-install. Skip on upgrade — the incoming
 # postinst rewrites and reloads them. 'disappear' is deliberately not handled:
 # matching it would also clean during the overwrite-by-another-package flow.
-# Two profiles: the Electron one (Chromium sandbox, #687) and the bwrap one
-# (Cowork sandbox helper, #694). The bwrap profile is no longer installed
-# since the official-deb rebase parked the bwrap Cowork backend, but 2.x
-# installs left it behind — keep removing it here.
+# Three profile names: the Electron one (Chromium sandbox, #687), the bwrap
+# one (Cowork sandbox helper, #694), and the legacy pre-rename names. The
+# bwrap profile is no longer installed since the official-deb rebase parked
+# the bwrap Cowork backend, but 2.x installs left it behind (as
+# 'claude-desktop-bwrap', before the rename) — keep removing it here.
+# The legacy 'claude-desktop' Electron profile needs care: Anthropic's
+# official package postinst also writes /etc/apparmor.d/claude-desktop
+# (untracked by dpkg, so ownership can't be queried) — only our marker
+# header proves the file came from our legacy 2.x postinst. Markerless
+# files (official's, admin-created, or pre-v2.0.19 ours) are preserved.
 # Per Debian Policy 10.7.3 the profiles are configuration: unload them
 # whenever the confined binaries go away, but delete the files only on
 # purge — a profile for an absent binary is a harmless no-op (google-chrome
@@ -295,7 +313,8 @@ set -e
 case "\$1" in
     remove|purge|abort-install)
         for _profile in "/etc/apparmor.d/$package_name" \
-            "/etc/apparmor.d/${package_name}-bwrap"; do
+            "/etc/apparmor.d/${package_name}-bwrap" \
+            "/etc/apparmor.d/claude-desktop-bwrap"; do
             if [ -e "\$_profile" ] \
                 && command -v apparmor_parser >/dev/null 2>&1; then
                 apparmor_parser -R "\$_profile" >/dev/null 2>&1 || true
@@ -305,6 +324,21 @@ case "\$1" in
                 rm -f "\$_profile" 2>/dev/null || true
             fi
         done
+        # Legacy 2.x profile from before the rename to $package_name.
+        # The official claude-desktop package writes the same path from
+        # its postinst; touch it only when our marker header proves our
+        # legacy postinst wrote it.
+        _legacy='/etc/apparmor.d/claude-desktop'
+        if [ -e "\$_legacy" ] \
+            && grep -qF 'managed by the claude-desktop package' \
+                "\$_legacy" 2>/dev/null; then
+            if command -v apparmor_parser >/dev/null 2>&1; then
+                apparmor_parser -R "\$_legacy" >/dev/null 2>&1 || true
+            fi
+            if [ "\$1" = purge ]; then
+                rm -f "\$_legacy" 2>/dev/null || true
+            fi
+        fi
         ;;
 esac
 
@@ -350,6 +384,46 @@ if ! dpkg-deb --root-owner-group --build "$package_root" "$deb_file"; then
 fi
 
 echo "Deb package built successfully: $deb_file"
+
+# --- Build Transitional Dummy Package ---
+# The package renamed from 'claude-desktop' to claude-desktop-unofficial
+# when Anthropic's official package claimed the old name. This
+# control-only dummy walks legacy repack installs (<= 1.15200.x) over
+# the rename: apt upgrades the old 'claude-desktop' to it, and its
+# Depends pulls in the real package. Version 1.16000.0-1 sits above
+# every legacy repack and below the first official build (1.17377.1),
+# so the official package still upgrades cleanly over the dummy.
+# Architecture: all — built on the amd64 leg only so the arm64 CI leg
+# doesn't emit a duplicate artifact. build.sh moves it next to the
+# main .deb (the filename is referenced there; keep them in sync).
+if [[ $architecture == 'amd64' ]]; then
+	echo 'Building transitional dummy package...'
+	transitional_root="$work_dir/transitional-package"
+	transitional_deb="$work_dir/claude-desktop_1.16000.0-1_all.deb"
+	rm -rf "$transitional_root"
+	mkdir -p "$transitional_root/DEBIAN" || exit 1
+	{
+		echo 'Package: claude-desktop'
+		echo 'Version: 1.16000.0-1'
+		echo 'Architecture: all'
+		echo "Depends: $package_name"
+		echo 'Section: oldlibs'
+		echo 'Priority: optional'
+		echo "Maintainer: $maintainer"
+		echo 'Description: Transitional package for the rename to claude-desktop-unofficial'
+		echo " This dummy package eases upgrades from the legacy 'claude-desktop'"
+		echo " community repack to its new name, $package_name."
+		echo ' It can be safely removed after the upgrade.'
+	} > "$transitional_root/DEBIAN/control"
+	chmod 755 "$transitional_root/DEBIAN" || exit 1
+	if ! dpkg-deb --root-owner-group --build \
+		"$transitional_root" "$transitional_deb"; then
+		echo 'Failed to build transitional .deb package' >&2
+		exit 1
+	fi
+	echo "Transitional package built successfully: $transitional_deb"
+fi
+
 echo '--- Debian Package Build Finished ---'
 
 exit 0

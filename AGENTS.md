@@ -358,9 +358,10 @@ gh run download RUN_ID -n artifact-name
 
 ### Build Artifacts
 
-- `claude-desktop_VERSION_amd64.deb` / `claude-desktop_VERSION_arm64.deb` - Debian packages
-- `claude-desktop-VERSION-1.x86_64.rpm` / `claude-desktop-VERSION-1.aarch64.rpm` - RPM packages
-- `claude-desktop-VERSION-amd64.AppImage` / `claude-desktop-VERSION-arm64.AppImage` - AppImages (+ `.zsync` in CI)
+- `claude-desktop-unofficial_VERSION_amd64.deb` / `claude-desktop-unofficial_VERSION_arm64.deb` - Debian packages
+- `claude-desktop_1.16000.0-1_all.deb` - transitional apt package (produced by the amd64 leg) that migrates legacy `claude-desktop` installs from our repo to `claude-desktop-unofficial`
+- `claude-desktop-unofficial-VERSION-1.x86_64.rpm` / `claude-desktop-unofficial-VERSION-1.aarch64.rpm` - RPM packages
+- `claude-desktop-unofficial-VERSION-amd64.AppImage` / `claude-desktop-unofficial-VERSION-arm64.AppImage` - AppImages (+ `.zsync` in CI)
 - `result/` - Nix build output (symlink, gitignored; the derivation is a stub until the @typedrat rework lands)
 
 One cross-building `build.yml` produces all of these from `ubuntu-latest` via the `--arch` input (see [`docs/learnings/cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) for the host-vs-target trap).

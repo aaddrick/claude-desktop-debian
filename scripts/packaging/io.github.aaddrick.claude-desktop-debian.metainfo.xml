@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  AppStream metainfo for the claude-desktop package.
+  AppStream metainfo for the claude-desktop-unofficial package.
   Indexed by GNOME Software / Ubuntu App Center / KDE Discover under the
   Installed tab so users can see the package with name, summary, icon, and
   release history rather than as an unidentified entry.
@@ -37,7 +37,7 @@
     </p>
   </description>
 
-  <launchable type="desktop-id">claude-desktop.desktop</launchable>
+  <launchable type="desktop-id">claude-desktop-unofficial.desktop</launchable>
 
   <url type="homepage">https://github.com/aaddrick/claude-desktop-debian</url>
   <url type="bugtracker">https://github.com/aaddrick/claude-desktop-debian/issues</url>
@@ -55,6 +55,6 @@
   <content_rating type="oars-1.1" />
 
   <provides>
-    <binary>claude-desktop</binary>
+    <binary>claude-desktop-unofficial</binary>
   </provides>
 </component>

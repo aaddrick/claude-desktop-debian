@@ -768,10 +768,11 @@ s.close()
 		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-linux-helper --socket /run/user/1000/cowork.sock"
 	[[ $status -eq 0 ]]
 
-	# Phase 3 install-path rename: helpers under /usr/lib/claude-desktop-linux/
-	# must still match so cleanup survives the rename.
+	# Phase 3 package rename: our helpers now live under
+	# /usr/lib/claude-desktop-unofficial/ and must match alongside the
+	# official /usr/lib/claude-desktop/ arm above.
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop-linux/claude-desktop --type=utility --user-data-dir=$config_dir"
+		"/usr/lib/claude-desktop-unofficial/claude-desktop --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
 	run _desktop_helper_cmdline_matches \
@@ -991,8 +992,9 @@ _autostart_exec() {
 
 @test "heal_autostart_entry: rewrites the raw-ELF Exec to the launcher" {
 	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
-	heal_autostart_entry '/usr/bin/claude-desktop'
-	[[ $(_autostart_exec) == 'Exec="/usr/bin/claude-desktop" --startup' ]]
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == \
+		'Exec="/usr/bin/claude-desktop-unofficial" --startup' ]]
 }
 
 @test "heal_autostart_entry: rewrites an ephemeral AppImage mount path" {
@@ -1003,29 +1005,30 @@ _autostart_exec() {
 }
 
 @test "heal_autostart_entry: idempotent when already pointing at the launcher" {
-	_write_autostart 'Exec="/usr/bin/claude-desktop" --startup'
+	_write_autostart 'Exec="/usr/bin/claude-desktop-unofficial" --startup'
 	local before after
 	before=$(cat "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop")
-	heal_autostart_entry '/usr/bin/claude-desktop'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	after=$(cat "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop")
 	[[ $before == "$after" ]]
 }
 
 @test "heal_autostart_entry: leaves a hand-rolled wrapper Exec alone" {
 	_write_autostart 'Exec="/home/user/bin/my-claude-wrapper" --startup'
-	heal_autostart_entry '/usr/bin/claude-desktop'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	[[ $(_autostart_exec) == 'Exec="/home/user/bin/my-claude-wrapper" --startup' ]]
 }
 
 @test "heal_autostart_entry: handles an unquoted hand-edited Exec" {
 	_write_autostart 'Exec=/usr/lib/claude-desktop/claude-desktop --startup --foo'
-	heal_autostart_entry '/usr/bin/claude-desktop'
-	[[ $(_autostart_exec) == 'Exec="/usr/bin/claude-desktop" --startup --foo' ]]
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == \
+		'Exec="/usr/bin/claude-desktop-unofficial" --startup --foo' ]]
 }
 
 @test "heal_autostart_entry: no-op when the entry file is absent" {
 	rm -rf "$XDG_CONFIG_HOME/autostart"
-	run heal_autostart_entry '/usr/bin/claude-desktop'
+	run heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	[[ $status -eq 0 ]]
 	[[ ! -e "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop" ]]
 }
@@ -1050,7 +1053,7 @@ _autostart_exec() {
 @test "heal_autostart_entry: logs the heal when logging is set up" {
 	setup_logging
 	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
-	heal_autostart_entry '/usr/bin/claude-desktop'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	grep -q 'Healed autostart Exec' "$log_file"
 	grep -q 'AUTO-1' "$log_file"
 }

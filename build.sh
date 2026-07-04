@@ -31,8 +31,11 @@ official_deb_filename=''
 official_deb_depends=''
 official_deb_recommends=''
 
-# Package metadata (constants)
-readonly PACKAGE_NAME='claude-desktop'
+# Package metadata (constants). The package is named
+# claude-desktop-unofficial so it can coexist with Anthropic's official
+# claude-desktop package; the ELF inside the install tree keeps the
+# upstream basename 'claude-desktop'.
+readonly PACKAGE_NAME='claude-desktop-unofficial'
 readonly WM_CLASS='Claude'
 export WM_CLASS
 readonly MAINTAINER='Claude Desktop Linux Maintainers'
@@ -108,6 +111,15 @@ run_packaging() {
 			output_path='Not Found'
 		fi
 
+		# The amd64 deb leg also emits a transitional dummy package for
+		# the claude-desktop -> claude-desktop-unofficial rename (built
+		# by deb.sh); move it next to the main .deb so CI picks it up.
+		local transitional_deb="$work_dir/claude-desktop_1.16000.0-1_all.deb"
+		if [[ $build_format == 'deb' && -f $transitional_deb ]]; then
+			mv "$transitional_deb" . || exit 1
+			echo "Transitional package created at: ./$(basename "$transitional_deb")"
+		fi
+
 	elif [[ $build_format == 'appimage' ]]; then
 		echo "Calling AppImage packaging script for $architecture..."
 		chmod +x "scripts/packaging/$script_name" || exit 1
@@ -133,7 +145,7 @@ run_packaging() {
 Name=Claude (AppImage)
 Comment=Claude Desktop (AppImage Version $version)
 Exec=$(basename "$output_path") %u
-Icon=claude-desktop
+Icon=$PACKAGE_NAME
 Type=Application
 Terminal=false
 Categories=Office;Utility;Network;

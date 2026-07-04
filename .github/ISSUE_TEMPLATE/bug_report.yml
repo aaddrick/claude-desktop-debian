@@ -12,11 +12,11 @@ body:
 
         ```bash
         sudo sed -i 's|https://aaddrick\.github\.io/claude-desktop-debian|https://pkg.claude-desktop-debian.dev|g' \
-          /etc/apt/sources.list.d/claude-desktop.list
+          /etc/apt/sources.list.d/claude-desktop*.list
         sudo apt update
         ```
 
-        Background: [README — Migrating from the old `aaddrick.github.io` URL](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#migrating-from-the-old-aaddrickgithubio-url).
+        Background: the repo moved to `pkg.claude-desktop-debian.dev` in April 2026 (#493); apt refuses the old URL's redirect as a scheme downgrade.
   - type: markdown
     attributes:
       value: |
@@ -29,10 +29,10 @@ body:
   - type: textarea
     id: doctor
     attributes:
-      label: Version (`claude-desktop --doctor` output)
+      label: Version (`claude-desktop-unofficial --doctor` output)
       description: |
-        Run `claude-desktop --doctor` in a terminal and paste the full output here.
-        If the app won't start, the AppImage filename (e.g. `claude-desktop-1.3.23-amd64.AppImage`)
+        Run `claude-desktop-unofficial --doctor` in a terminal and paste the full output here.
+        If the app won't start, the AppImage filename (e.g. `claude-desktop-unofficial-1.18286.0-amd64.AppImage`)
         or the version from **Help → About** is acceptable.
       render: shell
     validations:
