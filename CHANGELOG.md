@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.0.1] — 2026-07-05
+
 ### Added
 
 - The launcher now rotates out-of-band backups of `claude_desktop_config.json` and the per-account Cowork stores (`spaces.json`, `remote-session-spaces.json`, `scheduled-tasks.json`) before each launch, keeping the last 5 changed copies under `~/.cache/claude-desktop-debian/config-backups/`. This is the recovery path for the durable-loss config-wipe class: the official loader falls back to an empty value on a failed cold-start read and the next settings write serializes that empty state over the whole file, stubbing out keys whose only source of truth is the file itself — `mcpServers`, trusted folders, and the Cowork `spaces.json` content (upstream anthropics/claude-code#32345/#59640/#63651). Groupings/stars mirrored from IndexedDB (`epitaxyPrefs`) self-heal on restart and were the recoverable cousin that surfaced this during [#768](https://github.com/aaddrick/claude-desktop-debian/issues/768). Because the backup runs before Electron starts, an in-session wipe leaves the pre-wipe copy recoverable down the rotation. Patch-zero-clean (launcher-only; the official `app.asar` still ships byte-identical) and covers the corrupt-JSON / ENOENT / single-bad-entry-Zod modes an in-band guard would miss. Mechanism and the parked in-band guard: [`docs/learnings/config-wipe-guard.md`](docs/learnings/config-wipe-guard.md). ([#768](https://github.com/aaddrick/claude-desktop-debian/issues/768))
