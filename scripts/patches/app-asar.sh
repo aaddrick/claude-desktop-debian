@@ -23,9 +23,15 @@
 #   patch_org_plugins_path   — upstream platform switch has no linux case,
 #                              so MDM org plugins are dead on Linux without
 #                              this (filed upstream)
+#   patch_virtiofsd_probe    — upstream resolves virtiofsd from two paths
+#                              plus an Ubuntu-22-only bundled fallback, so
+#                              Cowork reports "requires QEMU" on
+#                              Arch/Debian/Pop with a complete KVM stack
+#                              (#771/#772; filed upstream)
 active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
+	patch_virtiofsd_probe
 )
 
 # The #768 config-wipe guard (config.sh) is NOT wired: a contrarian

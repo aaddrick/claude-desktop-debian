@@ -993,3 +993,69 @@ LIST
 	[[ $output == *'1.11847.5'* ]]
 	[[ $output == *'sudo apt install claude-desktop-unofficial'* ]]
 }
+
+# =============================================================================
+# _check_cowork_virtiofsd: mirror the client's probe, not "anywhere" (#771)
+# =============================================================================
+
+# The client resolves virtiofsd from two hardcoded paths plus the
+# bundled resources copy (un-gated by the virtiofsd-probe patch). A
+# binary anywhere else must WARN with the symlink fix, not PASS —
+# the false PASS is the doctor-vs-app disagreement from #771.
+
+_stub_vfsd() {
+	# Create an executable stub at $1 (under TEST_TMP)
+	mkdir -p "$(dirname "$1")"
+	printf '#!/bin/sh\n' > "$1"
+	chmod +x "$1"
+}
+
+@test "_check_cowork_virtiofsd: client-probed path passes" {
+	_stub_vfsd "$TEST_TMP/usr/libexec/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/usr/libexec/virtiofsd"
+	_cowork_incomplete=false
+	run _check_cowork_virtiofsd debian ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'client-probed path'* ]]
+}
+
+@test "_check_cowork_virtiofsd: bundled copy passes when no client path hits" {
+	_stub_vfsd "$TEST_TMP/resources/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
+	export _COWORK_VFSD_PATHS="$TEST_TMP/nonexistent"
+	_cowork_incomplete=false
+	run _check_cowork_virtiofsd debian "$TEST_TMP/resources"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'bundled copy'* ]]
+}
+
+@test "_check_cowork_virtiofsd: binary at a non-probed path warns with symlink fix" {
+	_stub_vfsd "$TEST_TMP/usr/lib/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
+	export _COWORK_VFSD_PATHS="$TEST_TMP/usr/lib/virtiofsd"
+	_cowork_incomplete=false
+	run _check_cowork_virtiofsd arch ''
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'the client only'* ]]
+	[[ $output == *"sudo ln -s $TEST_TMP/usr/lib/virtiofsd /usr/bin/virtiofsd"* ]]
+}
+
+@test "_check_cowork_virtiofsd: not found anywhere warns with package hint" {
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
+	export _COWORK_VFSD_PATHS="$TEST_TMP/nonexistent"
+	_cowork_incomplete=false
+	run _check_cowork_virtiofsd arch ''
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'virtiofsd: not found'* ]]
+	[[ $output == *'sudo pacman -S'* ]]
+}
+
+@test "_check_cowork_virtiofsd: client path needs only read access (R_OK, like the client)" {
+	mkdir -p "$TEST_TMP/usr/libexec"
+	printf 'x' > "$TEST_TMP/usr/libexec/virtiofsd"
+	chmod 444 "$TEST_TMP/usr/libexec/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/usr/libexec/virtiofsd"
+	_cowork_incomplete=false
+	run _check_cowork_virtiofsd debian ''
+	[[ $output == *'[PASS]'* ]]
+}

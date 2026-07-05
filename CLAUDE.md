@@ -162,7 +162,7 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 ### Important Guidelines
 
-1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh` and `org-plugins.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Variable and function names are minified and **change between releases**; full anchor-craft lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
+1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh`, `org-plugins.sh`, and `virtiofsd-probe.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Variable and function names are minified and **change between releases**; full anchor-craft lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
 
 2. **The beautified code in `build-reference/` has different spacing** than the actual minified code in the app. Patterns must handle both:
    - Minified: `oe.nativeTheme.on("updated",()=>{`
