@@ -1,6 +1,6 @@
 # Upstream report draft: Cowork virtiofsd probe (issues #771/#772)
 
-This is the draft for the upstream bug report covering [#771](https://github.com/aaddrick/claude-desktop-debian/issues/771) and [#772](https://github.com/aaddrick/claude-desktop-debian/issues/772). Filing target is `anthropics/claude-code` GitHub Issues (Claude Desktop has no in-app engineering report path — see the filing-path note in [`README.md`](README.md)).
+This is the upstream bug report covering [#771](https://github.com/aaddrick/claude-desktop-debian/issues/771) and [#772](https://github.com/aaddrick/claude-desktop-debian/issues/772). **FILED 2026-07-05 as [anthropics/claude-code#74605](https://github.com/anthropics/claude-code/issues/74605)** (Claude Desktop has no in-app engineering report path — see the filing-path note in [`README.md`](README.md)).
 
 ## Template mismatch note
 
