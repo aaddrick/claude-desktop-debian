@@ -56,6 +56,8 @@ source "$script_dir/scripts/patches/app-asar.sh"
 source "$script_dir/scripts/patches/quick-window.sh"
 # shellcheck source=scripts/patches/org-plugins.sh
 source "$script_dir/scripts/patches/org-plugins.sh"
+# shellcheck source=scripts/patches/virtiofsd-probe.sh
+source "$script_dir/scripts/patches/virtiofsd-probe.sh"
 # shellcheck source=scripts/patches/config.sh
 source "$script_dir/scripts/patches/config.sh"
 

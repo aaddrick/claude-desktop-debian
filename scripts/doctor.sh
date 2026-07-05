@@ -193,8 +193,8 @@ _fail() {
 _warn() { echo -e "${_yellow}[WARN]${_reset} $*"; }
 _info() { echo -e "       $*"; }
 
-# Locate the virtiofsd binary. Distros install it at different
-# off-PATH locations:
+# Locate the virtiofsd binary anywhere a distro puts it. Distros
+# install it at different off-PATH locations:
 #   - Debian/Ubuntu: /usr/libexec/virtiofsd (qemu-system-common)
 #   - Fedora/RHEL:   /usr/libexec/virtiofsd
 #   - Older Debian:  /usr/lib/qemu/virtiofsd
@@ -202,6 +202,12 @@ _info() { echo -e "       $*"; }
 #
 # `command -v virtiofsd` alone produces a false negative on any of
 # the above. Search PATH first, then the well-known fallback paths.
+#
+# NOTE: this is deliberately BROADER than the official client's own
+# probe, which checks only /usr/libexec and /usr/bin plus its bundled
+# copy (see _check_cowork_virtiofsd). A hit here does NOT mean the
+# client will find it — _check_cowork_virtiofsd uses this helper only
+# to explain a "found somewhere the client won't look" mismatch.
 #
 # Prints the discovered path on stdout; returns 0 on hit, 1 on miss.
 # Fallback paths are overridable via _COWORK_VFSD_PATHS
@@ -963,21 +969,78 @@ _check_vhost_vsock() {
 	fi
 }
 
+# Check virtiofsd the way the client actually resolves it (#771/#772):
+# two hardcoded system paths (read-access, like the client's R_OK
+# probe), then the bundled resources/virtiofsd — which our
+# virtiofsd-probe asar patch un-gates (upstream limits it to Ubuntu
+# 22.x). A binary anywhere else (Arch's /usr/lib/virtiofsd, Debian's
+# /usr/lib/qemu/virtiofsd, PATH) is invisible to the client, so it
+# must NOT pass — that false PASS is exactly the doctor-vs-app
+# disagreement reported in #771.
+#
+# Client-probed paths are overridable via _COWORK_VFSD_CLIENT_PATHS
+# (colon-list) for tests, mirroring _COWORK_VFSD_PATHS.
+#
+# Usage: _check_cowork_virtiofsd <distro_id> <resources_dir>
+_check_cowork_virtiofsd() {
+	local distro="$1"
+	local resources_dir="$2"
+
+	local client_paths="${_COWORK_VFSD_CLIENT_PATHS:-}"
+	if [[ -z $client_paths ]]; then
+		client_paths='/usr/libexec/virtiofsd:/usr/bin/virtiofsd'
+	fi
+
+	local -a client_list
+	IFS=: read -r -a client_list <<< "$client_paths"
+	local probed vfsd=''
+	for probed in "${client_list[@]}"; do
+		if [[ -r $probed ]]; then
+			vfsd="$probed"
+			break
+		fi
+	done
+
+	if [[ -n $vfsd ]]; then
+		_pass "virtiofsd: $vfsd (client-probed path)"
+		return
+	fi
+
+	local bundled="${resources_dir:+$resources_dir/virtiofsd}"
+	if [[ -n $bundled && -x $bundled ]]; then
+		_pass "virtiofsd: bundled copy ($bundled)"
+		return
+	fi
+
+	# Present somewhere the client won't look?
+	local elsewhere
+	if elsewhere=$(_find_virtiofsd); then
+		_warn "virtiofsd: found at $elsewhere, but the client only" \
+			'probes /usr/libexec/virtiofsd and /usr/bin/virtiofsd'
+		_info "Fix: sudo ln -s $elsewhere /usr/bin/virtiofsd"
+	else
+		_warn 'virtiofsd: not found'
+		_info "Fix: $(_cowork_pkg_hint "$distro" virtiofsd)"
+	fi
+	_cowork_incomplete=true
+}
+
 # Check the QEMU/KVM userspace stack Cowork drives: the arch-matched
 # qemu-system binary on PATH, firmware at the paths the official client
-# hardcodes, and virtiofsd (off-PATH tolerated).
+# hardcodes, and virtiofsd at the paths the client probes (see
+# _check_cowork_virtiofsd).
 #
 # Firmware: the official probe list is hardcoded with no env override
 # (audit fact — docs/learnings/official-deb-rebase-verification.md).
 # Firmware present at a Fedora/Arch edk2 location does NOT count, so we
 # check only the official paths and explain the mismatch on a miss. The
 # probe list is overridable via _DOCTOR_OVMF_PATHS (colon-list) for
-# tests. virtiofsd's upstream spawn semantics are unverified, so an
-# off-PATH binary is still reported as found (note when off-PATH).
+# tests.
 #
-# Usage: _check_cowork_stack <distro_id>
+# Usage: _check_cowork_stack <distro_id> <resources_dir>
 _check_cowork_stack() {
 	local distro="$1"
+	local resources_dir="${2:-}"
 	local qemu_bin fw_default
 	case "$(uname -m)" in
 		aarch64)
@@ -1023,21 +1086,8 @@ _check_cowork_stack() {
 		_cowork_incomplete=true
 	fi
 
-	# virtiofsd — off-PATH tolerated (see _find_virtiofsd).
-	local vfsd on_path
-	on_path=$(command -v virtiofsd 2>/dev/null)
-	vfsd=$(_find_virtiofsd)
-	if [[ -n $vfsd ]]; then
-		if [[ $vfsd == "$on_path" ]]; then
-			_pass 'virtiofsd: found'
-		else
-			_pass "virtiofsd: found at $vfsd (not on PATH)"
-		fi
-	else
-		_warn 'virtiofsd: not found'
-		_info "Fix: $(_cowork_pkg_hint "$distro" virtiofsd)"
-		_cowork_incomplete=true
-	fi
+	# virtiofsd — client-probed paths + bundled copy only.
+	_check_cowork_virtiofsd "$distro" "$resources_dir"
 }
 
 # Legacy bwrap diagnostics, retained only for the parked 3.1 fallback
@@ -1368,7 +1418,13 @@ print(len(servers))
 	# is never a _fail — the app works fine without it.
 	_check_kvm
 	_check_vhost_vsock
-	_check_cowork_stack "$_distro_id"
+	# Resources dir sits next to the Electron ELF in the official
+	# co-located layout (deb/rpm/AppImage/Nix all preserve it); the
+	# bundled virtiofsd lives there.
+	local _resources_dir=''
+	[[ -n $electron_path ]] &&
+		_resources_dir="$(dirname "$electron_path")/resources"
+	_check_cowork_stack "$_distro_id" "$_resources_dir"
 
 	# One-line readiness summary (the checks above flip
 	# _cowork_incomplete on any non-green result).
