@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- `claude-desktop-unofficial --version` prints the package version (`<claude-version>-<repo-version>`, e.g. `1.18286.0-3.0.1`) and exits, on all three launcher formats (deb, RPM, AppImage). Previously the flag fell through to the full launch path, where the launcher redirects all Electron output into `~/.cache/claude-desktop-debian/launcher.log` — so the terminal printed nothing. ([#772](https://github.com/aaddrick/claude-desktop-debian/issues/772))
+
+### Fixed
+
+- Post-rename `claude-desktop` leftovers found in a repo-wide audit: doctor's hardcoded chrome-sandbox default probed the official package's `/usr/lib/claude-desktop/` tree instead of ours, two doctor fix hints said to reinstall `claude-desktop`, and the docs (quickstart, configuration, testing runbook/cases, triage-form mirror) still told users to run `claude-desktop`. All now use `claude-desktop-unofficial`; references that genuinely mean Anthropic's official package, the upstream ELF/process name, or the transitional dummy are unchanged. ([#772](https://github.com/aaddrick/claude-desktop-debian/issues/772))
+
 ## [v3.0.1] — 2026-07-05
 
 ### Added

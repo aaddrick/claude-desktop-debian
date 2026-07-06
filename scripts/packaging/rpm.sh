@@ -98,6 +98,13 @@ if [[ "\${1:-}" == '--doctor' ]]; then
 	exit \$?
 fi
 
+# --version never reaches the terminal via Electron: the launcher
+# redirects all app output to the log (#772). Answer it here instead.
+if [[ "\${1:-}" == '--version' ]]; then
+	echo "$package_name $version"
+	exit 0
+fi
+
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env

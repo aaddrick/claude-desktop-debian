@@ -5,7 +5,8 @@
 # Sourced by: scripts/launcher-common.sh (which is in turn sourced by the
 # per-package launcher scripts — deb, rpm, AppImage, Nix).
 #
-# Provides: run_doctor (the `claude-desktop --doctor` entry point) plus its
+# Provides: run_doctor (the `claude-desktop-unofficial --doctor` entry
+# point) plus its
 # internal helpers. Self-contained except for the WM_CLASS constant defined
 # at the top of launcher-common.sh (substituted at build time), which the
 # live-UI fingerprint in the orphaned-daemon check reads at runtime.
@@ -493,7 +494,7 @@ _doctor_check_filename_limit() {
 # CLAUDE_DISABLE_GPU=1 in the environment for headless persistence.
 #
 # Arguments: $1 = electron path (e.g.,
-#   /usr/lib/claude-desktop/claude-desktop)
+#   /usr/lib/claude-desktop-unofficial/claude-desktop)
 #   Used to filter results to claude-desktop's electron when possible;
 #   falls back to all-electron crashes when the path doesn't match
 #   (e.g., AppImage mount paths are transient).
@@ -1202,21 +1203,21 @@ run_doctor() {
 		fi
 	elif [[ -n $electron_path ]]; then
 		_fail "Electron binary not found at $electron_path"
-		_info 'Fix: Reinstall claude-desktop package'
+		_info 'Fix: Reinstall the claude-desktop-unofficial package'
 	elif command -v electron &>/dev/null; then
 		local ver
 		ver=$(_electron_version "$(command -v electron)")
 		_pass "Electron: ${ver:+v${ver#v} }(system)"
 	else
 		_fail 'Electron binary not found'
-		_info 'Fix: Reinstall claude-desktop package'
+		_info 'Fix: Reinstall the claude-desktop-unofficial package'
 	fi
 
 	# -- Chrome sandbox permissions --
 	# Official layout: chrome-sandbox sits at the package root beside the
 	# ELF (no node_modules/electron/dist tree anymore).
 	local sandbox_paths=(
-		'/usr/lib/claude-desktop/chrome-sandbox'
+		'/usr/lib/claude-desktop-unofficial/chrome-sandbox'
 	)
 	# Also check relative to the provided electron path
 	if [[ -n $electron_path ]]; then
