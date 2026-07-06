@@ -96,6 +96,19 @@ validate_app_contents() {
 		fail 'Unpacked: node-pty prebuild missing'
 	fi
 
+	# Cowork's bundled virtiofsd: the #771 un-gate patch makes it the
+	# universal fallback, and the client resolves it with X_OK — a
+	# repack that drops the exec bit silently kills Cowork on every
+	# host without a client-probed system virtiofsd (the mode-loss
+	# trap in docs/learnings/packaging-permissions.md).
+	if [[ -x $resources_dir/virtiofsd ]]; then
+		pass 'Bundled virtiofsd present and executable'
+	elif [[ -e $resources_dir/virtiofsd ]]; then
+		fail 'Bundled virtiofsd present but not executable'
+	else
+		fail 'Bundled virtiofsd missing from resources/'
+	fi
+
 	# Extract app.asar for deeper inspection if tools available
 	local extract_dir
 	extract_dir=$(mktemp -d)
