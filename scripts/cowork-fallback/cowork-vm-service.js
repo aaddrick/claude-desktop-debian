@@ -36,8 +36,17 @@ const { spawn: spawnProcess, execSync, execFileSync } = require('child_process')
 // Configuration
 // ============================================================
 
-const SOCKET_PATH = (process.env.XDG_RUNTIME_DIR || '/tmp') +
-    '/cowork-vm-service.sock';
+// Socket path. The official client spawns its helper with
+// `-socket <path>` ($XDG_RUNTIME_DIR/claude-cowork-vm.sock); honor that
+// argv when present so the COWORK_VM_BACKEND=bwrap swap needs no other
+// glue. The legacy 2.x default remains the fallback for direct runs.
+function socketPathFromArgv(argv) {
+    const i = argv.indexOf('-socket');
+    if (i !== -1 && argv[i + 1]) return argv[i + 1];
+    return null;
+}
+const SOCKET_PATH = socketPathFromArgv(process.argv) ||
+    (process.env.XDG_RUNTIME_DIR || '/tmp') + '/cowork-vm-service.sock';
 const DEBUG = process.env.COWORK_VM_DEBUG === '1' ||
     process.env.CLAUDE_LINUX_DEBUG === '1';
 const LOG_PREFIX = '[cowork-vm-service]';
@@ -1049,7 +1058,7 @@ class LocalBackend extends BackendBase {
      */
     _prepareSpawn(params) {
         const { id, name, command, args, cwd, env,
-            sharedCwdPath, additionalMounts } = params;
+            sharedCwdPath, additionalMounts, oauthToken } = params;
 
         log(`${this.backendName} spawn: id=${id}, name=${name}, command=${command}`);
 
@@ -1077,12 +1086,23 @@ class LocalBackend extends BackendBase {
             return null;
         }
 
+        const mergedEnv = buildSpawnEnv(env, mountMap);
+        // The client sends the approved OAuth token as an explicit
+        // spawn param (the guest VM has no host credentials). Local
+        // backends run the CLI on the host, which may equally lack
+        // ~/.claude credentials — surface the token the same way the
+        // guest would receive it. An explicit env token still wins.
+        const spawnToken = oauthToken || this.approvedOauthToken;
+        if (spawnToken && !mergedEnv.CLAUDE_CODE_OAUTH_TOKEN) {
+            mergedEnv.CLAUDE_CODE_OAUTH_TOKEN = spawnToken;
+        }
+
         return {
             id,
             name,
             actualCommand: resolved.command,
             cleanArgs: cleanSpawnArgs(args || [], mountMap),
-            mergedEnv: buildSpawnEnv(env, mountMap),
+            mergedEnv,
             workDir,
             mountMap,
         };
@@ -1172,6 +1192,11 @@ class LocalBackend extends BackendBase {
 
     async addApprovedOauthToken(params) {
         log(`${this.backendName}: addApprovedOauthToken`);
+        // Retained as a spawn-env fallback for sessions whose spawn
+        // request carries no oauthToken of its own.
+        if (params && params.token) {
+            this.approvedOauthToken = params.token;
+        }
         return {};
     }
 }
@@ -2549,6 +2574,58 @@ class VMManager {
         return {};
     }
 
+    // --- Guest request bridge ---
+    // The client answers guest-originated {type:"request"} events with
+    // this RPC. Local backends never emit guest requests, so accept and
+    // drop; the KVM backend forwards to its guest if wired.
+
+    async sendGuestResponse(params) {
+        if (typeof this.backend.sendGuestResponse === 'function') {
+            return this.backend.sendGuestResponse(params);
+        }
+        log(`sendGuestResponse: no guest bridge (id=${params.id})`);
+        return {};
+    }
+
+    // --- Session disk management ---
+    // The official helper tracks per-session VM disk images. Local
+    // backends have no session images — report real host free space
+    // with an empty session list so the client's disk-pressure logic
+    // stays truthful and pruning is a structural no-op.
+
+    getSessionsDiskInfo(params) {
+        try {
+            const st = fs.statfsSync(os.homedir());
+            return {
+                totalBytes: st.blocks * st.bsize,
+                freeBytes: st.bavail * st.bsize,
+                sessions: [],
+            };
+        } catch (e) {
+            log('getSessionsDiskInfo failed:', e.message);
+            return { totalBytes: 0, freeBytes: 0, sessions: [] };
+        }
+    }
+
+    deleteSessionDirs(params) {
+        log(`deleteSessionDirs: ${JSON.stringify(params.names ?? [])}` +
+            ' (no session dirs on local backends)');
+        return { deleted: [], errors: {} };
+    }
+
+    pruneSessionCaches(params) {
+        return {
+            prunedSessions: [],
+            skippedSessions: [],
+            freedBytes: 0,
+            errors: {},
+        };
+    }
+
+    getNetworkDrives() {
+        return { drives: [] };
+    }
+
     // --- Events (managed by VMManager, not backend) ---
 
     subscribeEvents(socket) {
@@ -2593,6 +2670,11 @@ const METHODS = {
     installSdk: (params) => vm.installSdk(params),
     addApprovedOauthToken: (params) => vm.addApprovedOauthToken(params),
     setDebugLogging: (params) => vm.setDebugLogging(params),
+    sendGuestResponse: (params) => vm.sendGuestResponse(params),
+    getSessionsDiskInfo: (params) => vm.getSessionsDiskInfo(params),
+    deleteSessionDirs: (params) => vm.deleteSessionDirs(params),
+    pruneSessionCaches: (params) => vm.pruneSessionCaches(params),
+    getNetworkDrives: () => vm.getNetworkDrives(),
     subscribeEvents: (params, socket) => vm.subscribeEvents(socket),
 };
 
@@ -2644,29 +2726,17 @@ function startServer() {
         log('Client connected');
         let buffer = Buffer.alloc(0);
 
-        socket.on('data', async (data) => {
+        socket.on('data', (data) => {
             buffer = Buffer.concat([buffer, data]);
 
-            // Process all complete messages in buffer
-            let parsed;
-            try {
-                parsed = parseMessage(buffer);
-            } catch (e) {
-                logError('Parse error:', e.message);
-                buffer = Buffer.alloc(0);
-                return;
-            }
-
-            while (parsed) {
-                buffer = parsed.remaining;
-                const response = await handleRequest(parsed.message, socket);
-                // Echo back request id so persistent-connection clients
-                // can match responses to pending requests.
-                if (parsed.message.id !== undefined) {
-                    response.id = parsed.message.id;
-                }
-                writeMessage(socket, response);
-
+            // Drain all complete messages, dispatching each without
+            // awaiting: the official client multiplexes id-tagged
+            // requests on one pipe with per-request timeouts, so a
+            // slow startVM must not head-of-line block an isRunning
+            // poll. Responses echo the request id (or omit it, for
+            // the client's one-shot connections) whenever they settle.
+            for (;;) {
+                let parsed;
                 try {
                     parsed = parseMessage(buffer);
                 } catch (e) {
@@ -2674,6 +2744,22 @@ function startServer() {
                     buffer = Buffer.alloc(0);
                     return;
                 }
+                if (!parsed) break;
+                buffer = parsed.remaining;
+
+                const message = parsed.message;
+                handleRequest(message, socket).then((response) => {
+                    if (message.id !== undefined) {
+                        response.id = message.id;
+                    }
+                    if (!socket.destroyed) {
+                        writeMessage(socket, response);
+                    }
+                }).catch((e) => {
+                    // handleRequest catches handler errors itself;
+                    // this guards the response write.
+                    logError('Response write failed:', e.message);
+                });
             }
         });
 

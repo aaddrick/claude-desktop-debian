@@ -28,10 +28,16 @@
 #                              Cowork reports "requires QEMU" on
 #                              Arch/Debian/Pop with a complete KVM stack
 #                              (#771/#772; filed upstream)
+#   patch_cowork_bwrap       — opt-in bubblewrap Cowork backend for hosts
+#                              without KVM/vhost-vsock (ChromeOS Crostini,
+#                              #772). Every branch is gated on
+#                              COWORK_VM_BACKEND=bwrap, so unflagged
+#                              launches ship the official path unchanged.
 active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
 	patch_virtiofsd_probe
+	patch_cowork_bwrap
 )
 
 # The #768 config-wipe guard (config.sh) is NOT wired: a contrarian
@@ -172,6 +178,22 @@ patch_app_asar() {
 
 	# The extracted contents must not leak into the packaged tree.
 	rm -rf app.asar.contents
+
+	# Ship the bwrap fallback daemon beside app.asar (in resources/,
+	# i.e. process.resourcesPath) when its patch is active. It sits
+	# OUTSIDE the asar on purpose: child_process cannot exec a script
+	# from inside an asar, and keeping it out of app.asar.unpacked keeps
+	# the repack invariant above pinned to upstream's set. The file is
+	# inert unless the user launches with COWORK_VM_BACKEND=bwrap.
+	local p
+	for p in "${active_patches[@]}"; do
+		if [[ $p == 'patch_cowork_bwrap' ]]; then
+			cp "$project_root/scripts/cowork-fallback/cowork-vm-service.js" \
+				"$resources_dir/cowork-vm-service.js" || exit 1
+			echo 'Cowork bwrap daemon staged at resources/cowork-vm-service.js'
+			break
+		fi
+	done
 
 	cd "$project_root" || exit 1
 	section_footer 'Patch app.asar'

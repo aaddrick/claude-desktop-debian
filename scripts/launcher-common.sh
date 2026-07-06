@@ -751,6 +751,41 @@ setup_electron_env() {
 		log_message \
 			"GTK_IM_MODULE override: $prev -> $GTK_IM_MODULE (via CLAUDE_GTK_IM_MODULE)"
 	fi
+
+	setup_cowork_bwrap_env
+}
+
+# Opt-in Cowork bubblewrap backend (COWORK_VM_BACKEND=bwrap) for hosts
+# without KVM/vhost-vsock (ChromeOS Crostini, #772). The asar patch
+# (patch_cowork_bwrap) swaps the native Cowork helper for the Node
+# daemon shipped at resources/cowork-vm-service.js — but the official
+# Electron binary ships with the RunAsNode fuse OFF, so it can't run the
+# daemon itself. Resolve a system node here and hand its path to the
+# patched spawn via COWORK_NODE_PATH. Only touches the environment when
+# the user actually opts in; unflagged launches are untouched.
+setup_cowork_bwrap_env() {
+	[[ ${COWORK_VM_BACKEND:-} == 'bwrap' ]] || return 0
+
+	# Respect an explicit override; otherwise probe PATH for node then
+	# nodejs (Debian/Ubuntu ship the interpreter as `nodejs`).
+	if [[ -z ${COWORK_NODE_PATH:-} ]]; then
+		local node_bin
+		node_bin=$(command -v node 2>/dev/null) \
+			|| node_bin=$(command -v nodejs 2>/dev/null) || node_bin=''
+		if [[ -n $node_bin ]]; then
+			export COWORK_NODE_PATH="$node_bin"
+		fi
+	fi
+
+	if [[ -n ${COWORK_NODE_PATH:-} ]]; then
+		log_message \
+			"Cowork backend: bwrap (daemon node: $COWORK_NODE_PATH)"
+	else
+		log_message \
+			'Cowork backend: bwrap requested but no system node/nodejs' \
+			'found on PATH — the fallback daemon cannot start. Install' \
+			'Node.js (e.g. sudo apt install nodejs) or set COWORK_NODE_PATH.'
+	fi
 }
 
 #===============================================================================

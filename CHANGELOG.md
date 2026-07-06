@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- Opt-in bubblewrap Cowork backend for hosts that can't run the official KVM microVM, enabled with `COWORK_VM_BACKEND=bwrap`. The official Linux client gates Cowork on `/dev/kvm` + `/dev/vhost-vsock` and drives QEMU through a bundled native helper; ChromeOS Crostini blocks `vhost_vsock` at the Termina kernel level, so that gate can never pass there no matter what's installed ([#772](https://github.com/aaddrick/claude-desktop-debian/issues/772)). A new `cowork-bwrap` asar patch reinstates the pre-3.0.0 bubblewrap daemon as a fallback: it reports the KVM support evaluator as supported, swaps the native-helper spawn for a bundled Node daemon (`resources/cowork-vm-service.js`) that speaks the same length-prefixed-JSON socket protocol backed by `bwrap` instead of QEMU, and suppresses the unused multi-GB VM-image download. Every injected branch is gated on `process.platform==="linux" && COWORK_VM_BACKEND==="bwrap"`, so on an unflagged launch every branch evaluates false and the official KVM path runs unchanged — nothing changes for the KVM majority (per [D-002](docs/decisions.md), this clears the patch bar as an opt-in path compensating a genuine Linux-environment gap). Because the official binary's `RunAsNode` fuse is off, the daemon runs under a system `node`/`nodejs` (auto-detected by the launcher, exported as `COWORK_NODE_PATH`; `--doctor` flags its absence). Isolation is namespace-level, not a VM — weaker than the KVM default, which is the trade for running where KVM can't. ([#772](https://github.com/aaddrick/claude-desktop-debian/issues/772))
+
 ## [v3.0.1] — 2026-07-05
 
 ### Added
