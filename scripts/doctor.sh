@@ -1090,14 +1090,20 @@ _check_cowork_stack() {
 	_check_cowork_virtiofsd "$distro" "$resources_dir"
 }
 
-# Minimum Node major the bwrap daemon needs. It uses fs.statfsSync
-# (added in 18.15) to report real session-disk space to the client;
-# below 18 that call throws and disk info silently reports zero free
-# space. 14 is the bare syntax floor (optional chaining / nullish), but
-# 18 is the floor for correct behavior — keep them in lock-step with the
-# daemon's own startup guard (COWORK_MIN_NODE_MAJOR in
-# cowork-vm-service.js).
-_COWORK_MIN_NODE_MAJOR=18
+# True when the given node binary provides fs.statfsSync — the
+# capability the bwrap daemon requires (getSessionsDiskInfo reports real
+# session-disk space). It landed in Node 18.15 / 16.19, so probe the
+# call directly rather than compare a major: Node 18.0-18.14 has major
+# 18 but not the call. Shared by the launcher (setup_cowork_bwrap_env)
+# and this doctor check so both agree with the daemon's own startup
+# guard (nodeHasRequiredFeatures in cowork-vm-service.js).
+cowork_node_has_features() {
+	local node_bin="$1"
+	[[ -n $node_bin && -x $node_bin ]] || return 1
+	"$node_bin" -e \
+		'process.exit(typeof require("fs").statfsSync==="function"?0:1)' \
+		2>/dev/null
+}
 
 # The bwrap fallback daemon needs a system Node runtime and its own
 # shipped script: the official Electron binary has the RunAsNode fuse
@@ -1119,27 +1125,22 @@ _doctor_check_bwrap_node() {
 			|| node_bin=$(command -v nodejs 2>/dev/null) || node_bin=''
 	fi
 	if [[ -n $node_bin && -x $node_bin ]]; then
-		local nv major
+		local nv
 		nv=$("$node_bin" --version 2>/dev/null) || nv=''
-		# Parse major from a "vXX.Y.Z" string.
-		major="${nv#v}"
-		major="${major%%.*}"
-		if [[ $major =~ ^[0-9]+$ ]] \
-			&& ((major >= _COWORK_MIN_NODE_MAJOR)); then
+		if cowork_node_has_features "$node_bin"; then
 			_pass "bwrap daemon runtime: node $nv ($node_bin)"
 		else
-			_warn "bwrap daemon runtime: node ${nv:-?} is older than" \
-				"the required v${_COWORK_MIN_NODE_MAJOR} ($node_bin)"
-			_info 'Fix: install a newer Node.js' \
-				"(>= v${_COWORK_MIN_NODE_MAJOR}), or point" \
+			_warn "bwrap daemon runtime: node ${nv:-?} lacks" \
+				"fs.statfsSync (needs Node >= 18.15) ($node_bin)"
+			_info 'Fix: install a newer Node.js (>= 18.15), or point' \
 				'COWORK_NODE_PATH at one'
 			_cowork_incomplete=true
 		fi
 	else
 		_warn 'bwrap daemon runtime: no system node/nodejs on PATH'
 		_info 'Fix: install Node.js' \
-			"(>= v${_COWORK_MIN_NODE_MAJOR}, e.g. sudo apt install" \
-			'nodejs), or set COWORK_NODE_PATH to a node binary'
+			'(>= 18.15, e.g. sudo apt install nodejs), or set' \
+			'COWORK_NODE_PATH to a node binary'
 		_cowork_incomplete=true
 	fi
 

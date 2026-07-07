@@ -96,13 +96,22 @@ Setting `COWORK_VM_BACKEND=bwrap` opts into a bubblewrap-sandboxed backend that 
 COWORK_VM_BACKEND=bwrap claude-desktop-unofficial
 ```
 
+To make it persistent — including for launches from the desktop/app menu, which can't carry a per-command environment — put the flag in the launcher config file instead:
+
+```bash
+# ~/.config/claude-desktop-debian/environment
+COWORK_VM_BACKEND=bwrap
+```
+
+The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell.
+
 How it works: an asar patch (`patch_cowork_bwrap`) short-circuits the KVM support gate and swaps the native VM helper for a bundled Node daemon (`resources/cowork-vm-service.js`) that speaks the same socket protocol as the official helper but backs it with `bwrap` instead of QEMU. Every branch of the patch is gated on this exact flag, so on an unflagged launch every branch evaluates false and the official KVM path runs unchanged — nothing changes for the KVM majority.
 
 Requirements when flagged:
 
 | Component | Requirement | Doctor check |
 |-----------|-------------|--------------|
-| Node.js | A system `node` (or `nodejs`) on `PATH` — the bundled Electron binary ships with the RunAsNode fuse off and can't run the daemon itself. Override with `COWORK_NODE_PATH`. | `_doctor_check_bwrap_node` |
+| Node.js | A system `node` (or `nodejs`) on `PATH` providing `fs.statfsSync` (Node >= 18.15 / 16.19) — the bundled Electron binary ships with the RunAsNode fuse off and can't run the daemon itself. Override with `COWORK_NODE_PATH`. | `_doctor_check_bwrap_node` |
 | bubblewrap | `bwrap` installed, with unprivileged user namespaces allowed (Ubuntu 24.04+ blocks them via AppArmor — see [troubleshooting.md](troubleshooting.md)) | `_doctor_check_bwrap_fallback` |
 
 Run `claude-desktop-unofficial --doctor` with the flag set to see the bwrap-path diagnostics. Isolation is namespace-level, not a VM — weaker than the KVM default, which is the trade for running where KVM can't. Any `COWORK_VM_BACKEND` value other than `bwrap` is a 2.x knob the official client ignores.

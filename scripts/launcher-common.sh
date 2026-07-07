@@ -735,7 +735,53 @@ run_electron_and_cleanup() {
 }
 
 # Set common environment variables
+# Load persistent launcher env from a per-user config file. The
+# generated .desktop Exec line can't carry per-user environment, so a
+# GUI launch has no way to set e.g. COWORK_VM_BACKEND=bwrap (#772). This
+# file fills that gap: KEY=value lines, honored only for a fixed
+# allowlist of launcher variables, and only when the variable is not
+# already set — an explicit terminal env or `Exec=env VAR=... ` still
+# wins. Values are read literally; the file is never executed as shell.
+#
+#   ${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment
+#
+# setup_logging() must have run first (log_message needs $log_file).
+load_launcher_config() {
+	local cfg
+	cfg="${XDG_CONFIG_HOME:-$HOME/.config}/claude-desktop-debian/environment"
+	[[ -r $cfg ]] || return 0
+
+	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE \
+CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU COWORK_VM_BACKEND COWORK_NODE_PATH '
+	local line key val
+	while IFS= read -r line || [[ -n $line ]]; do
+		# Skip blanks and comments.
+		[[ -z ${line//[[:space:]]/} || ${line#"${line%%[![:space:]]*}"} == '#'* ]] \
+			&& continue
+		[[ $line == *=* ]] || continue
+		key="${line%%=*}"
+		key="${key//[[:space:]]/}"
+		val="${line#*=}"
+		# Allowlist only — anything else in the file is ignored.
+		[[ $allowlist == *" $key "* ]] || {
+			log_message "Config: ignoring unrecognized key '$key' in $cfg"
+			continue
+		}
+		# Environment wins: never override an already-set variable.
+		[[ -n ${!key:-} ]] && continue
+		# Strip one layer of surrounding quotes, if present.
+		val="${val#[\"\']}"
+		val="${val%[\"\']}"
+		export "$key=$val"
+		log_message "Config: $key=$val (from $cfg)"
+	done < "$cfg"
+}
+
 setup_electron_env() {
+	# Persistent per-user launcher env (GUI launches can't set env via
+	# the .desktop Exec line) — load before anything reads these vars.
+	load_launcher_config
+
 	# The official Linux build ships packaged, so ELECTRON_FORCE_IS_PACKAGED
 	# is dropped (forcing it would shadow upstream's own isPackaged logic),
 	# and the official build owns its window frame, so the
@@ -786,21 +832,24 @@ setup_cowork_bwrap_env() {
 		return 0
 	fi
 
-	# Warn on a too-old node. The daemon needs >= v18 (fs.statfsSync);
-	# it also self-guards at startup, but flag it here where the user
-	# sees the launcher log. Kept in lock-step with the daemon's
-	# COWORK_MIN_NODE_MAJOR and doctor's _COWORK_MIN_NODE_MAJOR.
-	local node_major
-	node_major=$("$COWORK_NODE_PATH" -p 'process.versions.node.split(".")[0]' \
-		2>/dev/null) || node_major=''
-	if [[ $node_major =~ ^[0-9]+$ ]] && ((node_major < 18)); then
-		log_message \
-			"Cowork backend: bwrap node $COWORK_NODE_PATH is v$node_major," \
-			'older than the required v18 — the daemon will refuse to' \
-			'start. Install a newer Node.js or set COWORK_NODE_PATH.'
-	else
+	# Warn when the node lacks the daemon's required capability. The
+	# daemon needs fs.statfsSync (added in Node 18.15 / 16.19), so probe
+	# the call directly rather than compare a major — 18.0-18.14 has
+	# major 18 but not the call. The daemon self-guards on the same
+	# capability; this surfaces it in the launcher log where the user
+	# looks first. Kept in lock-step with cowork_node_has_features
+	# (doctor) and nodeHasRequiredFeatures (daemon).
+	# cowork_node_has_features is defined in doctor.sh, which this file
+	# sources; both it and the daemon check the same capability.
+	if cowork_node_has_features "$COWORK_NODE_PATH"; then
 		log_message \
 			"Cowork backend: bwrap (daemon node: $COWORK_NODE_PATH)"
+	else
+		log_message \
+			"Cowork backend: bwrap node $COWORK_NODE_PATH lacks" \
+			'fs.statfsSync (needs Node >= 18.15) — the daemon will' \
+			'refuse to start. Install a newer Node.js or set' \
+			'COWORK_NODE_PATH.'
 	fi
 }
 
