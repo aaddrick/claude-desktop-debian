@@ -55,6 +55,13 @@ const LOG_PREFIX = '[cowork-vm-service]';
 // to force a specific backend instead of auto-detection.
 const BACKEND_OVERRIDE = process.env.COWORK_VM_BACKEND || null;
 
+// Minimum Node major the daemon needs. fs.statfsSync (getSessionsDiskInfo)
+// landed in 18.15; below 18 it throws and disk info reports zero free
+// space, which the client can misread as disk pressure. 14 is the bare
+// syntax floor (optional chaining / nullish). Kept in lock-step with the
+// launcher's node check and doctor's _COWORK_MIN_NODE_MAJOR.
+const COWORK_MIN_NODE_MAJOR = 18;
+
 // The daemon is forked with stdio:'ignore', so console output goes nowhere.
 // Write logs to a file so they're accessible for debugging.
 const LOG_FILE = path.join(
@@ -2837,6 +2844,20 @@ function startServer() {
 // async connection test delays startup while the app is already retrying.
 if (require.main === module) {
     logLifecycle('startup', `pid=${process.pid} sock=${SOCKET_PATH}`);
+    // Fail loud and early on a too-old runtime, so cowork_vm_daemon.log
+    // carries an actionable message instead of a later cryptic throw
+    // (or a silent zero-disk report). A version too old to even parse
+    // this file exits with a SyntaxError before reaching here, which is
+    // itself visible in the log.
+    const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+    if (nodeMajor < COWORK_MIN_NODE_MAJOR) {
+        const msg = `Node ${process.versions.node} is older than the `
+            + `required v${COWORK_MIN_NODE_MAJOR}; refusing to start. `
+            + 'Install a newer Node.js or set COWORK_NODE_PATH.';
+        logLifecycle('node_too_old', msg);
+        logError(msg);
+        process.exit(1);
+    }
     cleanupSocket();
     startServer();
 }

@@ -777,14 +777,30 @@ setup_cowork_bwrap_env() {
 		fi
 	fi
 
-	if [[ -n ${COWORK_NODE_PATH:-} ]]; then
-		log_message \
-			"Cowork backend: bwrap (daemon node: $COWORK_NODE_PATH)"
-	else
+	if [[ -z ${COWORK_NODE_PATH:-} ]]; then
 		log_message \
 			'Cowork backend: bwrap requested but no system node/nodejs' \
 			'found on PATH — the fallback daemon cannot start. Install' \
-			'Node.js (e.g. sudo apt install nodejs) or set COWORK_NODE_PATH.'
+			'Node.js (>= v18, e.g. sudo apt install nodejs) or set' \
+			'COWORK_NODE_PATH.'
+		return 0
+	fi
+
+	# Warn on a too-old node. The daemon needs >= v18 (fs.statfsSync);
+	# it also self-guards at startup, but flag it here where the user
+	# sees the launcher log. Kept in lock-step with the daemon's
+	# COWORK_MIN_NODE_MAJOR and doctor's _COWORK_MIN_NODE_MAJOR.
+	local node_major
+	node_major=$("$COWORK_NODE_PATH" -p 'process.versions.node.split(".")[0]' \
+		2>/dev/null) || node_major=''
+	if [[ $node_major =~ ^[0-9]+$ ]] && ((node_major < 18)); then
+		log_message \
+			"Cowork backend: bwrap node $COWORK_NODE_PATH is v$node_major," \
+			'older than the required v18 — the daemon will refuse to' \
+			'start. Install a newer Node.js or set COWORK_NODE_PATH.'
+	else
+		log_message \
+			"Cowork backend: bwrap (daemon node: $COWORK_NODE_PATH)"
 	fi
 }
 

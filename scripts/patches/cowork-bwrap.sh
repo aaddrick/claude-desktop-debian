@@ -74,8 +74,15 @@ if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
         .test(code)) {
     console.log('  A: evaluator already gated (supported when flagged)');
 } else {
-    const m = code.match(evalRe);
-    if (m) {
+    // Fail loud if upstream ever grows a second platform-dispatch of
+    // this exact shape — a blind first-match swap would be wrong.
+    const evalAll = [...code.matchAll(new RegExp(evalRe, 'g'))];
+    const m = evalAll.length === 1 ? evalAll[0] : null;
+    if (evalAll.length > 1) {
+        console.log('  A: FATAL — yukonSilver platform-dispatch anchor ' +
+            'matched ' + evalAll.length + ' sites, expected exactly 1');
+        loadBearingFailed = true;
+    } else if (m) {
         const replacement = 'function ' + m[1] + '(){if(' + GATE +
             ')return{status:"supported"};return process.platform,' +
             m[2] + '()}';
@@ -107,8 +114,15 @@ if (code.includes('/*cowork-bwrap-spawn*/')) {
 } else {
     const spawnRe =
         /([\w$]+)\.spawn\(([\w$]+),\[\s*"-socket"\s*,\s*([\w$]+)\(\)\s*\]\s*,\s*\{\s*stdio:\s*\[\s*"pipe"\s*,\s*"pipe"\s*,\s*"pipe"\s*\]\s*\}\)/;
-    const m = code.match(spawnRe);
-    if (m) {
+    // Assert the helper-spawn shape is unique before swapping — a blind
+    // first-match replace would half-patch if upstream duplicates it.
+    const spawnAll = [...code.matchAll(new RegExp(spawnRe, 'g'))];
+    const m = spawnAll.length === 1 ? spawnAll[0] : null;
+    if (spawnAll.length > 1) {
+        console.log('  B: FATAL — helper spawn anchor matched ' +
+            spawnAll.length + ' sites, expected exactly 1');
+        loadBearingFailed = true;
+    } else if (m) {
         const spawnObj = m[1], helperPath = m[2], sockFn = m[3];
         const flagged = '(' + GATE + ')';
         const daemon =

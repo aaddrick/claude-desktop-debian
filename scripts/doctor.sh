@@ -1090,11 +1090,24 @@ _check_cowork_stack() {
 	_check_cowork_virtiofsd "$distro" "$resources_dir"
 }
 
+# Minimum Node major the bwrap daemon needs. It uses fs.statfsSync
+# (added in 18.15) to report real session-disk space to the client;
+# below 18 that call throws and disk info silently reports zero free
+# space. 14 is the bare syntax floor (optional chaining / nullish), but
+# 18 is the floor for correct behavior — keep them in lock-step with the
+# daemon's own startup guard (COWORK_MIN_NODE_MAJOR in
+# cowork-vm-service.js).
+_COWORK_MIN_NODE_MAJOR=18
+
 # The bwrap fallback daemon needs a system Node runtime and its own
 # shipped script: the official Electron binary has the RunAsNode fuse
 # off, so it can't run the daemon, and the launcher hands a resolved
 # node path to the patched spawn via COWORK_NODE_PATH. Verify both are
-# in place. Runs only under COWORK_VM_BACKEND=bwrap.
+# present and the node is new enough. Consistent with the "Cowork
+# absence is never a _fail" doctrine, gaps here _warn (and mark the
+# section incomplete) rather than flipping the doctor exit code — the
+# user opted into an optional feature. Runs only under
+# COWORK_VM_BACKEND=bwrap.
 #
 # Usage: _doctor_check_bwrap_node <resources_dir>
 _doctor_check_bwrap_node() {
@@ -1106,13 +1119,27 @@ _doctor_check_bwrap_node() {
 			|| node_bin=$(command -v nodejs 2>/dev/null) || node_bin=''
 	fi
 	if [[ -n $node_bin && -x $node_bin ]]; then
-		local nv
+		local nv major
 		nv=$("$node_bin" --version 2>/dev/null) || nv=''
-		_pass "bwrap daemon runtime: node ${nv:-found} ($node_bin)"
+		# Parse major from a "vXX.Y.Z" string.
+		major="${nv#v}"
+		major="${major%%.*}"
+		if [[ $major =~ ^[0-9]+$ ]] \
+			&& ((major >= _COWORK_MIN_NODE_MAJOR)); then
+			_pass "bwrap daemon runtime: node $nv ($node_bin)"
+		else
+			_warn "bwrap daemon runtime: node ${nv:-?} is older than" \
+				"the required v${_COWORK_MIN_NODE_MAJOR} ($node_bin)"
+			_info 'Fix: install a newer Node.js' \
+				"(>= v${_COWORK_MIN_NODE_MAJOR}), or point" \
+				'COWORK_NODE_PATH at one'
+			_cowork_incomplete=true
+		fi
 	else
-		_fail 'bwrap daemon runtime: no system node/nodejs on PATH'
-		_info 'Fix: install Node.js (e.g. sudo apt install nodejs),' \
-			'or set COWORK_NODE_PATH to a node binary'
+		_warn 'bwrap daemon runtime: no system node/nodejs on PATH'
+		_info 'Fix: install Node.js' \
+			"(>= v${_COWORK_MIN_NODE_MAJOR}, e.g. sudo apt install" \
+			'nodejs), or set COWORK_NODE_PATH to a node binary'
 		_cowork_incomplete=true
 	fi
 
@@ -1121,7 +1148,7 @@ _doctor_check_bwrap_node() {
 		if [[ -f "$resources_dir/cowork-vm-service.js" ]]; then
 			_pass 'bwrap daemon: cowork-vm-service.js present'
 		else
-			_fail 'bwrap daemon: cowork-vm-service.js missing from' \
+			_warn 'bwrap daemon: cowork-vm-service.js missing from' \
 				"$resources_dir"
 			_info 'Fix: reinstall the claude-desktop-unofficial package' \
 				'(the bwrap patch may not have been active at build time)'
