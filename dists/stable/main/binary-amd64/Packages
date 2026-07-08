@@ -7,16 +7,16 @@ Priority: optional
 Section: utils
 Filename: pool/main/c/claude-desktop/claude-desktop_1.16000.0-1_all.deb
 Size: 624
-SHA256: a6f197be44428bd75cca64fa5e0cdade14c81f7389f4dc07b325f526fd0ef080
-SHA1: e4df9af83c83787a6f8f8ded849ed696e240b988
-MD5sum: ae2af75dd83ce8b91cd054509112c169
+SHA256: e74e7ceb7123b4f03fb173999de7cdd57894c5c7f9d289f7bc751beb2228b8f4
+SHA1: 0247e2bc5590f0271ca8894b4e0f99750f510adf
+MD5sum: 1538dce69516282a211393cef186dea8
 Description: Transitional package for the rename to claude-desktop-unofficial
  This dummy package eases upgrades from the legacy 'claude-desktop'
  community repack to its new name, claude-desktop-unofficial.
  It can be safely removed after the upgrade.
 
 Package: claude-desktop-unofficial
-Version: 1.18286.0-3.0.1
+Version: 1.18286.2-3.0.1
 Architecture: amd64
 Conflicts: claude-desktop (<< 1.16000)
 Replaces: claude-desktop (<< 1.16000)
@@ -25,11 +25,11 @@ Recommends: libasound2t64 | libasound2 | pulseaudio, libayatana-appindicator3-1 
 Maintainer: Claude Desktop Linux Maintainers
 Priority: optional
 Section: utils
-Filename: pool/main/c/claude-desktop-unofficial/claude-desktop-unofficial_1.18286.0-3.0.1_amd64.deb
-Size: 151558510
-SHA256: fdd69b0bea0b4177c907720728c512c22e6fa7bb6246c5cef1e62a2ff99ad548
-SHA1: 4e1cf728c86f715d0f41764faed5b4c504b75c9f
-MD5sum: 86a7c11b3492dc9aebee6bb5877455ad
+Filename: pool/main/c/claude-desktop-unofficial/claude-desktop-unofficial_1.18286.2-3.0.1_amd64.deb
+Size: 151570446
+SHA256: b163e26c5e0cc239058673336844ed2763afe8620e69bc4ddcd09a3a1416b345
+SHA1: f66e18e05f69897c1fbefc021db5e583fd69917f
+MD5sum: 49ba6a4aa0b0ef619d2f02148afeb4c4
 Description: Claude Desktop for Linux
  Claude is an AI assistant from Anthropic.
  This package provides the desktop interface for Claude.
