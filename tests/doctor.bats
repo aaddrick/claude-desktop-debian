@@ -995,6 +995,92 @@ LIST
 }
 
 # =============================================================================
+# _doctor_check_userns_apparmor
+# =============================================================================
+
+# Put the check into the "restriction in force + deb Electron present"
+# state via the path hooks; tests then control the loaded-set / profile
+# paths to drive the inner branches. The root-only EUID==0 variant of
+# the present-on-disk INFO line is untested (suite runs non-root).
+_userns_in_force() {
+	printf '1\n' > "$TEST_TMP/userns"
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_USERNS_PATH="$TEST_TMP/userns"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+}
+
+@test "_doctor_check_userns_apparmor: restriction not in force — silent" {
+	printf '0\n' > "$TEST_TMP/userns"
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_USERNS_PATH="$TEST_TMP/userns"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+	run _doctor_check_userns_apparmor
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_userns_apparmor: in force but no deb Electron — silent" {
+	printf '1\n' > "$TEST_TMP/userns"
+	_DOCTOR_USERNS_PATH="$TEST_TMP/userns"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/no-deb-electron"
+	run _doctor_check_userns_apparmor
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_userns_apparmor: profile loaded — PASS" {
+	_userns_in_force
+	printf 'claude-desktop-unofficial (enforce)\nfirefox (enforce)\n' \
+		> "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'profile loaded'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: not loaded, profile on disk — WARN + load hint" {
+	_userns_in_force
+	printf 'firefox (enforce)\n' > "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	: > "$TEST_TMP/profile"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'Claude profile not loaded'* ]]
+	[[ $output == *'apparmor_parser -r'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: not loaded, profile absent — WARN + no-profile hint" {
+	_userns_in_force
+	printf 'firefox (enforce)\n' > "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/no-profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'No profile found'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: loaded set unreadable, profile on disk — INFO (not PASS)" {
+	_userns_in_force
+	# Nonexistent loaded path → cat yields empty → "present on disk"
+	# branch (mirrors non-root / securityfs-unmounted hosts).
+	_DOCTOR_AA_LOADED="$TEST_TMP/no-loaded"
+	: > "$TEST_TMP/profile"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'present on disk'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: restricted, no profile anywhere — WARN" {
+	_userns_in_force
+	_DOCTOR_AA_LOADED="$TEST_TMP/no-loaded"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/no-profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'no Claude profile found'* ]]
+}
+
+# =============================================================================
 # _check_cowork_virtiofsd: mirror the client's probe, not "anywhere" (#771)
 # =============================================================================
 
