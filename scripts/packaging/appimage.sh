@@ -71,6 +71,13 @@ if [[ "${1:-}" == '--doctor' ]]; then
 	exit $?
 fi
 
+# --version never reaches the terminal via Electron: the launcher
+# redirects all app output to the log (#772). Answer it here instead.
+if [[ "${1:-}" == '--version' ]]; then
+	echo '@@PACKAGE_NAME@@ @@VERSION@@'
+	exit 0
+fi
+
 # Setup logging and environment
 setup_logging || exit 1
 setup_electron_env
@@ -107,6 +114,10 @@ run_electron_and_cleanup "$app_exec" "${electron_args[@]}" "$@"
 exit $?
 EOF
 chmod +x "$appdir_path/AppRun" || exit 1
+# The AppRun heredoc is quoted (runtime expansion), so the build-time
+# values for the --version fast-path are stamped in afterwards.
+sed -i "s/@@PACKAGE_NAME@@/$package_name/; s/@@VERSION@@/$version/" \
+	"$appdir_path/AppRun" || exit 1
 echo 'AppRun script created'
 
 # --- Create Desktop Entry (Bundled inside AppDir) ---

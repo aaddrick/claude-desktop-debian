@@ -11,7 +11,7 @@ Tests covering app startup, the `--doctor` health check, package-format detectio
 **Runner:** [`tools/test-harness/src/runners/T01_app_launch.spec.ts`](../../../tools/test-harness/src/runners/T01_app_launch.spec.ts)
 
 **Steps:**
-1. From a clean session, run `claude-desktop` (deb/rpm) or launch the AppImage.
+1. From a clean session, run `claude-desktop-unofficial` (deb/rpm) or launch the AppImage.
 2. Wait up to 10 seconds.
 
 **Expected:** Main window opens within ~10s. No error toast, no crash. The launcher log at `~/.cache/claude-desktop-debian/launcher.log` shows the expected backend selection (`Using X11 backend via XWayland` on Wayland sessions, or native Wayland when forced).
@@ -29,12 +29,12 @@ Tests covering app startup, the `--doctor` health check, package-format detectio
 **Issues:** [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538)
 
 **Steps:**
-1. Run `claude-desktop --doctor`.
+1. Run `claude-desktop-unofficial --doctor`.
 2. Inspect exit code (`echo $?`) and stdout/stderr.
 
 **Expected:** Exits 0. All checks PASS or report expected WARN. No FAIL checks. Doctor currently reports display-server, menu-bar mode, Electron path/version, Chrome sandbox perms, SingletonLock, MCP config, Node.js, desktop entry, disk space, and a Cowork section — it does **not** surface the resolved titlebar style. See also [T13](#t13--doctor-reports-correct-package-format) for the package-format detection slice.
 
-**Diagnostics on failure:** Full `--doctor` output, the install path being inspected (`which claude-desktop`), package metadata (`dpkg -S` / `rpm -qf` against the binary).
+**Diagnostics on failure:** Full `--doctor` output, the install path being inspected (`which claude-desktop-unofficial`), package metadata (`dpkg -S` / `rpm -qf` against the binary).
 
 **References:** [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538)
 **Code anchors:** `scripts/doctor.sh:280` (`run_doctor` entry point), `scripts/doctor.sh:301-319` (display-server check), `scripts/doctor.sh:401-417` (SingletonLock check), `scripts/doctor.sh:744-753` (exit-code summary).
@@ -48,14 +48,14 @@ Tests covering app startup, the `--doctor` health check, package-format detectio
 
 **Steps:**
 1. Install via the relevant package manager (`apt` / `dnf`) or AppImage.
-2. Run `claude-desktop --doctor` and look for the install-method line.
+2. Run `claude-desktop-unofficial --doctor` and look for the install-method line.
 
-**Expected:** Doctor identifies the install method correctly. On RPM-based distros (Fedora, Nobara) it does **not** report `not found via dpkg (AppImage?)` — that warning currently false-flags every dnf install. On DEB-based distros it does not assume AppImage when dpkg returns the package metadata.
+**Expected:** Doctor identifies the install method correctly. On RPM-based distros (Fedora, Nobara) it does **not** report `not found via dpkg/rpm (AppImage?)` for a dnf install. On DEB-based distros it does not assume AppImage when dpkg returns the package metadata.
 
-**Diagnostics on failure:** `dpkg -S $(which claude-desktop)`, `rpm -qf $(which claude-desktop)`, full `--doctor` output, the line of doctor source that decides the format.
+**Diagnostics on failure:** `dpkg -S $(which claude-desktop-unofficial)`, `rpm -qf $(which claude-desktop-unofficial)`, full `--doctor` output, the line of doctor source that decides the format.
 
 **References:** [S05](./distribution.md#s05--doctor-recognises-dnf-installed-package-doesnt-false-flag-as-appimage)
-**Code anchors:** `scripts/doctor.sh:353-362` — version probe is dpkg-only (`dpkg-query -W -f='${Version}' claude-desktop`); on RPM/AppImage hosts that lack `dpkg-query` the block is skipped, but on a Fedora host that *does* have `dpkg-query` installed (e.g. for cross-distro tooling) the `_warn 'claude-desktop not found via dpkg (AppImage?)'` branch fires for any dnf-installed copy. There is no corresponding `rpm -qf` / `rpm -q claude-desktop` branch.
+**Code anchors:** `scripts/doctor.sh:717-768` (`_doctor_check_pkg_version`) — since #711 the probe follows ownership: `rpm -qf` against the Electron binary first (only the database that installed the file can claim it), then `dpkg-query -W claude-desktop-unofficial` when rpm does not own the path. The `claude-desktop-unofficial not found via dpkg/rpm (AppImage?)` WARN fires only when neither manager owns the install.
 
 ## T14 — Multi-instance behavior
 
@@ -65,8 +65,8 @@ Tests covering app startup, the `--doctor` health check, package-format detectio
 **Issues:** [PR #536](https://github.com/aaddrick/claude-desktop-debian/pull/536) (closed, docs-only — no in-tree opt-in flag)
 
 **Steps:**
-1. Launch `claude-desktop`. Wait for the main window.
-2. Launch `claude-desktop` again from another terminal or `.desktop` invocation.
+1. Launch `claude-desktop-unofficial`. Wait for the main window.
+2. Launch `claude-desktop-unofficial` again from another terminal or `.desktop` invocation.
 3. Optionally: follow the manual `--user-data-dir` recipe sketched in PR #536 (separate Electron `userData` per profile so each gets its own `SingletonLock` — note the PR was closed, the recipe is not shipped in-tree).
 
 **Expected:** Second invocation focuses the existing window — no new process. The launcher's `cleanup_stale_lock` removes a `SingletonLock` whose owning PID is no longer running. With separate `--user-data-dir` per profile (manual workaround, not an in-tree feature), each profile runs an independent Electron instance.

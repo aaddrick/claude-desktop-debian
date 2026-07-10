@@ -44,9 +44,9 @@ For the host (KDE-W), test against Nobara directly — no VM needed.
 ./build.sh --build rpm --clean no
 
 # Or pull from CI artifacts for a tagged release
-gh run download <RUN_ID> -n claude-desktop-deb-amd64
-gh run download <RUN_ID> -n claude-desktop-rpm-amd64
-gh run download <RUN_ID> -n claude-desktop-appimage-amd64
+gh run download <RUN_ID> -n package-amd64-deb
+gh run download <RUN_ID> -n package-amd64-rpm
+gh run download <RUN_ID> -n package-amd64-appimage
 ```
 
 Drop the resulting `.deb` / `.rpm` / `.AppImage` into a shared folder mounted into each guest, or `scp` per-guest.
@@ -68,7 +68,7 @@ Standard captures referenced from test `Diagnostics on failure` blocks:
 ### `--doctor` output
 
 ```bash
-claude-desktop --doctor 2>&1 | tee /tmp/doctor.txt
+claude-desktop-unofficial --doctor 2>&1 | tee /tmp/doctor.txt
 ```
 
 Or for AppImage:
@@ -134,7 +134,7 @@ systemd-inhibit --list
 ### App version
 
 ```bash
-claude-desktop --version
+claude-desktop-unofficial --version
 gh variable get CLAUDE_DESKTOP_VERSION
 gh variable get REPO_VERSION
 ```

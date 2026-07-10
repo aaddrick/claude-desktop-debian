@@ -54,8 +54,8 @@ Two symptom shapes, depending on which modes leaked:
 Confirm what the run-time user sees, not what root sees:
 
 ```bash
-test -r /usr/lib/claude-desktop/resources/app.asar && echo OK || echo BLOCKED
-stat -c '%A %U:%G' /usr/lib/claude-desktop   # 0700 + foreign uid == broken
+test -r /usr/lib/claude-desktop-unofficial/resources/app.asar && echo OK || echo BLOCKED
+stat -c '%A %U:%G' /usr/lib/claude-desktop-unofficial   # 0700 + foreign uid == broken
 ```
 
 ## The fix: normalize at the packaging boundary
@@ -114,7 +114,7 @@ format re-asserts it where its model allows:
 For a package that already shipped broken modes, without rebuilding:
 
 ```bash
-sudo chmod -R o+rX /usr/lib/claude-desktop
+sudo chmod -R o+rX /usr/lib/claude-desktop-unofficial
 ```
 
 `o+rX` adds world read/traverse only; it leaves the setuid

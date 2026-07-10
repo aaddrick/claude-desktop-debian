@@ -4,7 +4,7 @@ Linux packaging, patching, and operations docs for the [Claude Desktop for Debia
 
 ```bash
 # If you're here because something broke:
-claude-desktop --doctor
+claude-desktop-unofficial --doctor
 # Then check troubleshooting.md below.
 ```
 

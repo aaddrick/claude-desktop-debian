@@ -848,7 +848,7 @@ contact_links:
 | Field | Type | Required | Purpose |
 |-------|------|----------|---------|
 | Privacy notice | `markdown` info block | n/a | Non-editable disclosure (see below for text) |
-| Version (`claude-desktop --doctor` output) | `textarea` | yes | Primary source for Stage 2's `claimed_version`; drives the Stage 7 drift gate |
+| Version (`claude-desktop-unofficial --doctor` output) | `textarea` | yes | Primary source for Stage 2's `claimed_version`; drives the Stage 7 drift gate |
 | What happened | `textarea` | yes | Core Stage 2 bug-signal input + Stage 4 investigation seed |
 | Steps to reproduce | `textarea` | yes | Strong bug-signal for the classifier; reproducibility check |
 | Expected behavior | `textarea` | yes | "Expected X, got Y" is a fixed bug-signal phrase in the double-check rubric |
@@ -870,8 +870,8 @@ contact_links:
 
 **Hint text on the `--doctor` field** (copy-pasteable command, fallbacks for when the app won't start):
 
-> Run `claude-desktop --doctor` in a terminal and paste the full output here.
-> If the app won't start, the AppImage filename (e.g. `claude-desktop-1.3.23-amd64.AppImage`) or the version from **Help → About** is acceptable.
+> Run `claude-desktop-unofficial --doctor` in a terminal and paste the full output here.
+> If the app won't start, the AppImage filename (e.g. `claude-desktop-unofficial-1.18286.0-amd64.AppImage`) or the version from **Help → About** is acceptable.
 
 Why require `--doctor` rather than a free-form version string: the Stage 2 parser tolerates multiple forms (`--doctor`, `claude-desktop (X.Y.Z)`, AppImage filenames) but `--doctor` also carries distro, kernel, desktop environment, and `AppArmor`/`userns` state — context that routinely decides whether a reported crash is a project bug, a driver mismatch, or a packaging-format issue. Getting that context into the input snapshot is worth one copy-paste.
 
