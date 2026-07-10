@@ -23,7 +23,7 @@ Model Context Protocol settings are stored in:
 
 **Quit Claude Desktop before hand-editing this file, then reopen it.** The app rewrites the config on its own schedule while running, so edits made while it is open are clobbered on its next config write. `mcpServers` entries that were present at startup are loaded and survive restarts — the loss window is only hand-edits made against a running app.
 
-Run `claude-desktop --doctor` to validate the JSON and see how many MCP servers are configured.
+Run `claude-desktop-unofficial --doctor` to validate the JSON and see how many MCP servers are configured.
 
 ## Wayland Support
 
@@ -42,11 +42,11 @@ Override the auto-detection with `CLAUDE_USE_WAYLAND`:
 
 ```bash
 # Force native Wayland (GNOME portal route, or Sway/Hyprland)
-CLAUDE_USE_WAYLAND=1 claude-desktop
+CLAUDE_USE_WAYLAND=1 claude-desktop-unofficial
 
 # Force XWayland (e.g. to override Niri's auto-native, or if native
 # Wayland regresses rendering)
-CLAUDE_USE_WAYLAND=0 claude-desktop
+CLAUDE_USE_WAYLAND=0 claude-desktop-unofficial
 
 # Or persist either choice
 export CLAUDE_USE_WAYLAND=1
@@ -63,7 +63,7 @@ export CLAUDE_USE_WAYLAND=1
 By default the launcher passes **no** `--password-store` flag: the official build's `os_crypt` autodetection owns the keyring decision (it deliberately declines weak persistence on some sessions rather than storing tokens unsafely). `CLAUDE_PASSWORD_STORE` is the documented escape hatch — when set, its value is passed verbatim as `--password-store=<value>` and overrides the autodetect:
 
 ```bash
-CLAUDE_PASSWORD_STORE=gnome-libsecret claude-desktop
+CLAUDE_PASSWORD_STORE=gnome-libsecret claude-desktop-unofficial
 ```
 
 The doctor reports which mode is in effect (`Password store: upstream os_crypt autodetect (default)` or `forced to <value>`).
@@ -84,7 +84,7 @@ By default the official Linux client runs Cowork as a helper daemon driving QEMU
 | Firmware | OVMF at one of the **hardcoded** probe paths: `/usr/share/OVMF/OVMF_CODE_4M.fd` or `/usr/share/OVMF/OVMF_CODE.fd` (arm64: `/usr/share/AAVMF/AAVMF_CODE.fd`). No env override exists — firmware installed at Fedora/Arch edk2 locations is not found without a compat symlink. Our RPM package's `%post` creates that symlink automatically (CW-1). | `_check_cowork_stack` |
 | virtiofsd | On `PATH` or at a well-known off-PATH location (`/usr/libexec/virtiofsd`, `/usr/lib/qemu/virtiofsd`, `/usr/lib/virtiofsd`) | `_check_cowork_stack` |
 
-Run `claude-desktop --doctor` — the Cowork Mode section reports each component with a distro-specific install hint and a one-line readiness summary. A missing stack never fails the doctor; the app works fine without Cowork.
+Run `claude-desktop-unofficial --doctor` — the Cowork Mode section reports each component with a distro-specific install hint and a one-line readiness summary. A missing stack never fails the doctor; the app works fine without Cowork.
 
 ### Bubblewrap fallback (COWORK_VM_BACKEND=bwrap)
 

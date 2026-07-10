@@ -53,12 +53,12 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 
 **Steps:**
 1. Add the project's APT repo per the README install instructions.
-2. `sudo apt install claude-desktop` on a fresh container/VM.
-3. Run `claude-desktop` — first launch should succeed with no further package installs.
+2. `sudo apt install claude-desktop-unofficial` on a fresh container/VM.
+3. Run `claude-desktop-unofficial` — first launch should succeed with no further package installs.
 
 **Expected:** All transitive runtime deps are declared in the package and pulled by APT. First launch succeeds without manual `apt install` of any extra package.
 
-**Diagnostics on failure:** `apt-cache depends claude-desktop`, missing-library errors from the launcher, `ldd` against the binary.
+**Diagnostics on failure:** `apt-cache depends claude-desktop-unofficial`, missing-library errors from the launcher, `ldd` against the binary.
 
 **References:** [`docs/learnings/apt-worker-architecture.md`](../../learnings/apt-worker-architecture.md)
 
@@ -73,12 +73,12 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 
 **Steps:**
 1. Add the project's DNF repo per the README.
-2. `sudo dnf install claude-desktop` on a fresh container/VM.
-3. Run `claude-desktop` — first launch should succeed.
+2. `sudo dnf install claude-desktop-unofficial` on a fresh container/VM.
+3. Run `claude-desktop-unofficial` — first launch should succeed.
 
 **Expected:** All transitive runtime deps are declared in the RPM and pulled by DNF. First launch succeeds with no further package installs.
 
-**Diagnostics on failure:** `dnf repoquery --requires claude-desktop`, `rpm -qR claude-desktop`, launcher missing-library errors.
+**Diagnostics on failure:** `dnf repoquery --requires claude-desktop-unofficial`, `rpm -qR claude-desktop-unofficial`, launcher missing-library errors.
 
 **References:** [`docs/learnings/apt-worker-architecture.md`](../../learnings/apt-worker-architecture.md)
 
@@ -92,18 +92,18 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 **Issues:** —
 
 **Steps:**
-1. On a Fedora/Nobara/RPM-based distro with claude-desktop installed via dnf, run `claude-desktop --doctor`.
+1. On a Fedora/Nobara/RPM-based distro with claude-desktop-unofficial installed via dnf, run `claude-desktop-unofficial --doctor`.
 2. Look for the install-method line.
 
 **Expected:** Doctor detects rpm install (e.g. via `rpm -qf` against the binary path) and reports it cleanly. No `not found via dpkg (AppImage?)` warning.
 
-**Currently:** Doctor's install-method check is gated on `command -v dpkg-query`, so on RPM-only hosts (no dpkg installed) the block is skipped entirely — no install-method line is printed. On hosts that have *both* `dpkg-query` and an rpm-installed `claude-desktop` (uncommon, e.g. mixed Debian + dnf), the misleading `claude-desktop not found via dpkg (AppImage?)` WARN does fire. Either way, no `rpm -qf` branch exists. Affects KDE-W, KDE-X, GNOME, Sway, i3, Niri rows ([T13](./launch.md#t13--doctor-reports-correct-package-format)). Not yet filed.
+**Currently:** Addressed by #711 — the probe follows ownership: `rpm -qf` against the Electron binary first, `dpkg-query -W claude-desktop-unofficial` only when rpm does not own the path, so dnf installs report cleanly and a stale dpkg record cannot shadow a live rpm install. The `claude-desktop-unofficial not found via dpkg/rpm (AppImage?)` WARN fires only when neither manager owns the install. Needs a re-verify sweep on the affected rows ([T13](./launch.md#t13--doctor-reports-correct-package-format)).
 
-**Diagnostics on failure:** Full `--doctor` output, `rpm -qf $(which claude-desktop)`, the doctor source line that decides the format.
+**Diagnostics on failure:** Full `--doctor` output, `rpm -qf $(which claude-desktop-unofficial)`, the doctor source line that decides the format.
 
 **References:** [T13](./launch.md#t13--doctor-reports-correct-package-format)
 
-**Code anchors:** `scripts/doctor.sh:353-362` — install-method check is gated on `command -v dpkg-query`; only runs on Debian-family hosts. Falls through to `_warn 'claude-desktop not found via dpkg (AppImage?)'` only if `dpkg-query` is present but returns empty. On Fedora/RPM hosts (`dpkg-query` absent), the entire block is skipped and **no install-method line is printed at all** — neither the misleading WARN nor a correct `rpm -qf` PASS. The drift is "no detection" rather than "false-flag as AppImage" on dpkg-less systems.
+**Code anchors:** `scripts/doctor.sh:717-768` (`_doctor_check_pkg_version`) — rpm-first ownership probe with a dpkg fallback scoped to `claude-desktop-unofficial`; the not-found WARN is the last resort when neither manager owns the install.
 
 ## S15 — AppImage extraction (`--appimage-extract`) works as documented fallback
 
