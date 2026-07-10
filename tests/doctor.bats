@@ -173,6 +173,52 @@ _skip_gtk_query() {
 }
 
 # =============================================================================
+# _doctor_check_display_server
+# =============================================================================
+
+@test "_doctor_check_display_server: Wayland — PASS + desktop + XWayland default mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_CURRENT_DESKTOP='GNOME'
+	# CLAUDE_USE_WAYLAND unset → default XWayland mode
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output == *'Desktop: GNOME'* ]]
+	[[ $output == *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=1 — native mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	CLAUDE_USE_WAYLAND='1'
+	run _doctor_check_display_server
+	[[ $output == *'native Wayland'* ]]
+	[[ $output != *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: X11 — PASS" {
+	DISPLAY=':0'
+	# WAYLAND_DISPLAY unset (setup clears it)
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland wins when both set" {
+	WAYLAND_DISPLAY='wayland-0'
+	DISPLAY=':0'
+	run _doctor_check_display_server
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output != *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: neither set — FAIL" {
+	# setup() already unsets DISPLAY and WAYLAND_DISPLAY.
+	run _doctor_check_display_server
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'No display server detected'* ]]
+}
+
+# =============================================================================
 # _doctor_check_im_modules: immodules cache check
 # =============================================================================
 
