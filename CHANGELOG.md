@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 - Post-rename `claude-desktop` leftovers found in a repo-wide audit: doctor's hardcoded chrome-sandbox default probed the official package's `/usr/lib/claude-desktop/` tree instead of ours, two doctor fix hints said to reinstall `claude-desktop`, and the docs (quickstart, configuration, testing runbook/cases, triage-form mirror) still told users to run `claude-desktop`. All now use `claude-desktop-unofficial`; references that genuinely mean Anthropic's official package, the upstream ELF/process name, or the transitional dummy are unchanged. ([#772](https://github.com/aaddrick/claude-desktop-debian/issues/772))
 
+### Changed
+
+- The artifact tests now assert that Cowork's bundled `resources/virtiofsd` is present and executable in every package format: the [#771](https://github.com/aaddrick/claude-desktop-debian/issues/771) un-gate makes it the universal fallback and the client resolves it with `X_OK`, so a repack that drops the exec bit would silently kill Cowork on hosts without a client-probed system virtiofsd. The doctor's virtiofsd probe tests also grew coverage for the `_cowork_incomplete` readiness flag (the WARN branches were previously unasserted — `run` subshells discard the mutation), the client-path-over-bundled precedence, and the mode-stripped bundled copy falling through to WARN. ([#774](https://github.com/aaddrick/claude-desktop-debian/pull/774))
+
 ## [v3.0.1] — 2026-07-05
 
 ### Added
