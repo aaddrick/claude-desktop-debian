@@ -716,6 +716,20 @@ s.close()
 	# and must NOT kill the daemon.
 	bash -c 'exec -a "--class=Claude" sleep 300' &
 	ui_pid=$!
+	# Wait for the exec to land before running the reaper: on a loaded
+	# runner the child can still carry its pre-exec argv when the UI
+	# scan reads /proc cmdline, so the fingerprint misses and the
+	# reaper takes the orphan path (flaked CI on 2026-07-10). Bounded
+	# poll; plain assignment, not ((i++)), to dodge the errexit trap.
+	local _i=0
+	while ((_i < 50)); do
+		if tr '\0' ' ' < "/proc/$ui_pid/cmdline" 2>/dev/null \
+			| grep -q -- '--class=Claude'; then
+			break
+		fi
+		sleep 0.1
+		_i=$((_i + 1))
+	done
 
 	# Match on "$*", not "$2": the UI scan passes -u <uid> and a `--`
 	# end-of-options separator before the pattern, so the pattern is
