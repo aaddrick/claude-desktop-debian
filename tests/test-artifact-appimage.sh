@@ -120,6 +120,18 @@ else
 	fail "--doctor crashed (exit: $doctor_exit)"
 fi
 
+# --- Launcher --version fast-path (#775) ---
+# The baked version comes from the artifact filename
+# (claude-desktop-unofficial-<version>-<arch>.AppImage): strip the
+# package-name prefix, then the -<arch>.AppImage suffix. Needs FUSE to
+# mount, but no display — the fast-path exits inside AppRun.
+appimage_version="$(basename "$appimage_file")"
+appimage_version="${appimage_version#claude-desktop-unofficial-}"
+appimage_version="${appimage_version%.AppImage}"
+appimage_version="${appimage_version%-*}"
+run_version_flag_test 'AppImage' \
+	"claude-desktop-unofficial $appimage_version" "$appimage_file"
+
 # --- Headless launch smoke test ---
 # The AppImage runs as the (non-root) CI user, so no privilege drop.
 # The pkill sweep matches 'mount_claude', not the .AppImage path: a running

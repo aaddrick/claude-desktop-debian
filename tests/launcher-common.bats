@@ -1228,3 +1228,75 @@ _write_launcher_cfg() {
 	[[ $output == *'COWORK_VM_BACKEND=bwrap'* ]]
 	[[ $output == *'bwrap daemon runtime'* ]]
 }
+
+# =============================================================================
+# setup_cowork_bwrap_env: resolve the bwrap daemon's node runtime (#772)
+# =============================================================================
+
+# The launcher resolves a system node for the bwrap fallback daemon
+# (the official Electron ships with the RunAsNode fuse off) and exports
+# COWORK_NODE_PATH for the patched spawn. Only the flagged path may
+# touch the environment.
+
+# Write an executable node stub at $1 that fails the statfsSync
+# capability probe (any invocation exits 1, so --version fails too —
+# matching a runtime too old to matter).
+_stub_featureless_node() {
+	printf '#!/bin/sh\nexit 1\n' > "$1"
+	chmod +x "$1"
+}
+
+@test "setup_cowork_bwrap_env: no-op when the backend flag is not bwrap" {
+	unset COWORK_VM_BACKEND COWORK_NODE_PATH
+	setup_cowork_bwrap_env
+	[[ -z ${COWORK_NODE_PATH:-} ]]
+}
+
+@test "setup_cowork_bwrap_env: explicit COWORK_NODE_PATH is honored" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_VM_BACKEND=bwrap
+	export COWORK_NODE_PATH="$(command -v node)"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env
+	grep -qF "daemon node: $COWORK_NODE_PATH" "$log_file"
+}
+
+@test "setup_cowork_bwrap_env: auto-detects node from PATH and exports it" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_VM_BACKEND=bwrap
+	unset COWORK_NODE_PATH
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env
+	[[ ${COWORK_NODE_PATH:-} == "$(command -v node)" ]]
+}
+
+@test "setup_cowork_bwrap_env: no node anywhere logs cannot-start, exports nothing" {
+	# Shadow `command` so -v node/nodejs both miss (the _skip_gtk_query
+	# pattern) — emptying PATH would break log_message's own tooling.
+	command() {
+		if [[ $1 == '-v' && ( $2 == 'node' || $2 == 'nodejs' ) ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	export COWORK_VM_BACKEND=bwrap
+	unset COWORK_NODE_PATH
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env
+	[[ -z ${COWORK_NODE_PATH:-} ]]
+	grep -q 'cannot start' "$log_file"
+}
+
+@test "setup_cowork_bwrap_env: statfsSync-less node logs the capability warning" {
+	_stub_featureless_node "$TEST_TMP/oldnode"
+	export COWORK_VM_BACKEND=bwrap
+	export COWORK_NODE_PATH="$TEST_TMP/oldnode"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env
+	grep -q 'lacks fs.statfsSync' "$log_file"
+	grep -q 'refuse to start' "$log_file"
+}

@@ -11,6 +11,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Added
 
 - `--doctor` now reports Cowork device-registration state: it flags when `ant-device-registry.json` is stuck at `none` because Linux has no hardware-backed device key yet (upstream), which is why new Cowork cloud tasks show "Not linked to a computer" ([#780](https://github.com/aaddrick/claude-desktop-debian/issues/780)).
+- The artifact tests assert the launcher's `--version` fast-path end-to-end on all three formats (deb exact-matched against the control Version, rpm and AppImage prefix-matched against their metadata), closing the "deb/rpm static-verified only" gap from [#775](https://github.com/aaddrick/claude-desktop-debian/pull/775). ([#781](https://github.com/aaddrick/claude-desktop-debian/pull/781))
+- The artifact tests assert the bwrap fallback daemon (`resources/cowork-vm-service.js`, ships since [#776](https://github.com/aaddrick/claude-desktop-debian/pull/776)) is present in every package. ([#781](https://github.com/aaddrick/claude-desktop-debian/pull/781))
+- Direct coverage for the bwrap runtime plumbing: 9 doctor tests for `cowork_node_has_features`/`_doctor_check_bwrap_node` (capability probe, WARN paths, readiness flag) and 5 launcher tests for `setup_cowork_bwrap_env` (flag gating, node resolution, precedence, capability warning). ([#781](https://github.com/aaddrick/claude-desktop-debian/pull/781))
 
 ### Fixed
 
