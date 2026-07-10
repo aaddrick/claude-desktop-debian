@@ -1,12 +1,18 @@
 # Cowork VM Daemon — Learnings
 
 > [!NOTE]
-> **Status (v3.0.0 rebase, 2026-07): superseded on KVM hosts.** The
-> official client runs Cowork in a KVM microVM via its own `coworkd`;
-> the bwrap daemon described here is parked unwired under
-> [`scripts/cowork-fallback/`](../../scripts/cowork-fallback/) as
-> reference for the 3.1 non-KVM fallback investigation (owner
-> @RayCharlizard). Kept as the diagnosis record for that arc.
+> **Status (2026-07): default on KVM hosts; the bwrap daemon is an
+> opt-in fallback again.** The official client runs Cowork in a KVM
+> microVM via its own `coworkd`. For hosts that can't do KVM/vhost-vsock
+> (ChromeOS Crostini, [#772](https://github.com/aaddrick/claude-desktop-debian/issues/772)),
+> the bwrap daemon under [`scripts/cowork-fallback/`](../../scripts/cowork-fallback/)
+> is wired back in as the `patch_cowork_bwrap` asar patch, dormant
+> unless the user sets `COWORK_VM_BACKEND=bwrap`. The daemon now speaks
+> the official helper's socket protocol
+> ([`scripts/cowork-fallback/PROTOCOL.md`](../../scripts/cowork-fallback/PROTOCOL.md))
+> rather than the 2.x Windows-pipe protocol. Sections below describe the
+> 2.x lifecycle mechanics that still apply to the daemon internals;
+> the client-side wiring is now the patch, not the old Patch 6.
 
 ## Architecture Overview
 

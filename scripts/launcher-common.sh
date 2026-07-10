@@ -17,13 +17,19 @@ setup_logging() {
 # Log a message to the log file
 # Usage: log_message "message"
 #
+# Joins all arguments with spaces ("$*"), so a wrapped call site that
+# passes continuation fragments as separate words logs the full
+# message, not just the first fragment. No-ops before setup_logging —
+# the --doctor path loads the launcher config without a log file.
+#
 # LOG-1: never persist OAuth authorization codes. A relaunch through the
 # login redirect carries claude://login/...?code=<secret> in argv, which
 # reaches both the "Arguments:" and "Executing:" lines. Strip the query
 # string of any claude://login token before writing, keeping the path for
 # context. Guarded so the common case pays no subprocess.
 log_message() {
-	local msg="$1"
+	[[ -n ${log_file:-} ]] || return 0
+	local msg="$*"
 	if [[ "$msg" == *claude://login* ]]; then
 		msg=$(printf '%s' "$msg" \
 			| sed -E 's#(claude://login[^ ?]*)\?[^ ]*#\1?<redacted>#g')
@@ -735,7 +741,63 @@ run_electron_and_cleanup() {
 }
 
 # Set common environment variables
+# Load persistent launcher env from a per-user config file. The
+# generated .desktop Exec line can't carry per-user environment, so a
+# GUI launch has no way to set e.g. COWORK_VM_BACKEND=bwrap (#772). This
+# file fills that gap: KEY=value lines, honored only for a fixed
+# allowlist of launcher variables, and only when the variable is not
+# already set — an explicit terminal env or `Exec=env VAR=... ` still
+# wins. Values are read literally; the file is never executed as shell.
+#
+#   ${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment
+#
+# Callable before setup_logging: log_message no-ops without $log_file,
+# which is what lets run_doctor load the config without a log.
+load_launcher_config() {
+	local cfg
+	cfg="${XDG_CONFIG_HOME:-$HOME/.config}/claude-desktop-debian/environment"
+	[[ -r $cfg ]] || return 0
+
+	# Built with += — a \-continuation inside single quotes embeds a
+	# literal backslash+newline, which silently breaks the
+	# space-delimited match for the key that follows it.
+	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE'
+	allowlist+=' CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU'
+	allowlist+=' COWORK_VM_BACKEND COWORK_NODE_PATH '
+	local line key val
+	while IFS= read -r line || [[ -n $line ]]; do
+		# Skip blanks and comments.
+		[[ -z ${line//[[:space:]]/} || ${line#"${line%%[![:space:]]*}"} == '#'* ]] \
+			&& continue
+		[[ $line == *=* ]] || continue
+		key="${line%%=*}"
+		key="${key//[[:space:]]/}"
+		val="${line#*=}"
+		# Trim surrounding whitespace ("KEY = value" is a config file,
+		# not shell — an untrimmed value would export " 1" and fail the
+		# consuming comparison while the log still reports it as set).
+		val="${val#"${val%%[![:space:]]*}"}"
+		val="${val%"${val##*[![:space:]]}"}"
+		# Allowlist only — anything else in the file is ignored.
+		[[ $allowlist == *" $key "* ]] || {
+			log_message "Config: ignoring unrecognized key '$key' in $cfg"
+			continue
+		}
+		# Environment wins: never override an already-set variable.
+		[[ -n ${!key:-} ]] && continue
+		# Strip one layer of surrounding quotes, if present.
+		val="${val#[\"\']}"
+		val="${val%[\"\']}"
+		export "$key=$val"
+		log_message "Config: $key=$val (from $cfg)"
+	done < "$cfg"
+}
+
 setup_electron_env() {
+	# Persistent per-user launcher env (GUI launches can't set env via
+	# the .desktop Exec line) — load before anything reads these vars.
+	load_launcher_config
+
 	# The official Linux build ships packaged, so ELECTRON_FORCE_IS_PACKAGED
 	# is dropped (forcing it would shadow upstream's own isPackaged logic),
 	# and the official build owns its window frame, so the
@@ -750,6 +812,60 @@ setup_electron_env() {
 		export GTK_IM_MODULE="$CLAUDE_GTK_IM_MODULE"
 		log_message \
 			"GTK_IM_MODULE override: $prev -> $GTK_IM_MODULE (via CLAUDE_GTK_IM_MODULE)"
+	fi
+
+	setup_cowork_bwrap_env
+}
+
+# Opt-in Cowork bubblewrap backend (COWORK_VM_BACKEND=bwrap) for hosts
+# without KVM/vhost-vsock (ChromeOS Crostini, #772). The asar patch
+# (patch_cowork_bwrap) swaps the native Cowork helper for the Node
+# daemon shipped at resources/cowork-vm-service.js — but the official
+# Electron binary ships with the RunAsNode fuse OFF, so it can't run the
+# daemon itself. Resolve a system node here and hand its path to the
+# patched spawn via COWORK_NODE_PATH. Only touches the environment when
+# the user actually opts in; unflagged launches are untouched.
+setup_cowork_bwrap_env() {
+	[[ ${COWORK_VM_BACKEND:-} == 'bwrap' ]] || return 0
+
+	# Respect an explicit override; otherwise probe PATH for node then
+	# nodejs (Debian/Ubuntu ship the interpreter as `nodejs`).
+	if [[ -z ${COWORK_NODE_PATH:-} ]]; then
+		local node_bin
+		node_bin=$(command -v node 2>/dev/null) \
+			|| node_bin=$(command -v nodejs 2>/dev/null) || node_bin=''
+		if [[ -n $node_bin ]]; then
+			export COWORK_NODE_PATH="$node_bin"
+		fi
+	fi
+
+	if [[ -z ${COWORK_NODE_PATH:-} ]]; then
+		log_message \
+			'Cowork backend: bwrap requested but no system node/nodejs' \
+			'found on PATH — the fallback daemon cannot start. Install' \
+			'Node.js (>= 18.15, e.g. sudo apt install nodejs) or set' \
+			'COWORK_NODE_PATH.'
+		return 0
+	fi
+
+	# Warn when the node lacks the daemon's required capability. The
+	# daemon needs fs.statfsSync (added in Node 18.15 / 16.19), so probe
+	# the call directly rather than compare a major — 18.0-18.14 has
+	# major 18 but not the call. The daemon self-guards on the same
+	# capability; this surfaces it in the launcher log where the user
+	# looks first. Kept in lock-step with cowork_node_has_features
+	# (doctor) and nodeHasRequiredFeatures (daemon).
+	# cowork_node_has_features is defined in doctor.sh, which this file
+	# sources; both it and the daemon check the same capability.
+	if cowork_node_has_features "$COWORK_NODE_PATH"; then
+		log_message \
+			"Cowork backend: bwrap (daemon node: $COWORK_NODE_PATH)"
+	else
+		log_message \
+			"Cowork backend: bwrap node $COWORK_NODE_PATH lacks" \
+			'fs.statfsSync (needs Node >= 18.15) — the daemon will' \
+			'refuse to start. Install a newer Node.js or set' \
+			'COWORK_NODE_PATH.'
 	fi
 }
 

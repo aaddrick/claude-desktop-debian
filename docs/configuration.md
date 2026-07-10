@@ -72,9 +72,9 @@ The doctor reports which mode is in effect (`Password store: upstream os_crypt a
 
 `CLAUDE_GTK_IM_MODULE` is propagated to `GTK_IM_MODULE` for Electron at startup, so a different GTK input module (e.g. `xim`) can be persisted without wrapping every launch. See [troubleshooting.md](troubleshooting.md#keyboard-input-doesnt-work-ibus--gtk-input-method) for symptoms and trade-offs.
 
-## Cowork (KVM-only)
+## Cowork
 
-The official Linux client runs Cowork as a helper daemon driving QEMU/KVM — there is no bubblewrap or host-direct backend. The full stack the client needs on the host:
+By default the official Linux client runs Cowork as a helper daemon driving QEMU/KVM. For hosts that can't do KVM (see the [bubblewrap fallback](#bubblewrap-fallback-cowork_vm_backendbwrap) below), an opt-in flag routes Cowork through a lighter sandbox instead. The full stack the default KVM path needs on the host:
 
 | Component | Requirement | Doctor check |
 |-----------|-------------|--------------|
@@ -86,7 +86,35 @@ The official Linux client runs Cowork as a helper daemon driving QEMU/KVM — th
 
 Run `claude-desktop-unofficial --doctor` — the Cowork Mode section reports each component with a distro-specific install hint and a one-line readiness summary. A missing stack never fails the doctor; the app works fine without Cowork.
 
-The 2.x bubblewrap fallback is **not shipped**. The code is parked under `scripts/cowork-fallback/` for a 3.1 investigation; nothing there is executed, installed, or patched into any artifact. Setting `COWORK_VM_BACKEND=bwrap` does exactly one thing today: it makes `--doctor` run the legacy bwrap diagnostics for that parked path. Any other value is a 2.x knob the official client ignores.
+### Bubblewrap fallback (COWORK_VM_BACKEND=bwrap)
+
+Some hosts can never satisfy the KVM stack no matter what's installed. The clearest case is **ChromeOS Crostini**: its Termina kernel blocks `vhost_vsock` at the namespace level, so `/dev/vhost-vsock` is absent with no flag or `modprobe` to bring it back ([#772](https://github.com/aaddrick/claude-desktop-debian/issues/772)). On those hosts the KVM Cowork backend is a dead end.
+
+Setting `COWORK_VM_BACKEND=bwrap` opts into a bubblewrap-sandboxed backend that runs Claude Code directly on the host inside a namespace sandbox, with no VM:
+
+```bash
+COWORK_VM_BACKEND=bwrap claude-desktop-unofficial
+```
+
+To make it persistent — including for launches from the desktop/app menu, which can't carry a per-command environment — put the flag in the launcher config file instead:
+
+```bash
+# ~/.config/claude-desktop-debian/environment
+COWORK_VM_BACKEND=bwrap
+```
+
+The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell. `--doctor` reads it too, so diagnostics always match what a launch would see.
+
+How it works: an asar patch (`patch_cowork_bwrap`) short-circuits the KVM support gate and swaps the native VM helper for a bundled Node daemon (`resources/cowork-vm-service.js`) that speaks the same socket protocol as the official helper but backs it with `bwrap` instead of QEMU. Every branch of the patch is gated on this exact flag, so on an unflagged launch every branch evaluates false and the official KVM path runs unchanged — nothing changes for the KVM majority.
+
+Requirements when flagged:
+
+| Component | Requirement | Doctor check |
+|-----------|-------------|--------------|
+| Node.js | A system `node` (or `nodejs`) on `PATH` providing `fs.statfsSync` (Node >= 18.15 / 16.19) — the bundled Electron binary ships with the RunAsNode fuse off and can't run the daemon itself. Override with `COWORK_NODE_PATH`. | `_doctor_check_bwrap_node` |
+| bubblewrap | `bwrap` installed, with unprivileged user namespaces allowed (Ubuntu 24.04+ blocks them via AppArmor — see [troubleshooting.md](troubleshooting.md)) | `_doctor_check_bwrap_fallback` |
+
+Run `claude-desktop-unofficial --doctor` with the flag set to see the bwrap-path diagnostics. Isolation is namespace-level, not a VM — weaker than the KVM default, which is the trade for running where KVM can't. Any `COWORK_VM_BACKEND` value other than `bwrap` is a 2.x knob the official client ignores.
 
 ## Removed in v3.0.0
 
@@ -98,7 +126,7 @@ The v3.0.0 rebase deleted the patches that read these variables. The doctor's le
 | `CLAUDE_MENU_BAR` | Native app setting; the official build keeps the menu bar on by default (the build's MB-1 tripwire watches for an upstream flip). |
 | `CLAUDE_TITLEBAR_STYLE` | Nothing — the official build owns its window frame; the topbar shim is gone. |
 | `CLAUDE_KEEP_AWAKE` | Nothing — the patch that read it was deleted with the Windows pipeline. |
-| `COWORK_VM_BACKEND` | Cowork is KVM-only. `bwrap` only switches `--doctor` to the parked-fallback diagnostics (see above); other values are ignored. |
+| `COWORK_VM_BACKEND` | Still read, but only for the value `bwrap`, which opts into the [bubblewrap fallback](#bubblewrap-fallback-cowork_vm_backendbwrap) above. Other values are ignored. |
 
 ## Application Logs
 

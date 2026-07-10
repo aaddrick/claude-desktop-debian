@@ -1091,9 +1091,76 @@ _check_cowork_stack() {
 	_check_cowork_virtiofsd "$distro" "$resources_dir"
 }
 
-# Legacy bwrap diagnostics, retained only for the parked 3.1 fallback
-# (scripts/cowork-fallback/). The official client has no bwrap backend;
-# this runs solely when the user sets COWORK_VM_BACKEND=bwrap.
+# True when the given node binary provides fs.statfsSync — the
+# capability the bwrap daemon requires (getSessionsDiskInfo reports real
+# session-disk space). It landed in Node 18.15 / 16.19, so probe the
+# call directly rather than compare a major: Node 18.0-18.14 has major
+# 18 but not the call. Shared by the launcher (setup_cowork_bwrap_env)
+# and this doctor check so both agree with the daemon's own startup
+# guard (nodeHasRequiredFeatures in cowork-vm-service.js).
+cowork_node_has_features() {
+	local node_bin="$1"
+	[[ -n $node_bin && -x $node_bin ]] || return 1
+	"$node_bin" -e \
+		'process.exit(typeof require("fs").statfsSync==="function"?0:1)' \
+		2>/dev/null
+}
+
+# The bwrap fallback daemon needs a system Node runtime and its own
+# shipped script: the official Electron binary has the RunAsNode fuse
+# off, so it can't run the daemon, and the launcher hands a resolved
+# node path to the patched spawn via COWORK_NODE_PATH. Verify both are
+# present and the node is new enough. Consistent with the "Cowork
+# absence is never a _fail" doctrine, gaps here _warn (and mark the
+# section incomplete) rather than flipping the doctor exit code — the
+# user opted into an optional feature. Runs only under
+# COWORK_VM_BACKEND=bwrap.
+#
+# Usage: _doctor_check_bwrap_node <resources_dir>
+_doctor_check_bwrap_node() {
+	local resources_dir="$1"
+
+	local node_bin="${COWORK_NODE_PATH:-}"
+	if [[ -z $node_bin ]]; then
+		node_bin=$(command -v node 2>/dev/null) \
+			|| node_bin=$(command -v nodejs 2>/dev/null) || node_bin=''
+	fi
+	if [[ -n $node_bin && -x $node_bin ]]; then
+		local nv
+		nv=$("$node_bin" --version 2>/dev/null) || nv=''
+		if cowork_node_has_features "$node_bin"; then
+			_pass "bwrap daemon runtime: node $nv ($node_bin)"
+		else
+			_warn "bwrap daemon runtime: node ${nv:-?} lacks" \
+				"fs.statfsSync (needs Node >= 18.15) ($node_bin)"
+			_info 'Fix: install a newer Node.js (>= 18.15), or point' \
+				'COWORK_NODE_PATH at one'
+			_cowork_incomplete=true
+		fi
+	else
+		_warn 'bwrap daemon runtime: no system node/nodejs on PATH'
+		_info 'Fix: install Node.js' \
+			'(>= 18.15, e.g. sudo apt install nodejs), or set' \
+			'COWORK_NODE_PATH to a node binary'
+		_cowork_incomplete=true
+	fi
+
+	# The daemon ships beside app.asar (process.resourcesPath).
+	if [[ -n $resources_dir ]]; then
+		if [[ -f "$resources_dir/cowork-vm-service.js" ]]; then
+			_pass 'bwrap daemon: cowork-vm-service.js present'
+		else
+			_warn 'bwrap daemon: cowork-vm-service.js missing from' \
+				"$resources_dir"
+			_info 'Fix: reinstall the claude-desktop-unofficial package' \
+				'(the bwrap patch may not have been active at build time)'
+			_cowork_incomplete=true
+		fi
+	fi
+}
+
+# Bwrap sandbox diagnostics for the opt-in COWORK_VM_BACKEND=bwrap path
+# (patch_cowork_bwrap). Runs solely when the user sets that flag.
 #
 # Usage: _doctor_check_bwrap_fallback <distro_id>
 _doctor_check_bwrap_fallback() {
@@ -1144,6 +1211,14 @@ run_doctor() {
 	# Flipped true by any Cowork stack check that isn't green, so the
 	# section summary can report readiness without recomputing.
 	local _cowork_incomplete=false
+
+	# Doctor must see the same environment a launch would: the per-user
+	# config file can carry the launcher vars this run inspects
+	# (COWORK_VM_BACKEND=bwrap is the exact #772 persona). Guarded — a
+	# standalone `source doctor.sh` (doctor.bats) has no
+	# launcher-common.sh in scope. log_message no-ops here because the
+	# doctor path never runs setup_logging.
+	declare -F load_launcher_config > /dev/null && load_launcher_config
 	_doctor_colors
 
 	# Distro ID is shared between the IM-module check (#550) and the
@@ -1436,17 +1511,19 @@ print(len(servers))
 		_info 'Cowork isolation: KVM (official)'
 	fi
 
-	# Bwrap fallback (parked 3.1 track). The official client has no bwrap
-	# backend, so these diagnostics run ONLY when the user opts into the
-	# parked scripts/cowork-fallback/ path with COWORK_VM_BACKEND=bwrap.
-	# Any other non-empty value is a 2.x knob the official client ignores.
+	# Bwrap fallback (opt-in, patch_cowork_bwrap). Set
+	# COWORK_VM_BACKEND=bwrap to route Cowork through the bundled Node
+	# daemon + bubblewrap instead of the KVM microVM — for hosts that
+	# can't do KVM/vhost-vsock (ChromeOS Crostini, #772). These
+	# diagnostics run only when that flag is set. Any other non-empty
+	# value is a 2.x knob the official client ignores.
 	local _cvb="${COWORK_VM_BACKEND:-}"
 	if [[ -n $_cvb ]]; then
 		if [[ ${_cvb,,} == 'bwrap' ]]; then
 			echo
-			_info 'COWORK_VM_BACKEND=bwrap: the official client has no' \
-				'bwrap backend; running the legacy bwrap diagnostics'
-			_info 'for the parked 3.1 fallback (scripts/cowork-fallback/).'
+			_info 'COWORK_VM_BACKEND=bwrap: Cowork routes through the' \
+				'bubblewrap fallback daemon (opt-in).'
+			_doctor_check_bwrap_node "$_resources_dir"
 			_doctor_check_bwrap_fallback "$_distro_id"
 		else
 			_info "COWORK_VM_BACKEND=$_cvb: not read by the official" \
@@ -1458,26 +1535,27 @@ print(len(servers))
 	# blocks cowork session init with ENAMETOOLONG — see #590.
 	_doctor_check_filename_limit
 
-	# -- Orphaned cowork-vm-service daemon (2.x leftover) --
-	# cowork-vm-service.js was OUR 2.x VM daemon; the official client
-	# does not ship it. On a host upgraded from 2.x a crashed daemon can
-	# still be orphaned — holding LevelDB locks / a stale socket — so we
-	# keep reaping it here. Live-UI detection matches
-	# cleanup_orphaned_cowork_daemon: _claude_desktop_ui_is_alive in
-	# launcher-common.sh fingerprints the --class=$WM_CLASS flag (since
-	# #700 the launchers no longer pass app.asar in argv), excluding
-	# Chromium helpers (--type=...), cowork helpers, our own launcher
-	# bash, and stopped/zombie processes.
+	# -- Orphaned cowork-vm-service daemon --
+	# cowork-vm-service.js is the bwrap fallback daemon (opt-in
+	# COWORK_VM_BACKEND=bwrap, patch_cowork_bwrap); it was also OUR 2.x
+	# VM daemon. Either way, a daemon whose parent UI is gone is
+	# orphaned — holding a stale socket — so we reap it. When the UI is
+	# alive the daemon is healthy (expected on the flagged path). Live-UI
+	# detection matches cleanup_orphaned_cowork_daemon:
+	# _claude_desktop_ui_is_alive in launcher-common.sh fingerprints the
+	# --class=$WM_CLASS flag (since #700 the launchers no longer pass
+	# app.asar in argv), excluding Chromium helpers (--type=...), cowork
+	# helpers, our own launcher bash, and stopped/zombie processes.
 	local _cowork_pids
 	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) || true
 	if [[ -n $_cowork_pids ]]; then
 		if ! _claude_desktop_ui_is_alive; then
-			_warn "Cowork daemon (2.x leftover): orphaned" \
+			_warn "Cowork bwrap daemon: orphaned" \
 				"(PIDs: $_cowork_pids)"
 			_info 'Fix: Restart Claude Desktop' \
 				'(daemon will be cleaned up automatically)'
 		else
-			_pass 'Cowork daemon (2.x leftover): running (parent alive)'
+			_pass 'Cowork bwrap daemon: running (parent alive)'
 		fi
 	fi
 

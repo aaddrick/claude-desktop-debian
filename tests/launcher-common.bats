@@ -1057,3 +1057,111 @@ _autostart_exec() {
 	grep -q 'Healed autostart Exec' "$log_file"
 	grep -q 'AUTO-1' "$log_file"
 }
+
+# =============================================================================
+# log_message
+# =============================================================================
+
+@test "log_message: joins multiple arguments into one line" {
+	setup_logging
+	log_message 'Cowork backend: bwrap requested' 'but no node found'
+	grep -q 'Cowork backend: bwrap requested but no node found' "$log_file"
+}
+
+@test "log_message: no-ops before setup_logging" {
+	run log_message 'orphan message'
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+# =============================================================================
+# load_launcher_config
+# =============================================================================
+
+_write_launcher_cfg() {
+	mkdir -p "$XDG_CONFIG_HOME/claude-desktop-debian"
+	printf '%s\n' "$@" \
+		> "$XDG_CONFIG_HOME/claude-desktop-debian/environment"
+}
+
+@test "load_launcher_config: every allowlisted key round-trips" {
+	# Locks the full allowlist: a \-continuation inside the
+	# single-quoted list once silently dropped CLAUDE_GTK_IM_MODULE.
+	unset CLAUDE_DISABLE_GPU COWORK_NODE_PATH
+	_write_launcher_cfg \
+		'CLAUDE_USE_WAYLAND=1' \
+		'CLAUDE_PASSWORD_STORE=gnome-libsecret' \
+		'CLAUDE_GTK_IM_MODULE=xim' \
+		'CLAUDE_DISABLE_GPU=1' \
+		'COWORK_VM_BACKEND=bwrap' \
+		'COWORK_NODE_PATH=/usr/bin/node'
+	load_launcher_config
+	[[ $CLAUDE_USE_WAYLAND == '1' ]]
+	[[ $CLAUDE_PASSWORD_STORE == 'gnome-libsecret' ]]
+	[[ $CLAUDE_GTK_IM_MODULE == 'xim' ]]
+	[[ $CLAUDE_DISABLE_GPU == '1' ]]
+	[[ $COWORK_VM_BACKEND == 'bwrap' ]]
+	[[ $COWORK_NODE_PATH == '/usr/bin/node' ]]
+}
+
+@test "load_launcher_config: non-allowlisted key is never exported" {
+	unset LD_PRELOAD
+	_write_launcher_cfg 'LD_PRELOAD=/tmp/evil.so'
+	load_launcher_config
+	[[ -z ${LD_PRELOAD:-} ]]
+}
+
+@test "load_launcher_config: environment wins over the config file" {
+	_write_launcher_cfg 'COWORK_VM_BACKEND=bwrap'
+	export COWORK_VM_BACKEND='kvm'
+	load_launcher_config
+	[[ $COWORK_VM_BACKEND == 'kvm' ]]
+}
+
+@test "load_launcher_config: strips one layer of surrounding quotes" {
+	_write_launcher_cfg "CLAUDE_PASSWORD_STORE='gnome-libsecret'"
+	load_launcher_config
+	[[ $CLAUDE_PASSWORD_STORE == 'gnome-libsecret' ]]
+}
+
+@test "load_launcher_config: trims whitespace around key and value" {
+	unset CLAUDE_DISABLE_GPU
+	_write_launcher_cfg 'CLAUDE_DISABLE_GPU = 1'
+	load_launcher_config
+	[[ $CLAUDE_DISABLE_GPU == '1' ]]
+}
+
+@test "load_launcher_config: skips comments and blank lines" {
+	_write_launcher_cfg '# a comment' '' '   ' 'COWORK_VM_BACKEND=bwrap'
+	load_launcher_config
+	[[ $COWORK_VM_BACKEND == 'bwrap' ]]
+}
+
+@test "load_launcher_config: missing file is a silent no-op" {
+	run load_launcher_config
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "load_launcher_config: file is never executed as shell" {
+	_write_launcher_cfg "COWORK_VM_BACKEND=\$(touch $TEST_TMP/pwned)"
+	load_launcher_config
+	[[ ! -e "$TEST_TMP/pwned" ]]
+	[[ $COWORK_VM_BACKEND == *'touch'* ]]
+}
+
+@test "run_doctor: reads the launcher config file (config-only bwrap flag)" {
+	# The #772 persona: COWORK_VM_BACKEND=bwrap lives ONLY in the config
+	# file (GUI launches can't carry env). Doctor must see the same
+	# environment a launch would and run the bwrap diagnostics.
+	_write_launcher_cfg 'COWORK_VM_BACKEND=bwrap'
+	# Fail-fast curl stub: the drift check is best-effort and must not
+	# slow or flake the suite on a networkless runner.
+	mkdir -p "$TEST_TMP/bin"
+	printf '#!/bin/sh\nexit 1\n' > "$TEST_TMP/bin/curl"
+	chmod +x "$TEST_TMP/bin/curl"
+	export PATH="$TEST_TMP/bin:$PATH"
+	run run_doctor ''
+	[[ $output == *'COWORK_VM_BACKEND=bwrap'* ]]
+	[[ $output == *'bwrap daemon runtime'* ]]
+}
