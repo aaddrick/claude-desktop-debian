@@ -1013,7 +1013,6 @@ _stub_vfsd() {
 @test "_check_cowork_virtiofsd: client-probed path passes" {
 	_stub_vfsd "$TEST_TMP/usr/libexec/virtiofsd"
 	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/usr/libexec/virtiofsd"
-	_cowork_incomplete=false
 	run _check_cowork_virtiofsd debian ''
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'client-probed path'* ]]
@@ -1023,7 +1022,6 @@ _stub_vfsd() {
 	_stub_vfsd "$TEST_TMP/resources/virtiofsd"
 	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
 	export _COWORK_VFSD_PATHS="$TEST_TMP/nonexistent"
-	_cowork_incomplete=false
 	run _check_cowork_virtiofsd debian "$TEST_TMP/resources"
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'bundled copy'* ]]
@@ -1033,7 +1031,6 @@ _stub_vfsd() {
 	_stub_vfsd "$TEST_TMP/usr/lib/virtiofsd"
 	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
 	export _COWORK_VFSD_PATHS="$TEST_TMP/usr/lib/virtiofsd"
-	_cowork_incomplete=false
 	run _check_cowork_virtiofsd arch ''
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'the client only'* ]]
@@ -1043,7 +1040,6 @@ _stub_vfsd() {
 @test "_check_cowork_virtiofsd: not found anywhere warns with package hint" {
 	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
 	export _COWORK_VFSD_PATHS="$TEST_TMP/nonexistent"
-	_cowork_incomplete=false
 	run _check_cowork_virtiofsd arch ''
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'virtiofsd: not found'* ]]
@@ -1055,7 +1051,62 @@ _stub_vfsd() {
 	printf 'x' > "$TEST_TMP/usr/libexec/virtiofsd"
 	chmod 444 "$TEST_TMP/usr/libexec/virtiofsd"
 	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/usr/libexec/virtiofsd"
-	_cowork_incomplete=false
 	run _check_cowork_virtiofsd debian ''
 	[[ $output == *'[PASS]'* ]]
+}
+
+@test "_check_cowork_virtiofsd: client-probed path preferred over bundled copy" {
+	_stub_vfsd "$TEST_TMP/usr/bin/virtiofsd"
+	_stub_vfsd "$TEST_TMP/resources/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/usr/bin/virtiofsd"
+	run _check_cowork_virtiofsd debian "$TEST_TMP/resources"
+	[[ $output == *'client-probed path'* ]]
+	[[ $output != *'bundled copy'* ]]
+}
+
+@test "_check_cowork_virtiofsd: bundled copy without exec bit does not pass (X_OK, like the client)" {
+	# The client resolves the bundled copy with X_OK; a mode-stripped
+	# resources/virtiofsd must fall through to WARN, not PASS.
+	mkdir -p "$TEST_TMP/resources"
+	printf 'x' > "$TEST_TMP/resources/virtiofsd"
+	chmod 644 "$TEST_TMP/resources/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
+	export _COWORK_VFSD_PATHS="$TEST_TMP/nonexistent"
+	run _check_cowork_virtiofsd debian "$TEST_TMP/resources"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'virtiofsd: not found'* ]]
+}
+
+# The _cowork_incomplete flag feeds run_doctor's Cowork readiness
+# summary. These tests call the helper DIRECTLY — `run` executes in a
+# subshell, so a flag mutation there is invisible to the test shell
+# and can never be asserted (output goes to a file to keep bats logs
+# clean).
+
+@test "_check_cowork_virtiofsd: PASS leaves _cowork_incomplete false" {
+	_stub_vfsd "$TEST_TMP/usr/libexec/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/usr/libexec/virtiofsd"
+	_cowork_incomplete=false
+	_check_cowork_virtiofsd debian '' > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == false ]]
+	grep -q 'client-probed path' "$TEST_TMP/out"
+}
+
+@test "_check_cowork_virtiofsd: non-probed-path WARN flips _cowork_incomplete" {
+	_stub_vfsd "$TEST_TMP/usr/lib/virtiofsd"
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
+	export _COWORK_VFSD_PATHS="$TEST_TMP/usr/lib/virtiofsd"
+	_cowork_incomplete=false
+	_check_cowork_virtiofsd arch '' > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == true ]]
+	grep -q 'the client only' "$TEST_TMP/out"
+}
+
+@test "_check_cowork_virtiofsd: not-found WARN flips _cowork_incomplete" {
+	export _COWORK_VFSD_CLIENT_PATHS="$TEST_TMP/nonexistent"
+	export _COWORK_VFSD_PATHS="$TEST_TMP/nonexistent"
+	_cowork_incomplete=false
+	_check_cowork_virtiofsd arch '' > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == true ]]
+	grep -q 'virtiofsd: not found' "$TEST_TMP/out"
 }
