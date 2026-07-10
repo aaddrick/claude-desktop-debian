@@ -17,13 +17,19 @@ setup_logging() {
 # Log a message to the log file
 # Usage: log_message "message"
 #
+# Joins all arguments with spaces ("$*"), so a wrapped call site that
+# passes continuation fragments as separate words logs the full
+# message, not just the first fragment. No-ops before setup_logging —
+# the --doctor path loads the launcher config without a log file.
+#
 # LOG-1: never persist OAuth authorization codes. A relaunch through the
 # login redirect carries claude://login/...?code=<secret> in argv, which
 # reaches both the "Arguments:" and "Executing:" lines. Strip the query
 # string of any claude://login token before writing, keeping the path for
 # context. Guarded so the common case pays no subprocess.
 log_message() {
-	local msg="$1"
+	[[ -n ${log_file:-} ]] || return 0
+	local msg="$*"
 	if [[ "$msg" == *claude://login* ]]; then
 		msg=$(printf '%s' "$msg" \
 			| sed -E 's#(claude://login[^ ?]*)\?[^ ]*#\1?<redacted>#g')
@@ -745,14 +751,19 @@ run_electron_and_cleanup() {
 #
 #   ${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment
 #
-# setup_logging() must have run first (log_message needs $log_file).
+# Callable before setup_logging: log_message no-ops without $log_file,
+# which is what lets run_doctor load the config without a log.
 load_launcher_config() {
 	local cfg
 	cfg="${XDG_CONFIG_HOME:-$HOME/.config}/claude-desktop-debian/environment"
 	[[ -r $cfg ]] || return 0
 
-	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE \
-CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU COWORK_VM_BACKEND COWORK_NODE_PATH '
+	# Built with += — a \-continuation inside single quotes embeds a
+	# literal backslash+newline, which silently breaks the
+	# space-delimited match for the key that follows it.
+	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE'
+	allowlist+=' CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU'
+	allowlist+=' COWORK_VM_BACKEND COWORK_NODE_PATH '
 	local line key val
 	while IFS= read -r line || [[ -n $line ]]; do
 		# Skip blanks and comments.
@@ -762,6 +773,11 @@ CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU COWORK_VM_BACKEND COWORK_NODE_PATH '
 		key="${line%%=*}"
 		key="${key//[[:space:]]/}"
 		val="${line#*=}"
+		# Trim surrounding whitespace ("KEY = value" is a config file,
+		# not shell — an untrimmed value would export " 1" and fail the
+		# consuming comparison while the log still reports it as set).
+		val="${val#"${val%%[![:space:]]*}"}"
+		val="${val%"${val##*[![:space:]]}"}"
 		# Allowlist only — anything else in the file is ignored.
 		[[ $allowlist == *" $key "* ]] || {
 			log_message "Config: ignoring unrecognized key '$key' in $cfg"
@@ -827,7 +843,7 @@ setup_cowork_bwrap_env() {
 		log_message \
 			'Cowork backend: bwrap requested but no system node/nodejs' \
 			'found on PATH — the fallback daemon cannot start. Install' \
-			'Node.js (>= v18, e.g. sudo apt install nodejs) or set' \
+			'Node.js (>= 18.15, e.g. sudo apt install nodejs) or set' \
 			'COWORK_NODE_PATH.'
 		return 0
 	fi

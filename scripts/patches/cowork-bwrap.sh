@@ -86,7 +86,12 @@ if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
         const replacement = 'function ' + m[1] + '(){if(' + GATE +
             ')return{status:"supported"};return process.platform,' +
             m[2] + '()}';
-        code = code.replace(evalRe, replacement);
+        // () => replacement: "$" is legal in minified identifiers, and
+        // a string replacement would reinterpret $1/$&-style sequences
+        // inside a captured name as substitution patterns — silently
+        // corrupting the bundle (the $ trap in
+        // docs/learnings/patching-minified-js.md, replacement side).
+        code = code.replace(evalRe, () => replacement);
         console.log('  A: gated yukonSilver evaluator -> supported ' +
             'when flagged (' + m[1] + '/' + m[2] + ')');
     } else {
@@ -136,7 +141,8 @@ if (code.includes('/*cowork-bwrap-spawn*/')) {
         const replacement = '/*cowork-bwrap-spawn*/' + spawnObj +
             '.spawn(' + cmd + ',' + args +
             ',{stdio:["pipe","pipe","pipe"]})';
-        code = code.replace(spawnRe, replacement);
+        // () => replacement: same $-in-identifier trap as Patch A.
+        code = code.replace(spawnRe, () => replacement);
         console.log('  B: swapped helper spawn -> node daemon when ' +
             'flagged (' + spawnObj + '/' + helperPath + '/' + sockFn + ')');
     } else {

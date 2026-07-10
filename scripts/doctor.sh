@@ -1210,6 +1210,14 @@ run_doctor() {
 	# Flipped true by any Cowork stack check that isn't green, so the
 	# section summary can report readiness without recomputing.
 	local _cowork_incomplete=false
+
+	# Doctor must see the same environment a launch would: the per-user
+	# config file can carry the launcher vars this run inspects
+	# (COWORK_VM_BACKEND=bwrap is the exact #772 persona). Guarded — a
+	# standalone `source doctor.sh` (doctor.bats) has no
+	# launcher-common.sh in scope. log_message no-ops here because the
+	# doctor path never runs setup_logging.
+	declare -F load_launcher_config > /dev/null && load_launcher_config
 	_doctor_colors
 
 	# Distro ID is shared between the IM-module check (#550) and the

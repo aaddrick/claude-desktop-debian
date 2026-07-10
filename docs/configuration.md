@@ -103,7 +103,7 @@ To make it persistent — including for launches from the desktop/app menu, whic
 COWORK_VM_BACKEND=bwrap
 ```
 
-The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell.
+The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell. `--doctor` reads it too, so diagnostics always match what a launch would see.
 
 How it works: an asar patch (`patch_cowork_bwrap`) short-circuits the KVM support gate and swaps the native VM helper for a bundled Node daemon (`resources/cowork-vm-service.js`) that speaks the same socket protocol as the official helper but backs it with `bwrap` instead of QEMU. Every branch of the patch is gated on this exact flag, so on an unflagged launch every branch evaluates false and the official KVM path runs unchanged — nothing changes for the KVM majority.
 
