@@ -77,7 +77,7 @@ StartupWMClass=$WM_CLASS
 EOF
 
 # --- Stage AppStream metainfo (installed via %files block below) ---
-metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+metainfo_name='io.github.aaddrick.claude-desktop-unofficial.metainfo.xml'
 cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
 
 # --- Create Launcher Script ---
