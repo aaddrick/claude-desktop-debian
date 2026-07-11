@@ -804,6 +804,58 @@ _hide_pkg_tools() {
 }
 
 # =============================================================================
+# _check_device_registry: ant-device-registry.json state (#780, path via
+# _DOCTOR_DEVICE_REGISTRY). Diagnostic-only — INFO or silent, never
+# WARN/FAIL, and must never flip _cowork_incomplete.
+# =============================================================================
+
+@test "_check_device_registry: absent file emits nothing" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/no-registry.json"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_device_registry: none-only value reports the Linux upstream gap as INFO" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct":"none:123"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'not registered'* ]]
+	[[ $output == *'#780'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_device_registry: pk1 value reports registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct":"pk1:deadbeef:rowpk"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered'* ]]
+}
+
+@test "_check_device_registry: never flips _cowork_incomplete" {
+	# Call the helper directly (not via `run`) — `run` executes in a
+	# subshell, so a flag mutation there is invisible to the test shell.
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct":"none:123"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	_cowork_incomplete=false
+	_check_device_registry "$TEST_TMP/config" > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == false ]]
+}
+
+@test "_check_device_registry: mixed pk1+none prefers registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct1":"none:123","acct2":"pk1:deadbeef:rowpk"}' \
+		> "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered'* ]]
+	[[ $output != *'not registered'* ]]
+}
+
+# =============================================================================
 # _check_official_drift: pool version comparison (curl stubbed)
 # =============================================================================
 

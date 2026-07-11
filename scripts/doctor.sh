@@ -1091,6 +1091,42 @@ _check_cowork_stack() {
 	_check_cowork_virtiofsd "$distro" "$resources_dir"
 }
 
+# Cowork cloud tasks need a hardware-backed device key so the
+# remote-tools bridge can attest this machine; @ant/claude-native has
+# no Linux implementation of that key yet (upstream gap, #780), so
+# ant-device-registry.json can only ever hold a "none:<ts>" row on
+# Linux — never the "pk1:<fp>:<rowpk>" row that marks a registered
+# device. This is diagnostic only: it explains why new cloud tasks
+# show "Not linked to a computer" and is INFO-only, since it is
+# upstream-owned and pre-existing HostLoop/on-device sessions are
+# unaffected. It must never _warn/_fail or flip _cowork_incomplete.
+#
+# The registry path is overridable via _DOCTOR_DEVICE_REGISTRY for
+# tests (same internal-hook convention as _DOCTOR_KVM_DEV). A missing
+# file means Cowork was never used on this profile, so stay silent.
+#
+# Usage: _check_device_registry <config_dir>
+_check_device_registry() {
+	local config_dir="$1"
+	local registry
+	registry="${_DOCTOR_DEVICE_REGISTRY:-$config_dir/ant-device-registry.json}"
+
+	[[ -f $registry ]] || return 0
+
+	if grep -q '"pk1:' "$registry" 2>/dev/null; then
+		_info 'Device registry: registered (hardware-backed key present)'
+		return 0
+	fi
+
+	if grep -q '"none:' "$registry" 2>/dev/null; then
+		_info 'Device registry: not registered — Linux has no' \
+			'hardware-backed device key yet (upstream gap, #780)'
+		_info '  New Cowork cloud tasks show "Not linked to a' \
+			'computer"; pre-existing HostLoop/on-device sessions' \
+			'are unaffected.'
+	fi
+}
+
 # True when the given node binary provides fs.statfsSync — the
 # capability the bwrap daemon requires (getSessionsDiskInfo reports real
 # session-disk space). It landed in Node 18.15 / 16.19, so probe the
@@ -1510,6 +1546,10 @@ print(len(servers))
 	else
 		_info 'Cowork isolation: KVM (official)'
 	fi
+
+	# Device registration (upstream gap, #780) — diagnostic only, never
+	# feeds _cowork_incomplete.
+	_check_device_registry "$config_dir"
 
 	# Bwrap fallback (opt-in, patch_cowork_bwrap). Set
 	# COWORK_VM_BACKEND=bwrap to route Cowork through the bundled Node
