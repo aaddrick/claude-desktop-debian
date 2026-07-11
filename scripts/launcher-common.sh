@@ -2,8 +2,9 @@
 # Common launcher functions for Claude Desktop (AppImage and deb)
 # This file is sourced by both launchers to avoid code duplication
 
-# WM_CLASS / StartupWMClass — must match upstream productName.
-# @@WM_CLASS@@ is replaced at build time; see build.sh.
+# WM_CLASS / StartupWMClass — must match the runtime window class, which
+# Electron derives from the ELF basename 'claude-desktop' (not productName,
+# not --class). @@WM_CLASS@@ is replaced at build time; see build.sh.
 readonly WM_CLASS='@@WM_CLASS@@'
 
 # Setup logging directory and file
@@ -212,8 +213,8 @@ build_electron_args() {
 	# AppImage always needs --no-sandbox due to FUSE constraints
 	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
-	# WM_CLASS must match the .desktop StartupWMClass and upstream's
-	# productName. Ref: #647, #652
+	# Passed for the .desktop StartupWMClass contract; Electron ignores it
+	# and derives WM_CLASS from the ELF basename. Ref: #647, #652
 	electron_args+=("--class=$WM_CLASS")
 
 	# Password store: the official build's os_crypt autodetection owns

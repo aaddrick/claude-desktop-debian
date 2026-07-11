@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The `.desktop` `StartupWMClass` no longer mismatches the runtime window class, so shells associate the running window with the launcher entry instead of showing a generic fallback icon (GNOME's gear/cog, KDE's placeholder). Electron derives `WM_CLASS` from the ELF basename `claude-desktop` and ignores the launcher's `--class`, but `WM_CLASS`/`StartupWMClass` was hardcoded to the display productName `Claude`. The mismatch shipped identically in the deb, RPM, AppImage, and `build.sh` generators (all interpolate the single `WM_CLASS` constant), so it affected every `StartupWMClass`-matching shell (GNOME window tracker, dash-to-dock/appindicators, KDE task manager) on every distro, not one. `WM_CLASS` is now `claude-desktop`; the productName tripwire in `app-asar.sh` is decoupled from it and compares against a literal. ([#PRNUM](https://github.com/aaddrick/claude-desktop-debian/pull/PRNUM))
+
 ## [v3.1.0] — 2026-07-10
 
 ### Added

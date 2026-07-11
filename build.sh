@@ -36,7 +36,12 @@ official_deb_recommends=''
 # claude-desktop package; the ELF inside the install tree keeps the
 # upstream basename 'claude-desktop'.
 readonly PACKAGE_NAME='claude-desktop-unofficial'
-readonly WM_CLASS='Claude'
+# WM_CLASS is the .desktop StartupWMClass match key. Electron derives the
+# runtime window class from the ELF basename 'claude-desktop' (it ignores
+# --class and productName), so this MUST be that basename — not the
+# display productName 'Claude'. Tripwire for productName lives in
+# scripts/patches/app-asar.sh.
+readonly WM_CLASS='claude-desktop'
 export WM_CLASS
 readonly MAINTAINER='Claude Desktop Linux Maintainers'
 readonly DESCRIPTION='Claude Desktop for Linux'

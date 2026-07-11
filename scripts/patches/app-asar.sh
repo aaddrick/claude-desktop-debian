@@ -112,17 +112,19 @@ patch_app_asar() {
 		exit 1
 	fi
 
-	# Fail fast if upstream changed productName — a mismatch silently
-	# breaks StartupWMClass in every .desktop file we ship.
-	local product_name
+	# Tripwire only: upstream display productName. This is NOT the window
+	# class — the runtime WM_CLASS is the ELF basename 'claude-desktop'
+	# (see build.sh), which is what StartupWMClass matches. Kept to catch
+	# an upstream rebrand/rename.
+	local product_name expected_product='Claude'
 	product_name=$(_asar_package_json_field productName \
 		"$resources_dir/app.asar")
-	if [[ $product_name != "$WM_CLASS" ]]; then
-		echo "Error: upstream productName '$product_name' != WM_CLASS" \
-			"'$WM_CLASS' — update WM_CLASS in build.sh" >&2
+	if [[ $product_name != "$expected_product" ]]; then
+		echo "Error: upstream productName '$product_name' !=" \
+			"expected '$expected_product' — verify branding/packaging" >&2
 		exit 1
 	fi
-	echo "productName '$product_name' matches WM_CLASS"
+	echo "productName '$product_name' matches expected '$expected_product'"
 
 	# Runs against the pristine bytes, before any patch touches them.
 	_check_upstream_tripwires "$resources_dir/app.asar"
