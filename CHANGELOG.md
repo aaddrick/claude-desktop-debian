@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The launcher no longer hangs at startup on a large `launcher.log`. The pre-launch GPU-recovery check (`_previous_launch_hit_gpu_fatal`) accumulated each log section into an awk string, which is O(n²) in the size of the largest section — one GPU-crash-looping session could grow a single section to megabytes and make the check take minutes, blocking Electron from ever starting. The check is now a single-pass, constant-memory scan that tracks only the previous section's crash-signature flags, and `setup_logging` now rotates `launcher.log` when it exceeds 5 MB (keeping 2 old copies under `~/.cache/claude-desktop-debian/`) so it can't grow without bound across sessions. Retires the unbounded-growth half of [#582](https://github.com/aaddrick/claude-desktop-debian/issues/582) (the journald-flood half stays open pending a 3.x retest). ([#747](https://github.com/aaddrick/claude-desktop-debian/issues/747))
+
 ## [v3.1.0] — 2026-07-10
 
 ### Added
