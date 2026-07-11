@@ -95,6 +95,69 @@ teardown() {
 }
 
 # =============================================================================
+# rotate_log_file / setup_logging rotation (#747)
+# =============================================================================
+
+@test "rotation: log under cap is left untouched" {
+	setup_logging
+	printf 'small log content\n' > "$log_file"
+
+	rotate_log_file
+
+	[[ -f $log_file ]]
+	[[ $(cat "$log_file") == 'small log content' ]]
+	[[ ! -f "$log_file.1" ]]
+}
+
+@test "rotation: log over cap moves to .1 and clears live file" {
+	setup_logging
+	printf 'LIVE' > "$log_file"
+	truncate -s 6M "$log_file"
+
+	rotate_log_file
+
+	[[ ! -f $log_file ]]
+	[[ -f "$log_file.1" ]]
+	[[ $(head -c 4 "$log_file.1") == 'LIVE' ]]
+}
+
+@test "rotation: keeps at most 2 old copies, drops oldest" {
+	setup_logging
+	printf 'OLD1' > "$log_file.1"
+	printf 'OLD2' > "$log_file.2"
+	printf 'LIVE' > "$log_file"
+	truncate -s 6M "$log_file"
+
+	rotate_log_file
+
+	[[ $(head -c 4 "$log_file.1") == 'LIVE' ]]
+	[[ $(head -c 4 "$log_file.2") == 'OLD1' ]]
+	[[ ! -f "$log_file.3" ]]
+}
+
+@test "rotation: missing log file is a no-op returning 0" {
+	setup_logging
+	rm -f "$log_file"
+
+	run rotate_log_file
+
+	[[ $status -eq 0 ]]
+	[[ ! -f "$log_file.1" ]]
+}
+
+@test "setup_logging: still returns 0 after rotating an over-cap file" {
+	log_dir="$XDG_CACHE_HOME/claude-desktop-debian"
+	mkdir -p "$log_dir"
+	log_file="$log_dir/launcher.log"
+	truncate -s 6M "$log_file"
+
+	run setup_logging
+
+	[[ $status -eq 0 ]]
+	[[ -f "$log_file.1" ]]
+}
+
+# =============================================================================
 # log_message
 # =============================================================================
 
