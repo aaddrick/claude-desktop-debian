@@ -30,6 +30,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
   so the path can no longer collide with any other
   `claude-desktop`-named package.
   ([#769](https://github.com/aaddrick/claude-desktop-debian/issues/769))
+- Corrected the parked Cowork bwrap AppArmor workaround in
+  `docs/troubleshooting.md` to state its true scope. The recipe attaches
+  `flags=(unconfined)` to the shared `/usr/bin/bwrap`, granting `userns` to
+  every bwrap consumer on the host (Flatpak, Steam, user scripts); the
+  section now warns about that blast radius, explains why a
+  documentation-only per-application profile is not possible here (unlike
+  opam/Apptainer, the namespace-creating binary is the shared `bwrap`, and
+  the shipped Electron-binary profile does not cover a separate `bwrap`
+  child), scopes the impact to opt-in `COWORK_VM_BACKEND=bwrap` launches on
+  Ubuntu 24.04+, and points at the tracked scoped fix.
+  ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542))
 
 ## [v3.1.0] — 2026-07-10
 
