@@ -12,7 +12,7 @@
 #
 # Sourced by: build.sh
 # Sourced globals:
-#   app_staging_dir, asar_exec, work_dir, project_root, WM_CLASS
+#   app_staging_dir, asar_exec, work_dir, project_root
 # Modifies globals: (none)
 #===============================================================================
 
