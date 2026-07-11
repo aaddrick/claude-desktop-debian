@@ -519,6 +519,45 @@ To fix manually (credit: [MrEdwards007](https://github.com/MrEdwards007)):
 
 A scripted solution is also available at the bottom of [this comment](https://github.com/aaddrick/claude-desktop-debian/issues/156#issuecomment-2682547498).
 
+### trying to overwrite '/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml', which is also in package claude-desktop ([#769](https://github.com/aaddrick/claude-desktop-debian/issues/769))
+
+`apt install` / `dpkg -i` fails with that `trying to overwrite`
+message, or `dnf install` / `rpm -i` fails with `file
+/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml
+... conflicts between attempted installs`.
+
+The other package is a **pre-rename build of this project itself** —
+never Anthropic's official `claude-desktop` package, which ships no
+AppStream metainfo file at all and can never own that path. Before
+this fix, releases at Claude ≥ `1.16000` (for example
+`v2.0.22+claude1.18286.0`) hardcoded the installed metainfo filename
+to the frozen AppStream ID instead of deriving it from the package
+name, so it did not follow the `claude-desktop` →
+`claude-desktop-unofficial` rename and stayed byte-shared between the
+old and new package names.
+
+A version at or above `1.16000` does **not** prove the conflicting
+`claude-desktop` package is Anthropic's official build in this
+specific case — that version-number heuristic does not apply here.
+Instead, check which package actually owns the metainfo file:
+
+```bash
+dpkg -L claude-desktop | grep metainfo   # rpm -ql claude-desktop on Fedora
+```
+
+If that lists
+`.../io.github.aaddrick.claude-desktop-debian.metainfo.xml`, the
+installed `claude-desktop` is this project's own pre-rename build and
+is safe to remove:
+
+```bash
+sudo apt remove claude-desktop   # sudo dnf remove claude-desktop
+```
+
+Then install `claude-desktop-unofficial` as usual. Releases built
+after this fix ships no longer share this path with either package,
+so the conflict cannot recur.
+
 ## Uninstallation
 
 ### For APT repository installations (Debian/Ubuntu)
