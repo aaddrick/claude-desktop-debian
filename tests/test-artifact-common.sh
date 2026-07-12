@@ -151,7 +151,9 @@ validate_app_contents() {
 			desktop_name=$(grep -oP '"desktopName": "\K[^"]+' \
 				"$extract_dir/app/package.json")
 			wm_class="${desktop_name%.desktop}"
-			if [[ -z $desktop_name || $desktop_name == "$wm_class" ]]; then
+			# Mirror _derive_wm_class's guard: the glob rejects both an
+			# empty value and one without a trailing .desktop suffix.
+			if [[ $desktop_name != *.desktop ]]; then
 				fail "asar desktopName '$desktop_name' is missing or has no .desktop suffix"
 			elif grep -qx "StartupWMClass=$wm_class" "$desktop_file"; then
 				pass "StartupWMClass matches asar desktopName ($wm_class)"

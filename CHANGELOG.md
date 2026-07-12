@@ -12,6 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 - Report [CDL-ANT-0010](docs/reports/CDL-ANT-0010_code-split-chunk-census/CDL-ANT-0010-A_Code_Split_Chunk_Census.pdf) *Inside the Code Split: A Chunk Census of Claude Desktop 1.19367.0* — names what each of the 44 satellite chunks introduced by upstream's main-process code split is scoped to (the agent-session platform, enterprise sign-in, built-in MCP servers, the Claude Desktop Buddy BLE bridge, and the one satellite the patch suite touches), with the structured census data and require-graph manifest alongside.
 
+### Fixed
+
+- The `.desktop` `StartupWMClass` now matches the runtime window class, so GNOME and KDE associate the running window with the launcher entry instead of showing a second taskbar entry with a generic icon. Chromium derives the X11 `WM_CLASS` / Wayland `app_id` from the asar `package.json` `desktopName` (minus its `.desktop` suffix) — not from `productName`, the launcher's `--class` flag, or the ELF basename — and upstream renamed that field across 1.18286.0 → 1.19367.0 (`claude-desktop` → `com.anthropic.Claude`), so the value is now derived from the staged `app.asar` at build time in all package formats rather than hardcoded, with the build failing loudly if the field disappears and the artifact tests asserting the invariant end-to-end. Verified live on GNOME and KDE against 1.19367.0. ([#779](https://github.com/aaddrick/claude-desktop-debian/issues/779), [#799](https://github.com/aaddrick/claude-desktop-debian/pull/799))
+
 ## [v3.2.1] — 2026-07-12
 
 ### Added
