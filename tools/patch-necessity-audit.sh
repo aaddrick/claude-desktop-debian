@@ -83,12 +83,28 @@ $asar_exec extract "$asar_path" "$contents_dir" || {
 	exit 1
 }
 
-index_js="$contents_dir/.vite/build/index.js"
-main_view_js="$contents_dir/.vite/build/mainView.js"
+build_dir="$contents_dir/.vite/build"
+index_js="$build_dir/index.js"
+main_view_js="$build_dir/mainView.js"
 
 if [[ ! -f $index_js ]]; then
 	echo "index.js not found in extracted asar" >&2
 	exit 1
+fi
+
+# Since upstream 1.19367.0 the main process is code-split: index.js is a
+# stub that require()s a content-hashed main chunk. Follow it to the real
+# code so the anchor counts below don't all read zero off the stub (the
+# same resolution _resolve_main_js does in scripts/patches/app-asar.sh).
+# Older single-file bundles have no such require and keep index.js.
+main_chunk=$(grep -oP 'require\("\./\Kindex\.chunk-[^"]+\.js(?="\))' \
+	"$index_js")
+if [[ -n $main_chunk ]]; then
+	if [[ ! -f "$build_dir/$main_chunk" ]]; then
+		echo "index.js requires $main_chunk but it is missing" >&2
+		exit 1
+	fi
+	index_js="$build_dir/$main_chunk"
 fi
 
 #-------------------------------------------------------------------------------
