@@ -748,10 +748,18 @@ _doctor_check_pkg_version() {
 	# Our deb is claude-desktop-unofficial since the Phase 3 rename;
 	# plain claude-desktop is Anthropic's official package on dpkg
 	# hosts and is not ours to report here.
+	# Gate on install status, not just version: dpkg-query still
+	# prints a version for a removed-but-not-purged package (rc /
+	# config-files state), so trusting the version alone PASSes for
+	# software no longer installed — the #711 false-PASS.
 	if command -v dpkg-query &>/dev/null; then
-		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop-unofficial 2>/dev/null) || pkg_version=''
-		if [[ -n $pkg_version ]]; then
+		local dpkg_status
+		dpkg_status=$(dpkg-query -W \
+			-f='${db:Status-Status} ${Version}' \
+			claude-desktop-unofficial 2>/dev/null) \
+			|| dpkg_status=''
+		if [[ $dpkg_status == 'installed '* ]]; then
+			pkg_version="${dpkg_status#installed }"
 			_installed_pkg_version="$pkg_version"
 			_pass "Installed version: $pkg_version"
 			return 0
@@ -866,6 +874,16 @@ _check_name_collision() {
 	fi
 
 	# (b) Is a package named claude-desktop installed, and whose is it?
+	# Gate on install status first: dpkg-query still answers
+	# ${Maintainer}/${Version} for a removed-but-not-purged record
+	# (config-files / rc state), which the transitional claude-desktop
+	# dummy makes common post-rename — classifying that as an install
+	# would warn/info about software no longer present (#711 family).
+	local dpkg_status
+	dpkg_status=$(dpkg-query -W -f='${db:Status-Status}' \
+		claude-desktop 2>/dev/null) || dpkg_status=''
+	[[ $dpkg_status == 'installed' ]] || return 0
+
 	local maintainer version
 	maintainer=$(dpkg-query -W -f='${Maintainer}' claude-desktop \
 		2>/dev/null) || maintainer=''
@@ -1089,6 +1107,42 @@ _check_cowork_stack() {
 
 	# virtiofsd — client-probed paths + bundled copy only.
 	_check_cowork_virtiofsd "$distro" "$resources_dir"
+}
+
+# Cowork cloud tasks need a hardware-backed device key so the
+# remote-tools bridge can attest this machine; @ant/claude-native has
+# no Linux implementation of that key yet (upstream gap, #780), so
+# ant-device-registry.json can only ever hold a "none:<ts>" row on
+# Linux — never the "pk1:<fp>:<rowpk>" row that marks a registered
+# device. This is diagnostic only: it explains why new cloud tasks
+# show "Not linked to a computer" and is INFO-only, since it is
+# upstream-owned and pre-existing HostLoop/on-device sessions are
+# unaffected. It must never _warn/_fail or flip _cowork_incomplete.
+#
+# The registry path is overridable via _DOCTOR_DEVICE_REGISTRY for
+# tests (same internal-hook convention as _DOCTOR_KVM_DEV). A missing
+# file means Cowork was never used on this profile, so stay silent.
+#
+# Usage: _check_device_registry <config_dir>
+_check_device_registry() {
+	local config_dir="$1"
+	local registry
+	registry="${_DOCTOR_DEVICE_REGISTRY:-$config_dir/ant-device-registry.json}"
+
+	[[ -f $registry ]] || return 0
+
+	if grep -q '"pk1:' "$registry" 2>/dev/null; then
+		_info 'Device registry: registered (hardware-backed key present)'
+		return 0
+	fi
+
+	if grep -q '"none:' "$registry" 2>/dev/null; then
+		_info 'Device registry: not registered — Linux has no' \
+			'hardware-backed device key yet (upstream gap, #780)'
+		_info '  New Cowork cloud tasks show "Not linked to a' \
+			'computer"; pre-existing HostLoop/on-device sessions' \
+			'are unaffected.'
+	fi
 }
 
 # True when the given node binary provides fs.statfsSync — the
@@ -1520,6 +1574,10 @@ print(len(servers))
 	else
 		_info 'Cowork isolation: KVM (official)'
 	fi
+
+	# Device registration (upstream gap, #780) — diagnostic only, never
+	# feeds _cowork_incomplete.
+	_check_device_registry "$config_dir"
 
 	# Bwrap fallback (opt-in, patch_cowork_bwrap). Set
 	# COWORK_VM_BACKEND=bwrap to route Cowork through the bundled Node

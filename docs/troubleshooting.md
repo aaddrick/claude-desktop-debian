@@ -333,14 +333,19 @@ Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` fil
 
 ### Cowork on Ubuntu 24.04+: bwrap fallback probe fails (parked diagnostics only)
 
-This applies **only** to the parked bubblewrap fallback diagnostics
-(`COWORK_VM_BACKEND=bwrap` with the unshipped `scripts/cowork-fallback/`
-path). The shipped Cowork backend is KVM and is not affected by the
-user-namespace restriction. Ubuntu 24.04+ sets
-`apparmor_restrict_unprivileged_userns=1`, which blocks the user namespaces
-bwrap needs, so the doctor's `bubblewrap: sandbox probe failed` warning is
-expected there. If you are experimenting with the parked fallback, grant
-`userns` to bwrap with a hand-made profile:
+This applies **only** to the opt-in bubblewrap fallback
+(`COWORK_VM_BACKEND=bwrap`, `scripts/cowork-fallback/`). The default Cowork
+backend is KVM and is not affected by the user-namespace restriction below.
+Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`, which blocks
+the user namespaces bwrap needs, so the doctor's `bubblewrap: sandbox probe
+failed` warning is expected there whether or not you ever set
+`COWORK_VM_BACKEND=bwrap`.
+
+**No package installs a bwrap AppArmor profile.** The only workaround we
+can document attaches the profile to the **shared** `/usr/bin/bwrap`
+binary, which grants `userns` to *every* program on the host that runs
+bwrap through that same path — Flatpak, Steam, your own scripts — not just
+Claude:
 
 ```bash
 sudo tee /etc/apparmor.d/bwrap <<'EOF'
@@ -357,12 +362,50 @@ EOF
 sudo apparmor_parser -r /etc/apparmor.d/bwrap
 ```
 
-The v3.0.0 packages no longer install a bwrap profile themselves; the deb's
-`postrm` still removes the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap`
-leftover (and a `claude-desktop-unofficial-bwrap` sibling, if one exists)
-on purge.
+Review that blast radius against your threat model before applying it.
 
-**Credit:** [@hfyeh](https://github.com/hfyeh), [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
+**Why this can't be scoped to Claude in documentation alone:** the
+per-application AppArmor pattern that opam and Apptainer use (see
+[opam's profile](https://gitlab.com/apparmor/apparmor/-/blob/master/profiles/apparmor.d/opam)
+and [Apptainer#2262](https://github.com/apptainer/apptainer/pull/2262))
+attaches `flags=(unconfined)` to a binary *they own* that creates the
+namespace — opam's `bwrap` copy, Apptainer's `starter-suid`. Claude has no
+equivalent owned binary in this path: the namespace is created by the
+system's shared `/usr/bin/bwrap`, and the scoped
+`/etc/apparmor.d/claude-desktop-unofficial` profile installed above covers
+only the Electron binary — a separate `bwrap` child process is not covered
+by it (see `scripts/packaging/deb.sh`). Narrowing this for real needs a
+Claude-owned wrapper binary at a stable path for a profile to attach to;
+that's tracked as follow-up work on
+[#542](https://github.com/aaddrick/claude-desktop-debian/issues/542) and is
+not implemented yet.
+
+This only affects launches that opt into `COWORK_VM_BACKEND=bwrap` on
+Ubuntu 24.04+ — the default KVM backend never spawns bwrap and is
+unaffected either way.
+
+**AppImage:** the mount path changes every run
+(`/tmp/.mount_claudeXXXXXX/…`), so an AppImage build can't ship or pin a
+profile keyed to its own binary path. That doesn't matter for bwrap
+specifically, though: `/usr/bin/bwrap` is a fixed host path regardless of
+where the AppImage mounts, so the same system-wide recipe and warning above
+apply unchanged to an AppImage-launched bwrap fallback. (The Electron
+launch-crash profile above never applies to AppImage builds — they always
+run with `--no-sandbox`, see
+["AppImage Sandbox Warning"](#appimage-sandbox-warning) — so there's
+nothing AppImage-specific to add there either.)
+
+No package ships a bwrap profile as of v3.0.0+; the deb's `postrm` still
+removes the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap` leftover (and a
+`claude-desktop-unofficial-bwrap` sibling, if one exists) on purge.
+
+**Credit:** [@hfyeh](https://github.com/hfyeh)
+([#351](https://github.com/aaddrick/claude-desktop-debian/issues/351)) for
+the original profile workaround;
+[@slovdahl](https://github.com/slovdahl) for flagging the system-wide
+over-scope and the opam/Apptainer precedent, in
+[PR #434](https://github.com/aaddrick/claude-desktop-debian/pull/434#issuecomment-4352273336)
+(tracked in [#542](https://github.com/aaddrick/claude-desktop-debian/issues/542)).
 
 ### Cowork: ENAMETOOLONG on encrypted home (eCryptfs)
 
@@ -518,6 +561,45 @@ To fix manually (credit: [MrEdwards007](https://github.com/MrEdwards007)):
 5. Log in again when prompted
 
 A scripted solution is also available at the bottom of [this comment](https://github.com/aaddrick/claude-desktop-debian/issues/156#issuecomment-2682547498).
+
+### trying to overwrite '/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml', which is also in package claude-desktop ([#769](https://github.com/aaddrick/claude-desktop-debian/issues/769))
+
+`apt install` / `dpkg -i` fails with that `trying to overwrite`
+message, or `dnf install` / `rpm -i` fails with `file
+/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml
+... conflicts between attempted installs`.
+
+The other package is a **pre-rename build of this project itself** —
+never Anthropic's official `claude-desktop` package, which ships no
+AppStream metainfo file at all and can never own that path. Before
+this fix, releases at Claude ≥ `1.16000` (for example
+`v2.0.22+claude1.18286.0`) hardcoded the installed metainfo filename
+to the frozen AppStream ID instead of deriving it from the package
+name, so it did not follow the `claude-desktop` →
+`claude-desktop-unofficial` rename and stayed byte-shared between the
+old and new package names.
+
+A version at or above `1.16000` does **not** prove the conflicting
+`claude-desktop` package is Anthropic's official build in this
+specific case — that version-number heuristic does not apply here.
+Instead, check which package actually owns the metainfo file:
+
+```bash
+dpkg -L claude-desktop | grep metainfo   # rpm -ql claude-desktop on Fedora
+```
+
+If that lists
+`.../io.github.aaddrick.claude-desktop-debian.metainfo.xml`, the
+installed `claude-desktop` is this project's own pre-rename build and
+is safe to remove:
+
+```bash
+sudo apt remove claude-desktop   # sudo dnf remove claude-desktop
+```
+
+Then install `claude-desktop-unofficial` as usual. Releases built
+after this fix ships no longer share this path with either package,
+so the conflict cannot recur.
 
 ## Uninstallation
 
