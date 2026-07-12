@@ -694,7 +694,8 @@ _hide_pkg_tools() {
 
 @test "_doctor_check_pkg_version: dpkg-only host reports dpkg version" {
 	_hide_pkg_tools rpm
-	dpkg-query() { printf '1.11847.5'; }
+	# -f='${db:Status-Status} ${Version}': status prefix first.
+	dpkg-query() { printf 'installed 1.11847.5'; }
 
 	run _doctor_check_pkg_version ''
 	[[ $status -eq 0 ]]
@@ -711,13 +712,27 @@ _hide_pkg_tools() {
 		printf 'file %s is not owned by any package\n' "$4"
 		return 1
 	}
-	dpkg-query() { printf '1.11847.5'; }
+	dpkg-query() { printf 'installed 1.11847.5'; }
 
 	run _doctor_check_pkg_version ''
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'Installed version: 1.11847.5'* ]]
 	[[ $output != *'not owned'* ]]
+}
+
+@test "_doctor_check_pkg_version: removed-but-not-purged dpkg record (rc state) warns, not PASS (#711 follow-up)" {
+	# apt remove without --purge leaves a config-files (rc) record;
+	# dpkg-query still answers a version for it. Must not PASS.
+	_hide_pkg_tools rpm
+	dpkg-query() { printf 'config-files 1.5354.0'; }
+
+	run _doctor_check_pkg_version ''
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'AppImage'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'1.5354.0'* ]]
 }
 
 @test "_doctor_check_pkg_version: neither manager owns the install — warn (AppImage/Nix)" {
@@ -985,14 +1000,22 @@ PKGS
 # (sources dir via _DOCTOR_APT_SOURCES_DIR; deb-family only)
 # =============================================================================
 
-# Stub dpkg-query answering the ${Maintainer} and ${Version} probes for
-# the package claude-desktop. $1 = maintainer, $2 = version; empty
-# values model "package not installed" (query fails).
+# Stub dpkg-query answering the ${db:Status-Status}, ${Maintainer} and
+# ${Version} probes for the package claude-desktop. $1 = maintainer,
+# $2 = version, $3 = install status (default 'installed'); empty
+# maintainer/version model "package not installed" (query fails), and
+# the status probe fails the same way so a not-installed package also
+# fails the caller's status gate.
 _stub_dpkg_query() {
 	_STUB_DPKG_MAINTAINER="$1"
 	_STUB_DPKG_VERSION="$2"
+	_STUB_DPKG_STATUS="${3:-installed}"
 	dpkg-query() {
 		case "$2" in
+			*Status*)
+				[[ -n $_STUB_DPKG_VERSION ]] || return 1
+				printf '%s' "$_STUB_DPKG_STATUS"
+				;;
 			*Maintainer*)
 				[[ -n $_STUB_DPKG_MAINTAINER ]] || return 1
 				printf '%s' "$_STUB_DPKG_MAINTAINER"
@@ -1094,6 +1117,39 @@ LIST
 	[[ $output == *'pre-rename'* ]]
 	[[ $output == *'1.11847.5'* ]]
 	[[ $output == *'sudo apt install claude-desktop-unofficial'* ]]
+}
+
+@test "_check_name_collision: removed-but-not-purged pre-rename record (config-files) stays silent (#711 follow-up)" {
+	# apt remove without --purge leaves a config-files (rc) record for
+	# a pre-rename claude-desktop; dpkg-query still answers Maintainer
+	# and Version for it. Must not warn about software no longer
+	# installed.
+	_stub_dpkg_query 'aaddrick <aaddrick@gmail.com>' '1.11847.5' \
+		'config-files'
+	_stub_dpkg_compare
+	export _DOCTOR_APT_SOURCES_DIR="$TEST_TMP/sources.list.d"
+	mkdir -p "$_DOCTOR_APT_SOURCES_DIR"
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'pre-rename'* ]]
+}
+
+@test "_check_name_collision: removed-but-not-purged transitional dummy (config-files, >=1.16000) with repo configured stays silent (#711 follow-up)" {
+	# The transitional claude-desktop 1.16000.0 dummy autoremoved to rc
+	# state post-migration: non-Anthropic maintainer + version
+	# >= 1.16000 + repo configured would otherwise fall through to the
+	# repo_found branch and report an install that is no longer there.
+	_stub_dpkg_query 'Claude Desktop Team <noreply@example.com>' \
+		'1.16000.0' 'config-files'
+	_stub_dpkg_compare
+	_write_official_apt_source
+	run _check_name_collision
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+	[[ $output != *'Anthropic'* ]]
+	[[ $output != *'[INFO]'* ]]
 }
 
 # =============================================================================
