@@ -24,6 +24,10 @@ setup() {
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
 	unset _DOCTOR_SECRET_BACKEND
+	unset _DOCTOR_USERNS_PATH
+	unset _DOCTOR_DEB_ELECTRON
+	unset _DOCTOR_AA_PROFILE
+	unset _DOCTOR_AA_LOADED
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -1039,7 +1043,11 @@ _userns_in_force() {
 
 @test "_doctor_check_userns_apparmor: not loaded, profile on disk — WARN + load hint" {
 	_userns_in_force
-	printf 'firefox (enforce)\n' > "$TEST_TMP/loaded"
+	# claude-desktop (unconfined) is the official package's profile —
+	# the co-install near-miss the ^claude-desktop-unofficial anchor
+	# exists to disambiguate. A loosened grep false-PASSes here.
+	printf 'firefox (enforce)\nclaude-desktop (unconfined)\n' \
+		> "$TEST_TMP/loaded"
 	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
 	: > "$TEST_TMP/profile"
 	_DOCTOR_AA_PROFILE="$TEST_TMP/profile"
@@ -1051,7 +1059,9 @@ _userns_in_force() {
 
 @test "_doctor_check_userns_apparmor: not loaded, profile absent — WARN + no-profile hint" {
 	_userns_in_force
-	printf 'firefox (enforce)\n' > "$TEST_TMP/loaded"
+	# Same co-install near-miss: official profile loaded, ours absent.
+	printf 'firefox (enforce)\nclaude-desktop (unconfined)\n' \
+		> "$TEST_TMP/loaded"
 	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
 	_DOCTOR_AA_PROFILE="$TEST_TMP/no-profile"
 	run _doctor_check_userns_apparmor
