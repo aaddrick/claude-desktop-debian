@@ -57,10 +57,15 @@ active_patches=(
 # uncompressed) so the check also runs in patch-zero mode, where the
 # archive is never extracted.
 #
-#   apt_channel_pending — the official updater early-returns on this
-#     marker while the APT channel is pending (decision D-001). If it
-#     disappears, upstream turned on self-updating, which fights the
-#     package manager — the 2.x autoUpdater-noop question is live again.
+#   managed_by_package_manager — the telemetry reason inside the
+#     Linux build's constant-folded updater early-return ("[updater]
+#     Linux: in-app updater off (updates via apt)"). Renamed by
+#     upstream from apt_channel_pending in the 1.18286.2 → 1.19367.0
+#     window when the APT channel went live: Linux updates are now
+#     permanently the package manager's job (decision D-001). If it
+#     disappears, upstream rewrote that gate and may have turned on
+#     self-updating, which fights the package manager — the 2.x
+#     autoUpdater-noop question is live again.
 #   menuBarEnabled:!0   — the settings default that keeps the menu bar
 #     on. If it disappears, upstream flipped the default the deleted
 #     menuBar patch used to enforce.
@@ -70,9 +75,10 @@ active_patches=(
 _check_upstream_tripwires() {
 	local asar_path="$1"
 
-	if ! LC_ALL=C grep -aq 'apt_channel_pending' "$asar_path"; then
-		echo 'Tripwire (AU-1): "apt_channel_pending" is gone from the' \
-			'official bundle — upstream may have enabled the' \
+	if ! LC_ALL=C grep -aq 'managed_by_package_manager' "$asar_path"
+	then
+		echo 'Tripwire (AU-1): "managed_by_package_manager" is gone' \
+			'from the official bundle — upstream may have enabled the' \
 			'autoupdater. Re-evaluate before shipping (see' \
 			'docs/decisions.md D-001).' >&2
 		exit 1
@@ -86,7 +92,7 @@ _check_upstream_tripwires() {
 		exit 1
 	fi
 
-	echo 'Upstream tripwires clear (autoupdater pending, menu bar on)'
+	echo 'Upstream tripwires clear (updater off on Linux, menu bar on)'
 }
 
 # Read one field out of the asar's package.json without a full extract.
