@@ -162,7 +162,7 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 ### Important Guidelines
 
-1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh`, `org-plugins.sh`, and `virtiofsd-probe.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Variable and function names are minified and **change between releases**; full anchor-craft lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
+1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh`, `org-plugins.sh`, `virtiofsd-probe.sh`, and `cowork-bwrap.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Since upstream 1.19367.0 the main process is **code-split**: `.vite/build/index.js` is a stub that `require()`s a content-hashed `index.chunk-<hash>.js` main chunk, so patches operate on `$main_js` (resolved by `_resolve_main_js` in `app-asar.sh`), not on `index.js` directly — one patch can even span chunks (see `cowork-bwrap.sh`'s warm chunk). Variable and function names are minified and **change between releases**; full anchor-craft and code-split lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
 
 2. **The beautified code in `build-reference/` has different spacing** than the actual minified code in the app. Patterns must handle both:
    - Minified: `oe.nativeTheme.on("updated",()=>{`
@@ -170,11 +170,11 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 3. **Use `-E` flag with sed** for extended regex support when patterns need grouping or alternation.
 
-4. **Extract variable names dynamically** rather than hardcoding them. Example (from `scripts/patches/quick-window.sh`):
+4. **Extract variable names dynamically** rather than hardcoding them. Example (from `scripts/patches/quick-window.sh`), where `$index_js` is `${main_js:-…/index.js}` — the resolved main chunk:
    ```bash
    # The minified Quick Entry window var, anchored on a stable literal
    quick_var=$(grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))' \
-       app.asar.contents/.vite/build/index.js)
+       "$index_js")
    ```
 
 5. **Handle optional whitespace** in regex patterns:
@@ -265,12 +265,16 @@ asar extract app.asar app-extracted
 The extracted JS files are minified. Use prettier to make them readable:
 
 ```bash
-# Beautify all JS files in the build directory
+# Beautify all JS files in the build directory. Since 1.19367.0 the main
+# process is code-split, so index.js is a tiny stub and the real main
+# code lives in index.chunk-<hash>.js — the glob covers every chunk.
 npx prettier --write "app-extracted/.vite/build/*.js"
 
-# Or beautify specific files
-npx prettier --write app-extracted/.vite/build/index.js
-npx prettier --write app-extracted/.vite/build/mainWindow.js
+# The main-process chunk is the biggest .vite/build/*.js (index.js just
+# require()s it). Resolve it from the stub if you want to beautify only it:
+main_chunk=$(grep -oP 'require\("\./\Kindex\.chunk-[^"]+\.js(?="\))' \
+    app-extracted/.vite/build/index.js)
+npx prettier --write "app-extracted/.vite/build/$main_chunk"
 ```
 
 ### Step 5: Clean Up (Optional)
@@ -288,9 +292,10 @@ build-reference/
 ├── app-extracted/
 │   ├── .vite/
 │   │   ├── build/
-│   │   │   ├── index.js          # Main process (beautified)
-│   │   │   ├── mainWindow.js     # Main window preload
-│   │   │   ├── mainView.js       # Main view preload
+│   │   │   ├── index.js                 # Main-process entry stub
+│   │   │   ├── index.chunk-<hash>.js     # Main process (code-split, 1.19367.0+)
+│   │   │   ├── mainWindow.js             # Main window preload
+│   │   │   ├── mainView.js               # Main view preload
 │   │   │   └── ...
 │   │   └── renderer/
 │   │       └── ...
@@ -420,8 +425,10 @@ mount | grep claude
 # co-located layout: ELF + chrome-sandbox + resources/ side by side)
 npx asar extract /tmp/.mount_claudeXXXXXX/usr/lib/claude-desktop/resources/app.asar /tmp/claude-inspect
 
-# Search for patterns in the extracted code
-grep -n "pattern" /tmp/claude-inspect/.vite/build/index.js
+# Search for patterns in the extracted code. Since 1.19367.0 the main
+# process is code-split, so grep across all chunks (index.js is a stub);
+# main-process anchors live in index.chunk-<hash>.js.
+grep -rn "pattern" /tmp/claude-inspect/.vite/build/
 ```
 
 ### Checking DBus/Tray Status
