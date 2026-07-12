@@ -23,13 +23,14 @@
 # list this tightly).
 #
 # Sourced by: build.sh
-# Sourced globals: (none — identifiers are captured from index.js)
+# Sourced globals: main_js (optional — the resolved main chunk; set by
+#   patch_app_asar. Falls back to .vite/build/index.js for older bundles.)
 # Modifies globals: (none)
 #===============================================================================
 
 patch_virtiofsd_probe() {
 	echo 'Patching virtiofsd resolution (bundled fallback un-gate)...'
-	local index_js='app.asar.contents/.vite/build/index.js'
+	local index_js="${main_js:-app.asar.contents/.vite/build/index.js}"
 
 	# Anchored on the probe-path array literal (path strings survive
 	# minification); the gate rewrite happens in a bounded window after
