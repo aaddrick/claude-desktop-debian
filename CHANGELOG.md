@@ -8,6 +8,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- `--doctor` now reports Cowork device-registration state: it flags when `ant-device-registry.json` is stuck at `none` because Linux has no hardware-backed device key yet (upstream), which is why new Cowork cloud tasks show "Not linked to a computer" ([#780](https://github.com/aaddrick/claude-desktop-debian/issues/780)).
+
+### Fixed
+
+- Builds against upstream 1.19367.0 no longer fail on the AU-1
+  tripwire. Upstream renamed the Linux updater's disable reason from
+  `apt_channel_pending` to `managed_by_package_manager` — the APT
+  channel went live and Linux updates are now permanently delegated to
+  the package manager. The updater gate itself is unchanged (verified
+  against the official bundle: the constant-folded early-return,
+  `platformUnsupported:!0`, and the Linux `checkForUpdates` IPC stub
+  that just opens the download page all survive), so decision D-001
+  (`docs/decisions.md`) is unaffected and the tripwire anchor now
+  tracks the renamed literal.
+- The launcher no longer hangs at startup on a large `launcher.log`. The pre-launch GPU-recovery check (`_previous_launch_hit_gpu_fatal`) accumulated each log section into an awk string, which is O(n²) in the size of the largest section — one GPU-crash-looping session could grow a single section to megabytes and make the check take minutes, blocking Electron from ever starting. The check is now a single-pass, constant-memory scan that tracks only the previous section's crash-signature flags, and `setup_logging` now rotates `launcher.log` when it exceeds 5 MB (keeping 2 old copies under `~/.cache/claude-desktop-debian/`) so it can't grow without bound across sessions. Retires the unbounded-growth half of [#582](https://github.com/aaddrick/claude-desktop-debian/issues/582) (the journald-flood half stays open pending a 3.x retest). ([#747](https://github.com/aaddrick/claude-desktop-debian/issues/747))
+- `claude-desktop-unofficial` deb/RPM installs no longer fail with a
+  file conflict on
+  `/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml`.
+  That path was hardcoded to the reverse-DNS AppStream ID, so unlike
+  every other installed file it did not follow the v3.0.0 package
+  rename and stayed byte-shared with this project's own pre-rename
+  `claude-desktop` builds at Claude ≥ 1.16000 (e.g.
+  `v2.0.22+claude1.18286.0`); the version-scoped `<< 1.16000` conflict
+  metadata deliberately does not sweep those (that bound protects
+  side-by-side coexistence with Anthropic's official package, which
+  ships no metainfo). The installed metainfo filename now follows the
+  rename to `io.github.aaddrick.claude-desktop-unofficial.metainfo.xml`,
+  so the path can no longer collide with any other
+  `claude-desktop`-named package.
+  ([#769](https://github.com/aaddrick/claude-desktop-debian/issues/769))
+- Corrected the parked Cowork bwrap AppArmor workaround in
+  `docs/troubleshooting.md` to state its true scope. The recipe attaches
+  `flags=(unconfined)` to the shared `/usr/bin/bwrap`, granting `userns` to
+  every bwrap consumer on the host (Flatpak, Steam, user scripts); the
+  section now warns about that blast radius, explains why a
+  documentation-only per-application profile is not possible here (unlike
+  opam/Apptainer, the namespace-creating binary is the shared `bwrap`, and
+  the shipped Electron-binary profile does not cover a separate `bwrap`
+  child), scopes the impact to opt-in `COWORK_VM_BACKEND=bwrap` launches on
+  Ubuntu 24.04+, and points at the tracked scoped fix.
+  ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542))
+- `claude-desktop-unofficial --doctor` no longer treats a removed-but-not-purged deb (dpkg `config-files`/rc state) as installed: the version-reporting branch (`claude-desktop-unofficial`) and the name-collision classifier (`claude-desktop`) both gate on `${db:Status-Status}` being `installed`, mirroring `_pkg_installed`. A leftover record from `apt remove` without `--purge` — made common by the transitional `claude-desktop` dummy being autoremoved to rc — now warns like an AppImage/Nix install (or stays silent) instead of a stale `[PASS]`/collision message. ([#713](https://github.com/aaddrick/claude-desktop-debian/pull/713), fixes [#711](https://github.com/aaddrick/claude-desktop-debian/issues/711))
+
 ## [v3.1.0] — 2026-07-10
 
 ### Added

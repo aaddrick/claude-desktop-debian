@@ -75,7 +75,20 @@ assert_executable '/usr/bin/claude-desktop-unofficial'
 assert_file_exists \
 	'/usr/share/applications/claude-desktop-unofficial.desktop'
 assert_file_exists \
-	'/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+	'/usr/share/metainfo/io.github.aaddrick.claude-desktop-unofficial.metainfo.xml'
+
+# Regression guard (#769): the metainfo basename must follow the
+# package rename so it can no longer collide with a pre-rename
+# claude-desktop build of this project (which still owns the
+# ...debian.metainfo.xml path). Anthropic's official package ships
+# no metainfo, so it is never a collision party.
+if dpkg-deb -c "$deb_file" \
+		| grep -q 'io\.github\.aaddrick\.claude-desktop-debian\.metainfo\.xml'; then
+	fail 'deb still ships pre-rename metainfo path (#769)'
+else
+	pass 'deb no longer ships pre-rename metainfo path (#769)'
+fi
+
 assert_dir_exists '/usr/lib/claude-desktop-unofficial'
 assert_file_exists '/usr/lib/claude-desktop-unofficial/launcher-common.sh'
 

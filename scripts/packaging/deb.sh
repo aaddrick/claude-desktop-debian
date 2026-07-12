@@ -84,7 +84,7 @@ echo 'Desktop entry created'
 
 # --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
 echo 'Installing AppStream metainfo...'
-metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+metainfo_name='io.github.aaddrick.claude-desktop-unofficial.metainfo.xml'
 install -Dm 644 "$script_dir/$metainfo_name" \
 	"$install_dir/share/metainfo/$metainfo_name" || exit 1
 echo 'AppStream metainfo installed'

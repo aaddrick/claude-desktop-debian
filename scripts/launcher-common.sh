@@ -6,12 +6,38 @@
 # @@WM_CLASS@@ is replaced at build time; see build.sh.
 readonly WM_CLASS='@@WM_CLASS@@'
 
+# Rotate launcher.log when it exceeds a size cap, keeping a couple of
+# old copies. Runs at the start of each launch, before the session
+# header is written, so _previous_launch_hit_gpu_fatal always scans a
+# bounded file and the log can't grow without bound across sessions
+# (#747). Every branch returns 0 -- rotation must never block launch.
+# $log_file must already be set (setup_logging runs before this).
+rotate_log_file() {
+	[[ -n ${log_file:-} && -f $log_file ]] || return 0
+
+	# 5 MiB aligns with doctor.sh's existing launcher.log size warning.
+	local max_bytes=$((5 * 1024 * 1024))
+	local keep=2 size i
+
+	size=$(stat -c '%s' "$log_file" 2>/dev/null) || return 0
+	[[ $size =~ ^[0-9]+$ ]] || return 0
+	((size > max_bytes)) || return 0
+
+	for (( i = keep - 1; i >= 1; i-- )); do
+		[[ -f "$log_file.$i" ]] && \
+			mv -f "$log_file.$i" "$log_file.$((i + 1))" 2>/dev/null
+	done
+	mv -f "$log_file" "$log_file.1" 2>/dev/null || return 0
+}
+
 # Setup logging directory and file
 # Sets: log_dir, log_file
 setup_logging() {
 	log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian"
 	mkdir -p "$log_dir" || return 1
 	log_file="$log_dir/launcher.log"
+	rotate_log_file
+	return 0
 }
 
 # Log a message to the log file
@@ -143,31 +169,59 @@ check_display() {
 # Section headers vary by package format: deb/rpm write "Launcher
 # Start", AppImage writes "AppImage Start", and Nix writes "Launcher
 # Start (NixOS)" (nix/claude-desktop.nix).
+#
+# Single-pass, constant-memory scan (#747): no section text is ever
+# accumulated. Three crash-signature booleans are tracked for the
+# section currently being read (cur_*); on each header line the
+# just-finished section's flags shift into prev_*, so at EOF prev_*
+# always holds the *penultimate* section's flags -- the same target
+# the old string-accumulating version selected via section-1. This
+# fixes the O(n^2) cost of growing an awk string per line: the cost
+# was dominated by the largest single section, not the number of
+# sections -- a GPU-crash-looping session can spew megabytes into one
+# section, and that giant section was re-scanned on every subsequent
+# launch, hanging the launcher before Electron ever started.
 _previous_launch_hit_gpu_fatal() {
 	[[ -f ${log_file:-} ]] || return 1
 
 	awk '
 		/^--- Claude Desktop (Launcher|AppImage) Start( \(NixOS\))? ---$/ {
 			section++
+			prev_failed = cur_failed
+			prev_notusable = cur_notusable
+			prev_prevfatal = cur_prevfatal
+			cur_failed = 0
+			cur_notusable = 0
+			cur_prevfatal = 0
 			next
 		}
 		{
-			sections[section] = sections[section] $0 "\n"
+			if (index($0,
+				"GPU process launch failed: error_code=")) {
+				cur_failed = 1
+			}
+			if (index($0,
+				"GPU process isn'\''t usable. Goodbye.")) {
+				cur_notusable = 1
+			}
+			if (index($0,
+				"Previous launch hit GPU process FATAL")) {
+				cur_prevfatal = 1
+			}
 		}
 		END {
-			target = section > 1 ? section - 1 : section
-			if (target < 1) {
+			if (section >= 2) {
+				t_failed = prev_failed
+				t_notusable = prev_notusable
+				t_prevfatal = prev_prevfatal
+			} else if (section == 1) {
+				t_failed = cur_failed
+				t_notusable = cur_notusable
+				t_prevfatal = cur_prevfatal
+			} else {
 				exit 1
 			}
-			text = sections[target]
-			if (index(text,
-				"GPU process launch failed: error_code=") &&
-				index(text,
-				"GPU process isn'\''t usable. Goodbye.")) {
-				exit 0
-			}
-			if (index(text,
-				"Previous launch hit GPU process FATAL")) {
+			if ((t_failed && t_notusable) || t_prevfatal) {
 				exit 0
 			}
 			exit 1

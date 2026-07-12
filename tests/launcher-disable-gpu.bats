@@ -211,3 +211,68 @@ LOG
 	run args_contain '--disable-gpu'
 	[[ "$status" -ne 0 ]]
 }
+
+# =============================================================================
+# Bounded scan on a large launcher.log (#747)
+# =============================================================================
+
+@test "disable-gpu: large single-section log scans without O(n^2) hang" {
+	# One ~12 MB section with no header markers at all. The O(n^2)
+	# string-accumulating awk took minutes-to-hours on input this size;
+	# the single-pass rewrite completes in well under the 5s ceiling.
+	{
+		echo '--- Claude Desktop Launcher Start ---'
+		awk 'BEGIN {
+			for (i = 0; i < 300000; i++)
+				print "chromium gpu spam " i
+		}'
+		echo '--- Claude Desktop Launcher Start ---'
+	} > "$log_file"
+
+	run timeout 5 bash -c \
+		"log_file='$log_file'; source '$LAUNCHER_COMMON'; \
+		_previous_launch_hit_gpu_fatal"
+
+	# 124 = timeout killed it (the O(n^2) hang); anything else means
+	# the scan returned in time.
+	[[ "$status" -ne 124 ]]
+}
+
+@test "disable-gpu: large penultimate section keeps sticky recovery marker" {
+	# The sticky marker is written near the TOP of a section by
+	# build_electron_args. A tail-bounded scan would drop it and
+	# silently re-enable GPU (crash/work/crash oscillation), so this
+	# locks in that the rewrite reads the whole section instead.
+	{
+		echo '--- Claude Desktop Launcher Start ---'
+		echo 'Previous launch hit GPU process FATAL - disabling GPU'
+		awk 'BEGIN {
+			for (i = 0; i < 150000; i++)
+				print "electron debug noise " i
+		}'
+		echo '--- Claude Desktop Launcher Start ---'
+	} > "$log_file"
+
+	build_electron_args deb
+
+	args_contain '--disable-gpu'
+	args_contain '--disable-software-rasterizer'
+}
+
+@test "disable-gpu: crash signature deep in a large penultimate section is still detected" {
+	{
+		echo '--- Claude Desktop Launcher Start ---'
+		awk 'BEGIN {
+			for (i = 0; i < 150000; i++)
+				print "electron debug noise " i
+		}'
+		echo 'GPU process launch failed: error_code=1002'
+		echo "GPU process isn't usable. Goodbye."
+		echo '--- Claude Desktop Launcher Start ---'
+	} > "$log_file"
+
+	build_electron_args deb
+
+	args_contain '--disable-gpu'
+	args_contain '--disable-software-rasterizer'
+}
