@@ -38,17 +38,32 @@
 # only wires all this up when the user sets COWORK_VM_BACKEND=bwrap.
 #
 # Sourced by: build.sh
-# Sourced globals: (none — identifiers are captured from index.js)
+# Sourced globals: main_js (optional — the resolved main chunk; set by
+#   patch_app_asar. A/B/C1 patch it; C2 patches the warm chunk, resolved
+#   here by its [warm] log literal. Both fall back to index.js on older
+#   single-file bundles.)
 # Modifies globals: (none)
 #===============================================================================
 
 patch_cowork_bwrap() {
 	echo 'Patching Cowork bwrap fallback (opt-in COWORK_VM_BACKEND=bwrap)...'
-	local index_js='app.asar.contents/.vite/build/index.js'
+	local index_js="${main_js:-app.asar.contents/.vite/build/index.js}"
 
-	if INDEX_JS="$index_js" node << 'COWORK_BWRAP_PATCH'
+	# A/B/C1 live in the main chunk; C2's warm-prefetch code can sit in a
+	# separate code-split chunk (1.19367.0+). Resolve the file carrying
+	# the warm anchor by its stable log literal; fall back to the main
+	# chunk for older single-file bundles.
+	local build_dir warm_js
+	build_dir=$(dirname "$index_js")
+	warm_js=$(grep -lF '[warm] Warm download disabled' \
+		"$build_dir"/*.js 2>/dev/null | head -1)
+	[[ -z $warm_js ]] && warm_js="$index_js"
+
+	if INDEX_JS="$index_js" WARM_JS="$warm_js" node << 'COWORK_BWRAP_PATCH'
 const fs = require('fs');
 const indexJs = process.env.INDEX_JS;
+const warmJs = process.env.WARM_JS || indexJs;
+const warmSameFile = warmJs === indexJs;
 let code = fs.readFileSync(indexJs, 'utf8');
 
 // The runtime gate shared by every injected branch. Unflagged launches
@@ -174,18 +189,23 @@ if (code.includes('/*cowork-bwrap-dl*/')) {
 }
 
 // Warm prefetch: async function Vdo(A,e,t){if(!e){..."[warm] Warm download
+// This function moved to its own code-split chunk in 1.19367.0, so C2
+// operates on warmCode (the warm chunk), which is the same string as
+// `code` only in the older single-file layout.
+let warmCode = warmSameFile ? code : fs.readFileSync(warmJs, 'utf8');
 const warmRe =
     /(async function\s+[\w$]+\([\w$]+,[\w$]+,[\w$]+\)\{)(if\(![\w$]+\)\{[\s\S]{0,120}?\[warm\] Warm download disabled)/;
-if (code.includes('/*cowork-bwrap-warm*/')) {
+if (warmCode.includes('/*cowork-bwrap-warm*/')) {
     console.log('  C2: warm download block already applied');
-} else if (warmRe.test(code)) {
-    code = code.replace(warmRe,
+} else if (warmRe.test(warmCode)) {
+    warmCode = warmCode.replace(warmRe,
         '$1/*cowork-bwrap-warm*/if(' + GATE + ')return;$2');
     console.log('  C2: blocked warm VM prefetch when flagged');
 } else {
     console.log('  C2: WARNING — warm download anchor not found; flagged ' +
         'runs may prefetch an unused VM image');
 }
+if (warmSameFile) code = warmCode;
 
 if (loadBearingFailed) {
     console.log('  One or more load-bearing anchors (A/B) missed — ' +
@@ -194,6 +214,7 @@ if (loadBearingFailed) {
 }
 
 fs.writeFileSync(indexJs, code);
+if (!warmSameFile) fs.writeFileSync(warmJs, warmCode);
 COWORK_BWRAP_PATCH
 	then
 		echo 'Cowork bwrap fallback patch applied'
