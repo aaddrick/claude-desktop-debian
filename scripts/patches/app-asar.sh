@@ -6,14 +6,15 @@
 # default verdict for any patch is delete, and when the array is empty
 # the official app.asar ships byte-identical (no extract, no repack).
 #
-# Each entry is a function sourced from scripts/patches/*.sh that
-# operates on app.asar.contents/.vite/build/index.js relative to CWD;
-# patch_app_asar runs them with CWD = $app_staging_dir/resources.
+# Each entry is a function sourced from scripts/patches/*.sh that edits
+# the main-process JS relative to CWD; patch_app_asar runs them with
+# CWD = $app_staging_dir/resources and sets $main_js (resolved by
+# _resolve_main_js — see below) as the file every patch operates on.
 #
 # Sourced by: build.sh
 # Sourced globals:
 #   app_staging_dir, asar_exec, work_dir, project_root, WM_CLASS
-# Modifies globals: (none)
+# Modifies globals: main_js
 #===============================================================================
 
 # Survivor candidates per docs/learnings/official-deb-rebase-verification.md:
@@ -109,6 +110,51 @@ _asar_package_json_field() {
 		"$meta_dir/package.json" "$field"
 }
 
+# Resolve the main-process JS file inside the extracted asar and echo
+# its path relative to the resources CWD. Pre-3.x bundles kept the whole
+# main process in .vite/build/index.js. Since upstream 1.19367.0 the
+# bundle is code-split: index.js is a ~700-byte stub that require()s the
+# real main chunk (index.chunk-<hash>.js — content-hashed, so the name
+# changes every release). Follow the stub's require to the chunk; fall
+# back to index.js for the pre-split layout. All active patches anchor on
+# literals that live in this one chunk; if a future release spreads them
+# across chunks, the patches need per-anchor resolution (this returns
+# non-zero on a multi-chunk split rather than mispatching silently).
+_resolve_main_js() {
+	local build_dir='app.asar.contents/.vite/build'
+	local stub="$build_dir/index.js"
+
+	if [[ ! -f $stub ]]; then
+		echo "No index.js under $build_dir — upstream layout changed?" >&2
+		return 1
+	fi
+
+	local -a chunks
+	mapfile -t chunks < <(
+		grep -oP 'require\("\./\Kindex\.chunk-[^"]+\.js(?="\))' "$stub"
+	)
+
+	if (( ${#chunks[@]} == 0 )); then
+		# Pre-split layout: index.js is the main process itself.
+		printf '%s\n' "$stub"
+		return 0
+	fi
+	if (( ${#chunks[@]} > 1 )); then
+		echo "index.js requires ${#chunks[@]} main chunks" \
+			"(${chunks[*]}) — upstream split the main bundle across" \
+			'files; patches need per-anchor resolution. Re-point' \
+			'scripts/patches/*.sh before shipping.' >&2
+		return 1
+	fi
+
+	local chunk="$build_dir/${chunks[0]}"
+	if [[ ! -f $chunk ]]; then
+		echo "index.js requires ${chunks[0]} but $chunk is missing" >&2
+		return 1
+	fi
+	printf '%s\n' "$chunk"
+}
+
 patch_app_asar() {
 	section_header 'Patch app.asar'
 
@@ -143,6 +189,10 @@ patch_app_asar() {
 	echo "Active asar patches: ${active_patches[*]}"
 	cd "$resources_dir" || exit 1
 	"$asar_exec" extract app.asar app.asar.contents || exit 1
+
+	# Resolve the code-split main chunk once; every patch reads $main_js.
+	main_js=$(_resolve_main_js) || exit 1
+	echo "Main-process JS: $main_js"
 
 	local patch_fn
 	for patch_fn in "${active_patches[@]}"; do

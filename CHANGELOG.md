@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.2.1] — 2026-07-12
+
 ### Added
 
 - `--doctor` now reports Cowork device-registration state: it flags when `ant-device-registry.json` is stuck at `none` because Linux has no hardware-backed device key yet (upstream), which is why new Cowork cloud tasks show "Not linked to a computer" ([#780](https://github.com/aaddrick/claude-desktop-debian/issues/780)).
@@ -17,6 +19,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- Builds against upstream 1.19367.0 apply all asar patches again after
+  upstream code-split the main-process bundle. `index.js` became a thin
+  entry stub that `require()`s a content-hashed main chunk
+  (`index.chunk-<hash>.js`), so every patch anchored on the hardcoded
+  `index.js` path missed — `patch_virtiofsd_probe` failed the build and
+  `patch_quick_window`/`patch_org_plugins_path` silently skipped. The
+  orchestrator now resolves the main chunk once (following the stub's
+  `require`, falling back to `index.js` for older single-file bundles)
+  and every patch operates on it. `patch_cowork_bwrap`'s warm-prefetch
+  block (C2) resolves the separate warm chunk by its `[warm]` log
+  literal, and `patch_quick_window`'s visibility anchor now tolerates
+  the `exports.mainWindow` property-access shape upstream switched to.
+  Verified end-to-end against the pinned 1.19367.0 bundle: all four
+  active patches land, `node --check` passes, and re-runs are
+  byte-identical.
 - Builds against upstream 1.19367.0 no longer fail on the AU-1
   tripwire. Upstream renamed the Linux updater's disable reason from
   `apt_channel_pending` to `managed_by_package_manager` — the APT

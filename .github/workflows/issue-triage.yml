@@ -343,7 +343,7 @@ jobs:
 
           The project repository is at $(pwd). Search the source code for relevant patterns.
           The beautified reference source (original app.asar) is at /tmp/ref-source/app-extracted/.
-          Key files: .vite/build/index.js (main process), .vite/build/mainWindow.js, .vite/build/mainView.js.
+          Key files: .vite/build/index.js (main-process entry stub; since 1.19367.0 it require()s the code-split main chunk), .vite/build/index.chunk-<hash>.js (main process — the real code), .vite/build/mainWindow.js, .vite/build/mainView.js.
 
           ## Project Documentation
           CONTEXT
