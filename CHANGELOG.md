@@ -14,6 +14,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- Builds against upstream 1.19367.0 no longer fail on the AU-1
+  tripwire. Upstream renamed the Linux updater's disable reason from
+  `apt_channel_pending` to `managed_by_package_manager` — the APT
+  channel went live and Linux updates are now permanently delegated to
+  the package manager. The updater gate itself is unchanged (verified
+  against the official bundle: the constant-folded early-return,
+  `platformUnsupported:!0`, and the Linux `checkForUpdates` IPC stub
+  that just opens the download page all survive), so decision D-001
+  (`docs/decisions.md`) is unaffected and the tripwire anchor now
+  tracks the renamed literal.
 - The launcher no longer hangs at startup on a large `launcher.log`. The pre-launch GPU-recovery check (`_previous_launch_hit_gpu_fatal`) accumulated each log section into an awk string, which is O(n²) in the size of the largest section — one GPU-crash-looping session could grow a single section to megabytes and make the check take minutes, blocking Electron from ever starting. The check is now a single-pass, constant-memory scan that tracks only the previous section's crash-signature flags, and `setup_logging` now rotates `launcher.log` when it exceeds 5 MB (keeping 2 old copies under `~/.cache/claude-desktop-debian/`) so it can't grow without bound across sessions. Retires the unbounded-growth half of [#582](https://github.com/aaddrick/claude-desktop-debian/issues/582) (the journald-flood half stays open pending a 3.x retest). ([#747](https://github.com/aaddrick/claude-desktop-debian/issues/747))
 - `claude-desktop-unofficial` deb/RPM installs no longer fail with a
   file conflict on
