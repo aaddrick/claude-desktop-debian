@@ -1199,14 +1199,19 @@ _stub_stat() {
 	[[ $output == *'permissions OK'* ]]
 }
 
-@test "_doctor_check_chrome_sandbox: wrong perms — FAIL" {
+@test "_doctor_check_chrome_sandbox: wrong perms — FAIL (real stat)" {
+	# Deliberately NO stat stub: a real 0644 file exercises the actual
+	# `stat -c '%a'/'%U'` invocation and its parse. The stub keys on
+	# \$2 == '%a', so it would keep passing if the real call's flags
+	# regressed (e.g. stat -c -> stat -f); real output can't.
 	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
 	mkdir -p "$TEST_TMP/app"
 	: > "$TEST_TMP/app/chrome-sandbox"
-	_stub_stat '0755' 'root'
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
 	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
 	[[ $output == *'[FAIL]'* ]]
-	[[ $output == *'perms=0755'* ]]
+	[[ $output == *'perms=644'* ]]
+	[[ $output == *"owner=$(id -un)"* ]]
 }
 
 @test "_doctor_check_chrome_sandbox: wrong owner — FAIL" {
@@ -1226,6 +1231,22 @@ _stub_stat() {
 	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'not found'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb path wins when both sandboxes exist (single report)" {
+	# Pins probe precedence and the loop's break: with both the deb path
+	# and an electron-adjacent sandbox present, the deb path is judged
+	# and exactly ONE result line prints. Deleting the break (double
+	# report) or reordering the probe array fails this.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
+	[[ $output != *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
 }
 
 @test "_doctor_check_chrome_sandbox: deb path used when no electron path given" {
