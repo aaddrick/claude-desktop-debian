@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.2.1] — 2026-07-12
+
 ### Added
 
 - `--doctor` now reports Cowork device-registration state: it flags when `ant-device-registry.json` is stuck at `none` because Linux has no hardware-backed device key yet (upstream), which is why new Cowork cloud tasks show "Not linked to a computer" ([#780](https://github.com/aaddrick/claude-desktop-debian/issues/780)).
