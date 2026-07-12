@@ -41,6 +41,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
   child), scopes the impact to opt-in `COWORK_VM_BACKEND=bwrap` launches on
   Ubuntu 24.04+, and points at the tracked scoped fix.
   ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542))
+- `claude-desktop-unofficial --doctor` no longer treats a removed-but-not-purged deb (dpkg `config-files`/rc state) as installed: the version-reporting branch (`claude-desktop-unofficial`) and the name-collision classifier (`claude-desktop`) both gate on `${db:Status-Status}` being `installed`, mirroring `_pkg_installed`. A leftover record from `apt remove` without `--purge` — made common by the transitional `claude-desktop` dummy being autoremoved to rc — now warns like an AppImage/Nix install (or stays silent) instead of a stale `[PASS]`/collision message. ([#713](https://github.com/aaddrick/claude-desktop-debian/pull/713), fixes [#711](https://github.com/aaddrick/claude-desktop-debian/issues/711))
 
 ## [v3.1.0] — 2026-07-10
 

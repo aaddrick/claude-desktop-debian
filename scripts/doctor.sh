@@ -748,10 +748,18 @@ _doctor_check_pkg_version() {
 	# Our deb is claude-desktop-unofficial since the Phase 3 rename;
 	# plain claude-desktop is Anthropic's official package on dpkg
 	# hosts and is not ours to report here.
+	# Gate on install status, not just version: dpkg-query still
+	# prints a version for a removed-but-not-purged package (rc /
+	# config-files state), so trusting the version alone PASSes for
+	# software no longer installed — the #711 false-PASS.
 	if command -v dpkg-query &>/dev/null; then
-		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop-unofficial 2>/dev/null) || pkg_version=''
-		if [[ -n $pkg_version ]]; then
+		local dpkg_status
+		dpkg_status=$(dpkg-query -W \
+			-f='${db:Status-Status} ${Version}' \
+			claude-desktop-unofficial 2>/dev/null) \
+			|| dpkg_status=''
+		if [[ $dpkg_status == 'installed '* ]]; then
+			pkg_version="${dpkg_status#installed }"
 			_installed_pkg_version="$pkg_version"
 			_pass "Installed version: $pkg_version"
 			return 0
@@ -866,6 +874,16 @@ _check_name_collision() {
 	fi
 
 	# (b) Is a package named claude-desktop installed, and whose is it?
+	# Gate on install status first: dpkg-query still answers
+	# ${Maintainer}/${Version} for a removed-but-not-purged record
+	# (config-files / rc state), which the transitional claude-desktop
+	# dummy makes common post-rename — classifying that as an install
+	# would warn/info about software no longer present (#711 family).
+	local dpkg_status
+	dpkg_status=$(dpkg-query -W -f='${db:Status-Status}' \
+		claude-desktop 2>/dev/null) || dpkg_status=''
+	[[ $dpkg_status == 'installed' ]] || return 0
+
 	local maintainer version
 	maintainer=$(dpkg-query -W -f='${Maintainer}' claude-desktop \
 		2>/dev/null) || maintainer=''
