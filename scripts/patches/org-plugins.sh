@@ -10,12 +10,13 @@
 # consistent with Claude Code's /etc/claude-code/ path.
 #
 # Sourced by: build.sh
-# Sourced globals: (none)
+# Sourced globals: main_js (optional — the resolved main chunk; set by
+#   patch_app_asar. Falls back to .vite/build/index.js for older bundles.)
 # Modifies globals: (none)
 #===============================================================================
 
 patch_org_plugins_path() {
-	local index_js='app.asar.contents/.vite/build/index.js'
+	local index_js="${main_js:-app.asar.contents/.vite/build/index.js}"
 
 	# Idempotency: skip if a Linux case already exists near the
 	# org-plugins path resolver (upstream may add one in the future).

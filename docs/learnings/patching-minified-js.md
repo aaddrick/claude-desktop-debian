@@ -226,6 +226,46 @@ When neither side is reliable, narrow the search region first.
 `cowork.sh:269-276` does this for the ENOENT check, scanning only a
 300-character window before the error string.
 
+## Code-split bundles: resolve the file, don't hardcode it
+
+For years the whole main process lived in one file,
+`.vite/build/index.js`, and every patch hardcoded that path. Upstream
+1.19367.0 code-split it: `index.js` became a ~700-byte entry stub that
+`require()`s a content-hashed main chunk (`index.chunk-<hash>.js`),
+which pulls in ~40 more `index.chunk-<hash>.js` files. The hash changes
+every release, so the name can't be hardcoded either. Every patch
+anchored on the literal `index.js` path silently missed — the
+build-fatal ones (`virtiofsd-probe`, `cowork-bwrap` A/B) failed the
+build, the WARN-only ones (`quick-window`, `org-plugins`) skipped and
+shipped an under-patched asar.
+
+Two rules fall out, both now in `app-asar.sh` / the patch suite:
+
+- **Resolve the target file, don't name it.** `_resolve_main_js`
+  (`app-asar.sh`) follows the stub's `require("./index.chunk-<hash>.js")`
+  to the main chunk and falls back to `index.js` for the pre-split
+  layout, so both bundle shapes work. It fails loud if `index.js` ever
+  requires more than one main chunk (a future deeper split), rather than
+  patching the wrong one silently. Patches read `$main_js`.
+
+- **One logical patch can span chunks.** The split follows dynamic
+  `import()` boundaries, so an optional subsystem can land in its own
+  chunk apart from the code that gates it. `cowork-bwrap`'s A/B/C1 are
+  in the main chunk, but its warm-prefetch block (C2) moved to a
+  separate warm chunk — resolved there by its stable `[warm] Warm
+  download disabled` log literal, exactly the "anchor on a developer
+  string, then find the file that carries it" move. Don't assume the
+  whole patch touches one file.
+
+The corollary for anchor uniqueness: a literal that was unique across
+one 15 MB file can now recur across ~50 chunks (source-map tails,
+dead re-exports, the same string logged from two subsystems). Confirm
+your anchor is unique *within the resolved file*, not just present —
+`grep -c` the specific chunk, not the whole `.vite/build` tree. The
+tripwires (`_check_upstream_tripwires`) are the exception that still
+greps the whole asar on purpose: they only assert a behavior marker
+exists *somewhere*, so a relocated marker is fine.
+
 ## Verifying a hypothesis before shipping a fix
 
 Pull the pinned pool path and SHA from `scripts/setup/official-deb.sh`,
@@ -273,8 +313,9 @@ Four layers: build log, syntactic validity, asar markers, runtime.
    grep -E 'Active asar patches|WARNING:' build.log
    ```
 
-   A healthy v3.0.0 build logs `Active asar patches:
-   patch_quick_window patch_org_plugins_path` and no `WARNING:`.
+   A healthy build logs `Active asar patches: patch_quick_window
+   patch_org_plugins_path patch_virtiofsd_probe patch_cowork_bwrap`, a
+   `Main-process JS: …/index.chunk-<hash>.js` line, and no `WARNING:`.
    (Historical example — a healthy 1.5354.0 build logged `Applied 12
    cowork patches`, and a lower count or any `WARNING:` in the cowork
    section meant a half-patched asar; the cowork patches were deleted

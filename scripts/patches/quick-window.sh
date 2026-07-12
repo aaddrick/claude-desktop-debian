@@ -3,13 +3,14 @@
 # so the main window reappears after quick-entry submit.
 #
 # Sourced by: build.sh
-# Sourced globals: (none — all context is captured from index.js at runtime)
+# Sourced globals: main_js (optional — the resolved main chunk; set by
+#   patch_app_asar. Falls back to .vite/build/index.js for older bundles.)
 # Modifies globals: (none)
 #===============================================================================
 
 patch_quick_window() {
 	echo 'Patching quick window for Linux...'
-	local index_js='app.asar.contents/.vite/build/index.js'
+	local index_js="${main_js:-app.asar.contents/.vite/build/index.js}"
 
 	# Extract the quick window variable name from the unique "pop-up-menu"
 	# setAlwaysOnTop call, e.g.: Sa.setAlwaysOnTop(!0,"pop-up-menu")
@@ -72,9 +73,20 @@ console.log('  Found focus check function: ' + focusFn);
 // (1.3883.0+ shape: `function aZA(){var e;return!Qt...}`). Older
 // builds don't declare anything before `return!`. The non-capturing
 // group keeps the prefix optional in either case.
+//
+// The window handle churns: a bare minified local (`Qt`, `it`) through
+// 1.18286.0, a property access (`exports.mainWindow`) from 1.19367.0.
+// [\w$]+(?:\.[\w$]+)* covers both; the fn-name capture is [\w$]+ (not
+// \w+) so a `$`-prefixed name isn't silently truncated
+// (docs/learnings/patching-minified-js.md).
 const focusFnIdx = code.indexOf('function ' + focusFn + '(');
 const nearbyCode = code.substring(focusFnIdx, focusFnIdx + 500);
-const visFnRe = /function (\w+)\(\)\{(?:var [\w$]+(?:,[\w$]+)*;)?return![\w$]+\|\|[\w$]+\.isDestroyed\(\)\?!1:[\w$]+\.isVisible\(\)/;
+const win = String.raw`[\w$]+(?:\.[\w$]+)*`;
+const visFnRe = new RegExp(
+    String.raw`function ([\w$]+)\(\)\{(?:var [\w$]+(?:,[\w$]+)*;)?` +
+    `return!${win}\\|\\|${win}\\.isDestroyed\\(\\)\\?!1:` +
+    `${win}\\.isVisible\\(\\)`
+);
 const visMatch = nearbyCode.match(visFnRe);
 if (!visMatch) {
     console.log('  WARNING: Could not find visibility function near ' +
@@ -104,9 +116,12 @@ for (const anchor of anchors) {
             anchor.substring(0, 30) + '..."');
         continue;
     }
-    // matches: <focusFn>()||(someVar).show()
+    // matches: <focusFn>()||<win>.show(), where <win> is a bare local
+    // (older builds) or a property access like exports.mainWindow
+    // (1.19367.0+). Capturing the whole handle keeps the .show() call
+    // pointed at the real window after the rewrite.
     const showRe = new RegExp(
-        escapeRegExp(focusFn) + String.raw`\(\)\|\|([\w$]+)\.show\(\)`
+        escapeRegExp(focusFn) + String.raw`\(\)\|\|(${win})\.show\(\)`
     );
     const showMatch = region.match(showRe);
     if (showMatch) {

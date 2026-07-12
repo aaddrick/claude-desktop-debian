@@ -91,7 +91,10 @@ When investigating bugs, search these files based on the issue category:
 | CI/workflow issues | `.github/workflows/` directory |
 
 The **reference source** (`/tmp/ref-source/app-extracted/`) contains the beautified Claude Desktop JavaScript. Use it to understand the original behavior that the build script patches or wraps. Key files:
-- `.vite/build/index.js` — main process
+- `.vite/build/index.js` — main-process entry stub (since 1.19367.0 it
+  just `require()`s the code-split main chunk below)
+- `.vite/build/index.chunk-<hash>.js` — main process (the real code;
+  grep here, not `index.js`, for main-process behavior)
 - `.vite/build/mainWindow.js` — main window preload
 - `.vite/build/mainView.js` — main view preload
 
