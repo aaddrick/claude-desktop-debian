@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- Report [CDL-ANT-0010](docs/reports/CDL-ANT-0010_code-split-chunk-census/CDL-ANT-0010-A_Code_Split_Chunk_Census.pdf) *Inside the Code Split: A Chunk Census of Claude Desktop 1.19367.0* — names what each of the 44 satellite chunks introduced by upstream's main-process code split is scoped to (the agent-session platform, enterprise sign-in, built-in MCP servers, the Claude Desktop Buddy BLE bridge, and the one satellite the patch suite touches), with the structured census data and require-graph manifest alongside.
+
 ## [v3.2.1] — 2026-07-12
 
 ### Added

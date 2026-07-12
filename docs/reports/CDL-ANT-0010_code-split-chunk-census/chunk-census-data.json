@@ -1,0 +1,930 @@
+{
+ "upstreamVersion": "1.19367.0",
+ "artifact": "claude-desktop_1.19367.0_amd64.deb (SHA-256 pinned in scripts/setup/official-deb.sh)",
+ "mainChunk": "index.chunk-CNXUb5h4.js",
+ "censusDate": "2026-07-12",
+ "method": "44 parallel model-assisted chunk analyses (Claude Sonnet) over prettier-beautified chunks + deterministic require-graph grep; selective hand re-verification",
+ "chunks": [
+  {
+   "chunk": "5ms3G7cx",
+   "bytes": 3452,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "BBdaXF74"
+   ],
+   "label": "External IdP (3rd-party SSO) credential refresh",
+   "kind": "app-feature",
+   "description": "First-party Claude Desktop main-process module implementing OAuth/OIDC credential refresh and initial PKCE sign-in for a custom third-party identity provider (\"external IdP\") used with an inference gateway — likely enterprise/custom-model-gateway SSO. Exports refreshExternalIdpCred (silent token refresh, distinguishing \"fresh\", \"noIdToken\", \"invalidGrant\", \"transient\" outcomes) and runExternalIdpPkceGrant (loopback PKCE flow via discovered OIDC endpoints, with special-cased Google offline-access handling). Depends on chunk BBdaXF74 for OIDC discovery/scope helpers and on the MAIN chunk for credential-store, fetch, and logger primitives; loaded by MAIN when a user's org/account is configured with a custom external identity provider for gateway auth (not a generic OAuth vendor lib — the \"gateway sign-in\" / \"inferenceGatewayOidc\" naming ties it to Anthropic's own inference-gateway product).",
+   "evidence": [
+    "[custom-3p:idp] credential refreshed silently",
+    "[custom-3p:idp] starting external IdP PKCE grant",
+    "[custom-3p:idp] external IdP SSO complete",
+    "discoverOidcEndpoints(e, \"inferenceGatewayOidc\")",
+    "displayName: \"gateway sign-in\"",
+    "exports.refreshExternalIdpCred / exports.runExternalIdpPkceGrant"
+   ]
+  },
+  {
+   "chunk": "8hARSK4E",
+   "bytes": 64356,
+   "requiredBy": [
+    "BgxihPuA",
+    "CDs06AOQ",
+    "MAIN",
+    "CVKCxtdY",
+    "DmcY3fXx"
+   ],
+   "requires": [
+    "BeyKyjh2"
+   ],
+   "label": "Cowork git worktree manager",
+   "kind": "app-feature",
+   "description": "First-party Claude Desktop main-process module implementing git integration for agent/Cowork sessions: a GitWorktreeManager class that creates, tracks, reaps, and migrates per-session git worktrees (backed by an electron-store &apos;git-worktrees.json&apos;), plus helpers to run git via a custom PATH/SSH-agent-aware spawn (runGit/y), parse diffs/numstat/commit logs, fetch commit diffs and file content, detect &quot;dangerous feature sources&quot; in diffs, and enforce a WorkspaceTrustError gate. Loaded lazily (dynamic import boundary) by the main chunk and several other feature chunks whenever a Cowork/agent session needs to create or manage a git worktree or show a diff/commit view.",
+   "evidence": [
+    "exports.GitWorktreeManager = Yt; exports.gitWorktreeManager = Ne;",
+    "class Vt { ... name: \"git-worktrees\", defaults: { worktrees: {} } ... m.join(Ue.app.getPath(\"userData\"), \"git-worktrees.json\")",
+    "`[GitWorktreeManager] git-worktrees.json is corrupt (${n.name}); preserved it at ${s} and starting with an empty worktree pool`",
+    "Reaping crash-orphan worktree ${t.name} (status=creating, age=...)",
+    "exports.fetchGitDiff = at; exports.fetchGitCommits = ut; exports.fetchCommitDiff = ft; exports.WorkspaceTrustError = Te; exports.getDangerousFeatureSources = Tt;",
+    "async function y(o,e,r=5e3,t){ ... env: await c.buildTerminalParityEnv({PATH: s, GIT_TERMINAL_PROMPT:\"0\", GIT_OPTIONAL_LOCKS:\"0\", ...}) }"
+   ]
+  },
+  {
+   "chunk": "B43foloX",
+   "bytes": 2529,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "DSARmh3w"
+   ],
+   "description": "Loads React DevTools into the Electron main process for local development/profiling. Exports loadReactDevTools(), which first tries the dynamically-imported electron-devtools-installer package (chunk DSARmh3w) to install the React Developer Tools extension via its known Chrome Web Store extension ID, and falls back to scanning the local Chrome user-data directory (~/Library/Application Support/Google/Chrome/{Default,Profile *}/Extensions/<id>) for an already-installed copy of the extension to load with session.defaultSession.loadExtension. All log lines are prefixed \"[profile]\", implying it only runs in a development/profiling build variant, not the shipped end-user path.",
+   "evidence": [
+    "exports.loadReactDevTools = m;",
+    "[profile] Could not load React DevTools. Install it in Chrome first.",
+    "require(\"./index.chunk-DSARmh3w.js\")",
+    "fmkadmapgofadopljbjfkapdkoienihi (React DevTools extension ID)",
+    "Library/Application Support/Google/Chrome"
+   ],
+   "kind": "app-feature",
+   "label": "React DevTools dev-loader"
+  },
+  {
+   "chunk": "BBdaXF74",
+   "bytes": 2503,
+   "requiredBy": [
+    "5ms3G7cx",
+    "CttfaNvQ"
+   ],
+   "requires": [],
+   "description": "Small first-party helper for OAuth/OIDC discovery against third-party identity providers (the \"custom-3p:idp\" log prefix, i.e. custom MCP connector auth). Exports discoverOidcEndpoints(), which enforces HTTPS on issuer/authorization/token URLs (except a localhost 127.0.0.1 exception), fetches `${issuer}/.well-known/openid-configuration` via the main chunk's gatewayFetch3p with a 10s timeout, validates the returned authorization_endpoint/token_endpoint are https and same-host as the issuer (warning via logger if not), and refreshScopesWithOpenid(), which ensures the \"openid\" scope is present. Loaded dynamically when a user configures/authenticates a custom third-party MCP server or connector that requires OAuth/OIDC login, since it is required by two other lazy chunks (5ms3G7cx, CttfaNvQ) rather than eagerly bundled into MAIN.",
+   "evidence": [
+    "exports.discoverOidcEndpoints = w;",
+    "exports.refreshScopesWithOpenid = b;",
+    "u.logger.warn(`[custom-3p:idp] OIDC discovery ${o} host differs from issuer`",
+    "`${t.issuer.replace(/\\/+$/, \"\")}/.well-known/openid-configuration`",
+    "d = i.protocol === \"http:\" && i.hostname === \"127.0.0.1\""
+   ],
+   "kind": "app-feature",
+   "label": "Custom 3rd-party OIDC discovery",
+   "npmPackages": []
+  },
+  {
+   "chunk": "BG2Aybw_",
+   "bytes": 251940,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Imagine visualize MCP server",
+   "kind": "app-feature",
+   "description": "First-party app feature: defines Claude Desktop's built-in 'visualize' MCP server (exports.getImagineServerDef) that gives the model a show_widget/read_me tool pair for rendering inline SVG/HTML visualizations (diagrams, charts, mockups, elicitation forms) in chat. The bulk of the chunk is large doc-string payloads (CDS design-token reference, the 'Imagine — Visual Creation Suite' guide, elicitation-form guidance) that read_me serves back to the model as tool context, plus the show_widget tool schema and a text/html;profile=mcp-app resource ('ui://imagine/show-widget.html') with a CDN connect/resource-domain allowlist (esm.sh, cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, fonts.googleapis.com). It is gated behind feature flags (isFeatureEnabled('3444158716') / ('3516166472')) and only enabled for sessionType 'cowork' or 'ccd'. Loaded on demand by the main chunk (index.chunk-CNXUb5h4.js) when it registers this internal MCP server for a Cowork/CCD session.",
+   "evidence": [
+    "exports.getImagineServerDef = z;",
+    "const l = \"ui://imagine/show-widget.html\"",
+    "tool names: \"show_widget\" and \"read_me\"",
+    "serverName: _  (const _ = \"visualize\")",
+    "p.isFeatureEnabled(\"3444158716\") ... e.sessionType === \"cowork\" || (e.sessionType === \"ccd\" && p.isFeatureEnabled(\"3516166472\"))",
+    "embedded doc strings: '# Imagine — Visual Creation Suite' and 'Claude Design System token vocabulary'"
+   ]
+  },
+  {
+   "chunk": "BNkiwKJJ",
+   "bytes": 4726,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "description": "One-shot startup migration that moves a user's legacy locally-stored \"uploads\" plugin marketplace (Cowork plugins directory) into the account-level remote plugin marketplace via the backend API, gated by a GrowthBook feature flag (claudeai_cowork_backend_marketplaces) and a persisted sentinel key so it only runs once per marketplaces dir. It zips each local plugin directory, uploads it, re-installs it as a remote plugin, and removes the legacy local entry, with careful handling of already-exists/404-feature-gated/failure cases and logging under the \"[remoteUploadsMigration]\" prefix. It exports maybeRunRemoteUploadsMigration, which MAIN dynamically imports (likely at app startup or Cowork initialization) since this chunk has no other requirers.",
+   "evidence": [
+    "[remoteUploadsMigration]",
+    "remote_uploads_migration_done_v1_",
+    "claudeai_cowork_backend_marketplaces",
+    "ensureAccountUploadsMarketplace / uploadAccountPlugin",
+    "LOCAL_UPLOADS_MARKETPLACE",
+    "exports.maybeRunRemoteUploadsMigration = v"
+   ],
+   "kind": "app-feature",
+   "label": "Cowork remote uploads migration"
+  },
+  {
+   "chunk": "BSeLkQD3",
+   "bytes": 5158,
+   "requiredBy": [],
+   "requires": [
+    "CVKCxtdY"
+   ],
+   "description": "Implements the main-process IPC handlers for the Scheduled Tasks feature (cron/fireAt-based automated Cowork or Claude-Code-Desktop sessions): create, update, list, and subscription-check logic, with cron/fireAt/path validation. Delegates to `coworkScheduledTasks`/`ccdScheduledTasks` managers in the main chunk and to `claudeCodeSessionManager` in its sole dependency chunk (CVKCxtdY). Likely loaded via a dynamic import() only when a user opens/uses the Scheduled Tasks UI, which is why no static requirer chunk was found.",
+   "evidence": [
+    "exports.handleCreateScheduledTask = M",
+    "[dispatch-scheduled-tasks] created ${l.id} (runner=${o}, cron=...",
+    "a.coworkScheduledTasks / a.ccdScheduledTasks managers",
+    "a.resolveCodeSessionModel(r, \"scheduled_task_create\", $.claudeCodeSessionManager.getAvailableCodeModels())",
+    "a.validateDispatchPath(e.code.cwd, \"cwd\")",
+    "const f = \"cowork\", u = \"code\""
+   ],
+   "kind": "app-feature",
+   "label": "Scheduled Tasks dispatch handlers",
+   "npmPackages": []
+  },
+  {
+   "chunk": "BYTSEZgv",
+   "bytes": 19430,
+   "requiredBy": [
+    "Bv2T366m",
+    "CVKCxtdY"
+   ],
+   "requires": [
+    "DLO6Ax9W"
+   ],
+   "description": "Exports a single class, ShellPtyManager (plus shellPtyKeyFor and a _test helper), implementing local PTY/terminal session management for Claude Desktop's agentic terminal feature. It dynamically imports node-pty to spawn three flavors of pseudo-terminal: plain PTYs, \"shell\" PTYs (interactive shells, including a hardened SSH remote-shell path with host/port/identity-file validation and a ShellReady OSC-697 sentinel), and \"bash\" PTYs, plus a runCommand path with in-flight dedup. It maintains bounded ring buffers (256KB) per session, strips ANSI/OSC escape sequences, coalesces pty_data/shell_pty_data emits, and registers a quit handler (\"local-session-pty-cleanup\") to kill all live processes on app exit. Loaded when the app needs to run a terminal/shell session (e.g. Claude Code / Cowork's terminal or remote-SSH shell tool), required from two other chunks (Bv2T366m, CVKCxtdY) and depending on a small shared helper chunk (DLO6Ax9W) plus the MAIN chunk for getSafeShell/logger/registerQuitHandler.",
+   "evidence": [
+    "exports.ShellPtyManager = ae;",
+    "class ae { constructor(e) { this.ptyProcesses = new Map(); this.shellPtyProcesses = new Map(); this.bashPtyProcesses = new Map(); ... }",
+    "P = (await import(\"node-pty\")).spawn;",
+    "o.registerQuitHandler({ name: \"local-session-pty-cleanup\", ...})",
+    "Refusing SSH shell PTY for invalid sshHost / non-integer sshPort / control bytes / Windows remote cwd",
+    "const E = \"\\x1B]697;ShellReady\\x07\""
+   ],
+   "kind": "app-feature",
+   "label": "Local terminal/shell PTY manager",
+   "npmPackages": []
+  },
+  {
+   "chunk": "BeyKyjh2",
+   "bytes": 10601,
+   "requiredBy": [
+    "8hARSK4E",
+    "MAIN",
+    "CVKCxtdY",
+    "DmcY3fXx"
+   ],
+   "requires": [],
+   "label": "Claude Code config & git-info helper",
+   "kind": "app-feature",
+   "description": "First-party helper module (exported as `ClaudeCodeConfig`) shared by Desktop's Code/Agent-panel integration. It implements a hand-rolled git-config/INI parser and walks `.git` (including git-worktree `commondir`/gitdir-file indirection) to resolve repo root, current branch, default branch, remote URL, and local branch lists; separately it reads/writes the CLI's `~/.claude.json` (or `$CLAUDE_CONFIG_DIR`) with mtime/size-cached JSON parsing, a directory-based lock file for atomic saves plus a `.backup` copy, per-project trust-dialog acceptance (`hasTrustDialogAccepted`) with parent-directory walk-up, listing trusted workspaces, and extracting `mcpServers`/`disabledMcpServers` entries for MCP config. Sentry release/debug-id stamps at the top are standard Electron-main instrumentation, not evidence of a vendored Sentry SDK chunk.",
+   "evidence": [
+    "exports.ClaudeCodeConfig / exports.findGitRoot / readGitInfo / readLocalBranches / resolveMainRepoRoot",
+    "exports.getClaudeJsonMcpServers / acceptTrustDialog / checkHasTrustDialogAccepted / listTrustedWorkspaces",
+    "s.join(l.getClaudeConfigDir(), \".claude.json\") and process.env.CLAUDE_CONFIG_DIR",
+    "hasTrustDialogAccepted / hasClaudeMdExternalIncludesApproved / projectOnboardingSeenCount config defaults",
+    "require(\"./index.chunk-CNXUb5h4.js\") for shared helpers (logger, Mutex, writeJsonAtomic, canonicalizeWslPath)"
+   ]
+  },
+  {
+   "chunk": "BfcG_552",
+   "bytes": 427456,
+   "requiredBy": [
+    "BhLwdw68",
+    "CVKCxtdY",
+    "Cc0Cjw5X",
+    "DmcY3fXx"
+   ],
+   "requires": [
+    "DLO6Ax9W"
+   ],
+   "label": "SSH remote server deploy (Remote Environments)",
+   "kind": "mixed",
+   "description": "This chunk fuses a vendored, patched copy of the `ssh2` npm package (full SSH2 transport: key parsing for RSA/DSA/Ed25519/OpenSSH/PPK formats, packet/MAC framing, auth flow) with first-party 'Remote' feature code that uses it to deploy and drive a remote 'ccd-cli' server binary over SSH — detecting the remote OS/shell, downloading and uploading the Claude Code CLI, writing a session token, starting a remote daemon, and exposing a getRemoteServerController/sshExec API plus desktop_ssh_* telemetry events. It's loaded when a user connects Claude Desktop to a remote machine (SSH-based remote environment / remote CLI deployment), pulled in by four other chunks (BhLwdw68, CVKCxtdY, Cc0Cjw5X, DmcY3fXx) that presumably implement the UI/orchestration for that feature, and itself requires the DLO6Ax9W shared helper chunk.",
+   "evidence": [
+    "\"Couldn't inspect the remote machine\" / \"Couldn't install the Claude CLI on the remote\" / DeployError phase table",
+    "\"Detecting remote OS and shell...\", \"Downloading Claude Code CLI...\", \"Uploading Claude Code CLI to remote\"",
+    "const Mt = \".claude/remote\", Gi = \"ccd-cli\"; ie.sshLogger.warn(`[BinaryDeployment] ${p}`)",
+    "SSH2 protocol strings: \"ssh-userauth\", \"client-authentication\", \"ssh-connection\", \"Bad packet length\", \"Invalid MAC\", \"Malformed OpenSSH private key\"",
+    "ie.logEvent(\"desktop_ssh_connected\"/\"desktop_ssh_connection_failed\"/\"desktop_ssh_auto_reconnected\")",
+    "exports.getRemoteServerController / exports.sshExec / exports.resolveSSHConfigUncached / exports.getSshHostAllowlist / exports.assertResolvedSshTargetAllowed"
+   ],
+   "npmPackages": [
+    "ssh2"
+   ]
+  },
+  {
+   "chunk": "Bft8Ec9w",
+   "bytes": 2019,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "description": "Small first-party app-feature chunk implementing the \"device code\" sign-in verification window used for third-party/custom (deploymentMode \"3p\") authentication. It creates a fixed-size, non-resizable, always-on-top BrowserWindow titled \"Verify sign-in code\", wires up the mainView preload, IPC handlers, and intl handlers via the shared main chunk, and loads `${CUSTOM_3P_ORIGIN}/device-code-verify`. Exposes `showDeviceCodeWindow`/`closeDeviceCodeWindow`, which MAIN presumably calls when a custom third-party/enterprise login flow needs the user to confirm a device code.",
+   "evidence": [
+    "title: \"Verify sign-in code\"",
+    "`${i.CUSTOM_3P_ORIGIN}/device-code-verify`",
+    "i.logger.info(`Opening device-code verify window at ${r}`)",
+    "i.WebContentsType.CUSTOM3P_DEVICE_CODE",
+    "exports.showDeviceCodeWindow = a; exports.closeDeviceCodeWindow = f;",
+    "deploymentMode: \"3p\""
+   ],
+   "kind": "app-feature",
+   "label": "Device-code sign-in verify window"
+  },
+  {
+   "chunk": "BgxihPuA",
+   "bytes": 3754,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "8hARSK4E",
+    "BsymZHkE"
+   ],
+   "label": "test",
+   "kind": "app-feature",
+   "description": "First-party Cowork PR auto-archive engine.",
+   "evidence": [
+    "exports.AutoArchiveEngine = m",
+    "[AutoArchiveEngine] Sweep failed",
+    "ccAutoArchiveOnPrClose",
+    "gitWorktreeManager.getWorktreeForSession",
+    "no_pr_found"
+   ]
+  },
+  {
+   "chunk": "BhLwdw68",
+   "bytes": 21492,
+   "requiredBy": [
+    "CVKCxtdY",
+    "DmcY3fXx"
+   ],
+   "requires": [
+    "BfcG_552"
+   ],
+   "description": "First-party Claude Desktop code for the Cowork / Claude Code session subsystem (internally tagged \"CCD\" via `[ccdErrorCategory:...]` message suffixes and `[CCD]` log lines). It implements: (1) categorizeCcdSessionError/appendCcdErrorCategory — a giant heuristic classifier that maps CLI/SDK/SSH/Bun/Electron crash strings (exit codes, NTSTATUS codes, ENOENT/spawn errors, git/WSL/AWS-SSO/proxy/network errors, \"Claude Code returned an error result:\" wrapping) into stable category tags for telemetry/UI; (2) aggregateCodeStats/computeStreak — reads ~/.claude/projects/**/*.jsonl transcripts and a stats-cache.json to compute daily activity, token usage by model, and streaks for a usage-stats view; (3) writeAttachmentsToRemote/buildRemoteMentionPrefix — SFTP-based (mkdir/readdir/writeFile with timeouts) upload of chat attachments into `.claude/uploads` on a remote Cowork host and building the `@\"path\"` CLI mention prefix. Loaded lazily when a Cowork/Claude-Code session errors out, when the usage-stats screen is opened, or when a message with attachments is sent to a remote session.",
+   "evidence": [
+    "Claude Code returned an error result: ",
+    "[ccdErrorCategory:${n}]",
+    "[CCD] /stats skipped ${s} oversized line(s) in ${C.basename(t)}",
+    "remoteAttachments: controller.remoteHome unset (ensureReady not called?)",
+    "sftpReaddir: timed out / sftpMkdirp: timed out",
+    "exports.categorizeCcdSessionError / exports.aggregateCodeStats / exports.writeAttachmentsToRemote"
+   ],
+   "kind": "app-feature",
+   "label": "Cowork/CCD session errors, stats, remote attachments"
+  },
+  {
+   "chunk": "Brn8atpb",
+   "bytes": 4316,
+   "requiredBy": [
+    "MAIN",
+    "Cy4jOZYe"
+   ],
+   "requires": [
+    "z2KVH7ws"
+   ],
+   "description": "First-party Claude Desktop feature: the extension (DXT/MCPB) update-caching module. Exports cacheExtensionUpdate, getCachedUpdate, getCachedUpdates, removeCachedUpdate. Downloads a DXT/MCPB package from the extensions registry (`/extensions/${id}/download[/${version}]`) to a temp file, unzips it, validates manifest.json, verifies its signature (via lazily-required chunk z2KVH7ws's verifyMcpbFile), enforces enterprise `signatureRequired` policy and a blocklist check (`checkCanInstall`), then writes the extracted files plus an `_update_metadata.json` sidecar into a per-extension cache directory under the app's extensions-update-cache path. Loaded on demand (dynamic import) when the app needs to fetch/cache an extension update, e.g. from the MAIN chunk's extension-manager code or from the requiring sibling chunk Cy4jOZYe (likely the update-check/apply flow); it in turn lazily requires index.chunk-z2KVH7ws.js only when signature verification is actually needed.",
+   "evidence": [
+    "exports.cacheExtensionUpdate = b; exports.getCachedUpdate = F; exports.getCachedUpdates = D; exports.removeCachedUpdate = C;",
+    "No manifest.json found in DXT/MCPB file",
+    "Refusing to cache unsigned update for ${e}@${a}: valid signature required by enterprise policy",
+    "await c(`/extensions/${e}/download${a ? `/${a}` : \"\"}`)",
+    "require(\"./index.chunk-z2KVH7ws.js\") -> verifyMcpbFile",
+    "Caching extension update: ${e}@${a}"
+   ],
+   "kind": "app-feature",
+   "label": "Extension (DXT/MCPB) update caching"
+  },
+  {
+   "chunk": "BsymZHkE",
+   "bytes": 838,
+   "requiredBy": [
+    "BgxihPuA",
+    "CVKCxtdY",
+    "DDPvNCKb"
+   ],
+   "requires": [],
+   "label": "PR terminal/open state helper",
+   "kind": "app-feature",
+   "description": "Tiny first-party helper (2 exported functions, 838 bytes) that classifies a GitHub-style pull-request status string: isTerminalPrState() is true for MERGED/CLOSED, isOpenPrState() is true for OPEN/QUEUED. No library banner or vendored-package markers — just Sentry release/debug-id boilerplate (present in nearly all chunks) plus this small domain-specific predicate pair. Given the required-by set (BgxihPuA, CVKCxtdY, DDPvNCKb) and the PR-lifecycle vocabulary, it is a shared utility for whatever main-process feature surfaces GitHub pull-request status (e.g. a Cowork/coding-agent PR-tracking or repo-integration flow), loaded whenever those three consuming chunks need to check/filter PR state.",
+   "evidence": [
+    "function f(e){if(!e)return!1;const n=e.toUpperCase();return n===\"MERGED\"||n===\"CLOSED\"}",
+    "function d(e){const n=e==null?void 0:e.toUpperCase();return n===\"OPEN\"||n===\"QUEUED\"}",
+    "exports.isOpenPrState = d;",
+    "exports.isTerminalPrState = f;",
+    "e.SENTRY_RELEASE = { id: \"1a5be1fbf83d1832486e03a667557c18f0a0ec7a\" }"
+   ]
+  },
+  {
+   "chunk": "Bv2T366m",
+   "bytes": 3642,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "CVKCxtdY",
+    "BYTSEZgv"
+   ],
+   "label": "Claude Code terminal-read MCP tool",
+   "kind": "app-feature",
+   "description": "Defines the \"terminal\" MCP tool-server (`getTerminalServerDef`) exposing a single `read_terminal` tool that lets Claude Code Desktop read the last N lines of the user's integrated terminal panel, with ANSI CSI/OSC escape-sequence stripping and an optional wait-for-new-output mode. Gated to `sessionType === \"ccd\"`, non-SSH, bundled node-pty, and feature flag \"397125142\"; pulls session/PTY buffer access from the two required chunks (CVKCxtdY: claudeCodeSessionManager, BYTSEZgv: shellPtyKeyFor). Loaded by the main chunk when registering MCP tool servers for an active Claude Code Desktop session with an open terminal panel.",
+   "evidence": [
+    "serverName: g (g = \"terminal\")",
+    "name: \"read_terminal\"",
+    "Read the contents of the user's integrated terminal panel. Returns the last ~200 lines with ANSI codes stripped.",
+    "isEnabled: (e) => e.sessionType === \"ccd\" && !e.isSSH && h.isNodePtyBundled && h.isFeatureEnabled(\"397125142\")",
+    "const [{ claudeCodeSessionManager: s }, { shellPtyKeyFor: b }] = ... require(\"./index.chunk-CVKCxtdY.js\") ... require(\"./index.chunk-BYTSEZgv.js\")",
+    "exports.getTerminalServerDef = T"
+   ]
+  },
+  {
+   "chunk": "CDs06AOQ",
+   "bytes": 9727,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "8hARSK4E"
+   ],
+   "label": "Worktree pool (Claude Code sessions)",
+   "kind": "app-feature",
+   "description": "First-party main-process module implementing a pool of reusable git worktrees for Claude Code / Cowork coding sessions. It exports a `WorktreePool` class (`createWorktreePool`, `classifyWorktree`, `planReap`, `rankAcquireCandidates`) that leases/releases worktrees to sessions, periodically sweeps (reaps idle or resets dirty ones, keeps up to `ccMaxWarmWorktrees` warm survivors), and gates itself behind a feature flag plus app prefs. It requires `index.chunk-8hARSK4E.js` for `gitWorktreeManager`/`hasWorktreeCreateHook`/`WORKTREE_KEEP_FILENAME` and is required by the main chunk, so it loads whenever Cowork/Code worktree pooling logic (session acquire/release/sweep) runs.",
+   "evidence": [
+    "[WorktreePool] Reused worktree ${o.worktree.name} for session ${e.sessionId}",
+    "[WorktreePool] No reusable worktree for ${e.baseRepo}",
+    "l.isFeatureEnabled(\"1992087837\")",
+    "getAppPreference(\"ccWorktreeReapAfterHours\") / getAppPreference(\"ccMaxWarmWorktrees\")",
+    "exports.WorktreePool / createWorktreePool / classifyWorktree / planReap / rankAcquireCandidates",
+    "h.WORKTREE_KEEP_FILENAME / h.gitWorktreeManager / h.hasWorktreeCreateHook (required chunk 8hARSK4E)"
+   ]
+  },
+  {
+   "chunk": "CVKCxtdY",
+   "bytes": 374111,
+   "requiredBy": [
+    "BSeLkQD3",
+    "Bv2T366m",
+    "MAIN"
+   ],
+   "requires": [
+    "BeyKyjh2",
+    "D3JJQa7m",
+    "BhLwdw68",
+    "8hARSK4E",
+    "Ds_EujvB",
+    "BsymZHkE",
+    "BfcG_552",
+    "DLO6Ax9W",
+    "iS43ruUD",
+    "BYTSEZgv",
+    "r07KBe07"
+   ],
+   "description": "First-party app-feature chunk implementing the \"CCD\" (Claude Code Desktop) agent-session backend that powers Claude Desktop's embedded Claude Code / Cowork sessions. It manages the full session lifecycle: message-cycle start/outcome telemetry (desktop_ccd_message_cycle_start/outcome, CCD CycleHealth), a session governor (soft-cap eviction, pressure logging), transcript tail-loading for large agent-*.jsonl files, git worktree creation/hooks (worktree_hook/fetch/ff/add/checkout), tool-permission auto-approve/deny logic including a computer-use permission path, GitHub PR-checks polling with rate-limit handling, scheduled-task MCP tool wiring (MCP_CCD_REQUEST_DIRECTORY/ARCHIVE_SESSION/SEARCH_TRANSCRIPTS/SEND_MESSAGE), GrowthBook feature-gate invalidation, and a SessionAccountManager subclass. It's loaded (required) by MAIN plus two other feature chunks (BSeLkQD3, Bv2T366m), consistent with being the shared agent/session backend that both the main process and Cowork/agent-related UI-support chunks depend on.",
+   "evidence": [
+    "desktop_ccd_message_cycle_start / desktop_ccd_message_cycle_outcome / desktop_ccd_stream_ended_diagnostic log events",
+    "`[CCD CycleHealth] ${e} cycle for ${u.sessionId}` and `[CCD start-timing]` log messages with ccd_overhead_ms",
+    "desktop_ccd_governor_would_evict / desktop_ccd_governor_soft_cap_exceeded / desktop_ccd_governor_pressure",
+    "n.MCP_CCD_REQUEST_DIRECTORY, n.MCP_CCD_ARCHIVE_SESSION, n.MCP_CCD_SEARCH_TRANSCRIPTS, n.MCP_CCD_SEND_MESSAGE constants",
+    "worktree/worktree_hook/worktree_fetch/worktree_ff/worktree_add/worktree_checkout plugin-type map",
+    "class j extends n.SessionAccountManager; n.getCCDSettingsFile(); framebuffer_tools VM/VNC agent-tool prompt template"
+   ],
+   "kind": "app-feature",
+   "label": "CCD (Claude Code Desktop) agent-session backend"
+  },
+  {
+   "chunk": "Cc0Cjw5X",
+   "bytes": 1021,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "BfcG_552"
+   ],
+   "label": "MCP remote server controller (re-export barrel)",
+   "kind": "app-feature",
+   "description": "A 45-line pass-through barrel module, not real logic: it requires the satellite chunk index.chunk-BfcG_552.js and the MAIN chunk, then re-exports four named bindings — evictRemoteServerController, getRemoteServerController, getRemoteServerControllerForTarget (from BfcG_552), and controllerCacheKey (from MAIN). This is a code-split boundary for Claude Desktop's remote MCP server connection/controller management (first-party feature, likely tied to MCP connector/integration setup), lazily loaded whenever main-process code needs to get/evict a cached remote-server controller for a given target. The actual controller implementation lives in BfcG_552, not in this chunk. The Sentry release/debug-id IIFEs at the top are just Vite/Sentry build-plugin boilerplate injected into every chunk, not evidence of vendored Sentry code here.",
+   "evidence": [
+    "exports.evictRemoteServerController = o.evictRemoteServerController;",
+    "exports.getRemoteServerController = o.getRemoteServerController;",
+    "exports.getRemoteServerControllerForTarget = o.getRemoteServerControllerForTarget;",
+    "exports.controllerCacheKey = t.controllerCacheKey;",
+    "const o = require(\"./index.chunk-BfcG_552.js\"), t = require(\"./index.chunk-CNXUb5h4.js\");",
+    "e.SENTRY_RELEASE = { id: \"1a5be1fbf83d1832486e03a667557c18f0a0ec7a\" };"
+   ]
+  },
+  {
+   "chunk": "Ch2QrYhw",
+   "bytes": 7409,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "description": "Implements SshMcpServerManager, the proxy layer that lets Claude Desktop's remote/Cowork host feature run local stdio MCP servers over an SSH connection. It spawns each MCP server as a remote child process via RemoteStdioTransport, bridges its stdio JSON-RPC framing, filters environment variables to a safe forward-allowlist (MCP_*, DEBUG, LOG_LEVEL, NODE_ENV, etc.), refuses to proxy servers whose command is a laptop-local absolute path (e.g. /Users/, /Applications/, /opt/homebrew/) the remote can't resolve, and wraps each remote tool as an SDK server exposing mcp__<server>__<tool> names while emitting Cowork telemetry (lam_mcp_server_connected/failed, lam_mcp_tool_call_completed). It requires the MAIN chunk (index.chunk-CNXUb5h4.js) for shared helpers (ReadBuffer, sshLogger, Client, logCoworkEvent, registerQuitHandler, gne/hne SDK-server builders) and is itself required by MAIN, loaded when the user connects an MCP server on a remote/SSH-backed Cowork host.",
+   "evidence": [
+    "class $ ... RemoteStdioTransport already started",
+    "exports.SshMcpServerManager = v;",
+    "command is a laptop-local absolute path the remote can't resolve.",
+    "r.logCoworkEvent(\"lam_mcp_server_connected\"",
+    "const r = require(\"./index.chunk-CNXUb5h4.js\")",
+    "tool_name: `mcp__${e}__${i.name}`"
+   ],
+   "kind": "app-feature",
+   "label": "SSH remote MCP server proxy"
+  },
+  {
+   "chunk": "CttfaNvQ",
+   "bytes": 4189,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "BBdaXF74"
+   ],
+   "label": "GCP Vertex Workforce Identity OAuth",
+   "kind": "app-feature",
+   "description": "First-party main-process module implementing the \"Workforce Identity Federation\" OAuth grant for GCP Vertex AI custom third-party (custom-3p) auth: it runs a loopback PKCE OIDC sign-in against a configured IdP, then exchanges the resulting id_token for a GCP access token via the Google STS token-exchange endpoint, and exposes `runVertexWorkforceGrant` (initial sign-in) and `refreshVertexWorkforce` (silent refresh with invalid-grant/no-id-token handling). Loaded from MAIN (likely lazily, only when a user configures a Vertex-Workforce-Identity custom model provider) and itself requires the shared OIDC/PKCE helper chunk BBdaXF74.",
+   "evidence": [
+    "[custom-3p:wif] starting Workforce Identity grant",
+    "GCP STS token exchange failed: ${a}",
+    "https://${o.GOOGLE_STS_HOST}/v1/token",
+    "grant_type: urn:ietf:params:oauth:grant-type:token-exchange",
+    "exports.runVertexWorkforceGrant / exports.refreshVertexWorkforce",
+    "o.vertexWorkforceStoreId(e)"
+   ]
+  },
+  {
+   "chunk": "Cy4jOZYe",
+   "bytes": 5362,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "Brn8atpb",
+    "PJQ5N4g6"
+   ],
+   "label": "DXT/MCPB extension auto-updater",
+   "kind": "app-feature",
+   "description": "First-party app feature: the background auto-updater for installed DXT/MCPB extensions (Anthropic's local extension packages, distinct from Chrome/browser extensions). It exports startDxtUpdateChecks (a 6-hour setInterval loop gated by appConfig.isDxtAutoUpdatesEnabled that calls getInstalledExtensions, checks each for a newer version via getIsUpdateAvailable, and caches available updates) and applyPendingUpdates (applies cached updates at startup: renames the extension dir to a timestamped backup, swaps in the cached update, rolls back on failure, records install metadata via addExtensionMetadata, and for \"internal DXT\"/org-scoped extensions prompts the user via a dialog imported from the PJQ5N4g6 chunk). Skips extensions whose IDs start with local.dxt/local.mcpb/local.unpacked (unpacked/dev-loaded extensions). Depends on the shared extension-manager helpers and logger re-exported from the MAIN chunk (CNXUb5h4) and a small update-cache module (Brn8atpb), and lazily requires an org-scoped-update-dialog chunk (PJQ5N4g6) only when an internal DXT update needs user confirmation. Likely invoked from MAIN at app startup/ready to kick off the periodic check and apply any queued updates.",
+   "evidence": [
+    "exports.applyPendingUpdates = $; exports.startDxtUpdateChecks = v;",
+    "\"Starting periodic extension update checks (interval: ${h}ms)\" with h = 360*60*1000",
+    "o.id.startsWith(\"local.dxt\") || o.id.startsWith(\"local.mcpb\") || o.id.startsWith(\"local.unpacked\")",
+    "require(\"./index.chunk-PJQ5N4g6.js\") -> showOrgScopedDxtUpdateDialog",
+    "\"Applying cached update for extension: ${n}\" / \"${r}.backup-${Date.now()}\" rollback logic",
+    "t.addExtensionMetadata({... source: \"registry\" ...})"
+   ]
+  },
+  {
+   "chunk": "D3JJQa7m",
+   "bytes": 15050,
+   "requiredBy": [
+    "MAIN",
+    "CVKCxtdY"
+   ],
+   "requires": [],
+   "label": "Scheduled Tasks MCP server",
+   "kind": "app-feature",
+   "description": "First-party Claude Desktop feature: builds the in-process MCP server (`createScheduledTasksServer`, exported as `exports.createScheduledTasksServer`) that exposes `list_scheduled_tasks`, `create_scheduled_task`, and `update_scheduled_task` tools backing the app's scheduled/recurring-task feature (cron-based or one-time `fireAt` tasks, stored as `{taskId}/SKILL.md`). It is a satellite chunk with no requires of its own besides the MAIN chunk, and is required by MAIN plus chunk CVKCxtdY (likely the Cowork/agent-session or MCP-registration wiring) — loaded lazily when the scheduled-tasks MCP server is instantiated for a session, not on every app start.",
+   "evidence": [
+    "[ScheduledTasksMcpServer] Failed to list scheduled tasks:",
+    "exports.createScheduledTasksServer = O;",
+    "tool names \"create_scheduled_task\" / \"update_scheduled_task\" / \"list_scheduled_tasks\" with full cron/fireAt descriptions",
+    "The task is stored as {taskId}/SKILL.md in ${g}/.",
+    "Standard 5-field cron expression ... Mutually exclusive with fireAt",
+    "e.SERVER_NAME / e.hne({...tools...}) MCP server construction pattern"
+   ]
+  },
+  {
+   "chunk": "DDPvNCKb",
+   "bytes": 8267,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "Ds_EujvB",
+    "BsymZHkE"
+   ],
+   "label": "AutoFixEngine CI/PR monitor",
+   "kind": "app-feature",
+   "description": "First-party Claude Code (agentic coding) feature: AutoFixEngine periodically sweeps active coding sessions that have autoFixEnabled and an attached GitHub PR, polls PR checks/review comments/issue comments via sessionManager.githubPr, and when it finds new failing CI checks, merge conflicts, or unaddressed reviewer comments, wakes the session by calling sessionManager.sendMessage(...) with a synthesized <ci-monitor-event> prompt telling Claude Code to fix the checks/conflicts and reply to review threads. It's required by MAIN and itself requires two small helper chunks (Ds_EujvB for isConflicting/isMergeStateUnknown, BsymZHkE for isTerminalPrState). Runtime trigger: instantiated/started by the main process's session manager for CI-driven auto-continuation of a Claude Code session with an open PR and auto-fix enabled, not on every app launch.",
+   "evidence": [
+    "exports.AutoFixEngine = B",
+    "`[AutoFixEngine] auto-fix enabled; kicking ${i.sessionId}`",
+    "`[AutoFixEngine] Waking ${s}: ${C.length} new failure(s)...`",
+    "`<ci-monitor-event>${h.join(...)}</ci-monitor-event>`",
+    "`CI ${g} ${l} failed on ${u}. Run \\`gh pr checks ${s}${f}\\` to see details...`",
+    "origin: { kind: \"auto-continuation\" }, initiator: \"ci-monitor\""
+   ]
+  },
+  {
+   "chunk": "DIyoLvd8",
+   "bytes": 4765,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Usage probe (rate-limit/usage telemetry)",
+   "kind": "app-feature",
+   "description": "Implements `probePeriodUsage`, a first-party feature that periodically spawns the host-installed Claude Code CLI binary (via the CLI SDK's query API, `n.KZe`) in a no-tools, non-persisted session to call its experimental `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` control request, then normalizes the day/week usage payload (request count, and per-agent/skill/plugin/mcp-server percentage breakdowns clamped 0-100) for the desktop app's usage/limits UI. It layers caching (5-min success cache, 30s/300s backoff on failure), a 5s rate floor, and dedicated error classes (ProbeShapeDriftError, ProbeRateFloorError, no-CLI-binary error) around the raw probe, and redacts secrets/paths from log messages before logging. Sentry release/debug-id init boilerplate at the top is standard per-chunk instrumentation, not a vendored library. It requires only the shared MAIN chunk (for CLI discovery, OAuth/env helpers, and logging) and exports probePeriodUsage/resetUsageProbeState, so it is loaded on demand by whatever renderer surface (likely an account/usage settings panel or periodic rate-limit indicator) calls into it via IPC exposed from MAIN.",
+   "evidence": [
+    "[UsageProbe] oauth failed / [UsageProbe] get_usage failed / [UsageProbe] attempt inside rate floor",
+    "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
+    "get_usage response shape drift: ${...} / usage probe attempt rate floor / usage probe superseded before spawn / no CLI binary on disk",
+    "CLAUDE_CODE_OAUTH_TOKEN / CLAUDE_CODE_SUBSCRIPTION_TYPE / CLAUDE_CODE_RATE_LIMIT_TIER / CLAUDE_CODE_TAGS: \"usage_probe\"",
+    "exports.probePeriodUsage / exports.resetUsageProbeState / exports._test",
+    "requires ./index.chunk-CNXUb5h4.js for getHostCliBinary, buildHostCliEnv, getUntrustedLaunchOptions, redactSecretLike, logger"
+   ]
+  },
+  {
+   "chunk": "DLO6Ax9W",
+   "bytes": 686,
+   "requiredBy": [
+    "BYTSEZgv",
+    "BfcG_552",
+    "CVKCxtdY"
+   ],
+   "requires": [],
+   "description": "Tiny shared-runtime helper chunk exporting a single function, exports.shellQuote, which POSIX-single-quotes a string for safe shell interpolation (wraps in '...' and escapes embedded quotes as '\\''). No electron/ipc/IO of its own — it's a pure string utility, likely pulled in by any main-process code path that shells out to an external command with a user- or path-derived argument (e.g. spawning a helper binary, opening a URL/file via a shell, or a doctor/diagnostics command). Required by three other chunks (BYTSEZgv, BfcG_552, CVKCxtdY), consistent with a small cross-cutting utility rather than a single feature's private code. The only other content is the standard Sentry SENTRY_RELEASE/_sentryDebugIds IIFE stamped into every chunk by the build's Sentry bundler plugin — not itself feature logic.",
+   "evidence": [
+    "exports.shellQuote = n;",
+    "function n(e) { return `'${e.replace(/'/g, \"'\\\\''\")}'`; }",
+    "e.SENTRY_RELEASE = { id: \"1a5be1fbf83d1832486e03a667557c18f0a0ec7a\" };",
+    "e._sentryDebugIdIdentifier = \"sentry-dbid-e64bd7eb-4f91-4f3f-975b-f4752579f395\""
+   ],
+   "kind": "shared-runtime-helper",
+   "label": "shellQuote helper",
+   "npmPackages": []
+  },
+  {
+   "chunk": "DMU53tq3",
+   "bytes": 6866,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Foundry/Entra OAuth device-code + PKCE auth",
+   "kind": "app-feature",
+   "description": "First-party Electron main-process module implementing Microsoft Entra ID (Azure AD) OAuth flows — device-code grant, browser PKCE loopback grant, and refresh-token exchange — scoped under the log prefix \"custom-3p:entra\" (\"3p\" = third-party). It builds Entra device-code/authorize/token endpoint URLs from a shared `MICROSOFT_LOGIN_HOST` constant, requests the Azure Cognitive Services scope, validates responses with a schema library re-exported from the main chunk, and returns/refreshes access+refresh tokens tagged with tenantId/clientId. This is almost certainly the auth backend for connecting a custom third-party model provider (Azure AI \"Foundry\") that authenticates via Microsoft Entra, loaded on demand when a user sets up/refreshes that provider's credentials rather than at every app start.",
+   "evidence": [
+    "[custom-3p:entra] starting Entra device-code grant",
+    "Foundry Entra device init failed: HTTP",
+    "verification_uri must be https://*.microsoft.com",
+    "https://cognitiveservices.azure.com/.default",
+    "urn:ietf:params:oauth:grant-type:device_code",
+    "displayName: \"Microsoft Entra\""
+   ]
+  },
+  {
+   "chunk": "DNqqgruO",
+   "bytes": 5692,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "Gd8OsLOY"
+   ],
+   "label": "Cowork remote marketplace migration",
+   "kind": "app-feature",
+   "description": "First-party Cowork/plugin-marketplace startup task (exports maybeRunRemoteMarketplaceMigration). Behind a GrowthBook flag (claudeai_cowork_backend_marketplaces), it one-time-migrates locally known marketplace entries (from resolveCoworkPaths()'s knownMarketplacesFile) into account-level marketplaces by POSTing sanitized HTTPS GitHub URLs via createAccountMarketplace, with per-entry skip/retry handling and a persistent electron-store sentinel (remote_marketplace_migration_done_v1) to run only once. Triggered from the MAIN chunk at Cowork startup; pulls a zod schema from index.chunk-Gd8OsLOY.js to validate a GrowthBook string feature value.",
+   "evidence": [
+    "[remoteMarketplaceMigration]",
+    "remote_marketplace_migration_done_v1",
+    "marketplace_migration.gate_check gate=claudeai_cowork_backend_marketplaces",
+    "e.resolveCoworkPaths / e.readKnownMarketplaces / e.createAccountMarketplace / e.MarketplaceCloneErrorCode.REMOTE_HOST_UNSUPPORTED",
+    "require(\"./index.chunk-Gd8OsLOY.js\") destructuring {z} (zod) used as p.string()",
+    "e.logEvent(\"marketplace_plugin_migration_done\"/\"marketplace_plugin_migration_retry\", ...)"
+   ]
+  },
+  {
+   "chunk": "DPIWTp-Y",
+   "bytes": 7754,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Cowork VM warm-download prefetch",
+   "kind": "app-feature",
+   "description": "First-party Cowork feature: background-prefetches (\"warms\") the next Cowork VM bundle version during idle time so an upcoming app update can promote it instantly instead of cold-downloading a multi-GB VM image. Downloads .zst-compressed VM bundle files from downloads.claude.ai, hashes/verifies them with a custom Transform+SHA-256, checks free disk space (5x margin), then atomically decompresses and renames into the live bundle dir on promotion. Exports maybeWarmDownloadForUpdate (called during update checks in MAIN) and promoteWarmBundle (called when an update actually installs).",
+   "evidence": [
+    "const p = \"warm\"",
+    "e.coworkVMLogger.info(`[warm] Fetching VM hash for version ${r}`)",
+    "e.logCoworkEvent(\"lam_vm_warm_download_started\", ...)",
+    "https://downloads.claude.ai/vms/linux/${a}/${r}/${i}",
+    "e.VM_BUNDLE_SPEC.files[r][o]",
+    "exports.maybeWarmDownloadForUpdate = T; exports.promoteWarmBundle = x;"
+   ]
+  },
+  {
+   "chunk": "DPyL7Qop",
+   "bytes": 1411,
+   "requiredBy": [
+    "DmcY3fXx"
+   ],
+   "requires": [],
+   "label": "Session file-open consent dialog",
+   "kind": "app-feature",
+   "description": "First-party helper exporting confirmOpenSessionFileWithDefaultApp: shows an Electron dialog.showMessageBox \"File access request\" prompt asking the user to allow Claude to open a given file path with the OS default application, before some session/agent feature shells out to open it. De-dupes concurrent/repeat requests for the same (kind,path) via an in-memory Set (approved) and Map (in-flight promises). Loaded when the session/file-open flow (chunk DmcY3fXx) needs to open a file external to the app, e.g. an attachment or generated file surfaced during a Cowork/agent session.",
+   "evidence": [
+    "exports.confirmOpenSessionFileWithDefaultApp = c",
+    "title: \"File access request\"",
+    "message: \"Allow Claude to open this file?\"",
+    "u.logger.info(\"[sessionOpenConsent] user declined default-app open\")",
+    "o.BrowserWindow.fromWebContents(e)",
+    "require(\"./index.chunk-CNXUb5h4.js\")"
+   ]
+  },
+  {
+   "chunk": "DSARmh3w",
+   "bytes": 137696,
+   "requiredBy": [
+    "B43foloX"
+   ],
+   "requires": [],
+   "label": "electron-devtools-installer",
+   "kind": "vendored-library",
+   "description": "This chunk is the vendored npm package `electron-devtools-installer` (plus small bundled deps: a CRX/zip-extraction helper and a browserified `readable-stream`/`process.nextTick`/`buffer` shim). It exposes `installExtension()`, which downloads a Chrome extension CRX from the Google Web Store update endpoint, unpacks it into Electron's userData `extensions/` directory, and loads it into a session via `session.loadExtension`; it also exports well-known devtools extension IDs (React/Vue/Redux/MobX/Ember/Backbone/jQuery devtools). Likely dynamically imported by a dev-mode/debug code path in the main-process chunk (required-by B43foloX) that installs devtools extensions such as React Developer Tools — not something normally exercised in a production Linux install.",
+   "npmPackages": [
+    "electron-devtools-installer"
+   ],
+   "evidence": [
+    "n.installExtension = c ... \"electron-devtools-installer can only be used from the main process\"",
+    "REACT_DEVELOPER_TOOLS = { id: \"fmkadmapgofadopljbjfkapdkoienihi\" }",
+    "VUEJS_DEVTOOLS / REDUX_DEVTOOLS / MOBX_DEVTOOLS / EMBER_INSPECTOR / BACKBONE_DEBUGGER / JQUERY_DEBUGGER extension id maps",
+    "downloadChromeExtension fetches `https://clients2.google.com/service/update2/crx?response=redirect&acceptformat=crx2,crx3&x=id%3D${a}%26uc&prodversion=${process.versions.chrome}`",
+    "getPath() resolves `${app.getPath('userData')}/extensions`; session.getAllExtensions/loadExtension/removeExtension/on('extension-unloaded', ...)",
+    "/^.+\\/node_modules\\/yaku\\/.+\\n?/gm stack-filter regex naming the bundled 'yaku' promise polyfill dependency"
+   ]
+  },
+  {
+   "chunk": "DVe-Qi89",
+   "bytes": 3763,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Node TLS decline-fallback HTTPS fetch",
+   "kind": "app-feature",
+   "description": "First-party helper exporting `nodeFetchDecliningClientCert`, a Node `https`-based fetch used as a fallback when a request must bypass Electron/Chromium's networking stack. It pins the TLS leaf certificate to the SHA-256 hash Chromium already validated for the host (custom `checkServerIdentity`), reuses the app's system-CA options and proxy resolution (both imported from the main chunk `index.chunk-CNXUb5h4.js`, including a bundled `HttpsProxyAgent`), caps buffered response bodies at 4MB, rejects HTTP redirects (301/302/303/307/308) and `text/event-stream` responses, and reports invalidated-cert error codes back so the cached CA options get refreshed. Being required only by MAIN and requiring nothing itself, it is almost certainly lazy-loaded on demand the first time some network call needs to \"decline\" the normal Electron `net`/session fetch path and retry via Node's `https` module while still enforcing Chromium's cert validation.",
+   "evidence": [
+    "exports.nodeFetchDecliningClientCert = F;",
+    "throw new Error(\"Node TLS decline-fallback only supports https URLs\")",
+    "\"Server certificate does not match the one Chromium validated for this host\"",
+    "`Proxy refused CONNECT (HTTP ${e.statusCode ?? \"?\"}) — reply is the proxy's, not the gateway's`",
+    "\"decline-fallback cannot buffer a text/event-stream response\"",
+    "y.getSystemCAOptions() / y.resolveProxyUrlForRequest(n) / y.distExports.HttpsProxyAgent"
+   ]
+  },
+  {
+   "chunk": "DmcY3fXx",
+   "bytes": 45983,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [
+    "BhLwdw68",
+    "BeyKyjh2",
+    "8hARSK4E",
+    "BfcG_552",
+    "DPyL7Qop"
+   ],
+   "label": "LocalSessions API (Claude Code remote sessions)",
+   "kind": "app-feature",
+   "description": "Implements createLocalSessionsApi, the main-process IPC-facing service backing Claude Desktop's agentic coding \"sessions\" feature (start/sendMessage/session lifecycle) for local, SSH, and WSL remote targets. Covers SSH connection testing/password prompts, WSL UNC path resolution and file reveal, remote git diff/diff-stats/commit-log/commit-diff/file-content retrieval (via a spawnAuxProcess-based git runner with timeout/maxBuffer guards), remote workspace trust checks, SSH settings resolution, and \"teleport to cloud\" / \"tear-off halo\" handoff hooks. Likely loaded on demand when the user starts or interacts with a coding session against a remote (SSH/WSL) target, keeping this logic out of the always-loaded main chunk.",
+   "evidence": [
+    "exports.createLocalSessionsApi = Te;",
+    "n.logger.warn(`[remotePaths] reveal refused an unmappable path for ${n.remoteTargetLabel(i)}`)",
+    "n.logger.error(`[remoteGitDiff] getGitDiff failed for ${r}: ${l}`)",
+    "async teleportToCloud(e,t){ n.refuseIfHipaaGated(\"teleport_to_cloud\") ... dispatchOnEvent({type:\"teleport_progress\", ...}) }",
+    "async testSSHConnection / validateSSHPath / listSSHDirectory / getSSHGitInfo / getSSHLocalBranches / getSSHGitDiff / getSSHCommitDiff",
+    "n.assertSafeWslDistro(i.distro); const u=n.wslUncPath(i.distro,a) ... _.shell.showItemInFolder(u)"
+   ]
+  },
+  {
+   "chunk": "Ds_EujvB",
+   "bytes": 1391,
+   "requiredBy": [
+    "CVKCxtdY",
+    "DDPvNCKb"
+   ],
+   "requires": [],
+   "label": "GitHub merge-state normalizer",
+   "kind": "shared-runtime-helper",
+   "description": "A tiny (~90 line) first-party helper module with no dependencies that normalizes GitHub pull-request merge-state values into canonical enums. Exports normalizeMergeable/normalizeRestMergeable (boolean or REST-string to MERGEABLE/CONFLICTING), normalizeMergeStateStatus (uppercasing into GitHub's mergeable_state set: BEHIND/BLOCKED/CLEAN/DIRTY/DRAFT/HAS_HOOKS/UNSTABLE), plus isConflicting and isMergeStateUnknown predicates. Likely loaded on demand by a GitHub-integration feature (e.g. Cowork's PR creation/status flow) via the two chunks that require it (CVKCxtdY, DDPvNCKb), only when that PR/merge UI actually needs to render or reason about a pull request's mergeability.",
+   "evidence": [
+    "exports.normalizeMergeStateStatus = o;",
+    "case \"MERGEABLE\": case \"CONFLICTING\":",
+    "case \"BEHIND\": case \"BLOCKED\": case \"CLEAN\": case \"DIRTY\": case \"DRAFT\": case \"HAS_HOOKS\": case \"UNSTABLE\":",
+    "exports.isConflicting / exports.isMergeStateUnknown",
+    "SENTRY_RELEASE = { id: \"1a5be1fbf83d1832486e03a667557c18f0a0ec7a\" }"
+   ]
+  },
+  {
+   "chunk": "DuBC1uXg",
+   "bytes": 18598,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Agent SDK filesystem/bash toolset",
+   "kind": "app-feature",
+   "description": "Implements the Anthropic Agent SDK's local agentic toolset used by Claude Desktop's agent/Cowork sessions: sandboxed bash/read/write/edit/glob/grep file tools plus skill-archive extraction and skill-version resolution against a session's workdir. Exported as betaBashTool, betaReadTool, betaWriteTool, betaEditTool, betaGlobTool, betaGrepTool, and bundled into betaAgentToolset20260401, alongside setupSkills/extractSkillArchive/resolvePath helpers. Loaded by MAIN when an agent session with local tool access (skills, bash, file edit) is set up, e.g. for Cowork/agentic-session workdirs.",
+   "evidence": [
+    "exports.betaAgentToolset20260401 = Se; exports.betaBashTool = H; exports.betaEditTool = K; exports.betaGlobTool = X; exports.betaGrepTool = Y; exports.betaReadTool = z; exports.betaWriteTool = J;",
+    "exports.setupSkills = pe; exports.extractSkillArchive = W; exports.resolveSkillVersion = B;",
+    "name: \"bash\" / name: \"read\" / name: \"write\" / name: \"edit\" / name: \"glob\" / name: \"grep\" tool definitions with inputSchema",
+    "e.beta.sessions.retrieve(r) and e.beta.skills.versions.retrieve(...) calls, component: \"agent-tool-context\" log tags",
+    "path escapes workdir / absolute path ... not permitted ToolError messages from a resolvePath() sandbox",
+    "grep: rg failed.../grep: invalid regex... error strings backing a ripgrep-based grep tool implementation"
+   ]
+  },
+  {
+   "chunk": "DuRzChhd",
+   "bytes": 614,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Sentry release/debug-id banner",
+   "kind": "vendored-library",
+   "description": "A 3-line (37 beautified) auto-injected Sentry instrumentation stub, not application code. It stamps the global object with SENTRY_RELEASE.id and a per-file _sentryDebugIds/_sentryDebugIdIdentifier via a stack-trace trick, matching the standard banner Sentry's bundler plugin (@sentry/vite-plugin or similar) prepends to build output so each chunk can be tied to a release and source map for crash symbolication. It isn't imported by name from application code; it simply executes because it's part of the code-split module graph require()'d from the MAIN chunk. Likely one of many near-identical per-chunk twins across the ~44 satellite chunks, differing only in the embedded debug-id GUID.",
+   "evidence": [
+    "e.SENTRY_RELEASE={id:\"1a5be1fbf83d1832486e03a667557c18f0a0ec7a\"}",
+    "e._sentryDebugIds=e._sentryDebugIds||{}",
+    "e._sentryDebugIdIdentifier=\"sentry-dbid-4bf9a207-f0ea-4c9a-9065-bfcaff2afa53\"",
+    "new e.Error().stack",
+    "//# sourceMappingURL=index.chunk-DuRzChhd.js.map"
+   ]
+  },
+  {
+   "chunk": "Dy7ODfSE",
+   "bytes": 15404,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Hardware Buddy BLE feature",
+   "kind": "app-feature",
+   "description": "First-party Electron main-process feature implementing \"Hardware Buddy & Maker Devices\" — a BLE bridge to a physical companion gadget (a \"nibblet\"/\"claude\" branded stick with a small display). It pairs/scans/forgets a Bluetooth device via electron's select-bluetooth-device and setBluetoothPairingHandler, exposes a Buddy IPC-style implementation (status/deviceStatus/pairDevice/scanDevices/pickDevice/submitPin/setName/pickFolder/preview/install) to a dedicated BrowserWindow (buddy_window/buddy.html + buddy.js preload), streams a live summary of running Claude Code / local-agent-mode sessions (running/waiting counts, latest transcript snippet, pending tool-permission approvals, daily token usage) down to the device over BLE, and lets the user upload a folder (GIF/text \"character\" manifest, <=1.8MB) to the stick in chunked writes with ack/timeout semantics. Gated behind a remote feature flag (id \"2358734848\") and the \"hardwareBuddyEnabled\" workspace/app preference; the app's developer menu gets an \"Open Hardware Buddy…\" item (getBuddyMenuItem) and initBuddy() wires the flag-change listener that starts the bridge — these two are the chunk's only exports, invoked from MAIN when the feature flag turns on or the menu item is clicked.",
+   "evidence": [
+    "[buddy-ble] mainView not ready / starting bridge log prefixes",
+    "device: not connected / BLE write failed / ack timeout errors",
+    "cmd: char_begin / file / chunk / file_end / char_end device upload protocol",
+    "hardwareBuddyEnabled preference + isFeatureEnabled(\"2358734848\")",
+    "\"Hardware Buddy & Maker Devices\" / \"Open Hardware Buddy…\" formatMessage strings",
+    "r.BuddyBleTransport.for(e) / r.Buddy.for(e), Store names 'buddy-state'/'buddy-tokens', deviceName startsWith 'nibblet'/'claude'"
+   ]
+  },
+  {
+   "chunk": "Gd8OsLOY",
+   "bytes": 4128,
+   "requiredBy": [
+    "DNqqgruO"
+   ],
+   "requires": [],
+   "label": "Zod barrel re-export chunk",
+   "kind": "vendored-library",
+   "description": "A pure re-export barrel for the Zod schema-validation library. It requires the MAIN chunk (index.chunk-CNXUb5h4.js) and re-exports ~80 Zod symbols (ZodType, ZodObject, ZodString, z, object/string/number/array factory functions, ParseStatus, ZodIssueCode, etc.) from it via `exports.X = e.X`. No logic of its own — Zod's real implementation is inlined in MAIN; this chunk exists only because Zod's package entry point (index.js) became its own module boundary during Vite's code-splitting. Loaded whenever the requiring chunk (DNqqgruO) needs the full Zod public API surface (e.g. constructing/parsing schemas) rather than importing individual internals directly from MAIN.",
+   "evidence": [
+    "const e = require(\"./index.chunk-CNXUb5h4.js\");",
+    "exports.ZodType = e.ZodType;",
+    "exports.ZodObject = e.ZodObject;",
+    "exports.object = e.objectType;",
+    "exports.z = e.z;",
+    "exports.ZodFirstPartyTypeKind"
+   ],
+   "npmPackages": [
+    "zod"
+   ]
+  },
+  {
+   "chunk": "K1Q8_qz3",
+   "bytes": 1926,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "description": "First-party app feature: a small notifier module for \"Custom 3P\" (custom third-party connector/MCP) credential problems. Exports showAuthExpiryToast(event, credentialManager), which dedupes by credential epoch (via a module-level `o` var and `credentialEpoch()`) and then shows a toast in the webapp UI — either a non-actionable \"Access denied by your organization\" toast (HTTP 403 with no hint) or a \"Your session has expired\" toast with a \"Sign in again\" action (ToastAuthActionKind.TriggerInteractiveAuth). It requires the 7.7MB MAIN chunk for getIntl/ToastType/ToastAuthActionKind and dynamically imports MAIN a second time to pull webAppApis.showToastInWebapp. Also exports a `_test.resetDedup` hook for tests. Likely lazy-loaded off the custom-3P/MCP OAuth credential-refresh path when a connector's token expires or is denied by an org policy.",
+   "evidence": [
+    "exports.showAuthExpiryToast = d;",
+    "messageForLogging: \"custom3p_auth_denied_toast\" / \"custom3p_auth_expiry_toast\"",
+    "defaultMessage: \"Access denied by your organization. Contact your administrator.\"",
+    "defaultMessage: \"Your session has expired.\" / \"Sign in again\"",
+    "a.ToastAuthActionKind.TriggerInteractiveAuth",
+    "const a = require(\"./index.chunk-CNXUb5h4.js\"); exports._test = { resetDedup }"
+   ],
+   "kind": "app-feature",
+   "label": "Custom 3P auth-expiry toast",
+   "npmPackages": []
+  },
+  {
+   "chunk": "PJQ5N4g6",
+   "bytes": 2210,
+   "requiredBy": [
+    "Cy4jOZYe"
+   ],
+   "requires": [],
+   "label": "Org-scoped extension update dialog",
+   "kind": "app-feature",
+   "description": "First-party feature: a single exported function `showOrgScopedDxtUpdateDialog(name, currentVersion, newVersion, orgName)` that shows an Electron `dialog.showMessageBox` confirmation asking whether to install or skip an available update for an organization-provided Claude extension (DXT). Uses i18n via `getIntl().formatMessage` and the shared logger from the main chunk. Loaded on demand (dynamic import) by module `Cy4jOZYe`, presumably when the org-plugins update checker detects a new version for an org-scoped extension and needs user confirmation before installing.",
+   "evidence": [
+    "exports.showOrgScopedDxtUpdateDialog = r;",
+    "defaultMessage: \"Organization Extension Update Available\"",
+    "defaultMessage: \"The extension {extensionName} {organizationText} has an update available.\"",
+    "defaultMessage: \"Version {currentVersion} → {newVersion} Would you like to install this update?\"",
+    "l.dialog.showMessageBox({ type: \"question\", ... })",
+    "t.logger.info(`User ${i ? \"accepted\" : \"declined\"} update for org-scoped extension '${e}' (${a} → ${o})`)"
+   ]
+  },
+  {
+   "chunk": "iS43ruUD",
+   "bytes": 3197,
+   "requiredBy": [
+    "MAIN",
+    "CVKCxtdY"
+   ],
+   "requires": [],
+   "label": "ccd-session-secrets materializer",
+   "kind": "app-feature",
+   "description": "First-party feature module (log/dir prefix \"ccd-session-secrets\") that materializes short-lived credential/secret files to disk under `<userData>/ccd-session-secrets/<sessionId>` (and `/fork-<uuid>` for forked sessions) so a spawned subprocess (likely the Claude Code CLI — \"ccd\" reads as Claude Code Desktop integration) can read them, then tears them down. Only active when `getDeploymentMode().type === \"3p\"` (third-party/self-hosted deployment). Uses shared MAIN-chunk primitives (`Mutex`, `Supersession`, `retryTransientLock`, `mkdirPrivate`, `CredentialSupersededDuringWriteError`) for per-session locking, generation-tracking to detect stale writes, and a boot-time sweep (`ensureCcdBootSweep`/`sweepCcdSessionSecrets`) that clears the whole secrets root on startup. Exports `materializeCcdSessionSecrets`, `materializeCcdForkSecrets`, `removeCcdSessionSecretsDir`, `ccdSessionSecretsDir/Root`, and a `_test` hook — dynamically imported (likely on first Claude Code session start/fork) from MAIN and from sibling chunk `index.chunk-CVKCxtdY.js`.",
+   "evidence": [
+    "`[ccd-session-secrets] ${t} rm failed`",
+    "\"[ccd-session-secrets] unsafe sessionId; skipping materialize\"",
+    "d.join(D.app.getPath(\"userData\"), \"ccd-session-secrets\")",
+    "r.getDeploymentMode().type !== \"3p\"",
+    "exports.materializeCcdForkSecrets / exports.materializeCcdSessionSecrets / exports.removeCcdSessionSecretsDir",
+    "new r.CredentialSupersededDuringWriteError(...)"
+   ]
+  },
+  {
+   "chunk": "oBJ0NwSq",
+   "bytes": 3373,
+   "requiredBy": [
+    "MAIN"
+   ],
+   "requires": [],
+   "label": "Anthropic Console OAuth key-mint (Cowork 3P sign-in)",
+   "kind": "app-feature",
+   "description": "First-party feature module implementing the 'Sign in with Console' (Anthropic API org) OAuth flow used by Cowork's third-party provider sign-in. It runs a loopback PKCE OAuth flow against the Console's /oauth/authorize and /v1/oauth/token endpoints, then exchanges the resulting access token for a minted raw API key via POST /api/oauth/claude_cli/create_api_key and fetches the org UUID via /api/oauth/profile. Exports doAnthropicConsoleGrant (kick off the browser sign-in) and getMintedAnthropicApiKey (read a cached minted key), plus a _test helper bundle. Likely lazy-loaded from the main chunk when a user picks the Anthropic Console (API org) option in Cowork's third-party sign-in UI, reusing shared OAuth/PKCE/logging helpers (oauth.COWORK_3P_OAUTH_CONFIGS, runLoopbackPkceFlow, logger, setResolvedClientId/readStoredMintedKey/clearMintedKeyStore) exported from the main process chunk (index.chunk-CNXUb5h4.js).",
+   "evidence": [
+    "log tags: '[custom-3p:console] starting browser sign-in' and '[custom-3p:console] key-mint rejected'",
+    "class c extends Error { ... this.name = \"AnthropicKeyMintError\" }",
+    "endpoint literals: `${e}/api/oauth/claude_cli/create_api_key`, `${e}/api/oauth/profile`, `https://${r.PLATFORM_CLAUDE_HOST}/oauth/authorize`",
+    "error message: 'API key sign-in works for Console (API) organizations only. Choose a different organization.' with code ORG_NOT_API",
+    "requires shared main chunk API: r.oauth.COWORK_3P_OAUTH_CONFIGS[\"production\"], r.runLoopbackPkceFlow, r.setResolvedClientId, r.readStoredMintedKey, r.clearMintedKeyStore, r._testStoreReset",
+    "exports: exports.doAnthropicConsoleGrant, exports.getMintedAnthropicApiKey, exports._test"
+   ]
+  },
+  {
+   "chunk": "r07KBe07",
+   "bytes": 5338,
+   "requiredBy": [
+    "CVKCxtdY"
+   ],
+   "requires": [],
+   "description": "Implements RemotePluginSync: walks local Claude Code plugin directories, computes a SHA-256 content hash per directory, tars and SFTP-uploads them to a remote host under .claude/remote/plugins/<hash>, then extracts remotely and marks with a .synced file. Guards against symlinks, path-escaping entries, and plugins whose manifest relocates hooks. Exports syncPluginDirsToRemote(controller, localDirs); dynamically imported by chunk CVKCxtdY (a remote/Cowork SSH session controller) once an SSH connection to a remote host is established, so that local plugins are available before remote hooks/tools run.",
+   "evidence": [
+    "RemotePluginSync: refusing entry that escapes plugin root: ${s}",
+    "RemotePluginSync: refusing symlink in plugin directory: ${s}",
+    "RemotePluginSync: refusing plugin that relocates hooks via manifest: ${o}",
+    "RemotePluginSync: controller.remoteHome unset (ensureReady not called?)",
+    "[RemotePluginSync] Synced ${e.fileCount} file(s) from ${n.localRoot}",
+    "h = \".claude/remote/plugins\""
+   ],
+   "kind": "app-feature",
+   "label": "RemotePluginSync (remote/Cowork plugin upload)"
+  },
+  {
+   "chunk": "z2KVH7ws",
+   "bytes": 430534,
+   "requiredBy": [
+    "Brn8atpb",
+    "MAIN"
+   ],
+   "requires": [],
+   "description": "Vendored copy of Anthropic's @anthropic-ai/mcpb package (MCPB = \"MCP Bundle\", the successor format to .dxt Desktop Extensions). Provides manifest schema validation, pack/unpack/sign/verify of .mcpb archive files, node_modules dev-dependency pruning (\"mcpb clean\"), and an inquirer-based interactive wizard (init/prompt* functions) for scaffolding a new extension's manifest.json. It also bundles the `@inquirer/core` prompt-hook runtime (AsyncLocalStorage-based hooks, ExitPromptError/ValidationError classes) used by its interactive prompts, plus a Sentry init snippet. Loaded dynamically (from MAIN and from chunk Brn8atpb) whenever the app needs to build, validate, pack, sign, verify, or clean a Claude Desktop Extension bundle — e.g. the extension/plugin install & management feature and any developer-facing \"create/pack extension\" flow.",
+   "evidence": [
+    "exports.buildManifest / exports.packExtension / exports.cleanMcpb / exports.signMcpbFile / exports.verifyMcpbFile",
+    "console.log(\" -- Cleaning MCPB...\"); console.log(\" -- Unpacking MCPB...\")",
+    "'Unrecoverable manifest issues, please run \"mcpb validate\"'",
+    "Ou = \"MCPB_SIG_V1\", Mu = \"MCPB_SIG_END\"",
+    "\"[Inquirer] Hook functions can only be called from within a prompt\"",
+    "hf.DestroyerOfModules({ rootDirectory: f }) prunes node_modules dev deps before packing"
+   ],
+   "kind": "vendored-library",
+   "npmPackages": [
+    "@anthropic-ai/mcpb",
+    "@inquirer/core"
+   ],
+   "label": "MCPB (MCP Bundle) SDK/CLI"
+  }
+ ]
+}
