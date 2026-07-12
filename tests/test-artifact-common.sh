@@ -182,6 +182,13 @@ validate_app_contents() {
 run_version_flag_test() {
 	local label="$1" expected="$2"
 	shift 2
+	# An empty metadata query (dpkg-deb -f / rpm -qp failure) would
+	# leave "name " as the expected prefix and make the match vacuous.
+	if [[ -z $expected || $expected == *' ' ]]; then
+		fail "$label --version: expected prefix '$expected' has no" \
+			'version component (metadata query returned empty?)'
+		return
+	fi
 	local out rc
 	out=$("$@" --version 2>&1)
 	rc=$?

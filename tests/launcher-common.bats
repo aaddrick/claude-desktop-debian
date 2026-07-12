@@ -719,13 +719,21 @@ s.close()
 	# Wait for the exec to land before running the reaper: on a loaded
 	# runner the child can still carry its pre-exec argv when the UI
 	# scan reads /proc cmdline, so the fingerprint misses and the
-	# reaper takes the orphan path (flaked CI on 2026-07-10). Bounded
-	# poll; plain assignment, not ((i++)), to dodge the errexit trap.
+	# reaper takes the orphan path (flaked CI on 2026-07-10). Poll the
+	# reaper's own predicate, not a parallel pattern that can drift —
+	# a loose grep matches the pre-exec cmdline (--class=Claude inside
+	# the bash -c quoting) that the strict fingerprint still rejects.
+	# Fail loudly on timeout: exec lands in ~4ms, so a silent
+	# fall-through would reproduce the exact flake signature this
+	# poll exists to kill. Plain assignment, not ((i++)), to dodge
+	# the errexit trap.
 	local _i=0
-	while ((_i < 50)); do
-		if tr '\0' ' ' < "/proc/$ui_pid/cmdline" 2>/dev/null \
-			| grep -q -- '--class=Claude'; then
-			break
+	while ! _claude_desktop_ui_cmdline_matches \
+		"$(tr '\0' ' ' < "/proc/$ui_pid/cmdline" 2>/dev/null)"; do
+		if ((_i >= 50)); then
+			echo "stand-in UI $ui_pid never matched the reaper's" \
+				'fingerprint within 5s' >&2
+			return 1
 		fi
 		sleep 0.1
 		_i=$((_i + 1))
@@ -1268,12 +1276,17 @@ _stub_featureless_node() {
 
 @test "setup_cowork_bwrap_env: explicit COWORK_NODE_PATH is honored" {
 	command -v node >/dev/null || skip 'node not installed'
+	# A symlinked copy in TEST_TMP is distinguishable from what the
+	# PATH probe would resolve, so this proves precedence (the
+	# explicit path survives the call), not just the log line.
+	ln -s "$(command -v node)" "$TEST_TMP/pinned-node"
 	export COWORK_VM_BACKEND=bwrap
-	export COWORK_NODE_PATH="$(command -v node)"
+	export COWORK_NODE_PATH="$TEST_TMP/pinned-node"
 	log_file="$TEST_TMP/launcher.log"
 	: > "$log_file"
 	setup_cowork_bwrap_env
-	grep -qF "daemon node: $COWORK_NODE_PATH" "$log_file"
+	[[ $COWORK_NODE_PATH == "$TEST_TMP/pinned-node" ]]
+	grep -qF "daemon node: $TEST_TMP/pinned-node" "$log_file"
 }
 
 @test "setup_cowork_bwrap_env: auto-detects node from PATH and exports it" {
