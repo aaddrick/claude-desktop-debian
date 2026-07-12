@@ -13,8 +13,8 @@
 #
 # Sourced by: build.sh
 # Sourced globals:
-#   app_staging_dir, asar_exec, work_dir, project_root, WM_CLASS
-# Modifies globals: main_js
+#   app_staging_dir, asar_exec, work_dir, project_root
+# Modifies globals: main_js, WM_CLASS (derived + exported)
 #===============================================================================
 
 # Survivor candidates per docs/learnings/official-deb-rebase-verification.md:
@@ -110,6 +110,33 @@ _asar_package_json_field() {
 		"$meta_dir/package.json" "$field"
 }
 
+# Derive the WM_CLASS / StartupWMClass value from the asar's
+# package.json desktopName (#779). Chromium derives the runtime X11
+# WM_CLASS / Wayland app_id from that field minus its .desktop suffix
+# — not from the ELF basename, the launcher's --class flag, or
+# productName. Upstream has renamed it once already
+# (claude-desktop.desktop → com.anthropic.Claude.desktop across
+# 1.18286.0 → 1.19367.0), so any hardcoded value silently breaks
+# window-to-launcher grouping on the next rename. Verified live on
+# GNOME and KDE against both releases (see #786).
+_derive_wm_class() {
+	local desktop_name="$1"
+
+	if [[ -z $desktop_name ]]; then
+		echo 'Error: package.json desktopName is missing/empty — cannot' \
+			'derive WM_CLASS. Upstream moved the field Chromium reads' \
+			'the window class from; re-verify before shipping (#779).' >&2
+		return 1
+	fi
+	if [[ $desktop_name != *.desktop ]]; then
+		echo "Error: desktopName '$desktop_name' has no .desktop" \
+			'suffix — upstream changed its shape; re-verify how Chromium' \
+			'derives the window class before shipping (#779).' >&2
+		return 1
+	fi
+	printf '%s\n' "${desktop_name%.desktop}"
+}
+
 # Resolve the main-process JS file inside the extracted asar and echo
 # its path relative to the resources CWD. Pre-3.x bundles kept the whole
 # main process in .vite/build/index.js. Since upstream 1.19367.0 the
@@ -164,17 +191,30 @@ patch_app_asar() {
 		exit 1
 	fi
 
-	# Fail fast if upstream changed productName — a mismatch silently
-	# breaks StartupWMClass in every .desktop file we ship.
+	# Derive WM_CLASS from the field Chromium actually reads (see
+	# _derive_wm_class above). Exported because the packaging scripts
+	# that interpolate it into .desktop files and launcher-common.sh
+	# run as child processes of build.sh.
+	local desktop_name
+	desktop_name=$(_asar_package_json_field desktopName \
+		"$resources_dir/app.asar")
+	WM_CLASS=$(_derive_wm_class "$desktop_name") || exit 1
+	export WM_CLASS
+	echo "WM_CLASS '$WM_CLASS' derived from desktopName '$desktop_name'"
+
+	# productName stays tripwired separately: it no longer feeds
+	# WM_CLASS, but Electron's userData path (~/.config/Claude) keys on
+	# it, and the launcher, doctor, and docs all assume that location.
 	local product_name
 	product_name=$(_asar_package_json_field productName \
 		"$resources_dir/app.asar")
-	if [[ $product_name != "$WM_CLASS" ]]; then
-		echo "Error: upstream productName '$product_name' != WM_CLASS" \
-			"'$WM_CLASS' — update WM_CLASS in build.sh" >&2
+	if [[ $product_name != 'Claude' ]]; then
+		echo "Error: upstream productName '$product_name' != 'Claude'" \
+			'— the ~/.config/Claude userData assumption broke; re-audit' \
+			'the launcher and doctor paths before shipping.' >&2
 		exit 1
 	fi
-	echo "productName '$product_name' matches WM_CLASS"
+	echo "productName '$product_name' unchanged (userData path holds)"
 
 	# Runs against the pristine bytes, before any patch touches them.
 	_check_upstream_tripwires "$resources_dir/app.asar"

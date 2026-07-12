@@ -107,7 +107,8 @@ assert_contains "$appdir/AppRun" 'build_electron_args' \
 
 # --- App contents (asar) ---
 resources_dir="$appdir/usr/lib/claude-desktop/resources"
-validate_app_contents "$resources_dir"
+validate_app_contents "$resources_dir" \
+	"$appdir/usr/share/applications/${component_id}.desktop"
 
 # --- Doctor smoke test ---
 # Some --doctor checks fail in CI (no display, etc.); we only care that

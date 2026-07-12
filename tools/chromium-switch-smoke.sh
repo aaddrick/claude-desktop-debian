@@ -30,7 +30,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 # WM_CLASS placeholder the same way build.sh does.
 cp "$launcher_src" "$tmp_dir/launcher-common.sh" || exit 1
 cp "$doctor_src" "$tmp_dir/doctor.sh" || exit 1
-sed -i 's/@@WM_CLASS@@/Claude/' "$tmp_dir/launcher-common.sh"
+sed -i 's/@@WM_CLASS@@/com.anthropic.Claude/' "$tmp_dir/launcher-common.sh"
 
 # Neutralize host state so the switch list is deterministic regardless
 # of the developer's session (Wayland/X11), keyring, GPU history, or

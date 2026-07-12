@@ -122,11 +122,19 @@ residual risk; they do not un-delete shipped code.
   `usr/share/icons/hicolor/{16x16,32x32,48x48,128x128,256x256}/apps/claude-desktop.png`
   — `scripts/staging/icons.sh` (wrestool from the Windows exe) is replaced
   by a straight copy.
-- **`productName` is `Claude`** (`app.asar` `package.json`), so the
-  `WM_CLASS='Claude'` invariant and `~/.config/Claude` survive the rebase.
-  Note: the official `.desktop` sets `StartupWMClass=claude-desktop`, which
-  mismatches the productName-derived WM class — check at runtime; likely an
-  upstream bug worth filing. Our packaging keeps `StartupWMClass=Claude`.
+- **`productName` is `Claude`** (`app.asar` `package.json`), so
+  `~/.config/Claude` (Electron's userData path) survives the rebase.
+  **Correction (#779, settled 2026-07-12):** the runtime WM class is NOT
+  productName-derived — Chromium derives the X11 `WM_CLASS` / Wayland
+  `app_id` from `package.json` `desktopName` minus its `.desktop` suffix,
+  so the official `StartupWMClass=claude-desktop` was never a bug; our
+  `StartupWMClass=Claude` was the mismatch (duplicate/generic taskbar
+  icon on GNOME and KDE). Upstream then renamed the field
+  (`claude-desktop.desktop` → `com.anthropic.Claude.desktop` across
+  1.18286.0 → 1.19367.0), which is why no hardcoded value survives
+  upstream renames; `WM_CLASS` is now derived from `desktopName` at
+  build time (`_derive_wm_class` in `scripts/patches/app-asar.sh`),
+  verified live on GNOME and KDE against both releases.
 - **glibc floors** (objdump): main Electron ELF **2.25**; `virtiofsd` and
   `chrome-native-host` **2.34** (matches `libc6 (>= 2.34)` in Depends);
   coworkd static (Go). Core app is more portable than the Depends line

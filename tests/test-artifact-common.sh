@@ -71,8 +71,12 @@ assert_command_succeeds() {
 # upstream shape — no frame-fix files, no injected desktopName, no
 # stubbed claude-native. See docs/decisions.md D-002.
 # $1 = path to the resources/ dir containing app.asar
+# $2 = (optional) path to the installed .desktop file; when given and
+#      the asar could be extracted, StartupWMClass is checked against
+#      the package.json desktopName it must be derived from (#779)
 validate_app_contents() {
 	local resources_dir="$1"
+	local desktop_file="${2:-}"
 
 	assert_file_exists "$resources_dir/app.asar"
 	assert_dir_exists "$resources_dir/app.asar.unpacked"
@@ -131,11 +135,30 @@ validate_app_contents() {
 			'"main": ".vite/build/' \
 			'package.json main points into .vite/build/'
 
-		# productName drives WM_CLASS; the build guard asserts the
-		# same invariant at patch time (app-asar.sh)
+		# productName drives Electron's userData path (~/.config/Claude);
+		# the build tripwires the same invariant at patch time
+		# (app-asar.sh)
 		assert_contains "$extract_dir/app/package.json" \
 			'"productName": "Claude"' \
 			'package.json productName is Claude'
+
+		# StartupWMClass must equal the asar desktopName minus its
+		# .desktop suffix — the field Chromium derives the runtime
+		# window class from. A drift here re-opens #779 (duplicate /
+		# generic taskbar icon on GNOME and KDE).
+		if [[ -n $desktop_file ]]; then
+			local desktop_name wm_class
+			desktop_name=$(grep -oP '"desktopName": "\K[^"]+' \
+				"$extract_dir/app/package.json")
+			wm_class="${desktop_name%.desktop}"
+			if [[ -z $desktop_name || $desktop_name == "$wm_class" ]]; then
+				fail "asar desktopName '$desktop_name' is missing or has no .desktop suffix"
+			elif grep -qx "StartupWMClass=$wm_class" "$desktop_file"; then
+				pass "StartupWMClass matches asar desktopName ($wm_class)"
+			else
+				fail "StartupWMClass in $desktop_file does not match asar desktopName-derived '$wm_class'"
+			fi
+		fi
 
 		# Main process bundle exists
 		local main_bundle
