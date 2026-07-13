@@ -12,6 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 - Report [CDL-ANT-0010](docs/reports/CDL-ANT-0010_code-split-chunk-census/CDL-ANT-0010-A_Code_Split_Chunk_Census.pdf) *Inside the Code Split: A Chunk Census of Claude Desktop 1.19367.0* — names what each of the 44 satellite chunks introduced by upstream's main-process code split is scoped to (the agent-session platform, enterprise sign-in, built-in MCP servers, the Claude Desktop Buddy BLE bridge, and the one satellite the patch suite touches), with the structured census data and require-graph manifest alongside.
 
+### Changed
+
+- The doctor-coverage campaign extracted `run_doctor`'s inline display-server, Electron-binary, chrome-sandbox, AppArmor-userns, and SingletonLock checks into unit-testable `_doctor_check_*` helpers with `_DOCTOR_*` path hooks (defaults are the real system paths, so production behavior is unchanged), each move verified byte-identical against the inline original and pinned by mutation-checked bats coverage. The SingletonLock extraction also fixes a false green: a regular file left at `SingletonLock` by an unclean update — which hard-blocks the next cold launch — was reported as `[PASS] no lock file (OK)` and now warns with an `rm` fix hint. ([#740](https://github.com/aaddrick/claude-desktop-debian/pull/740), [#744](https://github.com/aaddrick/claude-desktop-debian/pull/744), [#745](https://github.com/aaddrick/claude-desktop-debian/pull/745), [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782))
+
 ## [v3.2.1] — 2026-07-12
 
 ### Added

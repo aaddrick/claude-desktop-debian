@@ -674,6 +674,56 @@ SHIM
 }
 
 # =============================================================================
+# _doctor_check_singleton_lock
+# =============================================================================
+
+@test "_doctor_check_singleton_lock: no lock file present — PASS" {
+	# XDG_CONFIG_HOME/Claude exists but has no SingletonLock.
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'no lock file'* ]]
+}
+
+@test "_doctor_check_singleton_lock: symlink to a live PID — PASS" {
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	# $$ is this test process: guaranteed alive for the kill -0 probe.
+	ln -s "myhost-$$" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'running process'* ]]
+}
+
+@test "_doctor_check_singleton_lock: symlink to a dead PID — WARN, not PASS" {
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	# Spawn a process, capture its PID, wait for it to exit: that PID
+	# is now provably dead (avoids a magic-number guess).
+	bash -c 'exit 0' &
+	local dead_pid=$!
+	wait "$dead_pid" 2>/dev/null || true
+	ln -s "myhost-$dead_pid" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output == *'stale lock'* ]]
+}
+
+@test "_doctor_check_singleton_lock: regular file (not a symlink) — WARN, not a false PASS" {
+	# Regression guard: an unclean update can leave a plain regular
+	# file at SingletonLock. It still wedges the single-instance lock,
+	# so it must not report '[PASS] no lock file'.
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	printf '' > "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'no lock file'* ]]
+	[[ $output == *'not a symlink'* ]]
+}
+
+# =============================================================================
 # _doctor_check_pkg_version: package-manager ownership (#711)
 # =============================================================================
 

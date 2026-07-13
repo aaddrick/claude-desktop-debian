@@ -702,6 +702,41 @@ _doctor_check_disk_space() {
 	fi
 }
 
+# Check the Chromium single-instance SingletonLock under the Claude
+# config dir. Electron writes it as a 'hostname-PID' symlink; a stale
+# one (dead PID) is self-healed — Chromium unlinks the orphan and
+# continues. The case that actually blocks startup is a non-symlink
+# regular file (possible after an unclean update): ReadLink returns
+# empty, the lock parse fails, and the symlink() retry hits EEXIST,
+# so the app quits on the next cold launch. That case must not be
+# reported as "no lock file", which was a silent false PASS.
+#
+# Usage: _doctor_check_singleton_lock [config_dir]
+_doctor_check_singleton_lock() {
+	local config_dir="${1:-${XDG_CONFIG_HOME:-$HOME/.config}/Claude}"
+	local lock_file="$config_dir/SingletonLock"
+	if [[ -L $lock_file ]]; then
+		local lock_target lock_pid
+		lock_target="$(readlink "$lock_file" 2>/dev/null)" || true
+		lock_pid="${lock_target##*-}"
+		if [[ $lock_pid =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
+			_pass "SingletonLock: held by running process (PID $lock_pid)"
+		else
+			_warn "SingletonLock: stale lock found" \
+				"(PID $lock_pid is not running)"
+			_info "Fix: rm '$lock_file'"
+		fi
+	elif [[ -e $lock_file ]]; then
+		# WARN, not _fail, for consistency with the stale-symlink
+		# precedent above — even though this case provably blocks the
+		# next cold launch.
+		_warn 'SingletonLock: present but not a symlink (unexpected)'
+		_info "Fix: rm '$lock_file'"
+	else
+		_pass 'SingletonLock: no lock file (OK)'
+	fi
+}
+
 # Report the installed claude-desktop version from the package manager
 # that actually owns the install (#711). On dual-DB hosts (e.g. a
 # Fedora box with dpkg installed for deb work) a stale dpkg record
@@ -1503,21 +1538,7 @@ run_doctor() {
 
 	# -- SingletonLock --
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
-	local lock_file="$config_dir/SingletonLock"
-	if [[ -L $lock_file ]]; then
-		local lock_target lock_pid
-		lock_target="$(readlink "$lock_file" 2>/dev/null)" || true
-		lock_pid="${lock_target##*-}"
-		if [[ $lock_pid =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
-			_pass "SingletonLock: held by running process (PID $lock_pid)"
-		else
-			_warn "SingletonLock: stale lock found" \
-				"(PID $lock_pid is not running)"
-			_info "Fix: rm '$lock_file'"
-		fi
-	else
-		_pass 'SingletonLock: no lock file (OK)'
-	fi
+	_doctor_check_singleton_lock "$config_dir"
 
 	# -- Password store --
 	_doctor_check_password_store
