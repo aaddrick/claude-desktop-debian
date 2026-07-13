@@ -93,7 +93,8 @@ log_session_env() {
 		CLAUDE_USE_WAYLAND \
 		CLAUDE_PASSWORD_STORE \
 		CLAUDE_GTK_IM_MODULE \
-		CLAUDE_DISABLE_GPU
+		CLAUDE_DISABLE_GPU \
+		CLAUDE_TRAY_USE_DARK_ICON
 	do
 		log_message "  $key=${!key:-}"
 	done
@@ -823,6 +824,7 @@ load_launcher_config() {
 	# space-delimited match for the key that follows it.
 	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE'
 	allowlist+=' CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU'
+	allowlist+=' CLAUDE_TRAY_USE_DARK_ICON'
 	allowlist+=' COWORK_VM_BACKEND COWORK_NODE_PATH '
 	local line key val
 	while IFS= read -r line || [[ -n $line ]]; do
@@ -853,6 +855,37 @@ load_launcher_config() {
 	done < "$cfg"
 }
 
+# Cinnamon can use a dark panel (org.cinnamon.theme) while GTK's colour
+# scheme stays light, so Electron's shouldUseDarkColors picks the black
+# tray PNG on a dark gray panel (#604). Export CLAUDE_TRAY_USE_DARK_ICON
+# for the asar patch; set it yourself to 0/1 to override auto-detect.
+setup_tray_icon_env() {
+	if [[ -n ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]; then
+		export CLAUDE_TRAY_USE_DARK_ICON
+		log_message \
+			"Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON (preset)"
+		return 0
+	fi
+
+	local desktop="${XDG_CURRENT_DESKTOP:-}"
+	[[ ${desktop,,} == *cinnamon* ]] || return 0
+
+	if ! command -v gsettings &>/dev/null; then
+		return 0
+	fi
+
+	local cinnamon_theme
+	cinnamon_theme=$(gsettings get org.cinnamon.theme name 2>/dev/null) \
+		|| return 0
+	cinnamon_theme=${cinnamon_theme//[\'\"]/}
+	[[ ${cinnamon_theme,,} == *dark* ]] || return 0
+
+	export CLAUDE_TRAY_USE_DARK_ICON=1
+	log_message \
+		"Tray icon: cinnamon theme '$cinnamon_theme' has a dark panel;" \
+		'using TrayIconLinux-Dark.png (CLAUDE_TRAY_USE_DARK_ICON=1)'
+}
+
 setup_electron_env() {
 	# Persistent per-user launcher env (GUI launches can't set env via
 	# the .desktop Exec line) — load before anything reads these vars.
@@ -874,6 +907,7 @@ setup_electron_env() {
 			"GTK_IM_MODULE override: $prev -> $GTK_IM_MODULE (via CLAUDE_GTK_IM_MODULE)"
 	fi
 
+	setup_tray_icon_env
 	setup_cowork_bwrap_env
 }
 

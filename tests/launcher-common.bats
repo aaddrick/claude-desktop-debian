@@ -56,6 +56,7 @@ setup() {
 	unset QT_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
+	unset CLAUDE_TRAY_USE_DARK_ICON
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
@@ -1326,4 +1327,59 @@ _stub_featureless_node() {
 	setup_cowork_bwrap_env
 	grep -q 'lacks fs.statfsSync' "$log_file"
 	grep -q 'refuse to start' "$log_file"
+}
+
+# =============================================================================
+# setup_tray_icon_env: Cinnamon dark-panel tray PNG selection (#604)
+# =============================================================================
+
+@test "setup_tray_icon_env: preset value is exported unchanged" {
+	export CLAUDE_TRAY_USE_DARK_ICON=0
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_tray_icon_env
+	[[ $CLAUDE_TRAY_USE_DARK_ICON == 0 ]]
+	grep -q 'CLAUDE_TRAY_USE_DARK_ICON=0 (preset)' "$log_file"
+}
+
+@test "setup_tray_icon_env: cinnamon dark theme sets CLAUDE_TRAY_USE_DARK_ICON=1" {
+	unset CLAUDE_TRAY_USE_DARK_ICON
+	export XDG_CURRENT_DESKTOP=X-Cinnamon
+	mkdir -p "$TEST_TMP/bin"
+	cat > "$TEST_TMP/bin/gsettings" << 'EOF'
+#!/bin/sh
+if [[ $1 == get && $3 == name ]]; then
+	printf "'Mint-Y-Dark-Aqua'\n"
+fi
+EOF
+	chmod +x "$TEST_TMP/bin/gsettings"
+	PATH="$TEST_TMP/bin:$PATH"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_tray_icon_env
+	[[ $CLAUDE_TRAY_USE_DARK_ICON == 1 ]]
+	grep -q 'TrayIconLinux-Dark.png' "$log_file"
+}
+
+@test "setup_tray_icon_env: cinnamon light theme leaves env unset" {
+	unset CLAUDE_TRAY_USE_DARK_ICON
+	export XDG_CURRENT_DESKTOP=X-Cinnamon
+	mkdir -p "$TEST_TMP/bin"
+	cat > "$TEST_TMP/bin/gsettings" << 'EOF'
+#!/bin/sh
+if [[ $1 == get && $3 == name ]]; then
+	printf "'Mint-Y'\n"
+fi
+EOF
+	chmod +x "$TEST_TMP/bin/gsettings"
+	PATH="$TEST_TMP/bin:$PATH"
+	setup_tray_icon_env
+	[[ -z ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]
+}
+
+@test "setup_tray_icon_env: non-cinnamon desktop is a no-op" {
+	unset CLAUDE_TRAY_USE_DARK_ICON
+	export XDG_CURRENT_DESKTOP=KDE
+	setup_tray_icon_env
+	[[ -z ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]
 }

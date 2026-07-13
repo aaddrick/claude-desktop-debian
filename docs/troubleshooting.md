@@ -63,6 +63,31 @@ If the window doesn't scale correctly on first launch:
 
 This allows the application to save display settings properly.
 
+### Tray icon invisible on a dark panel (Linux Mint Cinnamon, etc.)
+
+Upstream ships two Linux tray PNGs: `TrayIconLinux.png` (dark glyph for
+light panels) and `TrayIconLinux-Dark.png` (light glyph for dark
+panels). It picks between them from `nativeTheme.shouldUseDarkColors`
+and a GNOME desktop check. Cinnamon often uses a **dark panel** while
+GTK still reports a **light colour scheme**, so the black icon lands on
+a dark gray tray ([#604](https://github.com/aaddrick/claude-desktop-debian/issues/604)).
+
+Our launcher auto-detects Cinnamon themes whose panel styling is dark
+(via `org.cinnamon.theme`) and sets `CLAUDE_TRAY_USE_DARK_ICON=1`; a
+small asar patch threads that flag into upstream's existing selector.
+Override manually if needed:
+
+```bash
+# force the light-on-dark icon (white glyph)
+CLAUDE_TRAY_USE_DARK_ICON=1 claude-desktop-unofficial
+
+# force the dark-on-light icon (black glyph)
+CLAUDE_TRAY_USE_DARK_ICON=0 claude-desktop-unofficial
+```
+
+Persist either value in
+`~/.config/claude-desktop-debian/environment`.
+
 ### Global Hotkey Not Working (Wayland)
 
 If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in native Wayland mode:

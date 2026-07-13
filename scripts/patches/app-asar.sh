@@ -34,11 +34,18 @@
 #                              #772). Every branch is gated on
 #                              COWORK_VM_BACKEND=bwrap, so unflagged
 #                              launches ship the official path unchanged.
+#   patch_tray_icon_selection — Cinnamon can use a dark panel while GTK
+#                              still reports a light colour scheme, so
+#                              upstream's shouldUseDarkColors heuristic
+#                              picks the wrong PNG (#604). The launcher
+#                              exports CLAUDE_TRAY_USE_DARK_ICON; this
+#                              threads it into the existing ternary.
 active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
 	patch_virtiofsd_probe
 	patch_cowork_bwrap
+	patch_tray_icon_selection
 )
 
 # The #768 config-wipe guard (config.sh) is NOT wired: a contrarian
