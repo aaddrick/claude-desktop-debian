@@ -79,7 +79,9 @@ validate_app_contents() {
 
 	# Official unpacked set: the real Rust native binding plus the
 	# node-pty prebuild (arch-dependent subdir, hence find). The 2.x
-	# stub index.js / cowork-vm-service.js are gone by design.
+	# unpacked stubs are gone by design; cowork-vm-service.js returned
+	# in #776 but lives at the resources/ root (asserted below), never
+	# in app.asar.unpacked.
 	local native_binding pty_prebuild
 	native_binding=$(find "$resources_dir/app.asar.unpacked" \
 		-name 'claude-native-binding.node' -type f | head -1)
@@ -107,6 +109,18 @@ validate_app_contents() {
 		fail 'Bundled virtiofsd present but not executable'
 	else
 		fail 'Bundled virtiofsd missing from resources/'
+	fi
+
+	# The bwrap fallback daemon (#776): staged beside app.asar when
+	# patch_cowork_bwrap is active (it is, in every current build).
+	# The launcher spawns it via a system node, so presence is the
+	# contract — no exec bit required. Without it, an opt-in
+	# COWORK_VM_BACKEND=bwrap launch fails at spawn with doctor
+	# pointing at a reinstall.
+	if [[ -f $resources_dir/cowork-vm-service.js ]]; then
+		pass 'Bundled cowork-vm-service.js present (bwrap daemon)'
+	else
+		fail 'Bundled cowork-vm-service.js missing from resources/'
 	fi
 
 	# Extract app.asar for deeper inspection if tools available
@@ -151,6 +165,39 @@ validate_app_contents() {
 	fi
 
 	rm -rf "$extract_dir"
+}
+
+# Assert the launcher's --version fast-path (#775): it must print
+# "<package_name> <version>" and exit 0. The fast-path exits before
+# any launch, log-redirect, or sandbox logic, so unlike the launch
+# smoke test it needs no display, D-Bus, or privilege handling — run
+# the command directly. Closes the "deb/rpm static-verified only" gap
+# from the #775 review.
+#
+# Usage: run_version_flag_test <label> <expected_prefix> <cmd> [args...]
+#   expected_prefix  usually "<package_name> <version>"; matched as a
+#                    prefix so an rpm caller can pass the %{VERSION}
+#                    part and tolerate the raw hyphenated tail the
+#                    launcher bakes in (see scripts/packaging/rpm.sh).
+run_version_flag_test() {
+	local label="$1" expected="$2"
+	shift 2
+	# An empty metadata query (dpkg-deb -f / rpm -qp failure) would
+	# leave "name " as the expected prefix and make the match vacuous.
+	if [[ -z $expected || $expected == *' ' ]]; then
+		fail "$label --version: expected prefix '$expected' has no" \
+			'version component (metadata query returned empty?)'
+		return
+	fi
+	local out rc
+	out=$("$@" --version 2>&1)
+	rc=$?
+	if (( rc == 0 )) && [[ $out == "$expected"* ]]; then
+		pass "$label --version prints '$out' (exit 0)"
+	else
+		fail "$label --version: rc=$rc output='$out'" \
+			"(want prefix '$expected')"
+	fi
 }
 
 # Headless launch smoke test. Boots the packaged app under Xvfb + dbus

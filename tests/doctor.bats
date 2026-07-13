@@ -1428,6 +1428,105 @@ _stub_vfsd() {
 }
 
 # =============================================================================
+# cowork_node_has_features / _doctor_check_bwrap_node: bwrap runtime (#772)
+# =============================================================================
+
+# The bwrap daemon needs a node providing fs.statfsSync (18.15/16.19).
+# The doctor probes the capability, not the version — 18.0-18.14 has
+# major 18 but not the call.
+
+# Executable node stub at $1 that reports version $2 but fails the
+# capability probe (everything except --version exits 1).
+_stub_versioned_node() {
+	cat > "$1" <<-'SH'
+		#!/bin/sh
+		case "$1" in
+			--version) echo v18.0.0 ;;
+			*) exit 1 ;;
+		esac
+	SH
+	chmod +x "$1"
+}
+
+@test "cowork_node_has_features: real node provides fs.statfsSync" {
+	command -v node >/dev/null || skip 'node not installed'
+	cowork_node_has_features "$(command -v node)"
+}
+
+@test "cowork_node_has_features: capability-less node is rejected" {
+	_stub_versioned_node "$TEST_TMP/oldnode"
+	! cowork_node_has_features "$TEST_TMP/oldnode"
+}
+
+@test "cowork_node_has_features: missing or non-executable path is rejected" {
+	! cowork_node_has_features "$TEST_TMP/nonexistent"
+	printf 'x' > "$TEST_TMP/notexec"
+	! cowork_node_has_features "$TEST_TMP/notexec"
+}
+
+@test "_doctor_check_bwrap_node: capable node via COWORK_NODE_PATH passes" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_NODE_PATH="$(command -v node)"
+	run _doctor_check_bwrap_node ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'bwrap daemon runtime'* ]]
+}
+
+@test "_doctor_check_bwrap_node: node lacking statfsSync warns, never passes" {
+	_stub_versioned_node "$TEST_TMP/oldnode"
+	export COWORK_NODE_PATH="$TEST_TMP/oldnode"
+	run _doctor_check_bwrap_node ''
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'lacks'* ]]
+	[[ $output == *'fs.statfsSync'* ]]
+	[[ $output != *'[PASS] bwrap daemon runtime'* ]]
+}
+
+@test "_doctor_check_bwrap_node: no node anywhere warns with install hint" {
+	# Shadow `command` so -v node/nodejs both miss (_skip_gtk_query
+	# pattern); COWORK_NODE_PATH must not leak in from the host env.
+	command() {
+		if [[ $1 == '-v' && ( $2 == 'node' || $2 == 'nodejs' ) ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	unset COWORK_NODE_PATH
+	run _doctor_check_bwrap_node ''
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'no system node/nodejs'* ]]
+	[[ $output == *'18.15'* ]]
+}
+
+@test "_doctor_check_bwrap_node: shipped daemon present passes" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_NODE_PATH="$(command -v node)"
+	mkdir -p "$TEST_TMP/resources"
+	printf '// daemon\n' > "$TEST_TMP/resources/cowork-vm-service.js"
+	run _doctor_check_bwrap_node "$TEST_TMP/resources"
+	[[ $output == *'cowork-vm-service.js present'* ]]
+}
+
+@test "_doctor_check_bwrap_node: missing daemon warns with reinstall hint" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_NODE_PATH="$(command -v node)"
+	mkdir -p "$TEST_TMP/resources"
+	run _doctor_check_bwrap_node "$TEST_TMP/resources"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'cowork-vm-service.js missing'* ]]
+	[[ $output == *'reinstall'* ]]
+}
+
+@test "_doctor_check_bwrap_node: WARN paths flip _cowork_incomplete" {
+	# Direct call — `run` subshells would discard the flag mutation.
+	export COWORK_NODE_PATH="$TEST_TMP/nonexistent"
+	_cowork_incomplete=false
+	_doctor_check_bwrap_node '' > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == true ]]
+	grep -q 'no system node' "$TEST_TMP/out"
+}
+
+# =============================================================================
 # _doctor_check_electron_binary
 # =============================================================================
 
