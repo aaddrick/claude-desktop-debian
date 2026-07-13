@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Added
 
+- Report [CDL-ANT-0010](docs/reports/CDL-ANT-0010_code-split-chunk-census/CDL-ANT-0010-A_Code_Split_Chunk_Census.pdf) *Inside the Code Split: A Chunk Census of Claude Desktop 1.19367.0* — names what each of the 44 satellite chunks introduced by upstream's main-process code split is scoped to (the agent-session platform, enterprise sign-in, built-in MCP servers, the Claude Desktop Buddy BLE bridge, and the one satellite the patch suite touches), with the structured census data and require-graph manifest alongside.
+
+## [v3.2.1] — 2026-07-12
+
+### Added
+
 - `--doctor` now reports Cowork device-registration state: it flags when `ant-device-registry.json` is stuck at `none` because Linux has no hardware-backed device key yet (upstream), which is why new Cowork cloud tasks show "Not linked to a computer" ([#780](https://github.com/aaddrick/claude-desktop-debian/issues/780)).
 
 ### Fixed
