@@ -864,6 +864,12 @@ setup_tray_icon_env() {
 		export CLAUDE_TRAY_USE_DARK_ICON
 		log_message \
 			"Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON (preset)"
+		if [[ $CLAUDE_TRAY_USE_DARK_ICON != 0 \
+			&& $CLAUDE_TRAY_USE_DARK_ICON != 1 ]]; then
+			log_message \
+				'Tray icon: preset is not 0/1 — the app ignores it,' \
+				'and Cinnamon auto-detect stays off'
+		fi
 		return 0
 	fi
 

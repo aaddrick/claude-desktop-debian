@@ -75,7 +75,7 @@ The doctor reports which mode is in effect (`Password store: upstream os_crypt a
 
 ## Tray icon (CLAUDE_TRAY_USE_DARK_ICON)
 
-Upstream ships two Linux tray PNGs and normally picks from GTK dark-mode state plus a GNOME check. On Cinnamon, a dark panel can coexist with a light GTK colour scheme, so the wrong (black) icon is selected. When unset, the launcher probes `org.cinnamon.theme` on Cinnamon sessions and sets `CLAUDE_TRAY_USE_DARK_ICON=1` when the theme name looks like a dark panel style (e.g. Mint-Y-Dark-Aqua). Set `1` or `0` yourself to force the light or dark glyph. Requires a build that includes the `patch_tray_icon_selection` asar patch.
+Upstream ships two Linux tray PNGs and normally picks from GTK dark-mode state plus a GNOME check. On Cinnamon, a dark panel can coexist with a light GTK colour scheme, so the wrong (black) icon is selected. When unset, the launcher probes `org.cinnamon.theme` on Cinnamon sessions and sets `CLAUDE_TRAY_USE_DARK_ICON=1` when the theme name looks like a dark panel style (e.g. Mint-Y-Dark-Aqua). Set `1` or `0` yourself to force the light or dark glyph — `0` overrides upstream's own selection too, so it pins the black glyph even on GNOME or under a dark GTK scheme. Any other non-empty value is ignored by the app but still disables the launcher's auto-detect (the launcher logs this and `--doctor` warns about it). Requires a build that includes the `patch_tray_icon_env_override` asar patch; `--doctor` reports which mode is in effect. Interim fix pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
 
 ## Cowork
 

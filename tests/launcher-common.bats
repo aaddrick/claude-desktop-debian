@@ -210,6 +210,7 @@ teardown() {
 	CLAUDE_PASSWORD_STORE='basic'
 	CLAUDE_GTK_IM_MODULE='xim'
 	CLAUDE_DISABLE_GPU='1'
+	CLAUDE_TRAY_USE_DARK_ICON='1'
 	log_session_env
 
 	run cat "$log_file"
@@ -229,7 +230,8 @@ teardown() {
 	[[ "${lines[9]}"  == '  CLAUDE_PASSWORD_STORE=basic' ]]
 	[[ "${lines[10]}" == '  CLAUDE_GTK_IM_MODULE=xim' ]]
 	[[ "${lines[11]}" == '  CLAUDE_DISABLE_GPU=1' ]]
-	[[ "${lines[12]}" == '}' ]]
+	[[ "${lines[12]}" == '  CLAUDE_TRAY_USE_DARK_ICON=1' ]]
+	[[ "${lines[13]}" == '}' ]]
 }
 
 @test "log_session_env: unset/empty values render as 'KEY=' (no value)" {
@@ -1340,14 +1342,29 @@ _stub_featureless_node() {
 	setup_tray_icon_env
 	[[ $CLAUDE_TRAY_USE_DARK_ICON == 0 ]]
 	grep -q 'CLAUDE_TRAY_USE_DARK_ICON=0 (preset)' "$log_file"
+	# A valid preset must not draw the not-0/1 note
+	run grep -q 'not 0/1' "$log_file"
+	[[ $status -ne 0 ]]
+}
+
+@test "setup_tray_icon_env: non-0/1 preset logs that the app ignores it" {
+	export CLAUDE_TRAY_USE_DARK_ICON=true
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_tray_icon_env
+	[[ $CLAUDE_TRAY_USE_DARK_ICON == true ]]
+	grep -q 'CLAUDE_TRAY_USE_DARK_ICON=true (preset)' "$log_file"
+	grep -q 'not 0/1' "$log_file"
 }
 
 @test "setup_tray_icon_env: cinnamon dark theme sets CLAUDE_TRAY_USE_DARK_ICON=1" {
 	unset CLAUDE_TRAY_USE_DARK_ICON
 	export XDG_CURRENT_DESKTOP=X-Cinnamon
 	mkdir -p "$TEST_TMP/bin"
+	# bash shebang, not sh: the stub body uses [[ ]], and CI's /bin/sh
+	# is dash — under sh the stub exits 127 and the test lies
 	cat > "$TEST_TMP/bin/gsettings" << 'EOF'
-#!/bin/sh
+#!/usr/bin/env bash
 if [[ $1 == get && $3 == name ]]; then
 	printf "'Mint-Y-Dark-Aqua'\n"
 fi
@@ -1365,15 +1382,19 @@ EOF
 	unset CLAUDE_TRAY_USE_DARK_ICON
 	export XDG_CURRENT_DESKTOP=X-Cinnamon
 	mkdir -p "$TEST_TMP/bin"
-	cat > "$TEST_TMP/bin/gsettings" << 'EOF'
-#!/bin/sh
-if [[ $1 == get && $3 == name ]]; then
+	# The stub records that it ran: a broken stub returning early is
+	# otherwise indistinguishable from the theme check working
+	cat > "$TEST_TMP/bin/gsettings" << EOF
+#!/usr/bin/env bash
+touch "$TEST_TMP/gsettings-called"
+if [[ \$1 == get && \$3 == name ]]; then
 	printf "'Mint-Y'\n"
 fi
 EOF
 	chmod +x "$TEST_TMP/bin/gsettings"
 	PATH="$TEST_TMP/bin:$PATH"
 	setup_tray_icon_env
+	[[ -e $TEST_TMP/gsettings-called ]]
 	[[ -z ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]
 }
 

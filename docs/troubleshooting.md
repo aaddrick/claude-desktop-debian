@@ -86,7 +86,10 @@ CLAUDE_TRAY_USE_DARK_ICON=0 claude-desktop-unofficial
 ```
 
 Persist either value in
-`~/.config/claude-desktop-debian/environment`.
+`~/.config/claude-desktop-debian/environment`. `--doctor` reports which
+mode is in effect (preset, Cinnamon auto-detect, or upstream default),
+so include its output when reporting tray icon issues. Interim fix
+pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
 
 ### Global Hotkey Not Working (Wayland)
 
