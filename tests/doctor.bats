@@ -19,11 +19,16 @@ setup() {
 	unset DISPLAY
 	unset WAYLAND_DISPLAY
 	unset XDG_SESSION_TYPE
+	unset XDG_CURRENT_DESKTOP
 	unset CLAUDE_USE_WAYLAND
 	unset GTK_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
 	unset _DOCTOR_SECRET_BACKEND
+	unset _DOCTOR_USERNS_PATH
+	unset _DOCTOR_DEB_ELECTRON
+	unset _DOCTOR_AA_PROFILE
+	unset _DOCTOR_AA_LOADED
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -170,6 +175,67 @@ _skip_gtk_query() {
 	GTK_IM_MODULE='ibus'
 	run _doctor_check_im_modules unknown
 	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_display_server
+# =============================================================================
+
+@test "_doctor_check_display_server: Wayland — PASS + desktop + XWayland default mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_CURRENT_DESKTOP='GNOME'
+	# CLAUDE_USE_WAYLAND unset → default XWayland mode
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output == *'Desktop: GNOME'* ]]
+	[[ $output == *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=1 — native mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	CLAUDE_USE_WAYLAND='1'
+	run _doctor_check_display_server
+	[[ $output == *'native Wayland'* ]]
+	[[ $output != *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=0 — XWayland mode" {
+	# Set-but-not-1 must not read as "native": the tri-state's
+	# force-XWayland value takes the same branch as unset.
+	WAYLAND_DISPLAY='wayland-0'
+	CLAUDE_USE_WAYLAND='0'
+	run _doctor_check_display_server
+	[[ $output == *'Mode: X11 via XWayland'* ]]
+	[[ $output != *'Mode: native Wayland'* ]]
+}
+
+@test "_doctor_check_display_server: X11 — PASS" {
+	DISPLAY=':0'
+	# WAYLAND_DISPLAY unset (setup clears it)
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland wins when both set" {
+	WAYLAND_DISPLAY='wayland-0'
+	DISPLAY=':0'
+	run _doctor_check_display_server
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output != *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: neither set — FAIL bumps _doctor_failures" {
+	# setup() already unsets DISPLAY and WAYLAND_DISPLAY. Called
+	# DIRECTLY (not via `run`, which subshells away the counter
+	# mutation) so the _doctor_failures increment — the only thing
+	# from this check feeding doctor's exit status — is assertable.
+	_doctor_failures=0
+	_doctor_check_display_server > "$TEST_TMP/out"
+	[[ $_doctor_failures -eq 1 ]]
+	grep -q '\[FAIL\]' "$TEST_TMP/out"
+	grep -q 'No display server detected' "$TEST_TMP/out"
 }
 
 # =============================================================================
@@ -605,6 +671,56 @@ SHIM
 	[[ $output != *'[PASS]'* ]]
 	[[ $output != *'[FAIL]'* ]]
 	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_singleton_lock
+# =============================================================================
+
+@test "_doctor_check_singleton_lock: no lock file present — PASS" {
+	# XDG_CONFIG_HOME/Claude exists but has no SingletonLock.
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'no lock file'* ]]
+}
+
+@test "_doctor_check_singleton_lock: symlink to a live PID — PASS" {
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	# $$ is this test process: guaranteed alive for the kill -0 probe.
+	ln -s "myhost-$$" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'running process'* ]]
+}
+
+@test "_doctor_check_singleton_lock: symlink to a dead PID — WARN, not PASS" {
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	# Spawn a process, capture its PID, wait for it to exit: that PID
+	# is now provably dead (avoids a magic-number guess).
+	bash -c 'exit 0' &
+	local dead_pid=$!
+	wait "$dead_pid" 2>/dev/null || true
+	ln -s "myhost-$dead_pid" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output == *'stale lock'* ]]
+}
+
+@test "_doctor_check_singleton_lock: regular file (not a symlink) — WARN, not a false PASS" {
+	# Regression guard: an unclean update can leave a plain regular
+	# file at SingletonLock. It still wedges the single-instance lock,
+	# so it must not report '[PASS] no lock file'.
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	printf '' > "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'no lock file'* ]]
+	[[ $output == *'not a symlink'* ]]
 }
 
 # =============================================================================
@@ -1103,6 +1219,98 @@ LIST
 }
 
 # =============================================================================
+# _doctor_check_userns_apparmor
+# =============================================================================
+
+# Put the check into the "restriction in force + deb Electron present"
+# state via the path hooks; tests then control the loaded-set / profile
+# paths to drive the inner branches. The root-only EUID==0 variant of
+# the present-on-disk INFO line is untested (suite runs non-root).
+_userns_in_force() {
+	printf '1\n' > "$TEST_TMP/userns"
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_USERNS_PATH="$TEST_TMP/userns"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+}
+
+@test "_doctor_check_userns_apparmor: restriction not in force — silent" {
+	printf '0\n' > "$TEST_TMP/userns"
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_USERNS_PATH="$TEST_TMP/userns"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+	run _doctor_check_userns_apparmor
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_userns_apparmor: in force but no deb Electron — silent" {
+	printf '1\n' > "$TEST_TMP/userns"
+	_DOCTOR_USERNS_PATH="$TEST_TMP/userns"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/no-deb-electron"
+	run _doctor_check_userns_apparmor
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_userns_apparmor: profile loaded — PASS" {
+	_userns_in_force
+	printf 'claude-desktop-unofficial (enforce)\nfirefox (enforce)\n' \
+		> "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'profile loaded'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: not loaded, profile on disk — WARN + load hint" {
+	_userns_in_force
+	# claude-desktop (unconfined) is the official package's profile —
+	# the co-install near-miss the ^claude-desktop-unofficial anchor
+	# exists to disambiguate. A loosened grep false-PASSes here.
+	printf 'firefox (enforce)\nclaude-desktop (unconfined)\n' \
+		> "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	: > "$TEST_TMP/profile"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'Claude profile not loaded'* ]]
+	[[ $output == *'apparmor_parser -r'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: not loaded, profile absent — WARN + no-profile hint" {
+	_userns_in_force
+	# Same co-install near-miss: official profile loaded, ours absent.
+	printf 'firefox (enforce)\nclaude-desktop (unconfined)\n' \
+		> "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/no-profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'No profile found'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: loaded set unreadable, profile on disk — INFO (not PASS)" {
+	_userns_in_force
+	# Nonexistent loaded path → cat yields empty → "present on disk"
+	# branch (mirrors non-root / securityfs-unmounted hosts).
+	_DOCTOR_AA_LOADED="$TEST_TMP/no-loaded"
+	: > "$TEST_TMP/profile"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'present on disk'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_userns_apparmor: restricted, no profile anywhere — WARN" {
+	_userns_in_force
+	_DOCTOR_AA_LOADED="$TEST_TMP/no-loaded"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/no-profile"
+	run _doctor_check_userns_apparmor
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'no Claude profile found'* ]]
+}
+
+# =============================================================================
 # _check_cowork_virtiofsd: mirror the client's probe, not "anywhere" (#771)
 # =============================================================================
 
@@ -1217,4 +1425,250 @@ _stub_vfsd() {
 	_check_cowork_virtiofsd arch '' > "$TEST_TMP/out"
 	[[ $_cowork_incomplete == true ]]
 	grep -q 'virtiofsd: not found' "$TEST_TMP/out"
+}
+
+# =============================================================================
+# cowork_node_has_features / _doctor_check_bwrap_node: bwrap runtime (#772)
+# =============================================================================
+
+# The bwrap daemon needs a node providing fs.statfsSync (18.15/16.19).
+# The doctor probes the capability, not the version — 18.0-18.14 has
+# major 18 but not the call.
+
+# Executable node stub at $1 that reports version $2 but fails the
+# capability probe (everything except --version exits 1).
+_stub_versioned_node() {
+	cat > "$1" <<-'SH'
+		#!/bin/sh
+		case "$1" in
+			--version) echo v18.0.0 ;;
+			*) exit 1 ;;
+		esac
+	SH
+	chmod +x "$1"
+}
+
+@test "cowork_node_has_features: real node provides fs.statfsSync" {
+	command -v node >/dev/null || skip 'node not installed'
+	cowork_node_has_features "$(command -v node)"
+}
+
+@test "cowork_node_has_features: capability-less node is rejected" {
+	_stub_versioned_node "$TEST_TMP/oldnode"
+	! cowork_node_has_features "$TEST_TMP/oldnode"
+}
+
+@test "cowork_node_has_features: missing or non-executable path is rejected" {
+	! cowork_node_has_features "$TEST_TMP/nonexistent"
+	printf 'x' > "$TEST_TMP/notexec"
+	! cowork_node_has_features "$TEST_TMP/notexec"
+}
+
+@test "_doctor_check_bwrap_node: capable node via COWORK_NODE_PATH passes" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_NODE_PATH="$(command -v node)"
+	run _doctor_check_bwrap_node ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'bwrap daemon runtime'* ]]
+}
+
+@test "_doctor_check_bwrap_node: node lacking statfsSync warns, never passes" {
+	_stub_versioned_node "$TEST_TMP/oldnode"
+	export COWORK_NODE_PATH="$TEST_TMP/oldnode"
+	run _doctor_check_bwrap_node ''
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'lacks'* ]]
+	[[ $output == *'fs.statfsSync'* ]]
+	[[ $output != *'[PASS] bwrap daemon runtime'* ]]
+}
+
+@test "_doctor_check_bwrap_node: no node anywhere warns with install hint" {
+	# Shadow `command` so -v node/nodejs both miss (_skip_gtk_query
+	# pattern); COWORK_NODE_PATH must not leak in from the host env.
+	command() {
+		if [[ $1 == '-v' && ( $2 == 'node' || $2 == 'nodejs' ) ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	unset COWORK_NODE_PATH
+	run _doctor_check_bwrap_node ''
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'no system node/nodejs'* ]]
+	[[ $output == *'18.15'* ]]
+}
+
+@test "_doctor_check_bwrap_node: shipped daemon present passes" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_NODE_PATH="$(command -v node)"
+	mkdir -p "$TEST_TMP/resources"
+	printf '// daemon\n' > "$TEST_TMP/resources/cowork-vm-service.js"
+	run _doctor_check_bwrap_node "$TEST_TMP/resources"
+	[[ $output == *'cowork-vm-service.js present'* ]]
+}
+
+@test "_doctor_check_bwrap_node: missing daemon warns with reinstall hint" {
+	command -v node >/dev/null || skip 'node not installed'
+	export COWORK_NODE_PATH="$(command -v node)"
+	mkdir -p "$TEST_TMP/resources"
+	run _doctor_check_bwrap_node "$TEST_TMP/resources"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'cowork-vm-service.js missing'* ]]
+	[[ $output == *'reinstall'* ]]
+}
+
+@test "_doctor_check_bwrap_node: WARN paths flip _cowork_incomplete" {
+	# Direct call — `run` subshells would discard the flag mutation.
+	export COWORK_NODE_PATH="$TEST_TMP/nonexistent"
+	_cowork_incomplete=false
+	_doctor_check_bwrap_node '' > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == true ]]
+	grep -q 'no system node' "$TEST_TMP/out"
+}
+
+# =============================================================================
+# _doctor_check_electron_binary
+# =============================================================================
+
+@test "_doctor_check_electron_binary: provided path with parsable version — PASS" {
+	local bin="$TEST_TMP/electron"
+	printf '#!/bin/sh\n' > "$bin"
+	chmod +x "$bin"
+	_electron_version() { echo '28.1.0'; }
+	run _doctor_check_electron_binary "$bin"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Electron: v28.1.0'* ]]
+}
+
+@test "_doctor_check_electron_binary: provided path, unparsable version — PASS (found)" {
+	local bin="$TEST_TMP/electron"
+	printf '#!/bin/sh\n' > "$bin"
+	chmod +x "$bin"
+	_electron_version() { echo 'unknown'; }
+	run _doctor_check_electron_binary "$bin"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Electron: found at'* ]]
+}
+
+@test "_doctor_check_electron_binary: provided path missing — FAIL" {
+	run _doctor_check_electron_binary "$TEST_TMP/nope/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'not found at'* ]]
+	[[ $output == *'claude-desktop-unofficial'* ]]
+}
+
+@test "_doctor_check_electron_binary: no path, system electron on PATH — PASS (system)" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'electron' ]]; then
+			echo '/usr/bin/electron'
+			return 0
+		fi
+		builtin command "$@"
+	}
+	_electron_version() { echo '28.1.0'; }
+	run _doctor_check_electron_binary ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'(system)'* ]]
+}
+
+@test "_doctor_check_electron_binary: no path, no system electron — FAIL" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'electron' ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	run _doctor_check_electron_binary ''
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'Electron binary not found'* ]]
+}
+
+# =============================================================================
+# _doctor_check_chrome_sandbox
+# =============================================================================
+
+# Shadow `stat -c %a/%U` with controlled perms/owner via globals (no
+# eval — see the bash style guide).
+_stub_stat_perms=''
+_stub_stat_owner=''
+_stub_stat() {
+	_stub_stat_perms="$1"
+	_stub_stat_owner="$2"
+	stat() {
+		if [[ $2 == '%a' ]]; then
+			echo "$_stub_stat_perms"
+		else
+			echo "$_stub_stat_owner"
+		fi
+	}
+}
+
+@test "_doctor_check_chrome_sandbox: 4755 + root — PASS" {
+	# Neutralize the hardcoded deb path so the test is host-independent.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'permissions OK'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: wrong perms — FAIL (real stat)" {
+	# Deliberately NO stat stub: a real 0644 file exercises the actual
+	# `stat -c '%a'/'%U'` invocation and its parse. The stub keys on
+	# \$2 == '%a', so it would keep passing if the real call's flags
+	# regressed (e.g. stat -c -> stat -f); real output can't.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'perms=644'* ]]
+	[[ $output == *"owner=$(id -un)"* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: wrong owner — FAIL" {
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'nobody'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'owner=nobody'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: no sandbox anywhere — WARN" {
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	# No chrome-sandbox file created next to electron.
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'not found'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb path wins when both sandboxes exist (single report)" {
+	# Pins probe precedence and the loop's break: with both the deb path
+	# and an electron-adjacent sandbox present, the deb path is judged
+	# and exactly ONE result line prints. Deleting the break (double
+	# report) or reordering the probe array fails this.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
+	[[ $output != *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb path used when no electron path given" {
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
 }

@@ -11,6 +11,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Added
 
 - Report [CDL-ANT-0010](docs/reports/CDL-ANT-0010_code-split-chunk-census/CDL-ANT-0010-A_Code_Split_Chunk_Census.pdf) *Inside the Code Split: A Chunk Census of Claude Desktop 1.19367.0* — names what each of the 44 satellite chunks introduced by upstream's main-process code split is scoped to (the agent-session platform, enterprise sign-in, built-in MCP servers, the Claude Desktop Buddy BLE bridge, and the one satellite the patch suite touches), with the structured census data and require-graph manifest alongside.
+- The artifact tests assert the launcher's `--version` fast-path end-to-end on all three formats (deb exact-matched against the control Version, rpm and AppImage prefix-matched against their metadata), closing the "deb/rpm static-verified only" gap from [#775](https://github.com/aaddrick/claude-desktop-debian/pull/775). ([#781](https://github.com/aaddrick/claude-desktop-debian/pull/781))
+- The artifact tests assert the bwrap fallback daemon (`resources/cowork-vm-service.js`, ships since [#776](https://github.com/aaddrick/claude-desktop-debian/pull/776)) is present in every package. ([#781](https://github.com/aaddrick/claude-desktop-debian/pull/781))
+- Direct coverage for the bwrap runtime plumbing: 9 doctor tests for `cowork_node_has_features`/`_doctor_check_bwrap_node` (capability probe, WARN paths, readiness flag) and 5 launcher tests for `setup_cowork_bwrap_env` (flag gating, node resolution, precedence, capability warning). ([#781](https://github.com/aaddrick/claude-desktop-debian/pull/781))
+
+### Changed
+
+- The doctor-coverage campaign extracted `run_doctor`'s inline display-server, Electron-binary, chrome-sandbox, AppArmor-userns, and SingletonLock checks into unit-testable `_doctor_check_*` helpers with `_DOCTOR_*` path hooks (defaults are the real system paths, so production behavior is unchanged), each move verified byte-identical against the inline original and pinned by mutation-checked bats coverage. The SingletonLock extraction also fixes a false green: a regular file left at `SingletonLock` by an unclean update — which hard-blocks the next cold launch — was reported as `[PASS] no lock file (OK)` and now warns with an `rm` fix hint. ([#740](https://github.com/aaddrick/claude-desktop-debian/pull/740), [#744](https://github.com/aaddrick/claude-desktop-debian/pull/744), [#745](https://github.com/aaddrick/claude-desktop-debian/pull/745), [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782))
 
 ### Fixed
 
