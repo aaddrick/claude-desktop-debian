@@ -19,6 +19,7 @@ setup() {
 	unset DISPLAY
 	unset WAYLAND_DISPLAY
 	unset XDG_SESSION_TYPE
+	unset XDG_CURRENT_DESKTOP
 	unset CLAUDE_USE_WAYLAND
 	unset GTK_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
@@ -170,6 +171,67 @@ _skip_gtk_query() {
 	GTK_IM_MODULE='ibus'
 	run _doctor_check_im_modules unknown
 	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_display_server
+# =============================================================================
+
+@test "_doctor_check_display_server: Wayland — PASS + desktop + XWayland default mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_CURRENT_DESKTOP='GNOME'
+	# CLAUDE_USE_WAYLAND unset → default XWayland mode
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output == *'Desktop: GNOME'* ]]
+	[[ $output == *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=1 — native mode" {
+	WAYLAND_DISPLAY='wayland-0'
+	CLAUDE_USE_WAYLAND='1'
+	run _doctor_check_display_server
+	[[ $output == *'native Wayland'* ]]
+	[[ $output != *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=0 — XWayland mode" {
+	# Set-but-not-1 must not read as "native": the tri-state's
+	# force-XWayland value takes the same branch as unset.
+	WAYLAND_DISPLAY='wayland-0'
+	CLAUDE_USE_WAYLAND='0'
+	run _doctor_check_display_server
+	[[ $output == *'Mode: X11 via XWayland'* ]]
+	[[ $output != *'Mode: native Wayland'* ]]
+}
+
+@test "_doctor_check_display_server: X11 — PASS" {
+	DISPLAY=':0'
+	# WAYLAND_DISPLAY unset (setup clears it)
+	run _doctor_check_display_server
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: Wayland wins when both set" {
+	WAYLAND_DISPLAY='wayland-0'
+	DISPLAY=':0'
+	run _doctor_check_display_server
+	[[ $output == *'Display server: Wayland'* ]]
+	[[ $output != *'Display server: X11'* ]]
+}
+
+@test "_doctor_check_display_server: neither set — FAIL bumps _doctor_failures" {
+	# setup() already unsets DISPLAY and WAYLAND_DISPLAY. Called
+	# DIRECTLY (not via `run`, which subshells away the counter
+	# mutation) so the _doctor_failures increment — the only thing
+	# from this check feeding doctor's exit status — is assertable.
+	_doctor_failures=0
+	_doctor_check_display_server > "$TEST_TMP/out"
+	[[ $_doctor_failures -eq 1 ]]
+	grep -q '\[FAIL\]' "$TEST_TMP/out"
+	grep -q 'No display server detected' "$TEST_TMP/out"
 }
 
 # =============================================================================

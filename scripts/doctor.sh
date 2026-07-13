@@ -1328,6 +1328,33 @@ _doctor_check_chrome_sandbox() {
 	fi
 }
 
+# Report the active display server (Wayland/X11) and, on Wayland, the
+# desktop and whether Electron runs natively (CLAUDE_USE_WAYLAND=1) or
+# via XWayland (default, preserves global hotkeys). Fails when neither
+# DISPLAY nor WAYLAND_DISPLAY is set (TTY / broken session).
+#
+# Usage: _doctor_check_display_server
+_doctor_check_display_server() {
+	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
+		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
+		_info "Desktop: $desktop"
+		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
+			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
+		else
+			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
+			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
+			_info '     (disables global hotkeys)'
+		fi
+	elif [[ -n "${DISPLAY:-}" ]]; then
+		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
+	else
+		_fail "No display server detected" \
+			"(DISPLAY and WAYLAND_DISPLAY are unset)"
+		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
+	fi
+}
+
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
 run_doctor() {
@@ -1369,24 +1396,7 @@ run_doctor() {
 	_check_name_collision
 
 	# -- Display server --
-	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
-		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
-		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
-		_info "Desktop: $desktop"
-		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
-			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
-		else
-			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
-			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
-			_info '     (disables global hotkeys)'
-		fi
-	elif [[ -n "${DISPLAY:-}" ]]; then
-		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
-	else
-		_fail "No display server detected" \
-			"(DISPLAY and WAYLAND_DISPLAY are unset)"
-		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
-	fi
+	_doctor_check_display_server
 
 	# -- Input method (IBus / GTK) --
 	_doctor_check_im_modules "$_distro_id"
