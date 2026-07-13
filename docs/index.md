@@ -39,6 +39,7 @@ Hard-won knowledge from debugging real bugs. Consult before working on the relat
 - [**Test harness — AX-tree walker**](learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker
 - [**Test methodology and coverage**](learnings/test-methodology-and-coverage.md) — how a green run is kept honest: the half-pinned-test failure class (`run`-subshell mutation loss, near-miss anchors, mirror stubs, false-green PASS), host-state isolation, launch-smoke reaping, and the mutation-check review discipline
 - [**Config-wipe recovery**](learnings/config-wipe-guard.md) — the poisoned-cache `claude_desktop_config.json` wipe, the renderer's grouping-state storage chain, the launcher-side backup rotation that recovers it (patch-zero-clean), and why the in-band asar guard is parked
+- [**Quit-cleanup scope fence**](learnings/quit-cleanup-scope-fence.md) — the two systemd-scope namespaces (KDE/GNOME KProcessRunner desktop-id scope vs Electron's own `StartTransientUnit` app-id self-scope), why the app-id is versioned and must be derived at runtime, why the self-scope still can't fence the terminal-launch helpers, and the finding that nothing orphans on clean quit *or* crash — so the #709 MCP-matching slice still has no survivor to reap
 
 ## Testing
 
