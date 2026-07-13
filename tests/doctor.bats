@@ -1280,3 +1280,150 @@ _stub_vfsd() {
 	[[ $_cowork_incomplete == true ]]
 	grep -q 'virtiofsd: not found' "$TEST_TMP/out"
 }
+
+# =============================================================================
+# _doctor_check_electron_binary
+# =============================================================================
+
+@test "_doctor_check_electron_binary: provided path with parsable version — PASS" {
+	local bin="$TEST_TMP/electron"
+	printf '#!/bin/sh\n' > "$bin"
+	chmod +x "$bin"
+	_electron_version() { echo '28.1.0'; }
+	run _doctor_check_electron_binary "$bin"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Electron: v28.1.0'* ]]
+}
+
+@test "_doctor_check_electron_binary: provided path, unparsable version — PASS (found)" {
+	local bin="$TEST_TMP/electron"
+	printf '#!/bin/sh\n' > "$bin"
+	chmod +x "$bin"
+	_electron_version() { echo 'unknown'; }
+	run _doctor_check_electron_binary "$bin"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'Electron: found at'* ]]
+}
+
+@test "_doctor_check_electron_binary: provided path missing — FAIL" {
+	run _doctor_check_electron_binary "$TEST_TMP/nope/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'not found at'* ]]
+	[[ $output == *'claude-desktop-unofficial'* ]]
+}
+
+@test "_doctor_check_electron_binary: no path, system electron on PATH — PASS (system)" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'electron' ]]; then
+			echo '/usr/bin/electron'
+			return 0
+		fi
+		builtin command "$@"
+	}
+	_electron_version() { echo '28.1.0'; }
+	run _doctor_check_electron_binary ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'(system)'* ]]
+}
+
+@test "_doctor_check_electron_binary: no path, no system electron — FAIL" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'electron' ]]; then
+			return 1
+		fi
+		builtin command "$@"
+	}
+	run _doctor_check_electron_binary ''
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'Electron binary not found'* ]]
+}
+
+# =============================================================================
+# _doctor_check_chrome_sandbox
+# =============================================================================
+
+# Shadow `stat -c %a/%U` with controlled perms/owner via globals (no
+# eval — see the bash style guide).
+_stub_stat_perms=''
+_stub_stat_owner=''
+_stub_stat() {
+	_stub_stat_perms="$1"
+	_stub_stat_owner="$2"
+	stat() {
+		if [[ $2 == '%a' ]]; then
+			echo "$_stub_stat_perms"
+		else
+			echo "$_stub_stat_owner"
+		fi
+	}
+}
+
+@test "_doctor_check_chrome_sandbox: 4755 + root — PASS" {
+	# Neutralize the hardcoded deb path so the test is host-independent.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'permissions OK'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: wrong perms — FAIL (real stat)" {
+	# Deliberately NO stat stub: a real 0644 file exercises the actual
+	# `stat -c '%a'/'%U'` invocation and its parse. The stub keys on
+	# \$2 == '%a', so it would keep passing if the real call's flags
+	# regressed (e.g. stat -c -> stat -f); real output can't.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'perms=644'* ]]
+	[[ $output == *"owner=$(id -un)"* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: wrong owner — FAIL" {
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'nobody'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'owner=nobody'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: no sandbox anywhere — WARN" {
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	# No chrome-sandbox file created next to electron.
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'not found'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb path wins when both sandboxes exist (single report)" {
+	# Pins probe precedence and the loop's break: with both the deb path
+	# and an electron-adjacent sandbox present, the deb path is judged
+	# and exactly ONE result line prints. Deleting the break (double
+	# report) or reordering the probe array fails this.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
+	[[ $output != *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb path used when no electron path given" {
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox ''
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
+}
