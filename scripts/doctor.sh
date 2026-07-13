@@ -1253,6 +1253,94 @@ _doctor_check_bwrap_fallback() {
 	_doctor_check_bwrap_mounts
 }
 
+# User-namespace sandbox check (Ubuntu 24.04+ AppArmor). Ubuntu 24.04+
+# sets apparmor_restrict_unprivileged_userns=1, which blocks the user
+# namespaces Chromium's sandbox needs and crashes the app on launch
+# (credentials.cc FATAL, exit 133). A scoped AppArmor profile permits
+# them for Claude only. Only reports when the restriction is actually
+# in force — on other distros the knob is absent and this stays silent.
+#
+# Path hooks (test-only; defaults are the real system locations, so
+# production behavior is unchanged):
+#   _DOCTOR_USERNS_PATH   the apparmor_restrict_unprivileged_userns knob
+#   _DOCTOR_DEB_ELECTRON  the deb-installed Electron the profile pins
+#   _DOCTOR_AA_PROFILE    the on-disk profile path
+#   _DOCTOR_AA_LOADED     the kernel's loaded-profile set
+#
+# Usage: _doctor_check_userns_apparmor
+_doctor_check_userns_apparmor() {
+	local _userns_path="${_DOCTOR_USERNS_PATH:-}"
+	[[ -n $_userns_path ]] \
+		|| _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
+	local _userns_val=''
+	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
+	# Gate on the deb's installed Electron, not $electron_path (the
+	# invoking build's binary): the profile pins this exact path, so only
+	# a deb install is confined by it. AppImage always runs --no-sandbox
+	# and Nix binaries live in the store — neither can hit the crash.
+	local _deb_electron="${_DOCTOR_DEB_ELECTRON:-}"
+	[[ -n $_deb_electron ]] \
+		|| _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
+	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
+		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
+		# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since
+		# the Phase 3 rename; plain claude-desktop is the official
+		# package's profile, registered by Anthropic's own postinst).
+		local _aa_profile="${_DOCTOR_AA_PROFILE:-}"
+		[[ -n $_aa_profile ]] \
+			|| _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
+		local _aa_loaded="${_DOCTOR_AA_LOADED:-}"
+		[[ -n $_aa_loaded ]] \
+			|| _aa_loaded='/sys/kernel/security/apparmor/profiles'
+		# securityfs marks this file world-readable (0444), but the kernel
+		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
+		# passes for non-root yet the read returns nothing. Attempt the read
+		# and judge by whether we actually got data, not by the mode bits.
+		local _loaded_set=''
+		_loaded_set=$(cat "$_aa_loaded" 2>/dev/null)
+		if [[ -n $_loaded_set ]]; then
+			# Authoritative: we actually read the kernel's loaded profile
+			# set (needs root), so report the real load state — not
+			# mere presence on disk.
+			if printf '%s\n' "$_loaded_set" \
+				| grep -q '^claude-desktop-unofficial '; then
+				_pass 'User namespaces: restricted, AppArmor profile loaded'
+			else
+				_warn 'User namespaces: restricted by AppArmor,' \
+					'Claude profile not loaded'
+				if [[ -e $_aa_profile ]]; then
+					_info '  Profile is on disk but not loaded. Load it:'
+					_info "  sudo apparmor_parser -r $_aa_profile"
+				else
+					_info '  No profile found. See docs/troubleshooting.md'
+					_info '  "Claude Desktop crashes immediately on launch".'
+				fi
+			fi
+		elif [[ -e $_aa_profile ]]; then
+			# The loaded set was unreadable: non-root (the kernel needs
+			# CAP_MAC_ADMIN despite the 0444 mode), or securityfs is
+			# unmounted (common in containers). Report presence on disk
+			# only — never a definitive PASS.
+			if (( EUID == 0 )); then
+				_info 'User namespaces: AppArmor profile present on disk' \
+					'(securityfs unavailable; cannot confirm it is loaded)'
+			else
+				_info 'User namespaces: AppArmor profile present on disk' \
+					'(re-run with sudo to confirm it is loaded)'
+			fi
+		else
+			_warn 'User namespaces: restricted by AppArmor,' \
+				'no Claude profile found'
+			_info '  Unprivileged user namespaces are blocked, which'
+			_info '  crashes the app on launch in X11 sessions'
+			_info '  (credentials.cc FATAL). Wayland sessions run with'
+			_info '  --no-sandbox and are unaffected.'
+			_info '  See docs/troubleshooting.md "Claude Desktop crashes'
+			_info '  immediately on launch" for the profile to install.'
+		fi
+	fi
+}
+
 # Report the Electron binary and its version. The version is read from
 # the file next to the binary rather than launching Electron, which can
 # hang (see #371). Falls back to a system `electron` on PATH; fails when
@@ -1411,74 +1499,7 @@ run_doctor() {
 	_doctor_check_chrome_sandbox "$electron_path"
 
 	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
-	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
-	# blocks the user namespaces Chromium's sandbox needs and crashes the
-	# app on launch (credentials.cc FATAL, exit 133). A scoped AppArmor
-	# profile permits them for Claude only. Only report when the
-	# restriction is actually in force — on other distros the knob is
-	# absent and this check stays silent.
-	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
-	local _userns_val=''
-	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
-	# Gate on the deb's installed Electron, not $electron_path (the
-	# invoking build's binary): the profile pins this exact path, so only
-	# a deb install is confined by it. AppImage always runs --no-sandbox
-	# and Nix binaries live in the store — neither can hit the crash.
-	local _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
-	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
-		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
-		# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since
-		# the Phase 3 rename; plain claude-desktop is the official
-		# package's profile, registered by Anthropic's own postinst).
-		local _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
-		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
-		# securityfs marks this file world-readable (0444), but the kernel
-		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
-		# passes for non-root yet the read returns nothing. Attempt the read
-		# and judge by whether we actually got data, not by the mode bits.
-		local _loaded_set=''
-		_loaded_set=$(cat "$_aa_loaded" 2>/dev/null)
-		if [[ -n $_loaded_set ]]; then
-			# Authoritative: we actually read the kernel's loaded profile
-			# set (needs root), so report the real load state — not
-			# mere presence on disk.
-			if printf '%s\n' "$_loaded_set" \
-				| grep -q '^claude-desktop-unofficial '; then
-				_pass 'User namespaces: restricted, AppArmor profile loaded'
-			else
-				_warn 'User namespaces: restricted by AppArmor,' \
-					'Claude profile not loaded'
-				if [[ -e $_aa_profile ]]; then
-					_info '  Profile is on disk but not loaded. Load it:'
-					_info "  sudo apparmor_parser -r $_aa_profile"
-				else
-					_info '  No profile found. See docs/troubleshooting.md'
-					_info '  "Claude Desktop crashes immediately on launch".'
-				fi
-			fi
-		elif [[ -e $_aa_profile ]]; then
-			# The loaded set was unreadable: non-root (the kernel needs
-			# CAP_MAC_ADMIN despite the 0444 mode), or securityfs is
-			# unmounted (common in containers). Report presence on disk
-			# only — never a definitive PASS.
-			if (( EUID == 0 )); then
-				_info 'User namespaces: AppArmor profile present on disk' \
-					'(securityfs unavailable; cannot confirm it is loaded)'
-			else
-				_info 'User namespaces: AppArmor profile present on disk' \
-					'(re-run with sudo to confirm it is loaded)'
-			fi
-		else
-			_warn 'User namespaces: restricted by AppArmor,' \
-				'no Claude profile found'
-			_info '  Unprivileged user namespaces are blocked, which'
-			_info '  crashes the app on launch in X11 sessions'
-			_info '  (credentials.cc FATAL). Wayland sessions run with'
-			_info '  --no-sandbox and are unaffected.'
-			_info '  See docs/troubleshooting.md "Claude Desktop crashes'
-			_info '  immediately on launch" for the profile to install.'
-		fi
-	fi
+	_doctor_check_userns_apparmor
 
 	# -- SingletonLock --
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
