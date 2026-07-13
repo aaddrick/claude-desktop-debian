@@ -1288,151 +1288,45 @@ _doctor_check_bwrap_fallback() {
 	_doctor_check_bwrap_mounts
 }
 
-# Run all diagnostic checks and print results
-# Arguments: $1 = electron path (optional, for package-specific checks)
-run_doctor() {
-	local electron_path="${1:-}"
-	local _doctor_failures=0
-	# Recorded by _doctor_check_pkg_version, consumed by
-	# _check_official_drift (dynamic scope makes the helper's assignment
-	# land on this local).
-	local _installed_pkg_version=''
-	# Flipped true by any Cowork stack check that isn't green, so the
-	# section summary can report readiness without recomputing.
-	local _cowork_incomplete=false
-
-	# Doctor must see the same environment a launch would: the per-user
-	# config file can carry the launcher vars this run inspects
-	# (COWORK_VM_BACKEND=bwrap is the exact #772 persona). Guarded — a
-	# standalone `source doctor.sh` (doctor.bats) has no
-	# launcher-common.sh in scope. log_message no-ops here because the
-	# doctor path never runs setup_logging.
-	declare -F load_launcher_config > /dev/null && load_launcher_config
-	_doctor_colors
-
-	# Distro ID is shared between the IM-module check (#550) and the
-	# Cowork Mode section further down. Resolve once.
-	local _distro_id
-	_distro_id=$(_cowork_distro_id)
-
-	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
-	echo '================================'
-	echo
-
-	# -- Installed package version --
-	_doctor_check_pkg_version "$electron_path"
-
-	# -- Version drift vs. the official pool (best-effort, network) --
-	_check_official_drift
-
-	# -- Package-name collision with Anthropic's APT repo --
-	_check_name_collision
-
-	# -- Display server --
-	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
-		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
-		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
-		_info "Desktop: $desktop"
-		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
-			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
-		else
-			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
-			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
-			_info '     (disables global hotkeys)'
-		fi
-	elif [[ -n "${DISPLAY:-}" ]]; then
-		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
-	else
-		_fail "No display server detected" \
-			"(DISPLAY and WAYLAND_DISPLAY are unset)"
-		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
-	fi
-
-	# -- Input method (IBus / GTK) --
-	_doctor_check_im_modules "$_distro_id"
-
-	# -- Legacy 2.x env knobs (no longer honored post-rebase) --
-	_check_legacy_env
-
-	# -- Electron binary --
-	# Version is read from the file next to the binary rather than
-	# launching Electron, which can hang (see #371).
-	if [[ -n $electron_path && -x $electron_path ]]; then
-		local ver
-		ver=$(_electron_version "$electron_path")
-		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
-			_pass "Electron: v${ver#v} ($electron_path)"
-		else
-			_pass "Electron: found at $electron_path"
-		fi
-	elif [[ -n $electron_path ]]; then
-		_fail "Electron binary not found at $electron_path"
-		_info 'Fix: Reinstall the claude-desktop-unofficial package'
-	elif command -v electron &>/dev/null; then
-		local ver
-		ver=$(_electron_version "$(command -v electron)")
-		_pass "Electron: ${ver:+v${ver#v} }(system)"
-	else
-		_fail 'Electron binary not found'
-		_info 'Fix: Reinstall the claude-desktop-unofficial package'
-	fi
-
-	# -- Chrome sandbox permissions --
-	# Official layout: chrome-sandbox sits at the package root beside the
-	# ELF (no node_modules/electron/dist tree anymore).
-	local sandbox_paths=(
-		'/usr/lib/claude-desktop-unofficial/chrome-sandbox'
-	)
-	# Also check relative to the provided electron path
-	if [[ -n $electron_path ]]; then
-		local electron_dir
-		electron_dir=$(dirname "$electron_path")
-		sandbox_paths+=("$electron_dir/chrome-sandbox")
-	fi
-	local sandbox_checked=false
-	for sandbox_path in "${sandbox_paths[@]}"; do
-		if [[ -f $sandbox_path ]]; then
-			sandbox_checked=true
-			local sandbox_perms sandbox_owner
-			sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
-			sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
-			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
-				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
-			else
-				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
- owner=${sandbox_owner:-?}"
-				_info "Fix: sudo chown root:root $sandbox_path"
-				_info "     sudo chmod 4755 $sandbox_path"
-			fi
-			break
-		fi
-	done
-	if [[ $sandbox_checked == false ]]; then
-		_warn 'Chrome sandbox not found (expected for AppImage)'
-	fi
-
-	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
-	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
-	# blocks the user namespaces Chromium's sandbox needs and crashes the
-	# app on launch (credentials.cc FATAL, exit 133). A scoped AppArmor
-	# profile permits them for Claude only. Only report when the
-	# restriction is actually in force — on other distros the knob is
-	# absent and this check stays silent.
-	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
+# User-namespace sandbox check (Ubuntu 24.04+ AppArmor). Ubuntu 24.04+
+# sets apparmor_restrict_unprivileged_userns=1, which blocks the user
+# namespaces Chromium's sandbox needs and crashes the app on launch
+# (credentials.cc FATAL, exit 133). A scoped AppArmor profile permits
+# them for Claude only. Only reports when the restriction is actually
+# in force — on other distros the knob is absent and this stays silent.
+#
+# Path hooks (test-only; defaults are the real system locations, so
+# production behavior is unchanged):
+#   _DOCTOR_USERNS_PATH   the apparmor_restrict_unprivileged_userns knob
+#   _DOCTOR_DEB_ELECTRON  the deb-installed Electron the profile pins
+#   _DOCTOR_AA_PROFILE    the on-disk profile path
+#   _DOCTOR_AA_LOADED     the kernel's loaded-profile set
+#
+# Usage: _doctor_check_userns_apparmor
+_doctor_check_userns_apparmor() {
+	local _userns_path="${_DOCTOR_USERNS_PATH:-}"
+	[[ -n $_userns_path ]] \
+		|| _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
 	local _userns_val=''
 	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
 	# Gate on the deb's installed Electron, not $electron_path (the
 	# invoking build's binary): the profile pins this exact path, so only
 	# a deb install is confined by it. AppImage always runs --no-sandbox
 	# and Nix binaries live in the store — neither can hit the crash.
-	local _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
+	local _deb_electron="${_DOCTOR_DEB_ELECTRON:-}"
+	[[ -n $_deb_electron ]] \
+		|| _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
 	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
 		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
 		# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since
 		# the Phase 3 rename; plain claude-desktop is the official
 		# package's profile, registered by Anthropic's own postinst).
-		local _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
-		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
+		local _aa_profile="${_DOCTOR_AA_PROFILE:-}"
+		[[ -n $_aa_profile ]] \
+			|| _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
+		local _aa_loaded="${_DOCTOR_AA_LOADED:-}"
+		[[ -n $_aa_loaded ]] \
+			|| _aa_loaded='/sys/kernel/security/apparmor/profiles'
 		# securityfs marks this file world-readable (0444), but the kernel
 		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
 		# passes for non-root yet the read returns nothing. Attempt the read
@@ -1480,6 +1374,167 @@ run_doctor() {
 			_info '  immediately on launch" for the profile to install.'
 		fi
 	fi
+}
+
+# Report the Electron binary and its version. The version is read from
+# the file next to the binary rather than launching Electron, which can
+# hang (see #371). Falls back to a system `electron` on PATH; fails when
+# a provided path is missing or no binary is found at all.
+#
+# Usage: _doctor_check_electron_binary [electron_path]
+_doctor_check_electron_binary() {
+	local electron_path="${1:-}"
+	if [[ -n $electron_path && -x $electron_path ]]; then
+		local ver
+		ver=$(_electron_version "$electron_path")
+		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
+			_pass "Electron: v${ver#v} ($electron_path)"
+		else
+			_pass "Electron: found at $electron_path"
+		fi
+	elif [[ -n $electron_path ]]; then
+		_fail "Electron binary not found at $electron_path"
+		_info 'Fix: Reinstall the claude-desktop-unofficial package'
+	elif command -v electron &>/dev/null; then
+		local ver
+		ver=$(_electron_version "$(command -v electron)")
+		_pass "Electron: ${ver:+v${ver#v} }(system)"
+	else
+		_fail 'Electron binary not found'
+		_info 'Fix: Reinstall the claude-desktop-unofficial package'
+	fi
+}
+
+# Check the chrome-sandbox helper's setuid permissions (must be 4755,
+# owned by root). Official layout: chrome-sandbox sits at the package
+# root beside the ELF (no node_modules/electron/dist tree anymore).
+# Looks at the deb install path and, when an electron path is provided,
+# the chrome-sandbox beside it; the first existing file wins. Warns
+# when none is found (expected for AppImage).
+#
+# _DOCTOR_DEB_SANDBOX overrides the hardcoded deb path (test hook; the
+# default is the real install location, so production is unaffected).
+#
+# Usage: _doctor_check_chrome_sandbox [electron_path]
+_doctor_check_chrome_sandbox() {
+	local electron_path="${1:-}"
+	local _deb_sandbox="${_DOCTOR_DEB_SANDBOX:-}"
+	[[ -n $_deb_sandbox ]] \
+		|| _deb_sandbox='/usr/lib/claude-desktop-unofficial/chrome-sandbox'
+	local sandbox_paths=("$_deb_sandbox")
+	# Also check relative to the provided electron path
+	if [[ -n $electron_path ]]; then
+		local electron_dir
+		electron_dir=$(dirname "$electron_path")
+		sandbox_paths+=("$electron_dir/chrome-sandbox")
+	fi
+	local sandbox_checked=false sandbox_path
+	for sandbox_path in "${sandbox_paths[@]}"; do
+		if [[ -f $sandbox_path ]]; then
+			sandbox_checked=true
+			local sandbox_perms sandbox_owner
+			sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
+			sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
+			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
+				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
+			else
+				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
+ owner=${sandbox_owner:-?}"
+				_info "Fix: sudo chown root:root $sandbox_path"
+				_info "     sudo chmod 4755 $sandbox_path"
+			fi
+			break
+		fi
+	done
+	if [[ $sandbox_checked == false ]]; then
+		_warn 'Chrome sandbox not found (expected for AppImage)'
+	fi
+}
+
+# Report the active display server (Wayland/X11) and, on Wayland, the
+# desktop and whether Electron runs natively (CLAUDE_USE_WAYLAND=1) or
+# via XWayland (default, preserves global hotkeys). Fails when neither
+# DISPLAY nor WAYLAND_DISPLAY is set (TTY / broken session).
+#
+# Usage: _doctor_check_display_server
+_doctor_check_display_server() {
+	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
+		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
+		_info "Desktop: $desktop"
+		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
+			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
+		else
+			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
+			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
+			_info '     (disables global hotkeys)'
+		fi
+	elif [[ -n "${DISPLAY:-}" ]]; then
+		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
+	else
+		_fail "No display server detected" \
+			"(DISPLAY and WAYLAND_DISPLAY are unset)"
+		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
+	fi
+}
+
+# Run all diagnostic checks and print results
+# Arguments: $1 = electron path (optional, for package-specific checks)
+run_doctor() {
+	local electron_path="${1:-}"
+	local _doctor_failures=0
+	# Recorded by _doctor_check_pkg_version, consumed by
+	# _check_official_drift (dynamic scope makes the helper's assignment
+	# land on this local).
+	local _installed_pkg_version=''
+	# Flipped true by any Cowork stack check that isn't green, so the
+	# section summary can report readiness without recomputing.
+	local _cowork_incomplete=false
+
+	# Doctor must see the same environment a launch would: the per-user
+	# config file can carry the launcher vars this run inspects
+	# (COWORK_VM_BACKEND=bwrap is the exact #772 persona). Guarded — a
+	# standalone `source doctor.sh` (doctor.bats) has no
+	# launcher-common.sh in scope. log_message no-ops here because the
+	# doctor path never runs setup_logging.
+	declare -F load_launcher_config > /dev/null && load_launcher_config
+	_doctor_colors
+
+	# Distro ID is shared between the IM-module check (#550) and the
+	# Cowork Mode section further down. Resolve once.
+	local _distro_id
+	_distro_id=$(_cowork_distro_id)
+
+	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
+	echo '================================'
+	echo
+
+	# -- Installed package version --
+	_doctor_check_pkg_version "$electron_path"
+
+	# -- Version drift vs. the official pool (best-effort, network) --
+	_check_official_drift
+
+	# -- Package-name collision with Anthropic's APT repo --
+	_check_name_collision
+
+	# -- Display server --
+	_doctor_check_display_server
+
+	# -- Input method (IBus / GTK) --
+	_doctor_check_im_modules "$_distro_id"
+
+	# -- Legacy 2.x env knobs (no longer honored post-rebase) --
+	_check_legacy_env
+
+	# -- Electron binary --
+	_doctor_check_electron_binary "$electron_path"
+
+	# -- Chrome sandbox permissions --
+	_doctor_check_chrome_sandbox "$electron_path"
+
+	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
+	_doctor_check_userns_apparmor
 
 	# -- SingletonLock --
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
