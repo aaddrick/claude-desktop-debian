@@ -19,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 - The doctor-coverage campaign extracted `run_doctor`'s inline display-server, Electron-binary, chrome-sandbox, AppArmor-userns, and SingletonLock checks into unit-testable `_doctor_check_*` helpers with `_DOCTOR_*` path hooks (defaults are the real system paths, so production behavior is unchanged), each move verified byte-identical against the inline original and pinned by mutation-checked bats coverage. The SingletonLock extraction also fixes a false green: a regular file left at `SingletonLock` by an unclean update — which hard-blocks the next cold launch — was reported as `[PASS] no lock file (OK)` and now warns with an `rm` fix hint. ([#740](https://github.com/aaddrick/claude-desktop-debian/pull/740), [#744](https://github.com/aaddrick/claude-desktop-debian/pull/744), [#745](https://github.com/aaddrick/claude-desktop-debian/pull/745), [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782))
 
+### Fixed
+
+- The `.desktop` `StartupWMClass` now matches the runtime window class, so GNOME and KDE associate the running window with the launcher entry instead of showing a second taskbar entry with a generic icon. Chromium derives the X11 `WM_CLASS` / Wayland `app_id` from the asar `package.json` `desktopName` (minus its `.desktop` suffix) — not from `productName`, the launcher's `--class` flag, or the ELF basename — and upstream renamed that field across 1.18286.0 → 1.19367.0 (`claude-desktop` → `com.anthropic.Claude`), so the value is now derived from the staged `app.asar` at build time in all package formats rather than hardcoded, with the build failing loudly if the field disappears and the artifact tests asserting the invariant end-to-end. Verified live on GNOME and KDE against 1.19367.0. ([#779](https://github.com/aaddrick/claude-desktop-debian/issues/779), [#799](https://github.com/aaddrick/claude-desktop-debian/pull/799))
+
 ## [v3.2.1] — 2026-07-12
 
 ### Added

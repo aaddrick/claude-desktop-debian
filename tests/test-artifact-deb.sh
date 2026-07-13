@@ -152,7 +152,7 @@ assert_contains '/usr/bin/claude-desktop-unofficial' 'build_electron_args' \
 
 # --- App contents (asar) ---
 resources_dir='/usr/lib/claude-desktop-unofficial/resources'
-validate_app_contents "$resources_dir"
+validate_app_contents "$resources_dir" "$desktop_file"
 
 # app.asar.unpacked must be world-traversable and root-owned, or
 # Cowork's auto-launch fs.existsSync() guard silently fails (#695).

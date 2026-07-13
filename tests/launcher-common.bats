@@ -61,7 +61,7 @@ setup() {
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
 	cp "$SCRIPT_DIR/../scripts/launcher-common.sh" "$TEST_TMP/launcher-common.sh"
 	cp "$SCRIPT_DIR/../scripts/doctor.sh" "$TEST_TMP/doctor.sh"
-	sed -i 's/@@WM_CLASS@@/Claude/' "$TEST_TMP/launcher-common.sh"
+	sed -i 's/@@WM_CLASS@@/com.anthropic.Claude/' "$TEST_TMP/launcher-common.sh"
 	# shellcheck source=scripts/launcher-common.sh
 	source "$TEST_TMP/launcher-common.sh"
 }
@@ -175,21 +175,21 @@ teardown() {
 	setup_logging
 	# Both the "Arguments:" and "Executing:" lines carry $* verbatim.
 	log_message "Arguments: claude://login/google-auth?code=SECRET123&state=xyz"
-	log_message "Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude claude://login/google-auth?code=SECRET456"
+	log_message "Executing: /usr/lib/claude-desktop/claude-desktop --class=com.anthropic.Claude claude://login/google-auth?code=SECRET456"
 	run cat "$log_file"
 	[[ "$output" != *SECRET123* ]]
 	[[ "$output" != *SECRET456* ]]
 	[[ "$output" != *'code='* ]]
 	# Path is kept for context; only the query string is stripped.
 	[[ "${lines[0]}" == 'Arguments: claude://login/google-auth?<redacted>' ]]
-	[[ "${lines[1]}" == *'--class=Claude claude://login/google-auth?<redacted>' ]]
+	[[ "${lines[1]}" == *'--class=com.anthropic.Claude claude://login/google-auth?<redacted>' ]]
 }
 
 @test "log_message: leaves non-login messages untouched" {
 	setup_logging
-	log_message 'Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude'
+	log_message 'Executing: /usr/lib/claude-desktop/claude-desktop --class=com.anthropic.Claude'
 	run cat "$log_file"
-	[[ "${lines[0]}" == 'Executing: /usr/lib/claude-desktop/claude-desktop --class=Claude' ]]
+	[[ "${lines[0]}" == 'Executing: /usr/lib/claude-desktop/claude-desktop --class=com.anthropic.Claude' ]]
 }
 
 # =============================================================================
@@ -429,7 +429,7 @@ teardown() {
 	is_wayland=false
 	setup_logging
 	build_electron_args deb
-	has_electron_arg '--class=Claude'
+	has_electron_arg '--class=com.anthropic.Claude'
 }
 
 @test "build_electron_args: X11 deb defaults to a minimal argv (opt-in policy)" {
@@ -442,7 +442,7 @@ teardown() {
 	setup_logging
 	build_electron_args deb
 	[[ ${#electron_args[@]} -eq 1 ]]
-	[[ ${electron_args[0]} == '--class=Claude' ]]
+	[[ ${electron_args[0]} == '--class=com.anthropic.Claude' ]]
 }
 
 @test "build_electron_args: CLAUDE_PASSWORD_STORE set - passes flag + logs it" {
@@ -714,7 +714,7 @@ s.close()
 	# stand-in's argv[0] is renamed to carry it via exec -a. Its state
 	# is sleeping (not T/t/Z), so the function treats it as a live UI
 	# and must NOT kill the daemon.
-	bash -c 'exec -a "--class=Claude" sleep 300' &
+	bash -c 'exec -a "--class=com.anthropic.Claude" sleep 300' &
 	ui_pid=$!
 	# Wait for the exec to land before running the reaper: on a loaded
 	# runner the child can still carry its pre-exec argv when the UI
@@ -745,7 +745,7 @@ s.close()
 	pgrep() {
 		if [[ $* == *cowork-vm-service* ]]; then
 			echo 4242
-		elif [[ $* == *--class=Claude* ]]; then
+		elif [[ $* == *--class=com.anthropic.Claude* ]]; then
 			echo "$ui_pid"
 		fi
 	}
@@ -883,7 +883,7 @@ s.close()
 	# longer appears in any cmdline, so the --class flag from
 	# build_electron_args is the only stable UI signature.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/claude-desktop --class=Claude --enable-features=WaylandWindowDecorations "
+		"/usr/lib/claude-desktop/claude-desktop --class=com.anthropic.Claude --enable-features=WaylandWindowDecorations "
 	[[ $status -eq 0 ]]
 
 	# Another Electron app's asar path must not match.
@@ -893,18 +893,18 @@ s.close()
 
 	# Look-alike WM class is rejected by the trailing-space anchor.
 	run _claude_desktop_ui_cmdline_matches \
-		"/opt/claude-dev/electron --class=ClaudeDev "
+		"/opt/claude-dev/electron --class=com.anthropic.ClaudeDev "
 	[[ $status -ne 0 ]]
 
 	# Chromium helpers (--type=) never count as the UI, even if a
 	# --class flag leaked into their argv.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=Claude "
+		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=com.anthropic.Claude "
 	[[ $status -ne 0 ]]
 
 	# The cowork daemon never counts as the UI.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js --class=Claude "
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js --class=com.anthropic.Claude "
 	[[ $status -ne 0 ]]
 }
 

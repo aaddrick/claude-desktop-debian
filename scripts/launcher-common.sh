@@ -2,8 +2,11 @@
 # Common launcher functions for Claude Desktop (AppImage and deb)
 # This file is sourced by both launchers to avoid code duplication
 
-# WM_CLASS / StartupWMClass — must match upstream productName.
-# @@WM_CLASS@@ is replaced at build time; see build.sh.
+# WM_CLASS / StartupWMClass — must match the runtime window class,
+# which Chromium derives from the asar package.json desktopName (not
+# productName, not --class, not the ELF basename). @@WM_CLASS@@ is
+# replaced at package time with the value patch_app_asar derives from
+# the staged app.asar; see scripts/patches/app-asar.sh (#779).
 readonly WM_CLASS='@@WM_CLASS@@'
 
 # Rotate launcher.log when it exceeds a size cap, keeping a couple of
@@ -239,7 +242,7 @@ _previous_launch_hit_gpu_fatal() {
 # Linux-environment gap; the tools/chromium-switch-smoke.sh guard
 # fails loudly if the effective switch list drifts without a
 # deliberate baseline update. Kept defaults, each with its reason:
-#   --class=$WM_CLASS         WM_CLASS/.desktop contract (#647, #652)
+#   --class=$WM_CLASS         cmdline UI fingerprint (#647, #652, #779)
 #   XRDP auto GPU-off         blank window on remote GPU (#319)
 #   GPU-crash sticky recovery GPU process FATAL exhaustion (#583)
 #   Wayland backend selection CLAUDE_USE_WAYLAND tri-state (#226, #404)
@@ -266,8 +269,11 @@ build_electron_args() {
 	# AppImage always needs --no-sandbox due to FUSE constraints
 	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
-	# WM_CLASS must match the .desktop StartupWMClass and upstream's
-	# productName. Ref: #647, #652
+	# Chromium ignores --class for the window class (it reads the asar
+	# desktopName instead — WM_CLASS is derived from the same field),
+	# but the flag is load-bearing as the /proc cmdline UI fingerprint:
+	# _claude_desktop_ui_cmdline_matches keys on it. Ref: #647, #652,
+	# #779
 	electron_args+=("--class=$WM_CLASS")
 
 	# Password store: the official build's os_crypt autodetection owns
