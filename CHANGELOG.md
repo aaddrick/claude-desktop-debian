@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Changed
+
+- The doctor-coverage campaign extracted `run_doctor`'s inline display-server, Electron-binary, chrome-sandbox, AppArmor-userns, and SingletonLock checks into unit-testable `_doctor_check_*` helpers with `_DOCTOR_*` path hooks (defaults are the real system paths, so production behavior is unchanged), each move verified byte-identical against the inline original and pinned by mutation-checked bats coverage. The SingletonLock extraction also fixes a false green: a regular file left at `SingletonLock` by an unclean update — which hard-blocks the next cold launch — was reported as `[PASS] no lock file (OK)` and now warns with an `rm` fix hint. ([#740](https://github.com/aaddrick/claude-desktop-debian/pull/740), [#744](https://github.com/aaddrick/claude-desktop-debian/pull/744), [#745](https://github.com/aaddrick/claude-desktop-debian/pull/745), [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782))
+
 ## [v3.2.1] — 2026-07-12
 
 ### Added
