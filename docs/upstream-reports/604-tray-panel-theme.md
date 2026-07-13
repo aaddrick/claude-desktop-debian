@@ -1,6 +1,6 @@
 # Upstream report draft: Linux tray glyph keyed to color scheme, not panel theme (issue #604)
 
-Draft for the upstream bug report covering [#604](https://github.com/aaddrick/claude-desktop-debian/issues/604) and the KDE class datapoint ([#563](https://github.com/aaddrick/claude-desktop-debian/issues/563)-adjacent), verified first-party on official 1.19367.0 bytes. Filing target is `anthropics/claude-code` GitHub Issues; the version field gets `N/A — Claude Desktop 1.19367.0` per the template-mismatch note in [`546-mcp-double-spawn.md`](546-mcp-double-spawn.md). Cross-link [`tray-theme-update-latch.md`](tray-theme-update-latch.md) at filing time (found during this report's verification).
+**FILED 2026-07-13 as [anthropics/claude-code#77170](https://github.com/anthropics/claude-code/issues/77170).** Draft for the upstream bug report covering [#604](https://github.com/aaddrick/claude-desktop-debian/issues/604) and the KDE class datapoint ([#563](https://github.com/aaddrick/claude-desktop-debian/issues/563)-adjacent), verified first-party on official 1.19367.0 bytes. The version field got `N/A — Claude Desktop 1.19367.0` per the template-mismatch note in [`546-mcp-double-spawn.md`](546-mcp-double-spawn.md). Sibling report found during this verification: [`tray-theme-update-latch.md`](tray-theme-update-latch.md) ([#77171](https://github.com/anthropics/claude-code/issues/77171)).
 
 ## Title
 

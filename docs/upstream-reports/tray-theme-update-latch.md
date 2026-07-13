@@ -1,6 +1,6 @@
 # Upstream report draft: tray icon deaf to color-scheme changes after the first one
 
-Draft for a first-party bug found 2026-07-13 while verifying [`604-tray-panel-theme.md`](604-tray-panel-theme.md) on this host — file that report first and replace the TODO cross-link below with its issue number. Single-host evidence so far (Nobara 44 / Plasma 6.6.4 / XWayland); the body hedges accordingly. Filing target is `anthropics/claude-code`; version field gets `N/A — Claude Desktop 1.19367.0` per [`546-mcp-double-spawn.md`](546-mcp-double-spawn.md).
+**FILED 2026-07-13 as [anthropics/claude-code#77171](https://github.com/anthropics/claude-code/issues/77171).** First-party bug found 2026-07-13 while verifying [`604-tray-panel-theme.md`](604-tray-panel-theme.md) ([#77170](https://github.com/anthropics/claude-code/issues/77170)) on this host. Single-host evidence so far (Nobara 44 / Plasma 6.6.4 / XWayland); the body hedges accordingly. The version field got `N/A — Claude Desktop 1.19367.0` per [`546-mcp-double-spawn.md`](546-mcp-double-spawn.md).
 
 ## Title
 
@@ -12,7 +12,7 @@ Draft for a first-party bug found 2026-07-13 while verifying [`604-tray-panel-th
 
 ### What's Wrong?
 
-I maintain [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian), which repackages the official Linux `.deb`. The tray code here is the official `app.asar` bytes, unpatched, so this is a first-party bug. I found this while verifying the tray-contrast report filed alongside it (TODO: link report 1's issue number), so treat them as related.
+I maintain [claude-desktop-debian](https://github.com/aaddrick/claude-desktop-debian), which repackages the official Linux `.deb`. The tray code here is the official `app.asar` bytes, unpatched, so this is a first-party bug. I found this while verifying the tray-contrast report filed alongside it (#77170), so treat them as related.
 
 The tray icon reacts to the first OS color-scheme change after launch, then goes deaf to every change after that.
 
