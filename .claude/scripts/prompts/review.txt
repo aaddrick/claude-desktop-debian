@@ -57,7 +57,23 @@ commit the result to the schema slots:
    really the name of the construct at that site? Two sentences
    maximum. Required even on approve — it forces you to have looked.
 
-3. **Closed-world check** (`closed_world_check`, identifier claims
+3. **Refutation-check audit.** Findings carry a `refutation_check`
+   field — the one read/search the investigator ran that would have
+   refuted the claim. Audit it:
+   - A finding that asserts a *mechanism* (why the reported behavior
+     happens) with `refutation_check` null, absent, or
+     `result: "not-runnable"` is at most `downgrade-confidence`,
+     never `approve` — an unrefuted mechanism is a hypothesis, not a
+     finding. This applies with full force to claims about
+     upstream-bundle behavior and claims inferred from log-line text.
+   - A `refutation_check` whose `result` actually contradicts or
+     fails to test the claim (the check searched the wrong thing,
+     the result restates the claim instead of testing it) is
+     grounds for `reject` — cite the mismatch.
+   - A direct-citation finding (the evidence quote IS the claim) may
+     have a null check; that's fine.
+
+4. **Closed-world check** (`closed_world_check`, identifier claims
    only). For `claim_type: identifier`:
    - Copy the claimed identifier into `claimed_identifier`.
    - Echo back the full `closed_world_options` list from the input
@@ -68,7 +84,7 @@ commit the result to the schema slots:
      host]` is `false`, and the rationale must cite the actual list.
    - For non-identifier claims, set `closed_world_check` to null.
 
-4. **Verdict** (`verdict`). Only after the three steps above:
+5. **Verdict** (`verdict`). Only after the steps above:
    - `approve`: claim holds on source + issue body. Steel-man
      survives the counter-reading; closed-world check (if applicable)
      found an exact match.
@@ -88,7 +104,7 @@ commit the result to the schema slots:
      disconfirming source quote, or the issue body describes a
      different failure mode.
 
-5. **Rationale** (`rationale`). Cite the specific step and evidence
+6. **Rationale** (`rationale`). Cite the specific step and evidence
    that drove the verdict. For reject/downgrade, name the
    contradicting evidence verbatim — the actual option list on a
    closed-world miss, the quoted disconfirming line, the portion of

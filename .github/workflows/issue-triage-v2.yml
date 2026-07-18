@@ -74,6 +74,28 @@ jobs:
             exit 0
           fi
 
+          # Cost-amplification guard: each triage run spends real API
+          # budget, and opening issues is the one unauthenticated-ish
+          # action any fresh GitHub account can spam. Accounts younger
+          # than 7 days get routed to a human instead of the pipeline
+          # (label only, no model calls). Fetch failure fails open —
+          # an API hiccup shouldn't silence triage for real reporters.
+          account_created=$(gh api "users/${author}" \
+            --jq '.created_at' 2>/dev/null || echo "")
+          if [[ -n "${account_created}" ]]; then
+            created_epoch=$(date -d "${account_created}" +%s)
+            now_epoch=$(date +%s)
+            account_age_days=$(( (now_epoch - created_epoch) / 86400 ))
+            if (( account_age_days < 7 )); then
+              echo "should_triage=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Account ${author} is ${account_age_days}d old (<7d) — routing to human, skipping pipeline"
+              gh issue edit "${ISSUE_NUMBER}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --add-label "triage: needs-human" 2>/dev/null || true
+              exit 0
+            fi
+          fi
+
           echo "should_triage=true" >> "$GITHUB_OUTPUT"
 
   # ──────────────────────────────────────────────────────────────────────
@@ -91,6 +113,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          # The investigator LLM gets tool access to this workspace
+          # with attacker-controlled issue text in its prompt. Don't
+          # leave the job token sitting in .git/config for it to read.
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -98,7 +124,10 @@ jobs:
           node-version: "20"
 
       - name: Install Claude CLI
-        run: npm install -g @anthropic-ai/claude-code
+        # Version-pinned like the SHA-pinned actions above: this CLI
+        # runs with the Anthropic API key and repo tool access, so a
+        # floating `latest` is a supply-chain hole. Bump deliberately.
+        run: npm install -g @anthropic-ai/claude-code@2.1.214
 
       # Stage 1 — input snapshot.
       - name: Capture input snapshot
@@ -204,9 +233,26 @@ jobs:
           classification=$(jq -r '.classification' \
             /tmp/triage/classification.json)
           confidence=$(jq -r '.confidence' /tmp/triage/classification.json)
+          policy_bucket=$(jq -r '.policy_bucket // "none"' \
+            /tmp/triage/classification.json)
+
+          # Map the classifier's policy bucket to its fixed
+          # reasons.json entry once; route and decide gates consume
+          # the reason id. Empty when no policy applies.
+          case "${policy_bucket}" in
+            out-of-scope-feature) policy_reason_id=policy-out-of-scope-feature ;;
+            upstream-app)         policy_reason_id=policy-upstream-app ;;
+            server-side)          policy_reason_id=policy-server-side ;;
+            other-platform)       policy_reason_id=policy-other-platform ;;
+            user-environment)     policy_reason_id=policy-user-environment ;;
+            *)                    policy_reason_id= ;;
+          esac
+
           {
             echo "classification=${classification}"
             echo "confidence=${confidence}"
+            echo "policy_bucket=${policy_bucket}"
+            echo "policy_reason_id=${policy_reason_id}"
           } >> "$GITHUB_OUTPUT"
 
       # Stage 2 — bug/enhancement doublecheck.
@@ -270,12 +316,21 @@ jobs:
       # prompt-injection tell, route straight to 8b with reason
       # `suspicious-input — manual review`, bypassing the LLM
       # classifier entirely.
+      #
+      # Policy routing (post-audit): when the classifier set a
+      # non-none policy_bucket and the classification is one of the
+      # deferral-shaped ones, the deferral reason is the mapped
+      # policy reason — a policy-grounded comment beats the generic
+      # "no findings survived validation". The 2026-07 accuracy audit
+      # found over-deferral on trivially policy-answerable issues was
+      # the single largest failure bucket (17 of 141).
       - name: Decide route
         id: route
         env:
           SUSPICIOUS: ${{ steps.suspicious.outputs.suspicious }}
           CLASSIFICATION: ${{ steps.classify.outputs.classification }}
           DISAGREED: ${{ steps.doublecheck.outputs.disagreed }}
+          POLICY_REASON_ID: ${{ steps.classify.outputs.policy_reason_id }}
         run: |
           suspicious="${SUSPICIOUS}"
           classification="${CLASSIFICATION}"
@@ -292,6 +347,10 @@ jobs:
               || "${classification}" == "enhancement" \
               || "${classification}" == "duplicate" ]]; then
             echo "route=investigate" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${POLICY_REASON_ID}" ]]; then
+            echo "route=deferral" >> "$GITHUB_OUTPUT"
+            echo "deferral_reason_id=${POLICY_REASON_ID}" \
+              >> "$GITHUB_OUTPUT"
           else
             echo "route=deferral" >> "$GITHUB_OUTPUT"
             echo "deferral_reason_id=no-findings" >> "$GITHUB_OUTPUT"
@@ -490,6 +549,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLASSIFICATION_NAME: ${{ steps.classify.outputs.classification }}
           HAS_REGRESSION: ${{ steps.regression.outputs.has_regression }}
+          DRIFT: ${{ steps.drift.outputs.drift_detected }}
+          CURRENT_VERSION: ${{ vars.CLAUDE_DESKTOP_VERSION }}
         run: |
           schema=$(cat .claude/scripts/schemas/investigate.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
@@ -523,10 +584,34 @@ jobs:
             echo "## This repo"
             echo ""
             echo "Working directory is $(pwd). Patches live in"
-            echo "scripts/patches/*.sh; build orchestrator is build.sh;"
-            echo "wrapper pattern is in frame-fix-wrapper.js /"
-            echo "frame-fix-entry.js."
+            echo "scripts/patches/*.sh (orchestrated by app-asar.sh's"
+            echo "active_patches array); build orchestrator is build.sh;"
+            echo "launcher scripts are scripts/launchers/ +"
+            echo "launcher-common.sh. The official app.asar ships"
+            echo "byte-identical (patch-zero) — there is no Electron"
+            echo "wrapper / frame-fix intercept."
             echo ""
+            # Drift → hypothesis-only mode. The 2026-07 audit found
+            # the pipeline printed a drift banner but asserted
+            # anyway, producing confident findings on code the
+            # reporter isn't running. The investigator must degrade
+            # its own confidence, not just warn the reader.
+            if [[ "${DRIFT}" == "true" ]]; then
+              claimed_v=$(jq -r '.claimed_version // "unknown"' \
+                /tmp/triage/classification.json)
+              echo "## VERSION MISMATCH — hypothesis-only mode"
+              echo ""
+              echo "The reporter is on ${claimed_v}; the reference"
+              echo "source you can read is ${CURRENT_VERSION}. You"
+              echo "cannot verify claims about the bytes the reporter"
+              echo "is actually running. Therefore: any finding whose"
+              echo "mechanism depends on upstream-bundle code must be"
+              echo "capped at confidence: medium, and its claim must"
+              echo "name the version it was verified against. Findings"
+              echo "about this repo's own scripts (which version with"
+              echo "the repo, not the app) are exempt."
+              echo ""
+            fi
             echo "## Classification"
             echo ""
             echo '```json'
@@ -562,11 +647,19 @@ jobs:
             echo "</issue_body>"
           } > /tmp/triage/investigate-prompt.txt
 
-          # The investigation call runs with tool access (read/grep) so
-          # Claude can verify claims against actual source. `--json-schema`
-          # constrains the FINAL message; tool-call intermediates flow
-          # freely. Per CLI docs, validation is post-hoc — conforming
-          # output lands in `.structured_output`, prose in `.result`.
+          # The investigation call runs with tool access so Claude can
+          # verify claims against actual source — but the toolset is
+          # an explicit allowlist, NOT --dangerously-skip-permissions.
+          # The prompt embeds attacker-controlled issue text; with
+          # unrestricted Bash a prompt-injected investigator could
+          # curl the ANTHROPIC_API_KEY off the runner. Read/Grep/Glob
+          # cover source verification; Bash is limited to `strings`
+          # for binary inspection (native .node helpers). Denied tool
+          # calls fail closed — the model adapts or the finding dies
+          # in Stage 5. `--json-schema` constrains the FINAL message;
+          # tool-call intermediates flow freely. Per CLI docs,
+          # validation is post-hoc — conforming output lands in
+          # `.structured_output`, prose in `.result`.
           # We prefer `.structured_output` and fall back to the
           # extract-json.py helper on the `.result` field in case the
           # CLI hands back prose for any reason.
@@ -587,7 +680,7 @@ jobs:
           # * Raw response + extracted payload archived before schema
           #   checks so a reject still leaves artifacts to inspect.
           if raw=$(timeout 1200s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
-              --dangerously-skip-permissions \
+              --allowedTools "Read,Grep,Glob,Bash(strings:*)" \
               --output-format json \
               --json-schema "${schema}" \
               --model claude-sonnet-4-6 \
@@ -601,7 +694,7 @@ jobs:
           printf '%s' "${raw}" > /tmp/triage/investigate-raw.json
 
           if [[ "${claude_exit}" == "124" ]]; then
-            echo "::warning::investigate call timed out at 600s"
+            echo "::warning::investigate call timed out at 1200s"
             echo "investigate_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           elif [[ "${claude_exit}" != "0" ]]; then
@@ -772,6 +865,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HAS_REGRESSION: ${{ steps.regression.outputs.has_regression }}
           CLASSIFICATION_NAME: ${{ steps.classify.outputs.classification }}
+          DUP_FETCHED: ${{ steps.dup_fetch.outputs.dup_fetched }}
         run: |
           schema=$(cat .claude/scripts/schemas/review.json)
           title=$(jq -r '.title' /tmp/triage/issue.json)
@@ -786,16 +880,16 @@ jobs:
           idx=0
           while IFS= read -r v; do
             f=$(jq -r '.finding.file' <<<"${v}")
-            ls=$(jq -r '.finding.line_start' <<<"${v}")
-            le=$(jq -r '.finding.line_end' <<<"${v}")
+            line_s=$(jq -r '.finding.line_start' <<<"${v}")
+            line_e=$(jq -r '.finding.line_end' <<<"${v}")
             if [[ "${f}" == reference-source/* ]]; then
               resolved="/tmp/ref-source/app-extracted/${f#reference-source/}"
             else
               resolved="${GITHUB_WORKSPACE}/${f}"
             fi
-            es=$((ls - 5))
+            es=$((line_s - 5))
             (( es < 1 )) && es=1
-            ee=$((le + 5))
+            ee=$((line_e + 5))
             excerpt=$(sed -n "${es},${ee}p" "${resolved}" \
               2>/dev/null || echo "")
 
@@ -821,7 +915,7 @@ jobs:
           # classify step set duplicate_of and the fetch succeeded;
           # otherwise null. Reviewer emits `duplicate_of_rating: null`
           # for the null case.
-          if [[ "${{ steps.dup_fetch.outputs.dup_fetched }}" == "true" ]]; then
+          if [[ "${DUP_FETCHED}" == "true" ]]; then
             dup_payload=$(cat /tmp/triage/duplicate-of.json)
           else
             dup_payload='null'
@@ -1026,13 +1120,15 @@ jobs:
       #   → enhancement (8c) → no-findings → low-confidence → 8a
       # Drift no longer vetoes the comment. When drift is detected
       # AND 8a or 8c would render, the renderer prepends a drift
-      # banner and appends the drift-bridge candidates block; the
-      # finding citations stand but the reader is warned they're on
-      # current code, not the reporter's version. When drift is
-      # detected AND any other gate routes to 8b, the reason is
-      # overridden to `version-drift` (drift is the more actionable
-      # signal for the maintainer than the underlying no-findings /
-      # low-confidence cause).
+      # banner; the finding citations stand but the reader is warned
+      # they're hypotheses about current code, not the reporter's
+      # version. When drift is detected AND the gate lands on a
+      # generic 8b, the reason is overridden to `version-drift`.
+      # Post-audit: drift-bridge candidates are pipeline-internal
+      # (artifacts only, never posted — zero observed human usage,
+      # two wrong "probably close" steers), and a classifier
+      # policy_bucket upgrades generic no-findings deferrals to a
+      # policy-grounded reason.
       - name: Decide comment variant
         id: decide
         env:
@@ -1047,6 +1143,7 @@ jobs:
           KEPT: ${{ steps.filter.outputs.review_findings_kept }}
           AVG: ${{ steps.filter.outputs.review_avg_confidence }}
           DUP_RATING: ${{ steps.filter.outputs.duplicate_of_rating }}
+          POLICY_REASON_ID: ${{ steps.classify.outputs.policy_reason_id }}
         run: |
           route="${ROUTE}"
 
@@ -1113,16 +1210,29 @@ jobs:
             reason_id=
           fi
 
+          # Policy override — an investigation that came up empty on
+          # an issue the classifier policy-bucketed is not "low
+          # confidence": absence of code findings corroborates the
+          # policy read (2026-07 audit, over-deferral bucket). The
+          # policy reason is the more useful comment.
+          if [[ -n "${POLICY_REASON_ID}" \
+              && "${variant}" == "8b" \
+              && ( "${reason_id}" == "no-findings" \
+                  || "${reason_id}" == "low-confidence" ) ]]; then
+            reason_id="${POLICY_REASON_ID}"
+          fi
+
           # Drift override — when drift is detected AND the pipeline
-          # would fall back to 8b for any other reason, report drift
-          # as the deferral reason. Drift-bridge candidates give the
-          # maintainer a more actionable signal than "no findings" /
-          # "low confidence" on their own. When the pipeline reaches
-          # 8a or 8c cleanly, drift stays as a banner flag — handled
-          # by the renderer, not this gate.
+          # would fall back to a generic 8b (no-findings /
+          # low-confidence only — policy and duplicate reasons carry
+          # more signal than drift), report drift as the deferral
+          # reason. When the pipeline reaches 8a or 8c cleanly, drift
+          # stays as a banner flag — handled by the renderer, not
+          # this gate.
           if [[ "${drift}" == "true" \
               && "${variant}" == "8b" \
-              && "${reason_id}" != "duplicate" ]]; then
+              && ( "${reason_id}" == "no-findings" \
+                  || "${reason_id}" == "low-confidence" ) ]]; then
             reason_id=version-drift
           fi
 
@@ -1200,20 +1310,20 @@ jobs:
           excerpts='[]'
           while IFS= read -r v; do
             f=$(jq -r '.finding.file' <<<"${v}")
-            ls=$(jq -r '.finding.line_start' <<<"${v}")
-            le=$(jq -r '.finding.line_end' <<<"${v}")
+            line_s=$(jq -r '.finding.line_start' <<<"${v}")
+            line_e=$(jq -r '.finding.line_end' <<<"${v}")
             if [[ "${f}" == reference-source/* ]]; then
               resolved="/tmp/ref-source/app-extracted/${f#reference-source/}"
             else
               resolved="${GITHUB_WORKSPACE}/${f}"
             fi
-            es=$((ls - 5))
+            es=$((line_s - 5))
             (( es < 1 )) && es=1
-            ee=$((le + 5))
+            ee=$((line_e + 5))
             excerpt=$(sed -n "${es},${ee}p" "${resolved}" \
               2>/dev/null || echo "")
             entry=$(jq -n \
-              --arg f "${f}" --argjson ls "${ls}" --argjson le "${le}" \
+              --arg f "${f}" --argjson ls "${line_s}" --argjson le "${line_e}" \
               --arg excerpt "${excerpt}" \
               '{file: $f, line_start: $ls, line_end: $le, excerpt: $excerpt}')
             excerpts=$(jq --argjson e "${entry}" '. + [$e]' \
@@ -1292,13 +1402,14 @@ jobs:
 
           # Drift banner — prepended when the classifier picked up a
           # claimed_version that differs from CLAUDE_DESKTOP_VERSION.
-          # The finding citations still stand (they describe current
-          # code), but the reader needs to know the gap.
+          # Post-audit phrasing: hypotheses, not assertions, and no
+          # "you can probably close" steer (that suggestion was wrong
+          # both times a human acted on it).
           drift_banner=""
           if [[ "${DRIFT_DETECTED}" == "true" ]]; then
             claimed=$(jq -r '.claimed_version // "unknown"' \
               /tmp/triage/classification.json)
-            drift_banner="⚠ You reported this on \`${claimed}\`; the bot investigated against the current release \`${CURRENT_VERSION}\`. Findings below are from current code — if the drift-bridge candidates at the bottom already address your case, you can probably close. Otherwise the file:line citations may still apply."
+            drift_banner="⚠ You reported this on \`${claimed}\`; the bot could only read the current release \`${CURRENT_VERSION}\`. Treat the findings below as hypotheses about current code — the cited lines may not match the build you're running."
           fi
 
           {
@@ -1340,22 +1451,11 @@ jobs:
               echo "Related: ${related_line}"
             fi
 
-            # Drift-bridge candidates block — same shape as in 8b,
-            # appended here when drift detected + sweep returned ≥1.
-            if [[ "${DRIFT_DETECTED}" == "true" \
-                && -f /tmp/triage/drift-bridge-candidates.json ]]; then
-              candidate_count=$(jq \
-                '(.commits | length) + (.prs | length)' \
-                /tmp/triage/drift-bridge-candidates.json)
-              if [[ "${candidate_count}" -gt 0 ]]; then
-                echo ""
-                echo "Drift-bridge candidates — commits or PRs in the drift window that touched the relevant surface and may already address this:"
-                jq -r '
-                  (.commits[]? | "- \(.sha[0:8]) — \(.subject) (\(.date))"),
-                  (.prs[]? | "- #\(.number) — \(.title) (\(.mergedAt))")
-                ' /tmp/triage/drift-bridge-candidates.json
-              fi
-            fi
+            # Drift-bridge candidates stay pipeline-internal (the
+            # uploaded artifact still carries them). The 2026-07
+            # audit found zero cases of a human using the posted
+            # list and two cases where it steered toward wrongly
+            # closing a live bug.
 
             echo ""
             echo "Full investigation artifacts (\`investigation.json\`, \`validation.json\`) are attached to the [triage workflow run](${RUN_URL})."
@@ -1364,8 +1464,9 @@ jobs:
       # Stage 8c — enhancement-design variant. Sonnet call emits a
       # structured comment object; bash renders the markdown. Parallel
       # to 8a but shaped for enhancement requests: acknowledgment +
-      # existing-surface citations from reviewer-kept findings (0-3) +
-      # design-review questions from a fixed taxonomy (1-3).
+      # optional scope-policy note + existing-surface citations from
+      # reviewer-kept findings (0-3) + design-review questions from a
+      # fixed taxonomy (0-3; empty when none genuinely apply).
       #
       # When findings_passed was 0 the review step was skipped by
       # design and review.json doesn't exist — the drafter gets an
@@ -1411,20 +1512,20 @@ jobs:
           excerpts='[]'
           while IFS= read -r v; do
             f=$(jq -r '.finding.file' <<<"${v}")
-            ls=$(jq -r '.finding.line_start' <<<"${v}")
-            le=$(jq -r '.finding.line_end' <<<"${v}")
+            line_s=$(jq -r '.finding.line_start' <<<"${v}")
+            line_e=$(jq -r '.finding.line_end' <<<"${v}")
             if [[ "${f}" == reference-source/* ]]; then
               resolved="/tmp/ref-source/app-extracted/${f#reference-source/}"
             else
               resolved="${GITHUB_WORKSPACE}/${f}"
             fi
-            es=$((ls - 5))
+            es=$((line_s - 5))
             (( es < 1 )) && es=1
-            ee=$((le + 5))
+            ee=$((line_e + 5))
             excerpt=$(sed -n "${es},${ee}p" "${resolved}" \
               2>/dev/null || echo "")
             entry=$(jq -n \
-              --arg f "${f}" --argjson ls "${ls}" --argjson le "${le}" \
+              --arg f "${f}" --argjson ls "${line_s}" --argjson le "${line_e}" \
               --arg excerpt "${excerpt}" \
               '{file: $f, line_start: $ls, line_end: $le, excerpt: $excerpt}')
             excerpts=$(jq --argjson e "${entry}" '. + [$e]' \
@@ -1498,6 +1599,8 @@ jobs:
           tax=.claude/scripts/taxonomies/enhancement-design-questions.json
           ack=$(jq -r '.acknowledgment_line' "${c}")
           surface_count=$(jq '.existing_surfaces | length' "${c}")
+          question_count=$(jq '.design_question_ids | length' "${c}")
+          scope_note=$(jq -r '.scope_note // ""' "${c}")
 
           # Drift banner — same shape as 8a; reframed for enhancements
           # (surfaces point at current code, which may have moved
@@ -1506,7 +1609,7 @@ jobs:
           if [[ "${DRIFT_DETECTED}" == "true" ]]; then
             claimed=$(jq -r '.claimed_version // "unknown"' \
               /tmp/triage/classification.json)
-            drift_banner="⚠ You reported this on \`${claimed}\`; the bot surfaced existing code on the current release \`${CURRENT_VERSION}\`. If the drift-bridge candidates at the bottom already address the enhancement, those may be a better starting point than the surfaces below."
+            drift_banner="⚠ You reported this on \`${claimed}\`; the bot surfaced existing code on the current release \`${CURRENT_VERSION}\`, so the cited surfaces may have moved since the version you're running."
           fi
 
           {
@@ -1518,6 +1621,16 @@ jobs:
             echo ""
             echo "${ack}"
 
+            # Scope note — the drafter sets this when the ask appears
+            # to fall in a class the repo's settled policy declines
+            # (patch-zero D-002 / scope policy). Rendered prominently
+            # so reporter expectations are set before any design
+            # discussion, not after (audit: #731).
+            if [[ -n "${scope_note}" && "${scope_note}" != "null" ]]; then
+              echo ""
+              echo "**Scope:** ${scope_note}"
+            fi
+
             if [[ "${surface_count}" -gt 0 ]]; then
               echo ""
               echo "**Existing surfaces worth knowing about:**"
@@ -1526,37 +1639,27 @@ jobs:
                 "${c}"
             fi
 
-            echo ""
-            echo "**Design-review questions:**"
-            # Cross-join design_question_ids against the taxonomy to
-            # resolve each ID to its human-readable text. Schema
-            # enum-matched the IDs at draft time, so a missing lookup
-            # here is a taxonomy-desync bug (loud failure preferred).
-            jq -r --slurpfile tax "${tax}" '
-              .design_question_ids[] as $id
-              | ($tax[0].questions[] | select(.id == $id) | .text) as $text
-              | if $text == null
-                  then error("taxonomy missing id: \($id)")
-                  else "- \($text)" end
-            ' "${c}"
-
-            # Drift-bridge candidates block — appended when drift
-            # detected + sweep returned ≥1 (spec §7). Helps the
-            # maintainer spot PRs that may already address the ask.
-            if [[ "${DRIFT_DETECTED}" == "true" \
-                && -f /tmp/triage/drift-bridge-candidates.json ]]; then
-              candidate_count=$(jq \
-                '(.commits | length) + (.prs | length)' \
-                /tmp/triage/drift-bridge-candidates.json)
-              if [[ "${candidate_count}" -gt 0 ]]; then
-                echo ""
-                echo "Drift-bridge candidates — commits or PRs in the drift window that touched the relevant surface and may already address this:"
-                jq -r '
-                  (.commits[]? | "- \(.sha[0:8]) — \(.subject) (\(.date))"),
-                  (.prs[]? | "- #\(.number) — \(.title) (\(.mergedAt))")
-                ' /tmp/triage/drift-bridge-candidates.json
-              fi
+            # Design questions are optional post-audit — an empty set
+            # beats sandbox/doctor/BATS boilerplate on surfaces (CI
+            # scripts, repo ops) where none of the taxonomy applies.
+            if [[ "${question_count}" -gt 0 ]]; then
+              echo ""
+              echo "**Design-review questions:**"
+              # Cross-join design_question_ids against the taxonomy to
+              # resolve each ID to its human-readable text. Schema
+              # enum-matched the IDs at draft time, so a missing lookup
+              # here is a taxonomy-desync bug (loud failure preferred).
+              jq -r --slurpfile tax "${tax}" '
+                .design_question_ids[] as $id
+                | ($tax[0].questions[] | select(.id == $id) | .text) as $text
+                | if $text == null
+                    then error("taxonomy missing id: \($id)")
+                    else "- \($text)" end
+              ' "${c}"
             fi
+
+            # Drift-bridge candidates stay pipeline-internal (artifact
+            # only) — see the 8a render note.
 
             echo ""
             echo "Full investigation artifacts attached to the [triage workflow run](${RUN_URL})."
@@ -1631,31 +1734,27 @@ jobs:
             privacy_note=$'\n\n(This bot processes issue text via Anthropic'"'"'s API. See [README §Privacy](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#privacy) for what that means.)'
           fi
 
-          # Drift-bridge block (only for version-drift reason with
-          # non-empty candidate list).
-          drift_block=""
-          if [[ "${REASON_ID}" == "version-drift" \
-              && -f /tmp/triage/drift-bridge-candidates.json ]]; then
-            candidate_count=$(jq \
-              '(.commits | length) + (.prs | length)' \
-              /tmp/triage/drift-bridge-candidates.json)
-            if [[ "${candidate_count}" -gt 0 ]]; then
-              drift_block=$'\n\n'"Drift-bridge candidates — commits or PRs in the drift window that touched the relevant surface and may already address this:"$'\n'
-              drift_block+=$(jq -r '
-                (.commits[]? | "- \(.sha[0:8]) — \(.subject) (\(.date))"),
-                (.prs[]? | "- #\(.number) — \(.title) (\(.mergedAt))")
-              ' /tmp/triage/drift-bridge-candidates.json)
-            fi
-          fi
+          # Drift-bridge candidates stay pipeline-internal (artifact
+          # only) — the audit found the posted list unused by humans
+          # and twice actively misleading.
+          #
+          # Policy reasons get a different lead-in than genuine
+          # can't-tell deferrals: the bot DID reach a read — the read
+          # is that repo policy answers the issue — and pretending
+          # otherwise buries the one useful sentence.
+          case "${REASON_ID}" in
+          policy-*)
+            lead="**Automated draft — AI analysis, not maintainer judgment.** This looks like it falls outside what this repo can change; a maintainer will confirm."
+            ;;
+          *)
+            lead="**Automated draft — AI analysis, not maintainer judgment.** This bot looked at the issue but couldn't reach a confident read. Routing to a human for review."
+            ;;
+          esac
 
           {
-            echo "**Automated draft — AI analysis, not maintainer judgment.** This bot looked at the issue but couldn't reach a confident read. Routing to a human for review."
+            echo "${lead}"
             echo ""
             echo "Reason: ${REASON_TEXT}"
-            if [[ -n "${drift_block}" ]]; then
-              printf '%s' "${drift_block}"
-              echo ""
-            fi
             echo ""
             echo "${RUN_URL} has the raw classification artifact if helpful for context.${privacy_note}"
           } > /tmp/triage/comment.md
@@ -1682,14 +1781,12 @@ jobs:
             exit 1
           fi
 
-          # 300-word cap accommodates the optional drift-bridge-
-          # candidates block, which alone can add ~130 words for 10
-          # bullets. Spec §8b flagged "account for optional
-          # drift-bridge-candidates block"; the original 150 was the
-          # base-comment budget.
+          # 150-word cap — back to the base-comment budget now that
+          # the drift-bridge block no longer renders (it was the sole
+          # reason the cap grew to 300).
           words=$(wc -w < /tmp/triage/comment.md)
-          if [[ "${words}" -gt 300 ]]; then
-            echo "::error::8b comment exceeds 300 words (got ${words})"
+          if [[ "${words}" -gt 150 ]]; then
+            echo "::error::8b comment exceeds 150 words (got ${words})"
             exit 1
           fi
 
@@ -1767,6 +1864,12 @@ jobs:
           elif [[ "${variant}" == "8c" ]]; then
             triage_label="triage: investigated"
             class_label="enhancement"
+          elif [[ "${REASON_ID}" == policy-* ]]; then
+            # Policy-grounded deferral — the comment already says the
+            # issue looks out of this repo's reach; label to match
+            # rather than queueing it as needs-human.
+            triage_label="triage: not-actionable"
+            class_label=""
           elif [[ "${REASON_ID}" == "duplicate" ]]; then
             triage_label="triage: duplicate"
             # Inherit class from the duplicate target's labels where
@@ -1869,6 +1972,7 @@ jobs:
           HAS_REGRESSION: ${{ steps.regression.outputs.has_regression }}
           CLASSIFICATION: ${{ steps.classify.outputs.classification }}
           CONFIDENCE: ${{ steps.classify.outputs.confidence }}
+          POLICY_BUCKET: ${{ steps.classify.outputs.policy_bucket }}
           DISAGREED: ${{ steps.doublecheck.outputs.disagreed }}
           VARIANT: ${{ steps.decide.outputs.variant }}
           REASON_TEXT: ${{ steps.reason.outputs.reason_text }}
@@ -1898,6 +2002,7 @@ jobs:
             echo "| Suspicious-input tripped | ${SUSPICIOUS:-false} |"
             echo "| Classification | ${CLASSIFICATION:-n/a (scan blocked)} |"
             echo "| Confidence | ${CONFIDENCE:-n/a} |"
+            echo "| Policy bucket | ${POLICY_BUCKET:-n/a} |"
             echo "| Doublecheck disagreed | ${DISAGREED:-n/a} |"
             echo "| Version drift | ${DRIFT_DETECTED:-n/a} |"
             echo "| regression_of validated | ${HAS_REGRESSION:-n/a} |"

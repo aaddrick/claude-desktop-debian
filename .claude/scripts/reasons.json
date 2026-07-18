@@ -29,6 +29,26 @@
     {
       "id": "reference-source-unavailable",
       "text": "reference-source unavailable"
+    },
+    {
+      "id": "policy-out-of-scope-feature",
+      "text": "out of scope — net-new feature not present upstream (scope policy)"
+    },
+    {
+      "id": "policy-upstream-app",
+      "text": "upstream app behavior — not a packaging defect this project can patch (patch-zero, D-002)"
+    },
+    {
+      "id": "policy-server-side",
+      "text": "server-side claude.ai behavior — nothing to change in this repo"
+    },
+    {
+      "id": "policy-other-platform",
+      "text": "reported against a platform this project does not ship (Linux repackaging only)"
+    },
+    {
+      "id": "policy-user-environment",
+      "text": "user-environment or driver-level issue outside this project's surface"
     }
   ]
 }

@@ -105,7 +105,7 @@ flowchart TD
     G --> H[7. Decision gate<br/>selects template variant]
     H -->|classification = enhancement| I1[8c. Enhancement-design variant<br/>Sonnet, tightened prompt]
     H -->|≥1 finding survives<br/>at ≥ medium confidence| I2[8a. Findings variant<br/>Sonnet, hypothesis voice]
-    H -->|version drift / no findings /<br/>low confidence / duplicate /<br/>fetch-failed /<br/>suspicious-input| I3[8b. Human-deferral variant<br/>template only, no LLM]
+    H -->|version drift / no findings /<br/>low confidence / duplicate /<br/>policy bucket / fetch-failed /<br/>suspicious-input| I3[8b. Human-deferral variant<br/>template only, no LLM]
     I1 --> L[9. Label + post + archive<br/>upload investigation.json,<br/>validation.json, review.json]
     I2 --> L
     I3 --> L
@@ -152,6 +152,7 @@ Deterministic filter before any paid API call.
 - Issue labeled `triage: needs-human` (unless manually dispatched)
 - Issue already has a terminal triage label (`investigated`, `duplicate`, `not-actionable`)
 - Issue author is `github-actions[bot]` — bot-opened issues should not be triaged by the same bot that opened them
+- Issue author's GitHub account is younger than 7 days — cost-amplification guard; each run spends real API budget, and opening issues is the one action any fresh account can spam. The issue gets `triage: needs-human` (no model calls) instead of the pipeline. Account-age fetch failures fail open so an API hiccup doesn't silence triage for real reporters.
 
 Duplicate detection is **not** handled here. Title-similarity heuristics produce false positives on common error strings ("app won't start", "tray missing") and fire before the LLM sees structured context. Duplicates are caught by Stage 2's classifier with a `duplicate_of` issue number, validated by Stage 5 against the referenced issue.
 
@@ -176,7 +177,8 @@ First Sonnet call. Structured JSON output only.
   "claimed_version": "1.3109.0 | null",
   "suggested_labels": ["priority: high", "format: rpm", ...],
   "duplicate_of": "null | integer",
-  "regression_of": "null | integer — set iff the reporter explicitly names a culprit PR/commit (e.g., 'broken since #305', 'after commit abc123')"
+  "regression_of": "null | integer — set iff the reporter explicitly names a culprit PR/commit (e.g., 'broken since #305', 'after commit abc123')",
+  "policy_bucket": "none|out-of-scope-feature|upstream-app|server-side|other-platform|user-environment"
 }
 ```
 
@@ -184,6 +186,7 @@ First Sonnet call. Structured JSON output only.
 
 - `claimed_version` is parsed from `--doctor` output, `claude-desktop (X.Y.Z)` references, or AppImage filenames; consumed by Stage 7's drift gate.
 - `regression_of` is set when the reporter has done the bisection. When set, Stage 4 fetches that PR's diff via `gh pr diff` as a primary input — the defect site is almost always inside the named PR's changed files. Stage 5 verifies the PR exists and is merged.
+- `policy_bucket` records which settled repo policy the issue matches, independent of classification (a bug report about upstream app behavior is a `bug` AND `upstream-app`). The classify prompt carries a policy digest (scope policy, patch-zero D-002, server-side vs local). Non-`none` buckets map to fixed `reasons.json` entries; when the route or decision gate would otherwise emit the generic `no findings survived validation`, the policy reason replaces it. Motivated by the 2026-07 accuracy audit: contentless deferrals on trivially policy-answerable issues were the largest failure bucket (17 of 141 graded triages).
 
 > [!WARNING]
 > **Classification is verified by a second Sonnet pass on the bug-vs-enhancement axis.** If the first pass returns `bug` or `enhancement`, a second call sees only the issue body and a fixed rubric — bug signals (stack trace, version string, `--doctor` output, "expected X, got Y" phrasing, "breaks X" / "stopped working" against a reasonable expectation, error screenshot) vs. enhancement signals ("it would be nice if", "please add", "support for", "currently there's no way to"). A broken expectation wins over enhancement-shaped framing when both are present — defects hide inside "please add" asks. Second pass returns `bug`, `enhancement`, or `ambiguous` with the signal quotes it relied on. Only if both agree does routing proceed; `ambiguous` or disagreement routes to human-deferral with reason `ambiguous bug/enhancement classification`.
@@ -201,9 +204,11 @@ If `claimed_version` differs from `CLAUDE_DESKTOP_VERSION`, `VERSION_DRIFT=true`
 - `git log --since={approximate_reporter_version_date} -- <files mentioned in issue body>` — commits that touched the claimed defect site
 - `gh pr list --state merged --search "<identifier or file basename> merged:>{approximate_reporter_version_date}"` — merged PRs referencing the surface
 
-Both searches are bounded by date (not tag — Claude Desktop version tags don't map cleanly to this repo's history, so a conservative 60-day window around the version's approximate release date is sufficient to catch the signal without chasing unrelated history). Any hits are attached to the run context as `drift_bridge_candidates` and surface in the Stage 8b deferral comment: *"the following commits / PRs in the drift window touched the relevant surface and may already address this — please verify."* If the search returns nothing, the deferral proceeds with the bare `version drift` reason.
+Both searches are bounded by date (not tag — Claude Desktop version tags don't map cleanly to this repo's history, so a conservative 60-day window around the version's approximate release date is sufficient to catch the signal without chasing unrelated history). Any hits are attached to the run context as `drift_bridge_candidates`.
 
-This turns a pure deferral into a mildly useful one — the maintainer gets pointers to check rather than "bot saw drift, gave up." The searches are grep-level cheap, no LLM call, and bounded in cost by the date window.
+**Candidates are pipeline-internal only — they never render in posted comments.** The 2026-07 accuracy audit found zero cases of a human using a posted candidate list and two cases where it actively misled (steering toward "probably already fixed, close" on live bugs). The sweep is kept because it's grep-level cheap and the artifact (`drift-bridge-candidates.json`) is still useful context when a maintainer opens the workflow run.
+
+Drift also switches Stage 4 into **hypothesis-only mode**: the investigate prompt tells the model it cannot verify claims about the bytes the reporter is running, caps upstream-bundle-dependent findings at `confidence: medium`, and requires claims to name the version they were verified against. The audit found the pipeline previously printed a drift banner and then asserted anyway — the confidence degradation has to happen in the investigator, not just the renderer.
 
 ### 4. Investigate
 
@@ -223,7 +228,9 @@ Sonnet call with repo + reference source + issue context. **Output is schema-enf
       "line_end": 1240,
       "evidence_quote": "verbatim source excerpt supporting the claim",
       "confidence": "high|medium|low",
-      "enclosing_construct": "for identifier claims only — the enum/switch/literal containing the identifier"
+      "enclosing_construct": "for identifier claims only — the enum/switch/literal containing the identifier",
+      "refutation_check": "{ check, result } | null — the one read/search that would have refuted a mechanism claim, actually run; null only for direct citations",
+      "novelty": "net-new|confirms-reporter"
     }
   ],
   "pattern_sweep": [
@@ -270,6 +277,12 @@ Sonnet call with repo + reference source + issue context. **Output is schema-enf
 
 > [!NOTE]
 > **Cross-cutting operations require broader sweeps.** When a finding involves a *pattern* of operation rather than a single line — a `cp` reading from a Nix-store path, a `sed`/regex against minified source, a permission-changing call in an installPhase, an anchor against any structured-text site — the drafter must sweep over **all sites with that pattern shape**, not only the cited site. Covers both **cross-file** repeats (same `cp` in `build.sh` and `nix/claude-desktop.nix`) and **same-file** repeats (seven `path.join(os.homedir(), subpath)` call sites in one file where only two are cited). Enforced by reviewer in Stage 6 — a finding whose claim implicates a cross-cutting operation but whose `pattern_sweep` covers only the cited site is grounds for `downgrade-confidence`.
+
+**Falsification before assertion (post-audit).** Any finding that names a *mechanism* — why the reported behavior happens, not what a line contains — must carry a `refutation_check`: the one read/search that would have refuted the claim, actually run, with the observed result. Not-runnable checks cap the finding at `confidence: low`. Mechanism inferred from log-line text alone is banned outright. The Stage 6 reviewer audits the check: mechanism claims without a run refutation are at most `downgrade-confidence`; a check whose result contradicts or fails to test the claim is grounds for `reject`. This targets the audit's confident-wrong-mechanism (12/141) and reporter-echo (5/141) failure classes — every one of those was refutable with a single cheap check a human later ran.
+
+**Novelty marking.** Every finding is tagged `net-new` (site/mechanism/contradiction the issue body doesn't already contain) or `confirms-reporter` (issue body states it; investigation verified it). Stage 8a drafts delta-only: confirmations compress into the hypothesis line, and the findings list spends its budget on net-new entries. The audit found 10/141 comments were zero-delta restatements of the reporter's own diagnosis — and when a genuine increment existed it drowned inside the echo.
+
+**Tool access is allowlisted, not open.** The investigator runs with `--allowedTools "Read,Grep,Glob,Bash(strings:*)"` — never `--dangerously-skip-permissions`. The prompt embeds attacker-controlled issue text; with unrestricted Bash, a prompt-injected investigator could exfiltrate the API key off the runner. `strings` stays available for native-binary inspection (`.node` helpers). The checkout also sets `persist-credentials: false` so the job token never sits in `.git/config` within the investigator's read reach, and `validate.sh` rejects finding paths that are absolute, contain `..`, or touch `.git/` (tested in `tests/triage-validate.bats`).
 
 ### 5. Mechanical validation
 
@@ -367,7 +380,9 @@ Priority order (first match wins): fetch-failure → confirmed-duplicate → inv
 | Suspicious-input | Stage 2a tripwire matched a prompt-injection tell before the LLM ran | Human-deferral; `triage: needs-human`; no Sonnet calls |
 | All gates pass | At least one finding survives at ≥ medium | Findings variant (8a) |
 
-**Version drift is a banner, not a gate.** When `claimed_version != CLAUDE_DESKTOP_VERSION` AND the pipeline reaches 8a or 8c cleanly, the renderer prepends a drift banner (`⚠ You reported this on X; the bot investigated against Y…`) and appends the drift-bridge-candidates block at the bottom. Finding citations still stand — they describe current code in hypothesis voice, which the reader can verify against their own checkout. When drift is detected AND any other gate routes to 8b, the deferral reason is overridden to `version drift` because drift + drift-bridge candidates is more actionable for the maintainer than "no findings" on its own. The confirmed-duplicate reason wins over the drift override — `triage: duplicate` is the more specific read.
+**Version drift is a banner, not a gate.** When `claimed_version != CLAUDE_DESKTOP_VERSION` AND the pipeline reaches 8a or 8c cleanly, the renderer prepends a drift banner (`⚠ You reported this on X; the bot could only read Y… treat the findings as hypotheses`) — no close suggestion, no candidates block (both audit casualties: the "you can probably close" steer was wrong both times a human acted on it). Findings themselves were already produced in hypothesis-only mode (Stage 3/4). When drift is detected AND the gate lands on a *generic* 8b (`no-findings` / `low-confidence` only), the deferral reason is overridden to `version drift`. Policy and confirmed-duplicate reasons win over the drift override — both are more specific reads.
+
+**Policy override.** When the classifier set a non-`none` `policy_bucket` and the gate would emit `no-findings` / `low-confidence`, the reason becomes the mapped policy reason instead. An empty investigation on a policy-bucketed issue is corroboration, not uncertainty — the audit's largest failure bucket was the generic deferral posted where repo policy already answered the issue.
 
 If classification = `duplicate` but `duplicate_of` fails Stage 5 validation or Stage 6 rates `unrelated`, the duplicate claim is discarded and remaining gates apply to the investigation output — the issue is treated as a regular bug for routing. The failed-duplicate-check is logged to `validation.json` for later human review.
 
@@ -422,11 +437,10 @@ shipped. Findings below are starting points; the code citations are what
 to verify first.
 
 [Conditional — only when drift detected:]
-⚠ You reported this on `{claimed_version}`; the bot investigated against
-the current release `{CLAUDE_DESKTOP_VERSION}`. Findings below are from
-current code — if the drift-bridge candidates at the bottom already
-address your case, you can probably close. Otherwise the file:line
-citations may still apply.
+⚠ You reported this on `{claimed_version}`; the bot could only read the
+current release `{CLAUDE_DESKTOP_VERSION}`. Treat the findings below as
+hypotheses about current code — the cited lines may not match the build
+you're running.
 
 {hypothesis_line}
 
@@ -444,44 +458,37 @@ citations may still apply.
 
 Related: #{related_issues[0].number} — {related_issues[0].relation}
 
-[Conditional — only when drift detected AND drift_bridge_candidates
-is non-empty:]
-Drift-bridge candidates — commits or PRs in the drift window that
-touched the relevant surface and may already address this:
-- {commit_sha} / #{pr_number} — {subject} ({date})
-- ...
-
 Full investigation artifacts (`investigation.json`, `validation.json`,
 `review.json`) are attached to the [triage workflow run]({run_url}).
 ````
 
-The `<details>` patch block renders only when `patch_sketch.body` is non-null and the corresponding `proposed_anchor` passed Stage 5's exact-match-count check. The Related line renders only when `related_issues` is non-empty. The drift banner and drift-bridge candidates block render only on the drift-modifier path (see [Stage 7](#7-decision-gate)).
+The `<details>` patch block renders only when `patch_sketch.body` is non-null and the corresponding `proposed_anchor` passed Stage 5's exact-match-count check. The Related line renders only when `related_issues` is non-empty. The drift banner renders only on the drift-modifier path (see [Stage 7](#7-decision-gate)); drift-bridge candidates never render (artifact only).
 
 #### 8b. Human-deferral variant (any gate failed)
 
 Purely procedural — no claims, no citations, no patch sketch. Exists so the reporter gets an acknowledgment and the maintainer sees a routing signal.
 
 ```markdown
-**Automated draft — AI analysis, not maintainer judgment.** This bot
-looked at the issue but couldn't reach a confident read. Routing to a
-human for review.
+**Automated draft — AI analysis, not maintainer judgment.** [Generic
+deferrals: "This bot looked at the issue but couldn't reach a confident
+read. Routing to a human for review." — Policy reasons instead lead
+with: "This looks like it falls outside what this repo can change; a
+maintainer will confirm."]
 
 Reason: [one of: version drift | reference-source unavailable |
 no findings survived validation | findings below confidence threshold |
 likely-duplicate-of-#{duplicate_of} |
-ambiguous bug/enhancement classification | suspicious-input — manual review]
-
-[Conditional — only when reason = version drift AND drift_bridge_candidates
-is non-empty:]
-Drift-bridge candidates — commits or PRs in the drift window that touched
-the relevant surface and may already address this:
-- {commit_sha} / #{pr_number} — {subject} ({date})
-- ...
+ambiguous bug/enhancement classification | suspicious-input — manual review |
+out of scope — net-new feature not present upstream (scope policy) |
+upstream app behavior — not a packaging defect this project can patch (patch-zero, D-002) |
+server-side claude.ai behavior — nothing to change in this repo |
+reported against a platform this project does not ship (Linux repackaging only) |
+user-environment or driver-level issue outside this project's surface]
 
 {run_url} has the raw investigation artifacts if helpful for context.
 ```
 
-Reason is filled in deterministically from the gate that fired. No model-authored prose.
+Reason is filled in deterministically from the gate that fired. No model-authored prose. Policy reasons also flip the applied label to `triage: not-actionable` (the comment already says the issue looks out of reach — queueing it as needs-human would contradict it).
 
 > [!NOTE]
 > **Reason enum single source of truth:** `.claude/scripts/reasons.json`. Both the 8b template renderer and the post-processor enum check read it. Adding a new reason is a one-file change.
@@ -496,6 +503,7 @@ The defect-shaped findings/anchor/sweep machinery does not produce useful output
 ```json
 {
   "acknowledgment_line": "one-sentence acknowledgment of the request, in hypothesis voice",
+  "scope_note": "null | one-two sentences when the ask falls in a policy-declined class (patch-zero D-002, scope policy)",
   "existing_surfaces": [
     {
       "text": "one-line description of the surface",
@@ -518,6 +526,9 @@ worth considering before implementation.
 
 {acknowledgment_line}
 
+[Conditional — only when scope_note is non-null:]
+**Scope:** {scope_note}
+
 **Existing surfaces worth knowing about:**
 - {existing_surfaces[0].text} ({file}:{line_start}-{line_end})
 
@@ -528,7 +539,9 @@ worth considering before implementation.
 Full investigation artifacts attached to the [triage workflow run]({run_url}).
 ```
 
-`design_question_ids` are keys into `taxonomies/enhancement-design-questions.json` — the taxonomy holds the fixed set (config-schema-stability, backward-compat, security-surface, test-coverage, observability, packaging-format). Schema enforces `maxItems: 3` and enum-matched IDs; the renderer looks up the human-readable question text. This replaces the prior prose + post-processor-enforces-taxonomy approach with schema-enforced structure: an invalid ID cannot be emitted.
+`design_question_ids` are keys into `taxonomies/enhancement-design-questions.json` — the taxonomy holds the fixed set (config-schema-stability, backward-compat, security-surface, test-coverage, observability, packaging-format). Schema enforces `maxItems: 3` (with `minItems: 0` — an empty set renders no questions section) and enum-matched IDs; the renderer looks up the human-readable question text. This replaces the prior prose + post-processor-enforces-taxonomy approach with schema-enforced structure: an invalid ID cannot be emitted.
+
+**Scope gate (post-audit).** The 8c drafter checks the ask against repo policy *before* designing: patch-zero (D-002) default-declines asar/UI patches, and the scope policy default-declines net-new features not present upstream. A policy-declined ask gets a prominent `scope_note` and no implementation walkthrough — the audit's only actively-misleading comment (#731) was an implementation plan for a change the maintainer then declined under patch-zero, leaving the reporter expecting integration. Non-app-code surfaces (CI scripts, repo ops, infrastructure) get an empty question set instead of sandbox/doctor/BATS boilerplate with no surface to attach to.
 
 Stage 4 still runs for enhancements but with a tightened prompt: only surface findings of `claim_type: identifier` or `claim_type: behavior` describing **existing** code the proposed enhancement would interact with. Speculative findings about how the enhancement *should* be implemented are banned (no `claim_type: absence` for "the capability is missing"). Stage 5 runs unchanged. Stage 6 is reframed: "is this an existing surface the enhancement would touch?" instead of "is this defect claim correct?"
 
@@ -545,7 +558,7 @@ The `{run_url}` placeholder in any variant is filled at post time with `${{ gith
 
 **Post-processor enforcement (8c enhancement-design variant):**
 
-- [x] Schema enforces `maxItems: 3` on `design_question_ids` and enum-matches each ID against the taxonomy
+- [x] Schema enforces `maxItems: 3` (`minItems: 0`) on `design_question_ids` and enum-matches each ID against the taxonomy
 - [x] Schema requires file:line on every `existing_surfaces` entry
 - [x] Schema has no `patch_sketch` slot — enhancement implementations out of scope by construction
 - [x] After render, truncate if total exceeds 350 words (drop last `existing_surfaces` entry first)
@@ -553,7 +566,7 @@ The `{run_url}` placeholder in any variant is filled at post time with `${{ gith
 **Post-processor enforcement (8b human-deferral variant):**
 
 - [x] Verify reason line is one of the enumerated values (template-only, no model-authored prose to check)
-- [x] Verify length is under 150 words (account for optional drift-bridge-candidates block)
+- [x] Verify length is under 150 words
 
 ### 9. Label + post + archive
 
@@ -885,6 +898,7 @@ A reporter filing a body with instructions targeted at the bot (e.g., `IGNORE PR
 4. **No URL or code from the issue body is followed.** No WebFetch on reporter URLs, no execution of code blocks, no arbitrary attachment parsing. External content: only the CI-signed reference source tarball and `gh`-fetched bodies of cited GitHub issues from this repo.
 5. **Suspicious patterns are logged**, not posted. Issue bodies containing common tells (`ignore prior instructions`, `system prompt`, `you are now`, long base64 blocks, large unicode-tag sequences) are routed to human-deferral with reason `suspicious-input — manual review`. False positives are tolerated.
 6. **Stage 1 input snapshot** preserves the body the bot actually read (see [Stage 1](#1-gate)). An inject-then-delete attack — payload posted, edited out seconds later — is invisible to GitHub's UI but recoverable from `input_snapshot.json`. Maintainers reviewing a surprising triage comment can diff the snapshot against the current issue body to see whether the bot was fed something the reporter has since removed.
+7. **The blast radius of a successful injection is capped by the runner, not just the prompts.** The investigator — the only LLM call with tool access — runs on an explicit tool allowlist (`Read,Grep,Glob,Bash(strings:*)`; never `--dangerously-skip-permissions`), so an injected agent has no shell or network reach to exfiltrate the API key. The checkout uses `persist-credentials: false`, so the `issues: write` job token isn't sitting in `.git/config` inside its read scope. And `validate.sh` rejects finding paths that are absolute, contain `..`, or touch `.git/` — a finding can't smuggle out-of-tree file content into reviewer/drafter prompts via the excerpt mechanism (`tests/triage-validate.bats`). The CLI itself is version-pinned in the workflow, same rationale as the SHA-pinned actions.
 
 None is bulletproof in isolation. Together they make the most likely successful attack a comment that says less than it should, not one that says something embarrassing.
 

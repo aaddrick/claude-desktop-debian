@@ -26,6 +26,23 @@ opener.
 One sentence. The reader-facing summary of what the pipeline found.
 Pins the main read; the findings list substantiates it.
 
+## Delta-only drafting
+
+Each surviving finding carries a `novelty` marker. The reader has
+already read the issue body — restating it back with line numbers adds
+nothing and buries whatever is genuinely new.
+
+- When some findings are `confirms-reporter` and some are `net-new`:
+  fold the confirmations into `hypothesis_line` as a single clause
+  ("the reporter's read of X checks out against the source") and spend
+  the findings list on the `net-new` entries.
+- When ALL findings are `confirms-reporter`: `hypothesis_line` says
+  the diagnosis was verified, and the findings list carries at most
+  the one or two strongest confirmations — the citation is the value,
+  not the restatement.
+- You may OMIT `confirms-reporter` findings under these rules. You may
+  never add findings, and every `net-new` finding must appear.
+
 ## findings
 
 Ordered by confidence descending. Each entry:
@@ -38,8 +55,9 @@ Ordered by confidence descending. Each entry:
   rewrite paths, shift line numbers, or cite a range Stage 5 didn't
   validate.
 
-Do not invent findings not in the validation output. Every finding here
-corresponds one-to-one with a surviving `validation.json` entry.
+Do not invent findings not in the validation output. Every finding
+here corresponds to a surviving `validation.json` entry — a subset
+(per the delta-only rules above) is allowed; a superset never is.
 
 ## patch_sketch
 
