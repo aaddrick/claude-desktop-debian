@@ -121,7 +121,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Claude CLI
         # Version-pinned like the SHA-pinned actions above: this CLI
@@ -577,9 +577,10 @@ jobs:
             echo "  - /tmp/ref-source/app-extracted/.vite/build/mainWindow.js"
             echo "  - /tmp/ref-source/app-extracted/.vite/build/mainView.js"
             echo ""
-            echo "When citing reference-source paths in findings, prefix"
-            echo "with 'reference-source/' (strip the /tmp/ref-source/"
-            echo "portion) so Stage 5 can resolve them."
+            echo "When citing reference-source paths in findings, replace"
+            echo "the '/tmp/ref-source/app-extracted/' prefix with"
+            echo "'reference-source/' so Stage 5 can resolve them, e.g."
+            echo "reference-source/.vite/build/index.js"
             echo ""
             echo "## This repo"
             echo ""
@@ -680,7 +681,7 @@ jobs:
           # * Raw response + extracted payload archived before schema
           #   checks so a reject still leaves artifacts to inspect.
           if raw=$(timeout 1200s claude -p "$(cat /tmp/triage/investigate-prompt.txt)" \
-              --allowedTools "Read,Grep,Glob,Bash(strings:*)" \
+              --allowedTools "Read,Grep,Glob,Bash(strings:*),Bash(ls:*)" \
               --output-format json \
               --json-schema "${schema}" \
               --model claude-sonnet-4-6 \
