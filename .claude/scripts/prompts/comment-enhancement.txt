@@ -8,6 +8,36 @@ design-review questions from a fixed taxonomy.
 This is NOT a bug-findings comment. You do not claim defects. You do
 not propose patches. You do not commit the maintainer to anything.
 
+## Scope gate — check policy BEFORE designing
+
+First question, before surfaces or design questions: does the repo's
+settled policy permit this class of change at all?
+
+- **Patch-zero (D-002)**: the official `app.asar` ships byte-identical.
+  Any ask that means patching the app bundle's UI or behavior — themes,
+  in-app features, renderer changes, IPC routing — is default-declined
+  unless it compensates a genuine Linux-environment gap.
+- **Scope policy**: net-new features that don't exist in the upstream
+  app are default-declined. The project packages; it doesn't extend.
+
+When the ask falls in a declined class, set `scope_note` to say so in
+hypothesis voice ("Worth knowing: the project's patch-zero policy
+default-declines asar patches like this unless they compensate a Linux
+gap — see docs/decisions.md D-002"), keep `existing_surfaces` minimal,
+and emit design questions ONLY if genuinely useful should the
+maintainer make an exception. Do NOT walk through how the change would
+be implemented — an implementation sketch on a policy-declined ask
+sets reporter expectations the maintainer then has to walk back.
+
+When the ask's surface is not app code at all (CI workflows, repo
+operations, infrastructure, release process), the taxonomy questions
+below mostly don't apply — emit an empty `design_question_ids` rather
+than padding with sandbox/doctor/BATS boilerplate that has no surface
+to attach to.
+
+Set `scope_note` null when policy doesn't clearly apply. A wrong
+policy note is worse than none.
+
 Output is a structured comment object matching the attached schema.
 The workflow's bash renderer turns it into the posted markdown; you
 do not write markdown yourself.
@@ -55,10 +85,11 @@ relates to the request — not a defect claim. Example:
 
 ## design_question_ids
 
-One to three IDs from the fixed enum. Pick the questions the request
-actually raises — don't pad with generic picks. Schema enforces
-max 3; the renderer looks up human-readable text from
-`taxonomies/enhancement-design-questions.json`.
+Zero to three IDs from the fixed enum. Pick the questions the request
+actually raises — don't pad with generic picks, and prefer an empty
+array over questions with no applicable surface (see the scope gate
+above). Schema enforces max 3; the renderer looks up human-readable
+text from `taxonomies/enhancement-design-questions.json`.
 
 Available IDs (surface-level description; actual text is in the
 taxonomy):

@@ -33,6 +33,17 @@
     "regression_of": {
       "type": ["integer", "null"],
       "description": "Set iff the reporter explicitly names a culprit PR or commit (e.g. 'broken since #305', 'after commit abc123'). Integer PR number for PR references; null for commit SHAs or when the reporter has not bisected."
+    },
+    "policy_bucket": {
+      "enum": [
+        "none",
+        "out-of-scope-feature",
+        "upstream-app",
+        "server-side",
+        "other-platform",
+        "user-environment"
+      ],
+      "description": "Repo-policy pattern the issue matches, independent of classification. 'none' when the issue is inside this project's packaging surface. Non-none buckets let the pipeline post a policy-grounded routing comment instead of the generic no-findings deferral. See the policy digest in the classify prompt."
     }
   },
   "required": [
@@ -41,6 +52,7 @@
     "claimed_version",
     "suggested_labels",
     "duplicate_of",
-    "regression_of"
+    "regression_of",
+    "policy_bucket"
   ]
 }

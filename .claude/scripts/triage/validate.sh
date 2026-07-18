@@ -31,9 +31,22 @@ output="${5:?output path required}"
 # Findings use paths relative to either the checkout root or the
 # extracted reference tarball. `reference-source/` prefix routes to
 # the tarball; everything else to the checkout.
+#
+# Finding paths are LLM output derived from untrusted issue text, so
+# they must stay inside the two roots: absolute paths, `..` traversal,
+# and `.git/` internals (which can hold credentials on a
+# credential-persisting checkout) all resolve to empty. Downstream
+# `[[ -f ]]` checks then fail the finding with "file not found".
+# Printing empty rather than returning nonzero keeps errexit-driven
+# command substitutions like `resolved=$(resolve_path ...)` alive.
 
 resolve_path() {
 	local f="$1"
+	case "${f}" in
+	/*|..|*/..|../*|*/../*|.git|.git/*|*/.git|*/.git/*)
+		return 0
+		;;
+	esac
 	if [[ "${f}" == reference-source/* ]]; then
 		printf '%s/%s' "${reference_root}" "${f#reference-source/}"
 	else
