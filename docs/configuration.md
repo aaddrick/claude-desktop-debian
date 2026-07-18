@@ -10,6 +10,7 @@ The launcher reads a small set of opt-in `CLAUDE_*` environment variables; every
 | `CLAUDE_DISABLE_GPU` | unset (auto) | `1` = disable hardware acceleration (`--disable-gpu --disable-software-rasterizer`). `0` = suppress the sticky auto-recovery after a GPU-process crash. Unset = auto-apply the flags when the previous launch died with the GPU FATAL signature. See [GPU](#gpu-claude_disable_gpu). |
 | `CLAUDE_PASSWORD_STORE` | unset | Explicit escape hatch: when set, the value is passed verbatim as Chromium's `--password-store=`. When unset, the official build's `os_crypt` autodetection owns the decision. See [Password store](#password-store-claude_password_store). |
 | `CLAUDE_GTK_IM_MODULE` | unset | Propagated to `GTK_IM_MODULE` for Electron at startup; opt-in override for broken IBus/GTK input-method integration. See [Input method](#input-method-claude_gtk_im_module). |
+| `CLAUDE_TRAY_USE_DARK_ICON` | unset (auto on Cinnamon) | `1` = use upstream's light `TrayIconLinux-Dark.png` (for dark panels); `0` = force the dark `TrayIconLinux.png`. Unset lets the launcher auto-detect Cinnamon dark-panel themes ([#604](https://github.com/aaddrick/claude-desktop-debian/issues/604)). See [Tray icon](#tray-icon-claude_tray_use_dark_icon). |
 
 Since the v3.0.0 rebase onto the official Linux build, launcher policy is opt-in only: no default flag shadows an official code path. Several 2.x variables are therefore gone — see [Removed in v3.0.0](#removed-in-v300).
 
@@ -72,6 +73,10 @@ The doctor reports which mode is in effect (`Password store: upstream os_crypt a
 
 `CLAUDE_GTK_IM_MODULE` is propagated to `GTK_IM_MODULE` for Electron at startup, so a different GTK input module (e.g. `xim`) can be persisted without wrapping every launch. See [troubleshooting.md](troubleshooting.md#keyboard-input-doesnt-work-ibus--gtk-input-method) for symptoms and trade-offs.
 
+## Tray icon (CLAUDE_TRAY_USE_DARK_ICON)
+
+Upstream ships two Linux tray PNGs and normally picks from GTK dark-mode state plus a GNOME check. On Cinnamon, a dark panel can coexist with a light GTK colour scheme, so the wrong (black) icon is selected. When unset, the launcher probes `org.cinnamon.theme` on Cinnamon sessions and sets `CLAUDE_TRAY_USE_DARK_ICON=1` when the theme name looks like a dark panel style (e.g. Mint-Y-Dark-Aqua). Set `1` or `0` yourself to force the light or dark glyph — `0` overrides upstream's own selection too, so it pins the black glyph even on GNOME or under a dark GTK scheme. Any other non-empty value is ignored by the app but still disables the launcher's auto-detect (the launcher logs this and `--doctor` warns about it). Requires a build that includes the `patch_tray_icon_env_override` asar patch; `--doctor` reports which mode is in effect. Interim fix pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
+
 ## Cowork
 
 By default the official Linux client runs Cowork as a helper daemon driving QEMU/KVM. For hosts that can't do KVM (see the [bubblewrap fallback](#bubblewrap-fallback-cowork_vm_backendbwrap) below), an opt-in flag routes Cowork through a lighter sandbox instead. The full stack the default KVM path needs on the host:
@@ -103,7 +108,7 @@ To make it persistent — including for launches from the desktop/app menu, whic
 COWORK_VM_BACKEND=bwrap
 ```
 
-The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell. `--doctor` reads it too, so diagnostics always match what a launch would see.
+The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU`, `CLAUDE_TRAY_USE_DARK_ICON` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell. `--doctor` reads it too, so diagnostics always match what a launch would see.
 
 How it works: an asar patch (`patch_cowork_bwrap`) short-circuits the KVM support gate and swaps the native VM helper for a bundled Node daemon (`resources/cowork-vm-service.js`) that speaks the same socket protocol as the official helper but backs it with `bwrap` instead of QEMU. Every branch of the patch is gated on this exact flag, so on an unflagged launch every branch evaluates false and the official KVM path runs unchanged — nothing changes for the KVM majority.
 

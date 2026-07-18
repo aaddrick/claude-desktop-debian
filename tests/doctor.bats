@@ -24,6 +24,7 @@ setup() {
 	unset GTK_IM_MODULE
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
+	unset CLAUDE_TRAY_USE_DARK_ICON
 	unset _DOCTOR_SECRET_BACKEND
 	unset _DOCTOR_USERNS_PATH
 	unset _DOCTOR_DEB_ELECTRON
@@ -521,6 +522,56 @@ SHIM
 	[[ $output != *'[PASS]'* ]]
 	[[ $output != *'[FAIL]'* ]]
 	[[ $output != *'[WARN]'* ]]
+}
+
+# =============================================================================
+# _doctor_check_tray_icon (#604)
+#
+# Informational only — no PASS/FAIL. The auto-detect verdict comes from
+# the launcher's own setup_tray_icon_env (predicate parity); detection
+# itself is pinned in launcher-common.bats, so these tests pin the
+# reporting: preset wins, the helper's export is surfaced, and the
+# standalone-source case (no launcher-common.sh) stays silent.
+# =============================================================================
+
+@test "_doctor_check_tray_icon: preset reports the forced value (no PASS/FAIL)" {
+	CLAUDE_TRAY_USE_DARK_ICON=0
+	run _doctor_check_tray_icon
+	[[ $status -eq 0 ]]
+	[[ $output == *'CLAUDE_TRAY_USE_DARK_ICON=0 (preset'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_tray_icon: non-0/1 preset draws a WARN" {
+	CLAUDE_TRAY_USE_DARK_ICON=true
+	run _doctor_check_tray_icon
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'not 0/1'* ]]
+}
+
+@test "_doctor_check_tray_icon: silent when launcher-common is not in scope" {
+	# Standalone doctor.sh source: setup_tray_icon_env is undefined.
+	run _doctor_check_tray_icon
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_tray_icon: reports Cinnamon auto-detect verdict" {
+	setup_tray_icon_env() { export CLAUDE_TRAY_USE_DARK_ICON=1; }
+	run _doctor_check_tray_icon
+	[[ $status -eq 0 ]]
+	[[ $output == *'Cinnamon dark panel auto-detected'* ]]
+	[[ $output == *'TrayIconLinux-Dark.png'* ]]
+}
+
+@test "_doctor_check_tray_icon: reports upstream selection when auto-detect is a no-op" {
+	setup_tray_icon_env() { :; }
+	run _doctor_check_tray_icon
+	[[ $status -eq 0 ]]
+	[[ $output == *'upstream selection (no override)'* ]]
 }
 
 # =============================================================================

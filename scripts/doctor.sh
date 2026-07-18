@@ -572,6 +572,35 @@ _doctor_check_password_store() {
 	fi
 }
 
+# Report which Linux tray PNG selection mode a launch would use (#604).
+# Informational only — no PASS/FAIL. Runs the launcher's own
+# setup_tray_icon_env for the auto-detect verdict so doctor and launch
+# can't drift (same predicate-parity rule as the #781 poll fix).
+# Guarded like load_launcher_config: a standalone `source doctor.sh`
+# (doctor.bats) has no launcher-common.sh in scope.
+_doctor_check_tray_icon() {
+	if [[ -n ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]; then
+		if [[ $CLAUDE_TRAY_USE_DARK_ICON == 0 \
+			|| $CLAUDE_TRAY_USE_DARK_ICON == 1 ]]; then
+			_info "Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON" \
+				'(preset; overrides Cinnamon auto-detect)'
+		else
+			_warn "Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON" \
+				'is not 0/1 — the app ignores it, and it suppresses' \
+				'Cinnamon auto-detect'
+		fi
+		return 0
+	fi
+	declare -F setup_tray_icon_env > /dev/null || return 0
+	setup_tray_icon_env
+	if [[ -n ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]; then
+		_info 'Tray icon: Cinnamon dark panel auto-detected' \
+			'(CLAUDE_TRAY_USE_DARK_ICON=1, TrayIconLinux-Dark.png)'
+	else
+		_info 'Tray icon: upstream selection (no override)'
+	fi
+}
+
 # Return whether a session secret backend usable by Chromium's
 # os_crypt (Secret Service or KWallet) is reachable — running or
 # D-Bus-activatable. Prints the matched bus name on stdout.
@@ -1543,6 +1572,9 @@ run_doctor() {
 	# -- Password store --
 	_doctor_check_password_store
 	_doctor_check_keyring_persistence
+
+	# -- Tray icon (#604) --
+	_doctor_check_tray_icon
 
 	# -- MCP config --
 	local mcp_config="$config_dir/claude_desktop_config.json"

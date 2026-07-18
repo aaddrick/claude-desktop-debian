@@ -69,6 +69,8 @@ source "$script_dir/scripts/patches/virtiofsd-probe.sh"
 source "$script_dir/scripts/patches/cowork-bwrap.sh"
 # shellcheck source=scripts/patches/config.sh
 source "$script_dir/scripts/patches/config.sh"
+# shellcheck source=scripts/patches/tray-icon-selection.sh
+source "$script_dir/scripts/patches/tray-icon-selection.sh"
 
 #===============================================================================
 # Packaging Functions
