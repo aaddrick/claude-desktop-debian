@@ -868,7 +868,20 @@ jobs:
   update-aur-repo:
     name: Update AUR Package
     # RC tags never touch the AUR package.
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc')
+    #
+    # AUR_PUBLISH_ENABLED is a kill switch: set the repo variable to
+    # 'false' to pause AUR publishing, any other value (or unset) keeps
+    # it on, so a deleted variable can't silently stop releases forever.
+    # Paused 2026-08-01 — claude-desktop-appimage was deleted from the
+    # AUR under PRQ#85209 and a reinstatement request is pending. The
+    # pkgbase git repo still accepts pushes, so this job would recreate
+    # the package while a moderator is reviewing that request. Re-enable
+    # with `gh variable set AUR_PUBLISH_ENABLED --body true` once the
+    # package is restored.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !contains(github.ref_name, '-rc') &&
+      vars.AUR_PUBLISH_ENABLED != 'false'
     needs: [release]
     runs-on: ubuntu-latest
 
