@@ -49,7 +49,13 @@ On top of packaging, every format we build carries:
 - **`claude-desktop-unofficial --doctor`.** Diagnostics for the KVM/Cowork stack, official-version drift, name collisions, and config problems.
 - **Packaging fixes.** The RPM firmware compat symlink Cowork needs, and the Ubuntu 24.04+ AppArmor profile.
 
-The app itself is the official `app.asar`, shipped byte-identical except for two small Linux-gap patches: a Quick Entry focus fix for KDE (pending upstream) and an org-plugins path fix Linux is missing upstream.
+The app itself is the official `app.asar`. A patch has to justify itself against the official bytes or get deleted — most of the pre-v3.0.0 suite was deleted when Anthropic shipped official Linux builds. Five Linux-gap patches survive:
+
+- **virtiofsd resolution.** Upstream probes only `/usr/libexec/virtiofsd` and `/usr/bin/virtiofsd`, falling back to its bundled copy only when `/etc/os-release` reports Ubuntu 22.x. Arch installs virtiofsd at `/usr/lib/virtiofsd` and Debian at `/usr/lib/qemu/virtiofsd`, so Cowork reports "requires QEMU" on a complete KVM stack. Dropping the os-release gate fixes it; system paths stay preferred. Filed upstream.
+- **org-plugins path.** Upstream's platform switch has cases for darwin and win32 only, and the default returns null, so the org-plugins feature is silently dead on Linux. Adds a `linux` case resolving `/etc/claude/org-plugins`. Filed upstream.
+- **Tray icon selection.** Upstream's desktop-environment detector returns kde, gnome, or other, so Cinnamon — which can pair a dark panel with a light GTK colour scheme — gets the wrong glyph. Threads the launcher's `CLAUDE_TRAY_USE_DARK_ICON` into upstream's own selector without replacing its icons. Filed upstream.
+- **Quick Entry focus.** Adds `blur()` before `hide()` on the pop-up window so the main window reappears after submit, working around an Electron focus bug on KDE.
+- **Cowork bubblewrap backend.** Opt-in via `COWORK_VM_BACKEND=bwrap` for hosts without KVM/vhost-vsock. Every branch is gated on the flag, so an unflagged launch runs upstream's path unchanged.
 
 ### Using APT Repository (Debian/Ubuntu - Recommended)
 
