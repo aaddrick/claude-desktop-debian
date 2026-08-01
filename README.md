@@ -1,6 +1,6 @@
 # Claude Desktop for Linux
 
-This project repackages Claude Desktop for Linux formats Anthropic doesn't ship themselves: `.rpm` (Fedora/RHEL), distribution-agnostic AppImages, a Nix flake for NixOS, and an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch.
+This project repackages Claude Desktop for Linux formats Anthropic doesn't ship themselves: `.rpm` (Fedora/RHEL), distribution-agnostic AppImages, a Nix flake for NixOS, and an [AUR package](#using-aur-arch-linux) for Arch (currently unavailable — see below).
 
 On 2026-06-30 Anthropic shipped a first-party Claude Desktop for Linux beta, distributed as a `.deb` (amd64 and arm64) from their own APT repository. Since v3.0.0, this project repackages that official Linux `.deb`. It no longer repackages the Windows installer.
 
@@ -40,7 +40,7 @@ Anthropic serves the `.deb`. We serve everything else. Since v3.0.0 our packages
 | `.deb` (Debian/Ubuntu, amd64 + arm64) | Anthropic's official APT repo. Ours mirrors it as `claude-desktop-unofficial` (launcher + doctor added), so it can sit beside the official package. |
 | `.rpm` (Fedora/RHEL) | This project. |
 | AppImage (any distro) | This project. |
-| AUR (Arch) | This project (builds the AppImage). |
+| AUR (Arch) | This project (builds the AppImage). **Unavailable** — see [below](#using-aur-arch-linux). |
 | Nix flake (NixOS) | This project. |
 
 On top of packaging, every format we build carries:
@@ -91,7 +91,17 @@ Future updates will be installed automatically with your regular system updates 
 
 ### Using AUR (Arch Linux)
 
-The [`claude-desktop-appimage`](https://aur.archlinux.org/packages/claude-desktop-appimage) package is available on the AUR and is automatically updated with each release.
+**Unavailable since 2026-08-01.** `claude-desktop-appimage` was deleted from the AUR under deletion request [PRQ#85209](https://lists.archlinux.org/archives/list/aur-requests@lists.archlinux.org/thread/33X5H3TTGPXBEFKJFHEL5JYVGOE52IRV/) as a duplicate of `aur/claude-desktop`. A reinstatement request is with the list moderators. Until it resolves, install the [AppImage](#using-pre-built-releases) directly.
+
+Automated AUR publishing is paused while that request is open — a deleted pkgbase keeps its git repo and still accepts pushes, so a release would recreate the package mid-review. Once the package is restored:
+
+```bash
+gh variable set AUR_PUBLISH_ENABLED --body true
+```
+
+The `update-aur-repo` job in [`ci.yml`](.github/workflows/ci.yml) is gated on that variable, and the pending `pkgdesc`/`license` corrections still need pushing to the AUR pkgbase.
+
+When it is available, the package installs the AppImage build of Claude Desktop:
 
 ```bash
 # Using yay
@@ -100,8 +110,6 @@ yay -S claude-desktop-appimage
 # Or using paru
 paru -S claude-desktop-appimage
 ```
-
-The AUR package installs the AppImage build of Claude Desktop.
 
 ### Using Nix Flake (NixOS)
 
