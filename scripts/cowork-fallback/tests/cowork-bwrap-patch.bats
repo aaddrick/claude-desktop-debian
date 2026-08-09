@@ -29,6 +29,12 @@ setup() {
 	fixture > "$WORK/app.asar.contents/.vite/build/index.js"
 	# shellcheck source=scripts/patches/cowork-bwrap.sh
 	source "$PATCH_SH"
+	# _resolve_anchor_file lives in the orchestrator; each sub-patch now
+	# resolves its own file instead of reading a main_js global (#820).
+	# This fixture keeps all four anchors in one file, which also covers
+	# the shared-file path of the patch's read/write cache.
+	# shellcheck source=scripts/patches/app-asar.sh
+	source "${SCRIPT_DIR}/../../patches/app-asar.sh"
 }
 
 teardown() {
@@ -119,7 +125,11 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	local before; before="$(cat "$t")"
 	run patch_cowork_bwrap
 	[ "$status" -ne 0 ]
-	[[ "$output" == *"B: FATAL"* ]]
+	# The socket argv is B's resolution anchor, so removing the spawn
+	# line now fails at resolution rather than inside the patch body.
+	# Either way the build stops and nothing is written, which is the
+	# property under test.
+	[[ "$output" == *"B: FATAL"* || "$output" == *"matched no file"* ]]
 	# A load-bearing miss must not write a half-patched file.
 	[ "$(cat "$t")" == "$before" ]
 }

@@ -7,18 +7,20 @@
 # deleted 2.x patches used to WARN when those anchors moved, and the
 # tripwires replace that signal.
 #
-# _resolve_main_js: since 1.19367.0 the main process is code-split, so
-# index.js is a stub that require()s a content-hashed main chunk. The
-# resolver follows that require, falls back to index.js on the older
-# single-file layout, and fails loud on anything ambiguous.
+# _resolve_anchor_file: there is no single main-process file any more.
+# 1.19367.0 split it into a stub plus one content-hashed chunk; 1.26832.0
+# dissolved that core into 83 chunks across two families and left some
+# anchors in index.js itself (#820). Each patch resolves the file its own
+# anchor lives in, and the exactly-one assertion is what replaces the old
+# multi-chunk guard.
 
 setup() {
 	source "$BATS_TEST_DIRNAME/../scripts/patches/app-asar.sh"
 }
 
-# Build the .vite/build tree _resolve_main_js reads (relative to CWD) and
-# cd into its parent so the resolver's relative paths resolve. $1 = the
-# index.js body; remaining args = "chunk-name:body" files to also create.
+# Build the .vite/build tree _resolve_anchor_file reads (relative to CWD)
+# and cd into its parent so the resolver's relative paths resolve. $1 =
+# the index.js body; remaining args = "chunk-name:body" files to create.
 _make_build_tree() {
 	local index_body="$1"
 	shift
@@ -87,58 +89,98 @@ _write_bundle() {
 	[[ $output == *'MB-1'* ]]
 }
 
-@test "resolve: follows the stub require to the code-split main chunk" {
+@test "resolve: finds the single chunk carrying the anchor" {
 	_make_build_tree \
 		'"use strict";require("./index.chunk-CNXUb5h4.js");' \
-		'index.chunk-CNXUb5h4.js:/* main process */'
-	run _resolve_main_js
+		'index.chunk-CNXUb5h4.js:var a=`TrayIconLinux-Dark.png`;'
+	run _resolve_anchor_file 'tray' 'TrayIconLinux-Dark\.png'
 	[[ $status -eq 0 ]]
 	[[ $output == 'app.asar.contents/.vite/build/index.chunk-CNXUb5h4.js' ]]
 }
 
-@test "resolve: falls back to index.js on the old single-file layout" {
-	_make_build_tree 'var x=1;/* whole main process, no chunk require */'
-	run _resolve_main_js
+@test "resolve: finds an anchor left in index.js itself (1.26832.0)" {
+	# The entry file stopped being a stub: the tray anchor lives there.
+	_make_build_tree \
+		'var a=`TrayIconLinux-Dark.png`;require("./index.chunk-AAAA1111.js");' \
+		'index.chunk-AAAA1111.js:/* unrelated */'
+	run _resolve_anchor_file 'tray' 'TrayIconLinux-Dark\.png'
 	[[ $status -eq 0 ]]
 	[[ $output == 'app.asar.contents/.vite/build/index.js' ]]
 }
 
-@test "resolve: ignores non-chunk requires when falling back" {
-	# electron/node requires in the stub must not be mistaken for a chunk
+@test "resolve: finds an anchor in the index2 chunk family" {
 	_make_build_tree \
-		'require("node:path");require("electron");require("./preload.js");'
-	run _resolve_main_js
+		'require("./index2.chunk-ZZZZ9999.js");' \
+		'index2.chunk-ZZZZ9999.js:function q(){return process.platform,r()}'
+	run _resolve_anchor_file 'cowork A' 'return process\.platform,[\w$]+\(\)\}'
 	[[ $status -eq 0 ]]
-	[[ $output == 'app.asar.contents/.vite/build/index.js' ]]
+	[[ $output == 'app.asar.contents/.vite/build/index2.chunk-ZZZZ9999.js' ]]
 }
 
-@test "resolve: fails loud when the stub requires two main chunks" {
+@test "resolve: matches a backtick literal via the quote class" {
+	# 1.26832.0 re-emitted nearly every string as a backtick template; an
+	# anchor pinned to a bare double quote would find nothing.
 	_make_build_tree \
-		'require("./index.chunk-AAAA1111.js");require("./index.chunk-BBBB2222.js");' \
-		'index.chunk-AAAA1111.js:/* a */' \
-		'index.chunk-BBBB2222.js:/* b */'
-	run _resolve_main_js
-	[[ $status -eq 1 ]]
-	[[ $output == *'2 main chunks'* ]]
-	[[ $output == *'per-anchor resolution'* ]]
+		'var x=1;' \
+		'index.chunk-AAAA1111.js:e.setAlwaysOnTop(!0,`pop-up-menu`)'
+	run _resolve_anchor_file 'quick-window' \
+		'\.setAlwaysOnTop\(\s*!0\s*,\s*[`"'"'"']pop-up-menu[`"'"'"']\)'
+	[[ $status -eq 0 ]]
+	[[ $output == 'app.asar.contents/.vite/build/index.chunk-AAAA1111.js' ]]
 }
 
-@test "resolve: fails loud when the required chunk file is missing" {
-	# stub names a chunk, but the bundler output doesn't contain it
+@test "resolve: the same anchor still matches the old double-quoted shape" {
 	_make_build_tree \
-		'require("./index.chunk-CNXUb5h4.js");'
-	run _resolve_main_js
-	[[ $status -eq 1 ]]
-	[[ $output == *'missing'* ]]
+		'var x=1;' \
+		'index.chunk-AAAA1111.js:e.setAlwaysOnTop(!0,"pop-up-menu")'
+	run _resolve_anchor_file 'quick-window' \
+		'\.setAlwaysOnTop\(\s*!0\s*,\s*[`"'"'"']pop-up-menu[`"'"'"']\)'
+	[[ $status -eq 0 ]]
+	[[ $output == 'app.asar.contents/.vite/build/index.chunk-AAAA1111.js' ]]
 }
 
-@test "resolve: fails loud when index.js is absent" {
+@test "resolve: fails loud when the anchor matches nothing" {
+	_make_build_tree 'var x=1;' 'index.chunk-AAAA1111.js:/* nothing */'
+	run _resolve_anchor_file 'tray' 'TrayIconLinux-Dark\.png'
+	[[ $status -eq 1 ]]
+	[[ $output == *'matched no file'* ]]
+	[[ $output == *'Re-derive'* ]]
+}
+
+@test "resolve: fails loud when the anchor is ambiguous across chunks" {
+	# The decoy case: a distinctive string can recur in a sibling chunk
+	# that carries no call to rewrite, so resolving on it must not pick
+	# one at random.
+	_make_build_tree \
+		'var x=1;' \
+		'index.chunk-AAAA1111.js:log(`pop-up-menu`)' \
+		'index.chunk-BBBB2222.js:e.setAlwaysOnTop(!0,`pop-up-menu`)'
+	run _resolve_anchor_file 'quick-window' 'pop-up-menu'
+	[[ $status -eq 1 ]]
+	[[ $output == *'matched 2 files'* ]]
+	[[ $output == *'ambiguous'* ]]
+}
+
+@test "resolve: the full anchor shape disambiguates where the string cannot" {
+	# Same tree as above; anchoring on the call shape rather than the
+	# bare literal selects the one file that actually has a patch site.
+	_make_build_tree \
+		'var x=1;' \
+		'index.chunk-AAAA1111.js:log(`pop-up-menu`)' \
+		'index.chunk-BBBB2222.js:e.setAlwaysOnTop(!0,`pop-up-menu`)'
+	run _resolve_anchor_file 'quick-window' \
+		'\.setAlwaysOnTop\(\s*!0\s*,\s*[`"'"'"']pop-up-menu[`"'"'"']\)'
+	[[ $status -eq 0 ]]
+	[[ $output == 'app.asar.contents/.vite/build/index.chunk-BBBB2222.js' ]]
+}
+
+@test "resolve: fails loud when the build dir is absent" {
 	rm -rf "$BATS_TEST_TMPDIR/app.asar.contents"
-	mkdir -p "$BATS_TEST_TMPDIR/app.asar.contents/.vite/build"
+	mkdir -p "$BATS_TEST_TMPDIR"
 	cd "$BATS_TEST_TMPDIR" || return 1
-	run _resolve_main_js
+	run _resolve_anchor_file 'tray' 'TrayIconLinux-Dark\.png'
 	[[ $status -eq 1 ]]
-	[[ $output == *'No index.js'* ]]
+	[[ $output == *'upstream layout changed'* ]]
 }
 
 # =============================================================================

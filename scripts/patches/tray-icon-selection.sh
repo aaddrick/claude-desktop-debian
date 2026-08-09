@@ -28,14 +28,25 @@
 # Interim fix pending upstream; this is not a net-new feature.
 #
 # Sourced by: build.sh
-# Sourced globals: main_js (optional — the resolved main chunk; set by
-#   patch_app_asar. Falls back to .vite/build/index.js for older bundles.)
+# Sourced globals: (none — resolves its own file via _resolve_anchor_file,
+#   defined in app-asar.sh)
 # Modifies globals: (none)
 #===============================================================================
 
 patch_tray_icon_env_override() {
 	echo 'Patching Linux tray icon selection (CLAUDE_TRAY_USE_DARK_ICON)...'
-	local index_js="${main_js:-app.asar.contents/.vite/build/index.js}"
+
+	# On 1.26832.0 this anchor sits in index.js itself rather than in any
+	# chunk — the entry file stopped being a stub and now carries real
+	# code (#820). Resolving by anchor rather than by filename is what
+	# makes that a non-event.
+	local index_js
+	# Anchored on the adjacent icon-literal pair rather than on the
+	# ternary condition: the patch rewrites the condition but re-emits
+	# these two literals verbatim, so resolution still works on a re-run.
+	index_js=$(_resolve_anchor_file 'tray icon literals' \
+		'[`"'"'"']TrayIconLinux-Dark\.png[`"'"'"']\s*:\s*[`"'"'"']TrayIconLinux\.png[`"'"'"']') \
+		|| return 1
 
 	# Anchored on the two stable icon literals (developer strings
 	# survive minification); the DE-detector and electron identifiers
@@ -71,11 +82,16 @@ if (code.includes(applied)) {
 // ((0,i.oPe)()) and the electron handle tolerates a property chain —
 // both are real minifier artifacts post-code-split (the quick-window
 // patch hit the exports.mainWindow rename the same way).
+// q(): match a literal under any delimiter. 1.26832.0 swapped the
+// minifier and re-emitted nearly every string as a backtick template, so
+// a bare " here matches nothing (#820).
+const q = s => '[`"\']' + s + '[`"\']';
 const ternRe = new RegExp(
     String.raw`((?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+))` +
-    String.raw`\(\)\s*===\s*"gnome"\s*\|\|\s*` +
+    `\\(\\)\\s*===\\s*${q('gnome')}\\s*\\|\\|\\s*` +
     String.raw`([\w$]+(?:\.[\w$]+)*)\.nativeTheme\.shouldUseDarkColors` +
-    String.raw`\s*\?\s*"TrayIconLinux-Dark\.png"\s*:\s*"TrayIconLinux\.png"`,
+    `\\s*\\?\\s*${q('TrayIconLinux-Dark\\.png')}` +
+    `\\s*:\\s*${q('TrayIconLinux\\.png')}`,
     'g');
 const matches = [...code.matchAll(ternRe)];
 if (matches.length !== 1) {
