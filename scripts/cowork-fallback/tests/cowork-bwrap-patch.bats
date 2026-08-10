@@ -23,12 +23,33 @@ async function Vdo(A,e,t){if(!e){log("[warm] Warm download disabled");return}ret
 JS
 }
 
+# The same four anchor shapes as emitted by 1.26832.0: backtick string
+# literals, `let` over const, the bundler indirect-call form for spawn,
+# preserved optional chaining, and a module-binding destructure callee
+# (p.n() rather than sM()). C2's log literal is retained here so the
+# fixture still covers the sub-patch on bundles that carry it.
+fixture_1268320() {
+	cat <<'JS'
+function Ben(){return process.platform,Cen()}
+function Cen(){return{status:`unsupported`}}
+function ygi(A){return (0,ye.spawn)(A,[`-socket`,Vie()],{stdio:[`pipe`,`pipe`,`pipe`]})}
+async function OzA(A,e){let{yukonSilver:t}=p.n();return t?.status===`supported`?doDownload():!1}
+async function Vdo(A,e,t){if(!e){log(`[warm] Warm download disabled`);return}return warmPrefetch()}
+JS
+}
+
 setup() {
 	WORK="$(mktemp -d)"
 	mkdir -p "$WORK/app.asar.contents/.vite/build"
 	fixture > "$WORK/app.asar.contents/.vite/build/index.js"
 	# shellcheck source=scripts/patches/cowork-bwrap.sh
 	source "$PATCH_SH"
+	# _resolve_anchor_file lives in the orchestrator; each sub-patch now
+	# resolves its own file instead of reading a main_js global (#820).
+	# This fixture keeps all four anchors in one file, which also covers
+	# the shared-file path of the patch's read/write cache.
+	# shellcheck source=scripts/patches/app-asar.sh
+	source "${SCRIPT_DIR}/../../patches/app-asar.sh"
 }
 
 teardown() {
@@ -119,7 +140,11 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	local before; before="$(cat "$t")"
 	run patch_cowork_bwrap
 	[ "$status" -ne 0 ]
-	[[ "$output" == *"B: FATAL"* ]]
+	# The socket argv is B's resolution anchor, so removing the spawn
+	# line now fails at resolution rather than inside the patch body.
+	# Either way the build stops and nothing is written, which is the
+	# property under test.
+	[[ "$output" == *"B: FATAL"* || "$output" == *"matched no file"* ]]
 	# A load-bearing miss must not write a half-patched file.
 	[ "$(cat "$t")" == "$before" ]
 }
@@ -133,4 +158,53 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"B: FATAL"* ]]
 	[[ "$output" == *"expected exactly 1"* ]]
+}
+
+@test "patch: applies to the 1.26832.0 bundler-swap shape" {
+	# Pins three tolerances at once: the quote class, the indirect-call
+	# spawn callee ((0,ye.spawn)(), and C1's let + property-chain
+	# destructure callee. Reverting any of them leaves this red.
+	cd "$WORK"
+	fixture_1268320 > "$(target)"
+	run patch_cowork_bwrap
+	echo "$output"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"A: gated yukonSilver"* ]]
+	[[ "$output" == *"B: swapped helper spawn"* ]]
+	[[ "$output" == *"C1: blocked foreground"* ]]
+	[[ "$output" == *"C2: blocked warm"* ]]
+	run node --check "$(target)"
+	[ "$status" -eq 0 ]
+}
+
+@test "patch: 1.26832.0 shape keeps the indirect spawn callee intact" {
+	cd "$WORK"
+	fixture_1268320 > "$(target)"
+	patch_cowork_bwrap
+	# The callee is re-emitted verbatim; rebuilding it as OBJ.spawn(
+	# would drop the (0,...) and change `this` binding.
+	grep -qF '/*cowork-bwrap-spawn*/(0,ye.spawn)(' "$(target)"
+}
+
+@test "patch: 1.26832.0 C1 gate lands ahead of the inverted status check" {
+	# The guard inverted between releases (!== early-false became ===
+	# proceed). The injection must sit before upstream's check so it is
+	# correct under either polarity.
+	cd "$WORK"
+	fixture_1268320 > "$(target)"
+	patch_cowork_bwrap
+	grep -qF 'async function OzA(A,e){/*cowork-bwrap-dl*/if(' "$(target)"
+	grep -qF 'return!1;let{yukonSilver:t}=p.n();return t?.status===`supported`' \
+		"$(target)"
+}
+
+@test "patch: 1.26832.0 shape is idempotent" {
+	cd "$WORK"
+	fixture_1268320 > "$(target)"
+	patch_cowork_bwrap
+	local first; first="$(cat "$(target)")"
+	run patch_cowork_bwrap
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"already"* ]]
+	[ "$(cat "$(target)")" == "$first" ]
 }

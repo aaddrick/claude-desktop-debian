@@ -69,6 +69,69 @@ context is bounded enough that newline-spanning is harmless, and
 literal token sequences (`",b:` etc.) when stricter adjacency is
 required.
 
+## Quote style: `"` is not stable either
+
+Whitespace tolerance assumes the *tokens* hold still and only the
+spacing moves. Upstream 1.26832.0 broke that assumption: the bundler
+changed and every string literal flipped from double quotes to
+backticks. Same code, same strings, different delimiter.
+
+Measured across the main-process files of both bundles:
+
+| bundle | `"short-literal"` | `` `short-literal` `` |
+| --- | --- | --- |
+| 1.24012.11 | 46,526 | 429 |
+| 1.26832.0 | 3,050 | 44,701 |
+
+A near-total inversion. Four of the ten anchors in the active suite
+matched on a `"`-delimited literal and went to zero matches; they came
+back the instant the delimiter was generalized. The build-fatal ones
+failed the build, which is the outcome the guards are for, but the
+diagnosis cost a full triage cycle because "anchor not found" reads as
+"upstream deleted the feature" and the feature was untouched.
+
+**Never write a bare quote in an anchor.** Use a quote class so all
+three delimiters match:
+
+```bash
+# Bad: pins the delimiter the current minifier happens to emit
+grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))'
+
+# Good: tolerates ", ' and `
+grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*[`"'"'"']pop-up-menu[`"'"'"']\))'
+```
+
+In the `node` heredoc patches, build the class once and concatenate it
+rather than repeating the escaping:
+
+```js
+// Quote-class helper: match a literal under any delimiter.
+const q = s => '[`"\']' + s + '[`"\']';
+const arrRe = new RegExp('\\[\\s*' + q('\\/usr\\/libexec\\/virtiofsd') +
+    '\\s*,\\s*' + q('\\/usr\\/bin\\/virtiofsd') + '\\s*\\]');
+```
+
+Two related shifts landed in the same bump, so a bundler swap should be
+treated as a class of breakage rather than one delimiter change:
+
+- **Syntax level rose.** Optional chaining is now preserved instead of
+  being downleveled. An anchor written against
+  `(e==null?void 0:e.id)==="ubuntu"` has to also accept
+  ``e?.id===`ubuntu` ``. `let` likewise replaced most `const`/`var`
+  emission, so `(?:const|let)` beats either alone.
+- **Callee indirection appeared where there was none.** `X.spawn(` became
+  `(0,ye.spawn)(`. The tray patch already tolerated this shape
+  (`(?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+)`); it is now the default, not
+  a special case, and every call-site anchor wants it.
+
+One inference worth flagging rather than asserting: when concatenation
+is re-emitted as interpolation, a message that was one contiguous
+literal (`"...completed in "+m+"ms"`) becomes a template with a
+`${...}` hole in the middle, so an anchor spanning that hole breaks
+even though the delimiter class is right. Anchor on the *stable prefix*
+before the first interpolation (`[warm] Promoting warm file`), not on a
+whole sentence.
+
 ## Replacement-string escaping: `\1`, `&`, `$1`
 
 A regex can match correctly and still produce corrupted output
@@ -165,6 +228,11 @@ minification untouched (true for the upstream bundler used here; a
 Anchor on those. A hardcoded minified name silently no-ops the next
 release; the build log still says "patched."
 
+The string *content* survives; its *delimiter* does not, and neither
+does the syntax around it. Match literals through a quote class and
+keep the surrounding call shape loose — see "Quote style: `"` is not
+stable either" above, which is how the whole suite broke on 1.26832.0.
+
 Three patterns from the suite (quick-window survives the v3.0.0
 rebase; the cowork and tray examples are historical — patches deleted
 in v3.0.0, lessons stand):
@@ -232,7 +300,8 @@ For years the whole main process lived in one file,
 `.vite/build/index.js`, and every patch hardcoded that path. Upstream
 1.19367.0 code-split it: `index.js` became a ~700-byte entry stub that
 `require()`s a content-hashed main chunk (`index.chunk-<hash>.js`),
-which pulls in ~40 more `index.chunk-<hash>.js` files. The hash changes
+which pulls in ~40 more `index.chunk-<hash>.js` files (86 by
+1.24012.11, 325 by 1.26832.0). The hash changes
 every release, so the name can't be hardcoded either. Every patch
 anchored on the literal `index.js` path silently missed — the
 build-fatal ones (`virtiofsd-probe`, `cowork-bwrap` A/B) failed the
@@ -250,12 +319,85 @@ Two rules fall out, both now in `app-asar.sh` / the patch suite:
 
 - **One logical patch can span chunks.** The split follows dynamic
   `import()` boundaries, so an optional subsystem can land in its own
-  chunk apart from the code that gates it. `cowork-bwrap`'s A/B/C1 are
+  chunk apart from the code that gates it. `cowork-bwrap`'s A/B/C1 were
   in the main chunk, but its warm-prefetch block (C2) moved to a
-  separate warm chunk — resolved there by its stable `[warm] Warm
-  download disabled` log literal, exactly the "anchor on a developer
-  string, then find the file that carries it" move. Don't assume the
-  whole patch touches one file.
+  separate warm chunk — resolved there by a stable `[warm]` log literal,
+  exactly the "anchor on a developer string, then find the file that
+  carries it" move. Don't assume the whole patch touches one file.
+
+**The single-chunk assumption died in 1.26832.0.** That release
+dissolved the core: `index.js` went from a 773-byte stub with one
+`require()` to a 195,889-byte file issuing 104 `require()` calls across
+83 distinct chunks, and the 5.2 MB core chunk was replaced by a largest
+chunk of 1.28 MB. Total main-process bytes moved +2.4%, so this was a
+re-split of existing code, not new code — the core-shrink signature.
+`_resolve_main_js`'s multi-chunk guard fired exactly as designed and
+failed the build rather than mispatching, which is the outcome to want,
+but it means the "resolve one file, hand it to every patch" contract is
+finished. Anchors now live in three different places at once: the tray
+ternary in `index.js` itself, quick-window and org-plugins and virtiofsd
+in `index.chunk-*` files, and the cowork evaluator in a second
+`index2.chunk-*` family that did not exist before.
+
+Resolution has to become per-anchor: grep the whole `.vite/build` tree
+for the anchor's stable literal, assert exactly one file carries it,
+patch that file. `cowork-bwrap` already did this for its warm chunk
+(`grep -lF '[warm] ...'`), and that one-off is the shape the rest of the
+suite needs. Two traps the census surfaced:
+
+- **Presence is not the anchor.** `pop-up-menu` appears in two 1.26832.0
+  chunks, but only one carries the `setAlwaysOnTop(!0,...)` call the
+  patch actually rewrites. Resolve on the *full anchor shape*, not on the
+  distinctive string alone, or the exactly-one assertion picks a decoy.
+- **A missing anchor is not always a missing feature.** Of the four
+  1.26832.0 anchors that survived the quote-class fix and still missed,
+  every one was a genuine upstream reshape rather than a deletion: the
+  virtiofsd resolver now returns `await FT(kT)||...` where it returned a
+  bare identifier, and `cowork-bwrap` C1 inverted polarity from
+  ``(x?.status)!=="supported"?!1:`` to ``x?.status===`supported`?(...)``.
+  An inverted guard is the dangerous one — a regex loose enough to match
+  both shapes would install the gate backwards. The fix is to stop the
+  anchor *before* the comparison: C1 matches only the function head and
+  destructure, then injects ahead of upstream's check, which is correct
+  under either polarity because it never has to agree with one.
+
+### A resolution anchor must survive its own patch
+
+Once a patch resolves its own file, the anchor acquires a second job it
+never had as a patch-site anchor: it has to still match *after* the patch
+has run. Six of the first ten anchors written for #820 failed that.
+`org-plugins` resolves on the compound `` `org-plugins`);default:return
+null `` shape and then inserts a `case"linux"` between those two halves;
+`cowork-bwrap` A resolves on a function head it rewrites; the tray patch
+resolves on a ternary condition it replaces. Every one resolved fine on a
+clean tree and failed on a re-run — and failed *at resolution*, so the
+carefully written idempotency guards inside each patch never got to run.
+
+The build normally extracts a fresh asar, so this hides in production and
+surfaces only under a second pass. Test it explicitly: run the whole
+patch stage twice against the same tree and assert the second run is a
+no-op and the repacked archive is byte-identical.
+
+Pick a resolution anchor the patch provably never rewrites, which is
+usually *adjacent* to the patch site rather than at it:
+
+| patch | resolves on | why it survives |
+| --- | --- | --- |
+| `org-plugins` | `Application Support/Claude/org-plugins` | the darwin path; the insert lands elsewhere in the switch |
+| `cowork-bwrap` A | `return process.platform,X()}` | the injected early-return goes in front of it, not through it |
+| `cowork-bwrap` B | the `-socket` literal | re-emitted verbatim in both branches of the swapped call |
+| tray | the two adjacent `TrayIconLinux*.png` literals | the condition is rewritten, the literals are re-emitted |
+
+Where that is impossible, teach the anchor to tolerate the patch's own
+marker — `cowork-bwrap` C1 allows an optional
+`/*cowork-bwrap-dl*/...;` segment between the function head and the
+destructure it anchors on.
+
+One mechanical footnote: resolve with `grep -lPz`, not `grep -lP`. Bare
+`-P` is line-oriented, so a `\s*` in the anchor cannot cross a newline
+and every multi-line beautified bundle reports the anchor missing —
+the beautified false-negative trap again, this time in the resolver
+rather than in the patch.
 
 The corollary for anchor uniqueness: a literal that was unique across
 one 15 MB file can now recur across ~50 chunks (source-map tails,

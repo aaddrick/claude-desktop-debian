@@ -12,6 +12,10 @@
 setup() {
 	# shellcheck source=scripts/patches/tray-icon-selection.sh
 	source "$BATS_TEST_DIRNAME/../scripts/patches/tray-icon-selection.sh"
+	# _resolve_anchor_file lives here; the patch resolves its own file
+	# rather than reading a main_js global (#820).
+	# shellcheck source=scripts/patches/app-asar.sh
+	source "$BATS_TEST_DIRNAME/../scripts/patches/app-asar.sh"
 
 	# Real 1.19367.0 minified bytes around the anchor (identifiers
 	# oPe/G as shipped; verified against the pinned official .deb).
@@ -21,13 +25,17 @@ setup() {
 	# literals pins placement inside the ternary, not just marker
 	# presence.
 	patched_expr='process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||process.env.CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(oPe()==="gnome"||G.nativeTheme.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"'
+
+	# Real 1.26832.0 minified bytes: the bundler swap re-emitted every
+	# string literal as a backtick template, which took this anchor to
+	# zero matches (#820).
+	upstream_ternary_bt='case`png`:t=lt()===`gnome`||R.nativeTheme.shouldUseDarkColors?`TrayIconLinux-Dark.png`:`TrayIconLinux.png`;break'
 }
 
 _make_chunk() {
 	local build="$BATS_TEST_TMPDIR/app.asar.contents/.vite/build"
 	mkdir -p "$build"
 	printf '%s\n' "$1" > "$build/index.chunk-test.js"
-	main_js='app.asar.contents/.vite/build/index.chunk-test.js'
 	cd "$BATS_TEST_TMPDIR" || return 1
 }
 
@@ -47,7 +55,6 @@ _make_chunk() {
             ? "TrayIconLinux-Dark.png"
             : "TrayIconLinux.png";
 EOF
-	main_js='app.asar.contents/.vite/build/index.chunk-test.js'
 	cd "$BATS_TEST_TMPDIR" || return 1
 	patch_tray_icon_env_override
 	grep -qF 'CLAUDE_TRAY_USE_DARK_ICON==="1"' "$build/index.chunk-test.js"
@@ -68,11 +75,14 @@ EOF
 }
 
 @test "tray icon override: missing anchor fails the build" {
+	# The icon-literal pair is now the resolution anchor, so a bundle
+	# without it fails before the patch body runs. The build still stops,
+	# which is the property under test; only the message moved.
 	_make_chunk 'case"png":t="TrayIconLinux.png";break'
 	run patch_tray_icon_env_override
 	[[ $status -eq 1 ]]
-	[[ $output == *'WARNING'* ]]
-	[[ $output == *'ERROR'* ]]
+	[[ $output == *'matched no file'* ]]
+	[[ $output == *'Re-derive'* ]]
 }
 
 @test "tray icon override: near-miss without the GNOME half fails" {
@@ -90,11 +100,15 @@ EOF
 @test "tray icon override: Win32 ico lookalike ternary fails" {
 	# Upstream's sibling "ico" case — same shape, different literals. A
 	# patch weakened to ignore the TrayIconLinux literals would pass.
+	# The TrayIconLinux literals guard this from the resolver now rather
+	# than from the ternary count: weakening the resolution anchor to
+	# ignore them lets resolution succeed, and the ternary count then
+	# reports 0 and still fails. Either way this fixture stays red.
 	_make_chunk \
 		'case"ico":t=oPe()==="gnome"||G.nativeTheme.shouldUseDarkColors?"Tray-Win32-Dark.ico":"Tray-Win32.ico";break'
 	run patch_tray_icon_env_override
 	[[ $status -eq 1 ]]
-	[[ $output == *'found 0'* ]]
+	[[ $output == *'matched no file'* ]]
 }
 
 @test "tray icon override: matches the bundler indirect-call shape" {
@@ -117,4 +131,26 @@ EOF
 	run patch_tray_icon_env_override
 	[[ $status -eq 1 ]]
 	[[ $output == *'found 2'* ]]
+}
+
+@test "tray icon override: applies to the 1.26832.0 backticked shape" {
+	# Pins the quote class: an anchor keyed to a bare double quote finds
+	# nothing in a 1.26832.0 bundle and hard-fails the release.
+	_make_chunk "$upstream_ternary_bt"
+	run patch_tray_icon_env_override
+	[[ $status -eq 0 ]]
+	grep -qF 'CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(lt()==="gnome"||R.nativeTheme.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"' \
+		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
+}
+
+@test "tray icon override: backticked shape is idempotent" {
+	_make_chunk "$upstream_ternary_bt"
+	patch_tray_icon_env_override
+	local chunk="$BATS_TEST_TMPDIR/app.asar.contents/.vite/build"
+	chunk+='/index.chunk-test.js'
+	local first; first="$(cat "$chunk")"
+	run patch_tray_icon_env_override
+	[[ $status -eq 0 ]]
+	[[ $output == *'already applied'* ]]
+	[[ "$(cat "$chunk")" == "$first" ]]
 }

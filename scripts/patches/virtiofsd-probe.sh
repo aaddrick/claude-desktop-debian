@@ -23,14 +23,20 @@
 # list this tightly).
 #
 # Sourced by: build.sh
-# Sourced globals: main_js (optional — the resolved main chunk; set by
-#   patch_app_asar. Falls back to .vite/build/index.js for older bundles.)
+# Sourced globals: (none — resolves its own file via _resolve_anchor_file,
+#   defined in app-asar.sh)
 # Modifies globals: (none)
 #===============================================================================
 
 patch_virtiofsd_probe() {
 	echo 'Patching virtiofsd resolution (bundled fallback un-gate)...'
-	local index_js="${main_js:-app.asar.contents/.vite/build/index.js}"
+
+	# Resolve on the probe-path array itself: `virtiofsd` alone also
+	# appears in a second 1.26832.0 chunk that has no array to rewrite.
+	local index_js
+	index_js=$(_resolve_anchor_file 'virtiofsd probe array' \
+		'\[\s*[`"'"'"']/usr/libexec/virtiofsd[`"'"'"']\s*,\s*[`"'"'"']/usr/bin/virtiofsd[`"'"'"']\s*\]') \
+		|| return 1
 
 	# Anchored on the probe-path array literal (path strings survive
 	# minification); the gate rewrite happens in a bounded window after
@@ -42,11 +48,17 @@ const fs = require('fs');
 const indexJs = process.env.INDEX_JS;
 let code = fs.readFileSync(indexJs, 'utf8');
 
+// q(): match a literal under any delimiter. 1.26832.0 swapped the
+// minifier and re-emitted nearly every string as a backtick template, so
+// a bare " here matches nothing (#820).
+const q = s => '[`"\']' + s + '[`"\']';
+
 // The client's virtiofsd probe-path array, whitespace-tolerant for
 // beautified bundles:
-//   ["/usr/libexec/virtiofsd","/usr/bin/virtiofsd"]
-const arrRe =
-    /\[\s*"\/usr\/libexec\/virtiofsd"\s*,\s*"\/usr\/bin\/virtiofsd"\s*\]/g;
+//   [`/usr/libexec/virtiofsd`,`/usr/bin/virtiofsd`]
+const arrRe = new RegExp(
+    '\\[\\s*' + q('\\/usr\\/libexec\\/virtiofsd') + '\\s*,\\s*' +
+    q('\\/usr\\/bin\\/virtiofsd') + '\\s*\\]', 'g');
 const arrMatches = [...code.matchAll(arrRe)];
 if (arrMatches.length !== 1) {
     console.log('  WARNING: expected exactly 1 virtiofsd probe-path ' +
@@ -60,15 +72,25 @@ const start = arrMatches[0].index + arrMatches[0][0].length;
 const region = code.substring(start, start + 1200);
 
 // Gated resolver tail (minified):
-//   return e||(A?d3A(igi,bA.constants.X_OK):null)
-// e = system-path hit, A = "is Ubuntu 22.x", d3A(igi,...) = bundled
-// copy at process.resourcesPath. Identifiers are captured, not
-// hardcoded — they change every release.
-const gatedRe =
-    /return\s+([\w$]+)\s*\|\|\s*\(\s*[\w$]+\s*\?\s*([\w$]+\(\s*[\w$]+\s*,\s*[\w$]+\.constants\.X_OK\s*\))\s*:\s*null\s*\)/;
+//   1.24012.11: return e||(A?d3A(igi,bA.constants.X_OK):null)
+//   1.26832.0:  return await FT(kT)||(e?IT(TT,N.constants.X_OK):null)
+// The left operand is the system-path hit. It used to be a bare
+// identifier holding an already-awaited result; 1.26832.0 inlined the
+// call, so it is now an `await F(x)` expression. Accept either shape --
+// anything else here would be a different code path, not a re-minified
+// one. The middle operand is "is Ubuntu 22.x" and the captured call is
+// the bundled copy at process.resourcesPath. Identifiers are captured,
+// not hardcoded, since they change every release.
+const lhs = String.raw`(await\s+[\w$]+\(\s*[\w$]*\s*\)|[\w$]+)`;
+const bundled =
+    String.raw`([\w$]+\(\s*[\w$]+\s*,\s*[\w$]+\.constants\.X_OK\s*\))`;
+const gatedRe = new RegExp(
+    `return\\s+${lhs}\\s*\\|\\|\\s*\\(\\s*[\\w$]+\\s*\\?\\s*` +
+    `${bundled}\\s*:\\s*null\\s*\\)`);
 // Already-ungated form, for idempotency (re-run, or upstream fix):
-const ungatedRe =
-    /return\s+([\w$]+)\s*\|\|\s*[\w$]+\(\s*[\w$]+\s*,\s*[\w$]+\.constants\.X_OK\s*\)/;
+const ungatedRe = new RegExp(
+    `return\\s+${lhs}\\s*\\|\\|\\s*` +
+    String.raw`[\w$]+\(\s*[\w$]+\s*,\s*[\w$]+\.constants\.X_OK\s*\)`);
 
 const gated = region.match(gatedRe);
 if (gated) {
