@@ -25,6 +25,11 @@ setup() {
 	# literals pins placement inside the ternary, not just marker
 	# presence.
 	patched_expr='process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||process.env.CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(oPe()==="gnome"||G.nativeTheme.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"'
+
+	# Real 1.26832.0 minified bytes: the bundler swap re-emitted every
+	# string literal as a backtick template, which took this anchor to
+	# zero matches (#820).
+	upstream_ternary_bt='case`png`:t=lt()===`gnome`||R.nativeTheme.shouldUseDarkColors?`TrayIconLinux-Dark.png`:`TrayIconLinux.png`;break'
 }
 
 _make_chunk() {
@@ -126,4 +131,26 @@ EOF
 	run patch_tray_icon_env_override
 	[[ $status -eq 1 ]]
 	[[ $output == *'found 2'* ]]
+}
+
+@test "tray icon override: applies to the 1.26832.0 backticked shape" {
+	# Pins the quote class: an anchor keyed to a bare double quote finds
+	# nothing in a 1.26832.0 bundle and hard-fails the release.
+	_make_chunk "$upstream_ternary_bt"
+	run patch_tray_icon_env_override
+	[[ $status -eq 0 ]]
+	grep -qF 'CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(lt()==="gnome"||R.nativeTheme.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"' \
+		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
+}
+
+@test "tray icon override: backticked shape is idempotent" {
+	_make_chunk "$upstream_ternary_bt"
+	patch_tray_icon_env_override
+	local chunk="$BATS_TEST_TMPDIR/app.asar.contents/.vite/build"
+	chunk+='/index.chunk-test.js'
+	local first; first="$(cat "$chunk")"
+	run patch_tray_icon_env_override
+	[[ $status -eq 0 ]]
+	[[ $output == *'already applied'* ]]
+	[[ "$(cat "$chunk")" == "$first" ]]
 }
