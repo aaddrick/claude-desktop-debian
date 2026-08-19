@@ -122,6 +122,27 @@ jobs:
           name: package-arm64-appimage
           path: artifacts/
 
+      # --- Reference-source tooling ---
+      #
+      # asar and prettier belong to "Generate and upload reference
+      # source" at the end of this job, which has nothing to do with
+      # release notes. This install stays ungated on purpose: when
+      # claude-desktop-versions went private on 2026-07-24 its
+      # continue-on-error checkout still rendered green, but its
+      # *outcome* was failure, so every step gated on it skipped —
+      # including the asar install. The reference-source step then
+      # exited 127, failing the release job and skipping the four
+      # publish jobs that carry `needs: [release]`.
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Install asar and prettier
+        continue-on-error: true
+        run: npm install -g @electron/asar prettier
+
       # --- Release notes generation (inline, with fallback) ---
 
       - name: Checkout claude-desktop-versions
@@ -139,13 +160,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node.js 20
-        if: steps.checkout_versions.outcome == 'success'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        continue-on-error: true
-        with:
-          node-version: "20"
-
       - name: Install difftastic
         if: steps.checkout_versions.outcome == 'success'
         continue-on-error: true
@@ -153,10 +167,10 @@ jobs:
           curl -fsSL https://github.com/Wilfred/difftastic/releases/latest/download/difft-x86_64-unknown-linux-gnu.tar.gz \
             | sudo tar xz -C /usr/local/bin
 
-      - name: Install Node.js tools
+      - name: Install claude-code CLI
         if: steps.checkout_versions.outcome == 'success'
         continue-on-error: true
-        run: npm install -g @anthropic-ai/claude-code @electron/asar prettier
+        run: npm install -g @anthropic-ai/claude-code
 
       - name: Checkout repo for git history
         id: checkout_repo
@@ -378,6 +392,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Every exit path here is a warning, never a failure: the
+          # reference-source tarball is a convenience asset, and this
+          # job gates the APT/DNF/AUR publish jobs.
+          if ! command -v asar >/dev/null 2>&1; then
+            echo "::warning::asar unavailable, skipping reference-source"
+            exit 0
+          fi
           appimage=$(find artifacts/ -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
           if [[ -z "$appimage" ]]; then
             echo "::warning::No AppImage found, skipping reference-source"
