@@ -103,7 +103,7 @@ app_exec="/usr/lib/$package_name/claude-desktop"
 
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	run_doctor "\$app_exec"
+	run_doctor "\$app_exec" 'deb'
 	exit \$?
 fi
 
