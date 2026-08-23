@@ -1480,6 +1480,60 @@ _doctor_check_chrome_sandbox() {
 	fi
 }
 
+# Report whether the sandbox is actually *disabled at runtime*, not just
+# whether the setuid helper's file permissions look correct. #804: on
+# Wayland, deb/nix launches pass --no-sandbox unconditionally (unless
+# CLAUDE_FORCE_SANDBOX=1), so _doctor_check_chrome_sandbox above can PASS
+# on file permissions while the sandbox is disabled the moment Electron
+# actually launches -- this check reports on that gap directly, by
+# building the real argv the launcher would use rather than
+# re-deriving the same rule a second time (see the "single source of
+# truth" note on build_electron_args -- this project has been burned by
+# switch-list drift before, hence tools/chromium-switch-smoke.sh).
+#
+# Requires: build_electron_args to be in scope (sourced from
+#           launcher-common.sh, which sources this file -- see the file
+#           header), and is_wayland/use_x11_on_wayland already set by a
+#           prior detect_display_backend call -- same precondition
+#           build_electron_args itself documents, deliberately not
+#           re-detected here so callers (and tests) stay in control of
+#           the scenario the same way every build_electron_args test
+#           already does. Guarded below, same as load_launcher_config
+#           above: a standalone `source doctor.sh` (doctor.bats) has
+#           neither in scope.
+#
+# Usage: _doctor_check_effective_sandbox <package_type>
+_doctor_check_effective_sandbox() {
+	local package_type="${1:-deb}"
+	# rpm packages reuse the deb argv-building path verbatim (see
+	# rpm.sh), so normalize here too -- otherwise a future call site
+	# passing the literal 'rpm' would skip build_electron_args's
+	# deb/nix-only --no-sandbox branch and wrongly report the sandbox
+	# as enabled.
+	[[ $package_type == 'rpm' ]] && package_type='deb'
+	[[ $package_type == 'appimage' ]] && return 0 # already unconditional, covered above
+	declare -F build_electron_args > /dev/null || return 0
+
+	local electron_args
+	build_electron_args "$package_type"
+
+	local arg has_no_sandbox=false
+	for arg in "${electron_args[@]}"; do
+		[[ $arg == '--no-sandbox' ]] && has_no_sandbox=true
+	done
+
+	if [[ $has_no_sandbox == true ]]; then
+		_warn 'Chrome sandbox: disabled at runtime (--no-sandbox on Wayland)'
+		_info 'Regardless of the file-permission result above, the sandbox is'
+		_info 'not actually engaged for this session -- see #804.'
+		_info 'Fix: set CLAUDE_FORCE_SANDBOX=1 if your system does not need'
+		_info '     this workaround (Ubuntu-family systems: it is very'
+		_info '     likely safe, see the userns/AppArmor check below).'
+	else
+		_pass 'Chrome sandbox: enabled at runtime'
+	fi
+}
+
 # Report the active display server (Wayland/X11) and, on Wayland, the
 # desktop and whether Electron runs natively (CLAUDE_USE_WAYLAND=1) or
 # via XWayland (default, preserves global hotkeys). Fails when neither
@@ -1509,8 +1563,12 @@ _doctor_check_display_server() {
 
 # Run all diagnostic checks and print results
 # Arguments: $1 = electron path (optional, for package-specific checks)
+#            $2 = package type: deb|rpm|nix|appimage (optional, default
+#                 'deb' -- matches every call site except appimage.sh;
+#                 only affects _doctor_check_effective_sandbox's #804 check)
 run_doctor() {
 	local electron_path="${1:-}"
+	local package_type="${2:-deb}"
 	local _doctor_failures=0
 	# Recorded by _doctor_check_pkg_version, consumed by
 	# _check_official_drift (dynamic scope makes the helper's assignment
@@ -1561,6 +1619,14 @@ run_doctor() {
 
 	# -- Chrome sandbox permissions --
 	_doctor_check_chrome_sandbox "$electron_path"
+
+	# -- Chrome sandbox effective runtime state (#804) --
+	# detect_display_backend sets is_wayland/use_x11_on_wayland, which
+	# _doctor_check_effective_sandbox's build_electron_args call needs;
+	# guarded the same way load_launcher_config is above -- doctor.bats
+	# sources doctor.sh standalone, with neither function in scope.
+	declare -F detect_display_backend > /dev/null && detect_display_backend
+	_doctor_check_effective_sandbox "$package_type"
 
 	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
 	_doctor_check_userns_apparmor

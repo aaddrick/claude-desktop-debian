@@ -248,7 +248,8 @@ _previous_launch_hit_gpu_fatal() {
 #   GPU-crash sticky recovery GPU process FATAL exhaustion (#583)
 #   Wayland backend selection CLAUDE_USE_WAYLAND tri-state (#226, #404)
 #   --no-sandbox              only where structurally required
-#                             (AppImage FUSE; deb/nix on Wayland)
+#                             (AppImage FUSE; deb/nix on Wayland unless
+#                             CLAUDE_FORCE_SANDBOX=1, see #804)
 # --password-store is passed ONLY when CLAUDE_PASSWORD_STORE is set;
 # otherwise the official os_crypt autodetection owns the decision.
 #
@@ -330,8 +331,20 @@ build_electron_args() {
 		log_message 'X11 session detected'
 	else
 		# Wayland: deb/nix packages need --no-sandbox in both modes
-		[[ $package_type == 'deb' || $package_type == 'nix' ]] \
-			&& electron_args+=('--no-sandbox')
+		# (see #804: this default isn't universally required -- the AppArmor
+		# userns profile #687 installs for deb/Ubuntu-family systems already
+		# covers the one documented real blocker, and isn't Wayland-specific
+		# -- but rpm and nix have no equivalent profile, so it isn't safe to
+		# drop by default across all three package types yet).
+		# CLAUDE_FORCE_SANDBOX=1: opt-in escape hatch, symmetrical to
+		# CLAUDE_DISABLE_GPU above, for users who know their system doesn't
+		# need this workaround and want the sandbox kept on regardless.
+		if [[ ${CLAUDE_FORCE_SANDBOX:-} == '1' ]]; then
+			log_message \
+				'CLAUDE_FORCE_SANDBOX=1 - keeping Chromium sandbox enabled on Wayland'
+		elif [[ $package_type == 'deb' || $package_type == 'nix' ]]; then
+			electron_args+=('--no-sandbox')
+		fi
 
 		if [[ $use_x11_on_wayland == true ]]; then
 			# Use X11 via XWayland; globalShortcut uses an X11 key grab.

@@ -546,6 +546,46 @@ teardown() {
 	has_electron_arg '--no-sandbox'
 }
 
+@test "build_electron_args: CLAUDE_FORCE_SANDBOX=1 - Wayland deb omits --no-sandbox (#804)" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	CLAUDE_FORCE_SANDBOX=1
+	setup_logging
+	build_electron_args deb
+	# shellcheck disable=SC2314 # last command in test, ! works correctly
+	! has_electron_arg '--no-sandbox'
+}
+
+@test "build_electron_args: CLAUDE_FORCE_SANDBOX=1 - Wayland nix omits --no-sandbox (#804)" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	CLAUDE_FORCE_SANDBOX=1
+	setup_logging
+	build_electron_args nix
+	# shellcheck disable=SC2314 # last command in test, ! works correctly
+	! has_electron_arg '--no-sandbox'
+}
+
+@test "build_electron_args: CLAUDE_FORCE_SANDBOX=1 - appimage still gets --no-sandbox (FUSE, unconditional)" {
+	# FUSE constraints apply regardless of the sandbox opt-in — this
+	# escape hatch only ever affects the Wayland deb/nix branch.
+	is_wayland=true
+	use_x11_on_wayland=true
+	CLAUDE_FORCE_SANDBOX=1
+	setup_logging
+	build_electron_args appimage
+	has_electron_arg '--no-sandbox'
+}
+
+@test "build_electron_args: CLAUDE_FORCE_SANDBOX unset - Wayland deb still gets --no-sandbox (default unchanged)" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	setup_logging
+	build_electron_args deb
+	has_electron_arg '--no-sandbox'
+}
+
 @test "build_electron_args: Wayland native includes text-input-version=3" {
 	is_wayland=true
 	use_x11_on_wayland=false
@@ -1252,6 +1292,99 @@ _write_launcher_cfg() {
 	run run_doctor ''
 	[[ $output == *'COWORK_VM_BACKEND=bwrap'* ]]
 	[[ $output == *'bwrap daemon runtime'* ]]
+}
+
+# =============================================================================
+# _doctor_check_effective_sandbox (#804)
+# =============================================================================
+
+@test "_doctor_check_effective_sandbox: X11 - PASS, sandbox enabled" {
+	is_wayland=false
+	setup_logging
+	run _doctor_check_effective_sandbox deb
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'enabled at runtime'* ]]
+}
+
+@test "_doctor_check_effective_sandbox: Wayland deb, no override - WARN, sandbox disabled" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	setup_logging
+	run _doctor_check_effective_sandbox deb
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'disabled at runtime'* ]]
+	[[ $output == *'CLAUDE_FORCE_SANDBOX=1'* ]]
+}
+
+@test "_doctor_check_effective_sandbox: Wayland deb, CLAUDE_FORCE_SANDBOX=1 - PASS" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	CLAUDE_FORCE_SANDBOX=1
+	setup_logging
+	run _doctor_check_effective_sandbox deb
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'enabled at runtime'* ]]
+}
+
+@test "_doctor_check_effective_sandbox: Wayland nix, no override - WARN" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	setup_logging
+	run _doctor_check_effective_sandbox nix
+	[[ $output == *'[WARN]'* ]]
+}
+
+@test "_doctor_check_effective_sandbox: Wayland rpm, no override - WARN (normalized to deb)" {
+	# rpm reuses the deb argv-building path verbatim (see rpm.sh); the
+	# literal 'rpm' must be normalized to 'deb' before build_electron_args
+	# is called, otherwise it falls through the deb/nix-only --no-sandbox
+	# branch and this incorrectly reports PASS.
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	setup_logging
+	run _doctor_check_effective_sandbox rpm
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'disabled at runtime'* ]]
+}
+
+@test "_doctor_check_effective_sandbox: appimage - always a silent no-op (unconditional --no-sandbox, covered by the permissions check)" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	setup_logging
+	run _doctor_check_effective_sandbox appimage
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_effective_sandbox: standalone doctor.sh (no launcher-common.sh in scope) is a silent no-op" {
+	# Mirrors the load_launcher_config guard doctor.bats already relies
+	# on: detect_display_backend/build_electron_args don't exist when
+	# doctor.sh is sourced on its own, so the check must not error.
+	unset -f detect_display_backend build_electron_args
+	run _doctor_check_effective_sandbox deb
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "run_doctor: package_type defaults to deb when omitted" {
+	# The existing single-arg call sites (and this test's own call
+	# pattern predating #804) must keep working -- verifies the new
+	# second parameter's default rather than requiring every caller to
+	# be updated. Drives the real detect_display_backend path (not a
+	# manually pre-set is_wayland) via WAYLAND_DISPLAY, same as the
+	# check_display/detect_display_backend tests elsewhere in this file.
+	WAYLAND_DISPLAY='wayland-0'
+	unset CLAUDE_USE_WAYLAND CLAUDE_FORCE_SANDBOX
+	mkdir -p "$TEST_TMP/bin"
+	printf '#!/bin/sh\nexit 1\n' > "$TEST_TMP/bin/curl"
+	chmod +x "$TEST_TMP/bin/curl"
+	export PATH="$TEST_TMP/bin:$PATH"
+	run run_doctor ''
+	[[ $output == *'disabled at runtime'* ]]
 }
 
 # =============================================================================
