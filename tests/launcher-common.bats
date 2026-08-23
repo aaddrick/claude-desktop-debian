@@ -1336,6 +1336,20 @@ _write_launcher_cfg() {
 	[[ $output == *'[WARN]'* ]]
 }
 
+@test "_doctor_check_effective_sandbox: Wayland rpm, no override - WARN (normalized to deb)" {
+	# rpm reuses the deb argv-building path verbatim (see rpm.sh); the
+	# literal 'rpm' must be normalized to 'deb' before build_electron_args
+	# is called, otherwise it falls through the deb/nix-only --no-sandbox
+	# branch and this incorrectly reports PASS.
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	setup_logging
+	run _doctor_check_effective_sandbox rpm
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'disabled at runtime'* ]]
+}
+
 @test "_doctor_check_effective_sandbox: appimage - always a silent no-op (unconditional --no-sandbox, covered by the permissions check)" {
 	is_wayland=true
 	use_x11_on_wayland=true

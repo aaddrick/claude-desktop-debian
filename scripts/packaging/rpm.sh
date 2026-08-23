@@ -94,9 +94,9 @@ app_exec="/usr/lib/$package_name/claude-desktop"
 
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	# 'deb', not 'rpm': build_electron_args below is also called with
-	# 'deb' -- this package reuses the deb argv-building path verbatim,
-	# so the doctor check needs the same literal to report accurately.
+	# 'rpm' is normalized to 'deb' inside the doctor's effective-sandbox
+	# check, so either literal reports accurately here; kept as 'deb'
+	# to match the build_electron_args call below.
 	run_doctor "\$app_exec" 'deb'
 	exit \$?
 fi

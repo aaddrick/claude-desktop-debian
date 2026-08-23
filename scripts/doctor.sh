@@ -1505,6 +1505,12 @@ _doctor_check_chrome_sandbox() {
 # Usage: _doctor_check_effective_sandbox <package_type>
 _doctor_check_effective_sandbox() {
 	local package_type="${1:-deb}"
+	# rpm packages reuse the deb argv-building path verbatim (see
+	# rpm.sh), so normalize here too -- otherwise a future call site
+	# passing the literal 'rpm' would skip build_electron_args's
+	# deb/nix-only --no-sandbox branch and wrongly report the sandbox
+	# as enabled.
+	[[ $package_type == 'rpm' ]] && package_type='deb'
 	[[ $package_type == 'appimage' ]] && return 0 # already unconditional, covered above
 	declare -F build_electron_args > /dev/null || return 0
 
@@ -1518,8 +1524,8 @@ _doctor_check_effective_sandbox() {
 
 	if [[ $has_no_sandbox == true ]]; then
 		_warn 'Chrome sandbox: disabled at runtime (--no-sandbox on Wayland)'
-		_info 'File permissions above are correct, but the sandbox is not'
-		_info 'actually engaged for this session -- see #804.'
+		_info 'Regardless of the file-permission result above, the sandbox is'
+		_info 'not actually engaged for this session -- see #804.'
 		_info 'Fix: set CLAUDE_FORCE_SANDBOX=1 if your system does not need'
 		_info '     this workaround (Ubuntu-family systems: it is very'
 		_info '     likely safe, see the userns/AppArmor check below).'
