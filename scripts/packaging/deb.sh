@@ -234,6 +234,31 @@ else
     echo "Warning: chrome-sandbox binary not found in local package at \$LOCAL_SANDBOX_PATH. Sandbox may not function correctly."
 fi
 
+# --- Remove legacy bwrap-attached AppArmor profiles (#542) ---
+# 2.x installs shipped a profile attached to the shared /usr/bin/bwrap. It is
+# no longer installed, but an upgrade never removes it: dpkg runs the *old*
+# package's postrm with "upgrade", and that cleanup arm only matches
+# remove|purge|abort-install. The stale file then collides with the distro's
+# own profile (Ubuntu ships bwrap-userns-restrict, also attached to
+# /usr/bin/bwrap); AppArmor resolves neither, bwrap falls through to
+# unprivileged_userns, and glycin's sandboxed image decoding dies -- unusable
+# GDM greeter, GTK apps aborting on icon loads, gnome-keyring unable to
+# prompt. Same marker-header rule as below: files without it were written by
+# the admin (or another package) and are preserved. apparmor_parser -R is
+# needed as well as rm -- deleting the file leaves the profile loaded in the
+# kernel, so the conflict survives until the next reboot.
+for _legacy_profile in "/etc/apparmor.d/claude-desktop-bwrap" \
+    "/etc/apparmor.d/${package_name}-bwrap"; do
+    if [ -e "\$_legacy_profile" ] \
+        && grep -q "managed by the claude-desktop" "\$_legacy_profile" 2>/dev/null; then
+        if command -v apparmor_parser >/dev/null 2>&1; then
+            apparmor_parser -R "\$_legacy_profile" >/dev/null 2>&1 || true
+        fi
+        rm -f "\$_legacy_profile" 2>/dev/null || true
+        echo "Removed legacy AppArmor profile \$_legacy_profile"
+    fi
+done
+
 # --- AppArmor profile for Chromium's user-namespace sandbox ---
 # Ubuntu 24.04+ sets kernel.apparmor_restrict_unprivileged_userns=1, which
 # blocks the unprivileged user namespaces Chromium's sandbox relies on,
