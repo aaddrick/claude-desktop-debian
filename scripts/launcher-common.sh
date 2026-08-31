@@ -513,6 +513,26 @@ _desktop_helper_cmdline_matches() {
 			# (and the AppImage internal tree).
 			return 0
 			;;
+		*/usr/lib/claude-desktop/*chrome_crashpad_handler*|\
+		*/usr/lib/claude-desktop-unofficial/*chrome_crashpad_handler*)
+			# Crashpad is built to outlive the browser it
+			# monitors, so it is the survivor the --type= arms
+			# above cannot catch: it is spawned with
+			# --monitor-self-annotation=ptype=crashpad-handler
+			# and carries no --type= switch at all.
+			#
+			# Harmless on deb/rpm, fatal on AppImage. The
+			# runtime unmounts /tmp/.mount_claude* as soon as
+			# AppRun exits, and crashpad's own text pages are
+			# mmap'd from that mount, so it faults on its next
+			# instruction and dies SIGBUS (si_code BUS_ADRERR)
+			# once per quit, dumping a core.
+			#
+			# The path prefix keeps this scoped to our tree: a
+			# bystander /usr/lib/chromium/chrome_crashpad_handler
+			# must not match.
+			return 0
+			;;
 	esac
 
 	return 1

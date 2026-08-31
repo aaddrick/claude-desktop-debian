@@ -907,6 +907,25 @@ s.close()
 		"node $config_dir/Claude Extensions/ant.dir.example/server.js"
 	[[ $status -eq 0 ]]
 
+	# chrome_crashpad_handler outlives the browser by design and
+	# carries no --type= switch (only
+	# --monitor-self-annotation=ptype=crashpad-handler), so the arms
+	# above miss it. On AppImage that survivor is fatal: the runtime
+	# unmounts /tmp/.mount_claude* the moment AppRun exits and crashpad
+	# SIGBUSes on its own unmapped text.
+	run _desktop_helper_cmdline_matches \
+		"/tmp/.mount_claudeXXXXXX/usr/lib/claude-desktop/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=$config_dir/Crashpad --initial-client-fd=42 --shared-client-connection "
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop-unofficial/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=$config_dir/Crashpad "
+	[[ $status -eq 0 ]]
+
+	# ...but another Chromium app's crashpad is a bystander, not ours.
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/chromium/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=/home/u/.config/chromium/Crashpad "
+	[[ $status -ne 0 ]]
+
 	run _desktop_helper_cmdline_matches \
 		"/usr/lib/claude-desktop/claude-desktop /usr/lib/claude-desktop/resources/app.asar"
 	[[ $status -ne 0 ]]
