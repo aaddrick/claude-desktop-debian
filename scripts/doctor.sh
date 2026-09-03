@@ -1437,9 +1437,12 @@ _doctor_check_electron_binary() {
 # Check the chrome-sandbox helper's setuid permissions (must be 4755,
 # owned by root). Official layout: chrome-sandbox sits at the package
 # root beside the ELF (no node_modules/electron/dist tree anymore).
-# Looks at the deb install path and, when an electron path is provided,
-# the chrome-sandbox beside it; the first existing file wins. Warns
-# when none is found (expected for AppImage).
+# When an electron path is provided, ONLY the chrome-sandbox beside it
+# is judged — that is the binary actually running; falling back to the
+# deb path would validate the wrong binary when an AppImage/Nix run
+# coexists with a stale deb tree. Without an electron path, the deb
+# install location is the best guess. Warns when the relevant file is
+# missing (expected for AppImage).
 #
 # _DOCTOR_DEB_SANDBOX overrides the hardcoded deb path (test hook; the
 # default is the real install location, so production is unaffected).
@@ -1447,35 +1450,30 @@ _doctor_check_electron_binary() {
 # Usage: _doctor_check_chrome_sandbox [electron_path]
 _doctor_check_chrome_sandbox() {
 	local electron_path="${1:-}"
-	local _deb_sandbox="${_DOCTOR_DEB_SANDBOX:-}"
-	[[ -n $_deb_sandbox ]] \
-		|| _deb_sandbox='/usr/lib/claude-desktop-unofficial/chrome-sandbox'
-	local sandbox_paths=("$_deb_sandbox")
-	# Also check relative to the provided electron path
+	local sandbox_path
 	if [[ -n $electron_path ]]; then
-		local electron_dir
-		electron_dir=$(dirname "$electron_path")
-		sandbox_paths+=("$electron_dir/chrome-sandbox")
+		# A specific binary is running: only its own chrome-sandbox is
+		# relevant.
+		sandbox_path="$(dirname "$electron_path")/chrome-sandbox"
+	else
+		# No binary path known: fall back to the deb install location.
+		sandbox_path="${_DOCTOR_DEB_SANDBOX:-}"
+		[[ -n $sandbox_path ]] \
+			|| sandbox_path='/usr/lib/claude-desktop-unofficial/chrome-sandbox'
 	fi
-	local sandbox_checked=false sandbox_path
-	for sandbox_path in "${sandbox_paths[@]}"; do
-		if [[ -f $sandbox_path ]]; then
-			sandbox_checked=true
-			local sandbox_perms sandbox_owner
-			sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
-			sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
-			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
-				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
-			else
-				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
+	if [[ -f $sandbox_path ]]; then
+		local sandbox_perms sandbox_owner
+		sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
+		sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
+		if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
+			_pass "Chrome sandbox: permissions OK ($sandbox_path)"
+		else
+			_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
  owner=${sandbox_owner:-?}"
-				_info "Fix: sudo chown root:root $sandbox_path"
-				_info "     sudo chmod 4755 $sandbox_path"
-			fi
-			break
+			_info "Fix: sudo chown root:root $sandbox_path"
+			_info "     sudo chmod 4755 $sandbox_path"
 		fi
-	done
-	if [[ $sandbox_checked == false ]]; then
+	else
 		_warn 'Chrome sandbox not found (expected for AppImage)'
 	fi
 }
