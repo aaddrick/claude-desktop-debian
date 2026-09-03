@@ -907,6 +907,25 @@ s.close()
 		"node $config_dir/Claude Extensions/ant.dir.example/server.js"
 	[[ $status -eq 0 ]]
 
+	# chrome_crashpad_handler outlives the browser by design and
+	# carries no --type= switch (only
+	# --monitor-self-annotation=ptype=crashpad-handler), so the arms
+	# above miss it. On AppImage that survivor is fatal: the runtime
+	# unmounts /tmp/.mount_claude* the moment AppRun exits and crashpad
+	# SIGBUSes on its own unmapped text.
+	run _desktop_helper_cmdline_matches \
+		"/tmp/.mount_claudeXXXXXX/usr/lib/claude-desktop/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=$config_dir/Crashpad --initial-client-fd=42 --shared-client-connection "
+	[[ $status -eq 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop-unofficial/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=$config_dir/Crashpad "
+	[[ $status -eq 0 ]]
+
+	# ...but another Chromium app's crashpad is a bystander, not ours.
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/chromium/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=/home/u/.config/chromium/Crashpad "
+	[[ $status -ne 0 ]]
+
 	run _desktop_helper_cmdline_matches \
 		"/usr/lib/claude-desktop/claude-desktop /usr/lib/claude-desktop/resources/app.asar"
 	[[ $status -ne 0 ]]
@@ -917,6 +936,39 @@ s.close()
 
 	run _desktop_helper_cmdline_matches \
 		"/home/scott/dev/dude/core/agent-dude/dist/index.js mcp"
+	[[ $status -ne 0 ]]
+
+	# Every binary-shaped arm keys on argv[0], so a bystander that only
+	# *names* one of our binaries as an argument is not a helper. The
+	# debugger cases are the concrete ones: this reaper's own crashpad
+	# bug leaves cores lying around, and whoever sits down to debug one
+	# must not get SIGTERM'd by the next launch or quit.
+	run _desktop_helper_cmdline_matches \
+		"gdb /tmp/.mount_claudeXXXXXX/usr/lib/claude-desktop/chrome_crashpad_handler /var/lib/systemd/coredump/core.1234"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"coredumpctl gdb /usr/lib/claude-desktop-unofficial/chrome_crashpad_handler"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"less /usr/lib/claude-desktop/chrome_crashpad_handler"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"strings /usr/lib/claude-desktop-unofficial/claude-desktop --type=foo"
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"vim /usr/lib/claude-desktop-unofficial/resources/cowork-linux-helper"
+	[[ $status -ne 0 ]]
+
+	# Chrome's native-messaging host lives in our tree but is spawned
+	# and owned by the browser, not by Claude Desktop. In-tree argv[0]
+	# alone must not be enough to match; the --type= half is what keeps
+	# this one out. Captured live from an rpm install.
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/claude-desktop-unofficial/resources/chrome-native-host chrome-extension://fcoeoabgfenejglbffodgkkbkcdhcgfn/"
 	[[ $status -ne 0 ]]
 }
 
