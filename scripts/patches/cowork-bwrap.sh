@@ -53,6 +53,28 @@
 # backtick template (#820).
 _CB_Q='[`"'"'"']'
 
+# C1's anchor shape. Read it as: the function head, then our own marker
+# if a previous run left one, then up to 80 brace-free bytes of upstream
+# prelude, then the yukonSilver destructure and its `return`.
+#
+# The node stage's `dlRe` spells the same shape a second time — it is a
+# heredoc, so it cannot read these. The two must stay in step or the
+# resolver picks a file the patch regex then declines to match; the
+# cowork C1 tests in tests/patch-anchors.bats drive both through one
+# call and are what actually pins them together.
+#
+# The prelude allowance is what 1.37937.1 needed — upstream inserted an
+# `await X();` between the opening brace and the destructure, and the
+# old anchor required them to be adjacent. `[^{}]` is deliberately
+# brace-fenced rather than `.`: it cannot cross a nested block or leave
+# the function body, so the 80-byte budget buys a couple of simple
+# statements and nothing structural. It also absorbs `;` inside a
+# template literal, which a statement-counting `(?:[^{};]*;){0,2}` would
+# split on.
+_CB_C1_MARKER='(?:/\*cowork-bwrap-dl\*/[^;]*;)?'
+_CB_C1_PRELUDE='[^{}]{0,80}'
+_CB_C1_TAIL='(?:const|let)\{yukonSilver:[\w$]+\}=[\w$]+(?:\.[\w$]+)*\(\);return'
+
 patch_cowork_bwrap() {
 	echo 'Patching Cowork bwrap fallback (opt-in COWORK_VM_BACKEND=bwrap)...'
 
@@ -67,7 +89,7 @@ patch_cowork_bwrap() {
 	b_js=$(_resolve_anchor_file 'cowork B (helper socket argv)' \
 		"${_CB_Q}-socket${_CB_Q}") || return 1
 	c1_js=$(_resolve_anchor_file 'cowork C1 (foreground download)' \
-		'async function\s+[\w$]+\([\w$]+,[\w$]+\)\{(?:/\*cowork-bwrap-dl\*/[^;]*;)?(?:const|let)\{yukonSilver:') \
+		"async function\s+[\w\$]+\([\w\$]+,[\w\$]+\)\{${_CB_C1_MARKER}${_CB_C1_PRELUDE}${_CB_C1_TAIL}") \
 		|| return 1
 
 	# C2 is best-effort and its anchor is absent from 1.26832.0, so an
@@ -228,6 +250,15 @@ if (codeB.includes('/*cowork-bwrap-spawn*/')) {
 //               return(A==null?void 0:A.status)!=="supported"?!1:...
 //   1.26832.0:  async function ut(e,n){let{yukonSilver:r}=p.n();
 //               return r?.status===`supported`?(...)
+//   1.37937.1:  async function QH(e,t){await nB();let{yukonSilver:r}=iB();
+//               return r?.status===`supported`&&(...)
+//
+// 1.37937.1 inserted a statement between the opening brace and the
+// destructure, which the old adjacency requirement rejected outright —
+// the whole build went red on that one anchor for four upstream bumps.
+// The prelude allowance is spelled once more in `_CB_C1_PRELUDE` on the
+// shell side, for the file resolver; keep the two in step. See that
+// comment for why it is brace-fenced rather than `.`-based.
 //
 // The status guard INVERTED between those releases (a !== early-false
 // became a === proceed), so the anchor deliberately stops at the
@@ -240,14 +271,23 @@ if (codeB.includes('/*cowork-bwrap-spawn*/')) {
 // The destructure initialiser is a plain call (`=sM()`) on 1.24012.11
 // and a module-binding call (`=p.n()`) on 1.26832.0, so the callee
 // tolerates a property chain.
-const dlRe = new RegExp(
+const dlSrc =
     String.raw`(async function\s+[\w$]+\([\w$]+,[\w$]+\)\{)` +
-    String.raw`((?:const|let)\{yukonSilver:[\w$]+\}=` +
-    String.raw`[\w$]+(?:\.[\w$]+)*\(\);return)`);
+    String.raw`([^{}]{0,80}(?:const|let)\{yukonSilver:[\w$]+\}=` +
+    String.raw`[\w$]+(?:\.[\w$]+)*\(\);return)`;
+const dlRe = new RegExp(dlSrc);
 let codeC1 = load(c1Js);
+// The prelude allowance widened this pattern, so assert it still binds
+// exactly one function rather than trusting `replace()`'s first match.
+// A second same-shaped call site is upstream growing a consumer we have
+// not reasoned about, which is a warn-and-skip, not a coin flip.
+const dlAll = [...codeC1.matchAll(new RegExp(dlSrc, 'g'))];
 if (codeC1.includes('/*cowork-bwrap-dl*/')) {
     console.log('  C1: foreground download block already applied');
-} else if (dlRe.test(codeC1)) {
+} else if (dlAll.length > 1) {
+    console.log('  C1: WARNING — foreground download anchor matched ' +
+        dlAll.length + ' sites; refusing to guess. Re-derive the anchor.');
+} else if (dlAll.length === 1) {
     save(c1Js, codeC1.replace(dlRe,
         '$1/*cowork-bwrap-dl*/if(' + GATE + ')return!1;$2'));
     console.log('  C1: blocked foreground VM download when flagged');
