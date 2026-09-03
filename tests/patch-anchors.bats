@@ -318,3 +318,25 @@ $dup"
 	run grep -qF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
 	[[ $status -ne 0 ]]
 }
+
+@test "cowork C1: binds downloadVM when startVM shares the chunk" {
+	# 1.40609.1+ ships downloadVM and startVM in the same chunk, and the
+	# two open identically: same async head, same helper-call status
+	# check. The only token that tells them apart is the
+	# `[downloadVM] Download already in progress` log literal dlSrc ends
+	# on. The shell-side resolver pins that literal via _CB_C1_TAIL, but
+	# nothing above exercises the node-side dlRe against a same-headed
+	# neighbour: drop the literal terminus from dlSrc and dlRe binds
+	# both, the exactly-1 guard warns and skips, and the build stays
+	# green with no gate installed.
+	local start_vm='async function aU(e,t){return await wB(),EB().status==="supported"&&(J.warn("[startVM] no"),!1)}'
+	_chunk 'index.chunk-test.js' "$CB_NEW
+$start_vm"
+	run patch_cowork_bwrap
+	[[ $status -eq 0 ]]
+	[[ $output != *'C1: WARNING'* ]]
+	grep -qF 'async function YU(e,t){/*cowork-bwrap-dl*/' \
+		"$BUILD/index.chunk-test.js"
+	run grep -cF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
+	[[ $output == '1' ]]
+}
