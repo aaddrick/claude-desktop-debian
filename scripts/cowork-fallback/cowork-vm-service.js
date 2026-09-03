@@ -748,9 +748,17 @@ function validateMountPath(mountPath, opts) {
     }
 
     if (opts.readWrite) {
+        // Compare against both the configured $HOME and its fully-resolved
+        // form. On immutable distros (Fedora Silverblue/Bazzite) /home is a
+        // symlink to /var/home: os.homedir() returns /home/<user> while
+        // realpathSync() on the candidate path returns /var/home/<user>/...,
+        // so a single-form comparison rejects every path under home.
         const home = os.homedir();
+        let realHome = home;
+        try { realHome = fs.realpathSync(home); } catch (_) {}
         const check = resolved !== normalized ? resolved : normalized;
-        if (check !== home && !check.startsWith(home + '/')) {
+        const underHome = (h) => check === h || check.startsWith(h + '/');
+        if (!underHome(home) && !underHome(realHome)) {
             return { valid: false, reason: 'Read-write mounts must be under $HOME' };
         }
     }
@@ -886,19 +894,20 @@ function mergeBwrapArgs(defaultArgs, config) {
         }
     }
 
+    // Pre-create each destination's parent inside the empty tmpfs root.
+    // --dir on the parent (not the destination itself) creates all missing
+    // intermediate directories without colliding with single-file binds.
     for (const m of config.additionalROBinds) {
-        if (typeof m === 'string') {
-            result.push('--ro-bind', m, m);
-        } else {
-            result.push('--ro-bind', m.src, m.dst);
-        }
+        const src = typeof m === 'string' ? m : m.src;
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', path.dirname(dst));
+        result.push('--ro-bind', src, dst);
     }
     for (const m of config.additionalBinds) {
-        if (typeof m === 'string') {
-            result.push('--bind', m, m);
-        } else {
-            result.push('--bind', m.src, m.dst);
-        }
+        const src = typeof m === 'string' ? m : m.src;
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', path.dirname(dst));
+        result.push('--bind', src, dst);
     }
 
     return result;
