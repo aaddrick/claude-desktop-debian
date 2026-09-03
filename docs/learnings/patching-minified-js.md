@@ -361,6 +361,53 @@ suite needs. Two traps the census surfaced:
   destructure, then injects ahead of upstream's check, which is correct
   under either polarity because it never has to agree with one.
 
+### Adjacency is an assumption too
+
+Stopping the anchor early leaves it holding one last unstated
+assumption: that the tokens it *does* span stay next to each other.
+1.37937.1 broke C1 again on exactly that. Same function, same
+destructure, same `return` — upstream inserted one statement in front:
+
+```js
+1.26832.0:  async function ut(e,n){let{yukonSilver:r}=p.n();return …
+1.37937.1:  async function QH(e,t){await nB();let{yukonSilver:r}=iB();return …
+```
+
+The anchor required the destructure to sit immediately after the opening
+brace, so it went to zero matches and `_resolve_anchor_file` failed the
+build — through four upstream bumps (1.37937.1, 1.37937.3, 1.40609.0,
+1.40609.1) in which no release shipped. Worth noting how it read: an
+anchor that *lost a feature* and an anchor that *gained a statement*
+produce the same "matched no file" line, and the second is by far the
+likelier of the two.
+
+Leave a bounded prelude between the tokens you span, and fence it on
+braces rather than on `.`:
+
+```
+async function\s+[\w$]+\([\w$]+,[\w$]+\)\{ [^{}]{0,80} (?:const|let)\{yukonSilver:…
+```
+
+`[^{}]` cannot cross a nested block or leave the function body, so the
+budget buys a couple of simple statements and nothing structural — where
+`.{0,80}` would happily reach past an `if(e){t()}` and gate a function
+whose head is 80 bytes from an unrelated destructure. It also absorbs a
+`;` inside a template literal, which a statement-counting
+`(?:[^{};]*;){0,2}` splits on.
+
+Loosening buys back the match at the cost of the uniqueness the tight
+version got for free, so pay for it in two places at once:
+
+- **Keep a discriminator past the loosened joint.** C1's is the
+  `();return` tail. `startVM` in the same chunk opens identically and
+  destructures the same property, and is told apart only by continuing
+  into `if(` instead of `return`. Drop the tail and the gate installs on
+  the wrong function.
+- **Assert exactly one match.** `replace()` silently takes the first.
+  The count assertion is what turns a future second call site into a
+  named warning instead of a coin flip — the same guard patches A and B
+  already carried.
+
 ### A resolution anchor must survive its own patch
 
 Once a patch resolves its own file, the anchor acquires a second job it
