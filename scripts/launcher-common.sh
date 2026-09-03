@@ -488,36 +488,31 @@ _desktop_helper_cmdline_matches() {
 	local cmdline="$1"
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
 
-	case "$cmdline" in
-		*cowork-vm-service.js*)
-			return 0
-			;;
+	# /proc/PID/cmdline is NUL-joined and rendered with tr, so argv[0] is
+	# everything up to the first space. Every arm that identifies a
+	# process by the *binary it is running* tests argv[0], never the whole
+	# string: a bystander that merely names one of our binaries as an
+	# argument -- `gdb .../chrome_crashpad_handler core`, `coredumpctl
+	# gdb`, an editor, a `less` -- must not land in the reaper's kill
+	# list. That scenario is not hypothetical: this reaper's own bug
+	# leaves crashpad cores lying around to be debugged.
+	#
+	# Argv[0] carrying a space degrades to a miss, never a false match.
+	# Our install prefixes and the AppImage mount point have none.
+	local argv0="${cmdline%% *}"
+
+	case "$argv0" in
 		*cowork-linux-helper*)
 			# Official Rust Cowork helper, spawned via
-			# process.resourcesPath (relocation-safe, so no fixed path).
-			return 0
-			;;
-		*"--user-data-dir=$config_dir "*)
-			return 0
-			;;
-		*"$config_dir/Claude Extensions/"*)
-			return 0
-			;;
-		*/usr/lib/claude-desktop/*--type=*)
-			return 0
-			;;
-		*/usr/lib/claude-desktop-unofficial/*--type=*)
-			# Phase 3 package rename, landing in v3.0.0: our package
-			# installs to /usr/lib/claude-desktop-unofficial while the
-			# official arm above keeps matching Anthropic's install
-			# (and the AppImage internal tree).
+			# process.resourcesPath (relocation-safe, so no
+			# fixed path).
 			return 0
 			;;
 		*/usr/lib/claude-desktop/*chrome_crashpad_handler*|\
 		*/usr/lib/claude-desktop-unofficial/*chrome_crashpad_handler*)
 			# Crashpad is built to outlive the browser it
-			# monitors, so it is the survivor the --type= arms
-			# above cannot catch: it is spawned with
+			# monitors, so it is the survivor the --type= arm
+			# below cannot catch: it is spawned with
 			# --monitor-self-annotation=ptype=crashpad-handler
 			# and carries no --type= switch at all.
 			#
@@ -531,6 +526,40 @@ _desktop_helper_cmdline_matches() {
 			# The path prefix keeps this scoped to our tree: a
 			# bystander /usr/lib/chromium/chrome_crashpad_handler
 			# must not match.
+			return 0
+			;;
+	esac
+
+	# Chromium's own helpers: an in-tree argv[0] *and* a --type=
+	# switch. Both halves are load-bearing -- the tree alone would
+	# also match resources/chrome-native-host, which Chrome (not
+	# Claude Desktop) spawns and owns the lifetime of.
+	#
+	# The claude-desktop-unofficial prefix is our package, renamed in
+	# v3.0.0; the claude-desktop one keeps matching Anthropic's own
+	# install and the AppImage internal tree.
+	case "$argv0" in
+		*/usr/lib/claude-desktop/*|\
+		*/usr/lib/claude-desktop-unofficial/*)
+			case "$cmdline" in
+				*--type=*)
+					return 0
+					;;
+			esac
+			;;
+	esac
+
+	# Argument-shaped arms: these identify a helper by what it was
+	# handed, not by which binary runs it (argv[0] here is node, or
+	# the Electron main). They stay whole-cmdline by necessity.
+	case "$cmdline" in
+		*cowork-vm-service.js*)
+			return 0
+			;;
+		*"--user-data-dir=$config_dir "*)
+			return 0
+			;;
+		*"$config_dir/Claude Extensions/"*)
 			return 0
 			;;
 	esac
