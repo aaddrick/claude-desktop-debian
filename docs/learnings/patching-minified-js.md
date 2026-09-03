@@ -242,11 +242,13 @@ in v3.0.0, lessons stand):
   The rewrite anchors on `"pop-up-menu"` (`quick-window.sh:17`), the
   `isWindowFocused` property name (`quick-window.sh:60`), and the
   `[QuickEntry]` log strings (`quick-window.sh:88-91`).
-- **Cowork spawn (PR #436).** Anchored on `,VAR.mountConda)`
-  (`cowork.sh:741`) — unique to the 12-arg call path, absent from the
-  10-arg one-shot. Asserts match count is exactly 1 and bails
-  otherwise (`cowork.sh:744`), so a future second caller surfaces
-  immediately.
+- **Cowork spawn (PR #436).** Anchored on the VM spawn mount field
+  (`mountSkeletonHome` on newer upstream, `mountConda` on older
+  upstream) near the end of the full call path, preserving later
+  arguments such as the OAuth token. The receiving `spawn()` method is
+  anchored separately on the stable `"spawn"` IPC method and its
+  payload object. Asserts match count is exactly 1 and bails otherwise,
+  so a future second caller surfaces immediately.
 - **Tray (PR #515).** `tray.sh:16` uses the literal `"menuBarEnabled"`
   as a *position anchor*, then captures the surrounding minified
   identifier (`\K\w+(?=\(\)\})`) as the actual patch target. Two

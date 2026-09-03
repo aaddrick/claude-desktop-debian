@@ -349,6 +349,59 @@ if (!code.includes('"linux":{') && !code.includes("'linux':{") &&
     }
 }
 
+
+// ============================================================
+// Patch 4c: Treat YukonSilver as supported on Linux
+// Newer upstream gates VM download/start/cleanup on yukonSilver even
+// after the older platform gate is patched. Without this, Linux logs:
+//   [cleanupVMBundleIfUnsupported] yukonSilver not supported ...
+// and deletes the VM bundle before the local daemon can start.
+// ============================================================
+{
+    const supported = '{status:"supported"}';
+    const featureRe =
+        /yukonSilver:([\w$]+)\(\),yukonSilverGems:([\w$]+)\(\),yukonSilverGemsCache:\2\(\)/;
+    const featureMatch = code.match(featureRe);
+    if (featureMatch) {
+        const [whole, baseFn, gemsFn] = featureMatch;
+        const replacement =
+            'yukonSilver:process.platform==="linux"?' + supported + ':' +
+            baseFn + '(),yukonSilverGems:process.platform==="linux"?' +
+            supported + ':' + gemsFn + '(),yukonSilverGemsCache:' +
+            'process.platform==="linux"?' + supported + ':' + gemsFn + '()';
+        code = code.replace(whole, replacement);
+        console.log('  Patched YukonSilver feature gate for Linux');
+        patchCount++;
+    } else if (code.includes(
+        'yukonSilver:process.platform==="linux"?{status:"supported"}'
+    )) {
+        console.log('  YukonSilver Linux feature gate already patched');
+    } else {
+        console.log('  WARNING: Could not find YukonSilver feature gate');
+    }
+
+    const cleanupRe =
+        /async function ([\w$]+)\(\)\{try\{const\{yukonSilver:([\w$]+)\}=await ([\w$]+)\(\);if\(!\2\|\|\2\.status==="supported"\)return;/;
+    const cleanupMatch = code.match(cleanupRe);
+    if (cleanupMatch && !cleanupMatch[0].includes('process.platform')) {
+        const [whole, fnName, featureVar, featuresFn] = cleanupMatch;
+        const replacement = 'async function ' + fnName +
+            '(){try{if(process.platform==="linux")return;' +
+            'const{yukonSilver:' + featureVar + '}=await ' +
+            featuresFn + '();if(!' + featureVar + '||' + featureVar +
+            '.status==="supported")return;';
+        code = code.replace(whole, replacement);
+        console.log('  Patched unsupported-VM cleanup to skip Linux');
+        patchCount++;
+    } else if (code.includes(
+        'try{if(process.platform==="linux")return;const{yukonSilver:'
+    )) {
+        console.log('  Unsupported-VM cleanup already skips Linux');
+    } else {
+        console.log('  WARNING: Could not find unsupported-VM cleanup gate');
+    }
+}
+
 // ============================================================
 // Patch 5: MSIX check bypass for Linux
 // The fz() function checks: if(t==="win32"&&!ga()) for MSIX
@@ -531,7 +584,41 @@ if (serviceErrorIdx !== -1) {
             console.log('  Reinstall delete list already includes VM images');
         }
     } else {
-        console.log('  WARNING: Could not find reinstall file list array');
+        // Newer upstream derives the list from the bundle manifest:
+        // function FN(){const A=FILES().flatMap(e=>[e.name,
+        // `.${e.name}.origin`]);return ... ,A}
+        if (code.includes(
+            '"sessiondata.img","rootfs.img.zst"'
+        )) {
+            console.log('  Generated reinstall delete list already extended');
+        } else {
+            const generatedRe =
+                /function ([\w$]+)\(\)\{const ([\w$]+)=([\w$]+)\(\)\.flatMap\(([\w$]+)=>\[\4\.name,`\.\$\{\4\.name\}\.origin`\]\);return ([^{}]*?),\2\}/;
+            const generatedMatch = code.match(generatedRe);
+            if (generatedMatch) {
+                const [
+                    whole, fnName, listVar, filesFn, itemVar, returnPrefix
+                ] = generatedMatch;
+                const recoveryFiles =
+                    '["rootfs.img",".rootfs.img.origin",' +
+                    '"sessiondata.img","rootfs.img.zst",' +
+                    '".rootfs.img.zst.origin"]';
+                const additions = listVar + '.push(...' + recoveryFiles +
+                    '.filter(e=>!' + listVar + '.includes(e))),';
+                const replacement = 'function ' + fnName + '(){const ' +
+                    listVar + '=' + filesFn + '().flatMap(' + itemVar +
+                    '=>[' + itemVar + '.name,`.${' + itemVar +
+                    '.name}.origin`]);return ' + additions + returnPrefix +
+                    ',' + listVar + '}';
+                code = code.replace(whole, replacement);
+                console.log('  Extended generated reinstall delete list');
+                patchCount++;
+            } else {
+                console.log(
+                    '  WARNING: Could not find reinstall file list array'
+                );
+            }
+        }
     }
 }
 
@@ -558,39 +645,53 @@ if (serviceErrorIdx !== -1) {
 // rootfs-download path is ever re-enabled on Linux.
 // ============================================================
 {
-    // Find: MKDTEMP(PATH.join(OS.tmpdir(), "wvm-"))
-    // The bundle dir var is used in mkdir(VAR, ...) just before
-    const mkdtempRe = /([\w$]+)\.mkdtemp\(\s*([\w$]+)\.join\(\s*([\w$]+)\.tmpdir\(\)\s*,\s*"wvm-"\s*\)\s*\)/;
-    const mkdtempMatch = code.match(mkdtempRe);
-    if (mkdtempMatch) {
-        const [fullMatch, fsVar, pathVar, osVar] = mkdtempMatch;
-        // Find the bundle dir variable: mkdir(VAR, { recursive before wvm-
-        const mkdtempIdx = code.indexOf(fullMatch);
-        const searchStart = Math.max(0, mkdtempIdx - 2000);
-        const before = code.substring(searchStart, mkdtempIdx);
-        // Look for: mkdir(VARNAME, { recursive
-        const mkdirRe = /([\w$]+)\.mkdir\(\s*([\w$]+)\s*,\s*\{\s*recursive/g;
-        let bundleVar = null;
-        let lastMkdir;
-        while ((lastMkdir = mkdirRe.exec(before)) !== null) {
-            bundleVar = lastMkdir[2];
-        }
-        if (bundleVar) {
-            // Replace os.tmpdir() with the bundle dir variable
-            // On Linux, use the bundle dir; on other platforms keep tmpdir
-            const replacement =
-                `${fsVar}.mkdtemp(${pathVar}.join(` +
-                `process.platform==="linux"?${bundleVar}:${osVar}.tmpdir(),` +
-                `"wvm-"))`;
-            code = code.substring(0, mkdtempIdx) + replacement +
-                code.substring(mkdtempIdx + fullMatch.length);
-            console.log('  Patched VM download temp dir to use bundle path on Linux');
-            patchCount++;
-        } else {
-            console.log('  WARNING: Could not find bundle dir variable for tmpdir patch');
-        }
+    const bundleTmpRe =
+        /[,\s]([\w$]+)="\.wvm-tmp-"[\s\S]{0,30000}?[\w$]+\.mkdtemp\(\s*[\w$]+\.join\(\s*[\w$]+\s*,\s*\1\s*\)\s*\)/;
+    if (bundleTmpRe.test(code)) {
+        console.log('  VM download temp dir already uses bundle path');
     } else {
-        console.log('  WARNING: Could not find mkdtemp("wvm-") for tmpdir patch');
+        // Find: MKDTEMP(PATH.join(OS.tmpdir(), "wvm-"))
+        // The bundle dir var is used in mkdir(VAR, ...) just before
+        const mkdtempRe = /([\w$]+)\.mkdtemp\(\s*([\w$]+)\.join\(\s*([\w$]+)\.tmpdir\(\)\s*,\s*"wvm-"\s*\)\s*\)/;
+        const mkdtempMatch = code.match(mkdtempRe);
+        if (mkdtempMatch) {
+            const [fullMatch, fsVar, pathVar, osVar] = mkdtempMatch;
+            // Find the bundle dir variable: mkdir(VAR, { recursive before wvm-
+            const mkdtempIdx = code.indexOf(fullMatch);
+            const searchStart = Math.max(0, mkdtempIdx - 2000);
+            const before = code.substring(searchStart, mkdtempIdx);
+            // Look for: mkdir(VARNAME, { recursive
+            const mkdirRe =
+                /([\w$]+)\.mkdir\(\s*([\w$]+)\s*,\s*\{\s*recursive/g;
+            let bundleVar = null;
+            let lastMkdir;
+            while ((lastMkdir = mkdirRe.exec(before)) !== null) {
+                bundleVar = lastMkdir[2];
+            }
+            if (bundleVar) {
+                // Replace os.tmpdir() with the bundle dir variable
+                // On Linux, use the bundle dir; on other platforms keep tmpdir
+                const replacement =
+                    `${fsVar}.mkdtemp(${pathVar}.join(` +
+                    `process.platform==="linux"?${bundleVar}:` +
+                    `${osVar}.tmpdir(),"wvm-"))`;
+                code = code.substring(0, mkdtempIdx) + replacement +
+                    code.substring(mkdtempIdx + fullMatch.length);
+                console.log(
+                    '  Patched VM download temp dir to use bundle path on Linux'
+                );
+                patchCount++;
+            } else {
+                console.log(
+                    '  WARNING: Could not find bundle dir variable' +
+                    ' for tmpdir patch'
+                );
+            }
+        } else {
+            console.log(
+                '  WARNING: Could not find mkdtemp("wvm-") for tmpdir patch'
+            );
+        }
     }
 }
 

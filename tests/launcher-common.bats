@@ -951,6 +951,34 @@ s.close()
 	[[ $status -ne 0 ]]
 }
 
+@test "cleanup_replaced_desktop_ui: kills UI with deleted executable" {
+	local stale_bin="$TEST_TMP/claude-bash"
+	local block_fifo="$TEST_TMP/block"
+	local stale_pid
+
+	mkfifo "$block_fifo"
+	cp /bin/bash "$stale_bin"
+	# shellcheck disable=SC2016  # inner shell expands $1
+	"$stale_bin" -c 'read -r _ < "$1"' \
+		claude-test "$block_fifo" --class=com.anthropic.Claude &
+	stale_pid=$!
+	sleep 0.1
+	rm "$stale_bin"
+
+	readlink -f "/proc/$stale_pid/exe" | grep -q ' (deleted)$'
+
+	setup_logging
+	run cleanup_replaced_desktop_ui
+
+	[[ $status -eq 0 ]]
+	run timeout 2 bash -c \
+		"while kill -0 '$stale_pid' 2>/dev/null; do sleep 0.1; done"
+	[[ $status -eq 0 ]]
+	run kill -0 "$stale_pid"
+	[[ $status -ne 0 ]]
+	grep -q 'Killed replaced Claude Desktop UI' "$log_file"
+}
+
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
 	local marker="$TEST_TMP/cleanup-ran"
 	local electron="$TEST_TMP/electron"

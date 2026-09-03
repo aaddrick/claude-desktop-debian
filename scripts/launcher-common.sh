@@ -422,7 +422,7 @@ _claude_desktop_ui_cmdline_matches() {
 # _claude_desktop_ui_cmdline_matches) and is actually runnable (not
 # stopped/zombie), excluding our own launcher bash and its parent.
 _claude_desktop_ui_is_alive() {
-	local pid cmdline state
+	local pid cmdline state _key _rest
 	for pid in \
 		$(pgrep -u "$(id -u)" -f -- "--class=$WM_CLASS" 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
@@ -431,13 +431,71 @@ _claude_desktop_ui_is_alive() {
 			|| continue
 		_claude_desktop_ui_cmdline_matches "$cmdline" || continue
 		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
-		state=$(awk '/^State:/ {print $2; exit}' \
-			"/proc/$pid/status" 2>/dev/null) || continue
+		state=''
+		while read -r _key state _rest; do
+			[[ $_key == 'State:' ]] && break
+		done < "/proc/$pid/status" 2>/dev/null || continue
+		[[ -n ${state:-} ]] || continue
 		[[ $state == T || $state == t || $state == Z ]] && continue
 		# Found a genuine live Electron UI.
 		return 0
 	done
 	return 1
+}
+
+_claude_desktop_ui_is_replaced() {
+	local pid="$1"
+	local exe_path
+
+	exe_path=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || return 1
+	[[ $exe_path == *' (deleted)' ]]
+}
+
+# Terminate a live Claude Desktop UI whose executable was replaced
+# underneath it by dpkg/rpm. If left alive, the next launcher loses
+# Electron's single-instance lock to the old process and appears to
+# do nothing instead of starting the newly-installed build.
+cleanup_replaced_desktop_ui() {
+	local pids=() pid cmdline
+	for pid in \
+		$(pgrep -u "$(id -u)" -f -- "--class=$WM_CLASS" 2>/dev/null); do
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
+		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
+			|| continue
+		_claude_desktop_ui_cmdline_matches "$cmdline" || continue
+		_claude_desktop_ui_is_replaced "$pid" || continue
+		pids+=("$pid")
+	done
+
+	[[ ${#pids[@]} -gt 0 ]] || return 0
+
+	for pid in "${pids[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+
+	local wait_count=0 alive
+	while ((wait_count < 20)); do
+		alive=false
+		for pid in "${pids[@]}"; do
+			if kill -0 "$pid" 2>/dev/null; then
+				alive=true
+				break
+			fi
+		done
+		[[ $alive == false ]] && break
+		sleep 0.1
+		wait_count=$((wait_count + 1))
+	done
+
+	if [[ $alive == true ]]; then
+		for pid in "${pids[@]}"; do
+			kill -KILL "$pid" 2>/dev/null || true
+		done
+		log_message \
+			"Killed replaced Claude Desktop UI (SIGKILL, PIDs: ${pids[*]})"
+	else
+		log_message "Killed replaced Claude Desktop UI (PIDs: ${pids[*]})"
+	fi
 }
 
 # Kill orphaned cowork-vm-service daemon processes.

@@ -91,13 +91,20 @@ even after rolling back the AppImage to a known-good version.
 
 ### Fix (extend delete list — Patch 6b)
 
-`scripts/patches/cowork.sh` now matches the `const NAME=["rootfs.img",...]` array at
-module level and appends `"sessiondata.img"` and `"rootfs.img.zst"` if
-they're not already present. The auto-reinstall path now wipes these
-too. Trade-off: the next successful startup re-downloads/re-extracts
-these files. Acceptable because auto-reinstall only runs after startup
-has already failed — biasing toward recovery over re-download
-avoidance is correct.
+`scripts/patches/cowork.sh` supports both upstream delete-list shapes:
+the older `const NAME=["rootfs.img",...]` array and the newer generated
+list returned by `deleteVMBundle()`. It ensures the list includes
+`rootfs.img`, its origin marker, `sessiondata.img`, `rootfs.img.zst`,
+and the compressed-cache origin marker. The auto-reinstall path now
+wipes these too. Trade-off: the next successful startup
+re-downloads/re-extracts these files. Acceptable because
+auto-reinstall only runs after startup has already failed — biasing
+toward recovery over re-download avoidance is correct.
+
+As of upstream `1.12603.1`, VM downloads create `.wvm-tmp-*` directly
+under the bundle directory. Patch 8 detects that shape and reports it
+as already fixed instead of warning that the older
+`mkdtemp(join(tmpdir(), "wvm-"))` anchor is missing.
 
 Not included in the delete list: `~/.config/Claude/claude-code-vm/`.
 That's CLI-binary storage (`2.1.x/claude`), unrelated to the VM

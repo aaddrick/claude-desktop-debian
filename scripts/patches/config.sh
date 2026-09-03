@@ -183,3 +183,198 @@ console.log('  [OK] config-write wipe guard injected before config write');
 
 	echo '##############################################################'
 }
+
+patch_asar_trusted_folder_guard() {
+	echo 'Patching addTrustedFolder to reject .asar paths...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	# Idempotency guard
+	if grep -qF 'endsWith(".asar"))return' "$index_js"; then
+		echo '  .asar guard already present (idempotent)'
+		echo '##############################################################'
+		return
+	fi
+
+	if ! node << 'ASAR_TRUSTED_FOLDER_PATCH'
+const fs = require('fs');
+const p = 'app.asar.contents/.vite/build/index.js';
+let code = fs.readFileSync(p, 'utf8');
+
+// Intent: async addTrustedFolder(PARAM){...
+// LocalAgentModeSessions.addTrustedFolder: ${PARAM}
+const headerRe =
+  /async\s+addTrustedFolder\s*\(\s*([$\w]+)\s*\)\s*\{\s*(?=[^{}]{0,300}LocalAgentModeSessions\.addTrustedFolder:\s*\$\{\1\})/;
+const match = code.match(headerRe);
+if (!match) {
+  console.error('  [FAIL] addTrustedFolder method anchor not found');
+  process.exit(1);
+}
+
+const allMatches = code.match(new RegExp(headerRe.source, 'g'));
+if (allMatches && allMatches.length > 1) {
+  console.error('  [FAIL] addTrustedFolder method anchor matched ' +
+    allMatches.length + ' times');
+  process.exit(1);
+}
+
+const F = match[1];
+console.log('  Found folder parameter: ' + F);
+const guard = 'if(' + F + '.endsWith(".asar"))return;';
+code = code.replace(match[0], match[0] + guard);
+fs.writeFileSync(p, code);
+console.log('  [OK] .asar guard injected in addTrustedFolder');
+ASAR_TRUSTED_FOLDER_PATCH
+	then
+		echo 'Failed to inject .asar trusted folder guard' >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+
+	echo '##############################################################'
+}
+
+# ---------------------------------------------------------------------------
+# Patch: filter .asar paths from --add-dir CLI dispatch and session restore
+#
+# PR #640 guards the directory-check helper and addTrustedFolder IPC
+# handler, but .asar paths in corrupted pre-#640 sessions survive
+# restore (existsSync passes via Electron's ASAR VFS shim) and reach
+# additionalDirectories -> --add-dir -> fatal Claude Code error.
+#
+# Fix: two sub-patches:
+#   1. Filter at the --add-dir CLI dispatch loop (the single convergence
+#      point for ALL code paths that feed additionalDirectories).
+#   2. Filter at session restore to self-heal corrupted persisted state.
+# ---------------------------------------------------------------------------
+patch_asar_additional_dirs_guard() {
+	echo 'Patching --add-dir dispatch to reject .asar paths (#649)...'
+	local index_js='app.asar.contents/.vite/build/index.js'
+
+	if ! INDEX_JS="$index_js" node << 'ASAR_ADDDIR_PATCH'
+const fs = require('fs');
+const indexJs = process.env.INDEX_JS;
+let code = fs.readFileSync(indexJs, 'utf8');
+let patchCount = 0;
+let dispatchPatchCount = 0;
+let dispatchAlreadyPresent = code.includes(
+    '.filter(_d=>!_d.endsWith(".asar"))'
+);
+
+// ================================================================
+// Sub-patch 1: Filter .asar from --add-dir loop
+//
+// Targets (one or more occurrences):
+//   for (let O of A) Y.push("--add-dir", O);
+// Fallback (if minifier uses .forEach):
+//   A.forEach(O=>Y.push("--add-dir",O))
+// ================================================================
+{
+    // Primary: for...of pattern
+    const forOfRe = /for\s*\(\s*let\s+([\w$]+)\s+of\s+([\w$]+)\s*\)\s*([\w$]+)\.push\(\s*"--add-dir"\s*,\s*\1\s*\)/g;
+    // Fallback: .forEach pattern
+    const forEachRe = /([\w$]+)\.forEach\(\s*([\w$]+)\s*=>\s*([\w$]+)\.push\(\s*"--add-dir"\s*,\s*\2\s*\)\s*\)/g;
+
+    let forOfCount = 0;
+    let forEachCount = 0;
+    code = code.replace(forOfRe, (match, iterVar, arrVar, pushTarget) => {
+        forOfCount++;
+        dispatchPatchCount++;
+        patchCount++;
+        return 'for(let ' + iterVar + ' of ' + arrVar +
+            '.filter(_d=>!_d.endsWith(".asar")))' +
+            pushTarget + '.push("--add-dir",' + iterVar + ')';
+    });
+    code = code.replace(forEachRe, (match, arrVar, iterVar, pushTarget) => {
+        forEachCount++;
+        dispatchPatchCount++;
+        patchCount++;
+        return arrVar +
+            '.filter(_d=>!_d.endsWith(".asar")).forEach(' +
+            iterVar + '=>' + pushTarget +
+            '.push("--add-dir",' + iterVar + '))';
+    });
+
+    if (dispatchPatchCount === 0 && !dispatchAlreadyPresent) {
+        console.error('FATAL: --add-dir dispatch loop not found.');
+        console.error('  for(let X of Y) Z.push("--add-dir", X)');
+        console.error('  Y.forEach(X=>Z.push("--add-dir", X))');
+        process.exit(1);
+    }
+
+    if (dispatchPatchCount > 0) {
+        console.log('  Filtered ' + dispatchPatchCount +
+            ' --add-dir dispatch loop(s) (for-of=' + forOfCount +
+            ', forEach=' + forEachCount + ')');
+    } else {
+        console.log('  .asar --add-dir filter already present ' +
+            '(idempotent)');
+    }
+}
+
+// ================================================================
+// Sub-patch 2: Filter .asar from session restore
+//
+// Anchor: "Filtering out deleted folder from session" (unique)
+// Target: (VAR.userSelectedFolders||[]).filter(
+// Insert: .filter(l=>!l.endsWith(".asar")) before existing .filter(
+// ================================================================
+{
+    const warn = (msg) => console.log('  WARNING: ' + msg +
+        ' (primary --add-dir filter still protects)');
+
+    const anchorIdx = code.indexOf(
+        'Filtering out deleted folder from session');
+    if (anchorIdx === -1) {
+        warn('session restore anchor not found');
+    } else {
+        const searchStart = Math.max(0, anchorIdx - 500);
+        const region = code.substring(searchStart, anchorIdx);
+        const usIdx = region.lastIndexOf('userSelectedFolders');
+        if (usIdx === -1) {
+            warn('userSelectedFolders not found near anchor');
+        } else {
+            const absUsIdx = searchStart + usIdx;
+            const afterUs = code.substring(absUsIdx, anchorIdx);
+            const bracketMatch = afterUs.match(/\|\|\s*\[\s*\]\s*\)/);
+            if (!bracketMatch) {
+                warn('||[]) pattern not found');
+            } else {
+                const insertAt = absUsIdx + bracketMatch.index +
+                    bracketMatch[0].length;
+                const peek = code.substring(insertAt, insertAt + 20);
+                if (!peek.match(/^\s*\.filter\s*\(/)) {
+                    warn('.filter( not found after ||[])');
+                } else if (code.substring(
+                    insertAt - 50, insertAt + 50
+                ).includes('!l.endsWith(".asar")')) {
+                    console.log('  Session restore filter ' +
+                        'already present');
+                } else {
+                    code = code.substring(0, insertAt) +
+                        '.filter(l=>!l.endsWith(".asar"))' +
+                        code.substring(insertAt);
+                    console.log('  Injected .asar filter in ' +
+                        'session restore');
+                    patchCount++;
+                }
+            }
+        }
+    }
+}
+
+fs.writeFileSync(indexJs, code);
+console.log('  Applied ' + patchCount +
+    ' .asar additionalDirectories patch(es)');
+if (dispatchPatchCount < 1 && !dispatchAlreadyPresent) {
+    console.error('FATAL: --add-dir filter must succeed (#649).');
+    process.exit(1);
+}
+ASAR_ADDDIR_PATCH
+	then
+		echo 'FATAL: .asar --add-dir filter patch failed' >&2
+		echo 'Local agent mode will crash without this patch (#649).' >&2
+		exit 1
+	fi
+
+	echo '##############################################################'
+}
