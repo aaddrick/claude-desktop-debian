@@ -447,7 +447,7 @@ _proc_state() {
 			printf '%s' "$value"
 			return 0
 		fi
-	done < "/proc/$1/status" 2>/dev/null
+	done 2>/dev/null < "/proc/$1/status"
 	return 1
 }
 
@@ -503,10 +503,15 @@ _kill_pids_escalating() {
 # The kernel appends " (deleted)" to /proc/PID/exe once the binary
 # behind a running process is gone, which is exactly what dpkg/rpm do
 # when they upgrade a package while its UI is still running.
+#
+# Plain readlink, NOT readlink -f: -f canonicalizes, so it fails when
+# the install DIRECTORY is gone too (a package migration or layout
+# change, not just a file replace) and the replaced UI would be
+# silently missed. The raw link content carries the marker either way.
 _claude_desktop_ui_is_replaced() {
 	local exe_path
 
-	exe_path=$(readlink -f "/proc/$1/exe" 2>/dev/null) || return 1
+	exe_path=$(readlink "/proc/$1/exe" 2>/dev/null) || return 1
 	[[ $exe_path == *' (deleted)' ]]
 }
 
