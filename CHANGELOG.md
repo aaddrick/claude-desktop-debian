@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The launcher now terminates a Claude Desktop UI whose executable was replaced underneath it by a package upgrade, so the next launch starts the newly installed build instead of silently doing nothing. When dpkg/rpm replaces the Electron binary while an instance is running, the old process keeps its deleted executable and Electron's single-instance lock; the relaunch then loses the lock to the stale process and exits without a window or an error. `cleanup_replaced_desktop_ui` (deb, rpm, and AppImage launchers) matches a live UI on the `--class` fingerprint, requires the kernel's ` (deleted)` marker on `/proc/PID/exe` before touching anything, and escalates SIGTERM → SIGKILL only for those PIDs. Detection reads the marker with plain `readlink` rather than `readlink -f`, which fails when the install directory is gone too (a package migration or layout change, not just a same-layout file replace) and would silently miss the stale UI — pinned by a mutation-checked bats case that removes the whole install directory before the cleanup runs. Verified 121/121 on `launcher-common.bats` across Ubuntu 24.04/26.04, Debian 12/13, Fedora 42, openSUSE Leap 15.6, and Arch (bash 4.4→5.3, procps-ng 3.3.17→4.0.7).
+
 ## [v3.2.3] — 2026-09-03
 
 ### Fixed

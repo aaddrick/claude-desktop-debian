@@ -112,6 +112,7 @@ fi
 setup_logging || exit 1
 setup_electron_env
 
+cleanup_replaced_desktop_ui
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
