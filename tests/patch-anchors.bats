@@ -322,3 +322,23 @@ $dup"
 	run grep -qF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
 	[[ $status -ne 0 ]]
 }
+
+@test "cowork C1: binds downloadVM when startVM shares the chunk" {
+	# 1.40609.1 ships downloadVM and startVM in the same chunk, and the
+	# two open identically up to the destructure. The near-miss fixture
+	# above carries startVM alone, so it only exercises the shell-side
+	# file resolver; this one carries both, so the node-side dlRe has to
+	# pick downloadVM out on its own. Dropping the `\(\);return` tail
+	# from dlSrc makes dlRe bind both, and the exactly-1 guard then
+	# warns and skips — the build stays green with no gate installed.
+	local start_vm='async function aU(e,t){await nB();let{yukonSilver:r}=iB();if(r?.status!==`supported`){J.warn(`[startVM] no`);return}}'
+	_chunk 'index.chunk-test.js' "$CB_NEW
+$start_vm"
+	run patch_cowork_bwrap
+	[[ $status -eq 0 ]]
+	[[ $output != *'C1: WARNING'* ]]
+	grep -qF 'async function QH(e,t){/*cowork-bwrap-dl*/' \
+		"$BUILD/index.chunk-test.js"
+	run grep -cF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
+	[[ $output == '1' ]]
+}
