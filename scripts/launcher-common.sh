@@ -421,8 +421,11 @@ _claude_desktop_ui_cmdline_matches() {
 # is: a process whose cmdline carries our --class fingerprint (see
 # _claude_desktop_ui_cmdline_matches) and is actually runnable (not
 # stopped/zombie), excluding our own launcher bash and its parent.
-_claude_desktop_ui_is_alive() {
-	local pid cmdline state
+#
+# _claude_desktop_ui_pids prints the fingerprint-matching PIDs, one per
+# line; _claude_desktop_ui_is_alive adds the runnable check on top.
+_claude_desktop_ui_pids() {
+	local pid cmdline
 	for pid in \
 		$(pgrep -u "$(id -u)" -f -- "--class=$WM_CLASS" 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
@@ -430,14 +433,103 @@ _claude_desktop_ui_is_alive() {
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
 		_claude_desktop_ui_cmdline_matches "$cmdline" || continue
+		printf '%s\n' "$pid"
+	done
+}
+
+# Process state letter from /proc/PID/status (R, S, T, t, Z, ...).
+# Pure bash: the launchers run before any PATH sanity check, so this
+# stays independent of awk/grep availability.
+_proc_state() {
+	local key value rest
+	while read -r key value rest; do
+		if [[ $key == 'State:' ]]; then
+			printf '%s' "$value"
+			return 0
+		fi
+	done 2>/dev/null < "/proc/$1/status"
+	return 1
+}
+
+# Is a live (runnable) Claude Desktop UI running for this user?
+_claude_desktop_ui_is_alive() {
+	local pid state
+	for pid in $(_claude_desktop_ui_pids); do
 		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
-		state=$(awk '/^State:/ {print $2; exit}' \
-			"/proc/$pid/status" 2>/dev/null) || continue
+		state=$(_proc_state "$pid") || continue
 		[[ $state == T || $state == t || $state == Z ]] && continue
 		# Found a genuine live Electron UI.
 		return 0
 	done
 	return 1
+}
+
+# SIGTERM every PID, wait up to ~2s for all of them to go, then
+# escalate to SIGKILL for whatever is left.  Logs "$label (PIDs: ...)",
+# or "$label (SIGKILL, PIDs: ...)" when escalation was needed.
+_kill_pids_escalating() {
+	local label="$1"
+	shift
+	local pid alive=false waited=0
+
+	for pid in "$@"; do
+		kill "$pid" 2>/dev/null || true
+	done
+
+	while ((waited < 20)); do
+		alive=false
+		for pid in "$@"; do
+			if kill -0 "$pid" 2>/dev/null; then
+				alive=true
+				break
+			fi
+		done
+		[[ $alive == false ]] && break
+		sleep 0.1
+		((waited++))
+	done
+
+	if [[ $alive == true ]]; then
+		for pid in "$@"; do
+			kill -KILL "$pid" 2>/dev/null || true
+		done
+		log_message "$label (SIGKILL, PIDs: $*)"
+	else
+		log_message "$label (PIDs: $*)"
+	fi
+}
+
+# Was this process's executable replaced (unlinked) underneath it?
+# The kernel appends " (deleted)" to /proc/PID/exe once the binary
+# behind a running process is gone, which is exactly what dpkg/rpm do
+# when they upgrade a package while its UI is still running.
+#
+# Plain readlink, NOT readlink -f: -f canonicalizes, so it fails when
+# the install DIRECTORY is gone too (a package migration or layout
+# change, not just a file replace) and the replaced UI would be
+# silently missed. The raw link content carries the marker either way.
+_claude_desktop_ui_is_replaced() {
+	local exe_path
+
+	exe_path=$(readlink "/proc/$1/exe" 2>/dev/null) || return 1
+	[[ $exe_path == *' (deleted)' ]]
+}
+
+# Terminate a live Claude Desktop UI whose executable was replaced
+# underneath it by dpkg/rpm. If left alive, the next launcher loses
+# Electron's single-instance lock to the old process and appears to
+# do nothing instead of starting the newly-installed build.
+cleanup_replaced_desktop_ui() {
+	local pids=() pid
+	for pid in $(_claude_desktop_ui_pids); do
+		_claude_desktop_ui_is_replaced "$pid" || continue
+		pids+=("$pid")
+	done
+
+	[[ ${#pids[@]} -gt 0 ]] || return 0
+
+	_kill_pids_escalating 'Killed replaced Claude Desktop UI' \
+		"${pids[@]}"
 }
 
 # Kill orphaned cowork-vm-service daemon processes.
@@ -544,33 +636,8 @@ cleanup_stale_desktop_helpers() {
 
 	[[ ${#matched[@]} -gt 0 ]] || return 0
 
-	for pid in "${matched[@]}"; do
-		kill "$pid" 2>/dev/null || true
-	done
-
-	local wait_count=0 alive
-	while ((wait_count < 20)); do
-		alive=false
-		for pid in "${matched[@]}"; do
-			if kill -0 "$pid" 2>/dev/null; then
-				alive=true
-				break
-			fi
-		done
-		[[ $alive == false ]] && break
-		sleep 0.1
-		wait_count=$((wait_count + 1))
-	done
-
-	if [[ $alive == true ]]; then
-		for pid in "${matched[@]}"; do
-			kill -KILL "$pid" 2>/dev/null || true
-		done
-		log_message \
-			"Killed stale Claude Desktop helpers (SIGKILL, PIDs: ${matched[*]})"
-	else
-		log_message "Killed stale Claude Desktop helpers (PIDs: ${matched[*]})"
-	fi
+	_kill_pids_escalating 'Killed stale Claude Desktop helpers' \
+		"${matched[@]}"
 }
 
 # Clean up stale SingletonLock if the owning process is no longer running.
