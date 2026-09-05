@@ -81,6 +81,33 @@ _stage_official() {
 		"$dest/resources/" || return 1
 }
 
+# The patch stage invokes "$asar_exec" as a single word, so a bare `npx`
+# fallback silently turns `extract-file` into a PACKAGE name: npx fetches
+# an unrelated `extract-file` from the registry, package.json is never
+# extracted, and the stage fails the WM_CLASS tripwire on an empty
+# desktopName instead of on anything real. Resolve a genuine asar or stop.
+_resolve_asar() {
+	asar_exec=$(command -v asar)
+	if [[ -z $asar_exec ]]; then
+		echo 'No asar on PATH; installing @electron/asar locally...'
+		(
+			cd "$work_dir" || exit 1
+			echo '{"name":"patch-stage","version":"0.0.1","private":true}' \
+				> package.json || exit 1
+			npm install --no-save --silent @electron/asar
+		) || {
+			echo 'Failed to install @electron/asar.' >&2
+			return 1
+		}
+		asar_exec="$work_dir/node_modules/.bin/asar"
+	fi
+	if [[ ! -x $asar_exec ]]; then
+		echo "asar is not executable: $asar_exec" >&2
+		return 1
+	fi
+	echo "Using asar executable: $asar_exec"
+}
+
 main() {
 	local src="${1:-}"
 	local tmp
@@ -91,9 +118,9 @@ main() {
 	# Globals the patch stage reads.
 	work_dir="$tmp/work"
 	app_staging_dir="$tmp/staging"
-	asar_exec=$(command -v asar || command -v npx)
-	export work_dir app_staging_dir project_root asar_exec
 	mkdir -p "$work_dir" "$app_staging_dir/resources"
+	_resolve_asar || exit 1
+	export work_dir app_staging_dir project_root asar_exec
 
 	if [[ -n $src ]]; then
 		cp "$src/app.asar" "$app_staging_dir/resources/" || exit 1

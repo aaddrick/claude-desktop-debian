@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `tests/test-patch-stage.sh` no longer reports a phantom patch failure on machines without `asar` on `PATH`. Its fallback `asar_exec=$(command -v asar || command -v npx)` could never work: the harness invokes `"$asar_exec"` as a single word, so the fallback ran `npx extract-file app.asar package.json` — npx reads `extract-file` as a package name, fetches an unrelated `extract-file@1.0.0` from the registry, `package.json` is never extracted, and the WM_CLASS tripwire fails the build on an empty `desktopName` instead of anything real. `_resolve_asar` replaces it: prefer a real `asar`, else `npm install @electron/asar` into `$work_dir` the way `scripts/setup/dependencies.sh` already does for the build, else fail loud — no `npx` path survives. Mutation-checked (restoring the old line re-selects `/usr/bin/npx`) and verified end-to-end against the pinned 1.40609.1 official `.deb` with `asar` absent from `PATH`.
+
 ## [v3.2.3] — 2026-09-03
 
 ### Fixed
