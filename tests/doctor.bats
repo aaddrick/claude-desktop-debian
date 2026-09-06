@@ -1699,19 +1699,19 @@ _stub_stat() {
 	[[ $output == *'not found'* ]]
 }
 
-@test "_doctor_check_chrome_sandbox: deb path wins when both sandboxes exist (single report)" {
-	# Pins probe precedence and the loop's break: with both the deb path
-	# and an electron-adjacent sandbox present, the deb path is judged
-	# and exactly ONE result line prints. Deleting the break (double
-	# report) or reordering the probe array fails this.
+@test "_doctor_check_chrome_sandbox: electron-adjacent sandbox wins when both exist (single report)" {
+	# FLIPPED from #745's deb-path-wins expectation: this fix judges
+	# ONLY the running binary's sandbox when an electron path is given,
+	# so with both files present the electron-adjacent one is reported.
+	# Still pins the single-report contract.
 	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
 	: > "$TEST_TMP/deb-sandbox"
 	mkdir -p "$TEST_TMP/app"
 	: > "$TEST_TMP/app/chrome-sandbox"
 	_stub_stat '4755' 'root'
 	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
-	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
-	[[ $output != *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $output == *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $output != *"$TEST_TMP/deb-sandbox"* ]]
 	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
 }
 
@@ -1722,4 +1722,44 @@ _stub_stat() {
 	run _doctor_check_chrome_sandbox ''
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: ignores a stale deb sandbox when an electron path is given" {
+	# Regression guard (#714-class false green): a valid deb sandbox
+	# exists, but the running binary (electron_path) has none. The old
+	# code validated the deb path and reported PASS for a sandbox that
+	# is not in use. The deb path must be ignored entirely -> WARN,
+	# never PASS.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	# No chrome-sandbox next to electron.
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *"$TEST_TMP/deb-sandbox"* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: judges the electron-path sandbox, not the deb one, when both exist" {
+	# Regression guard: the running binary's sandbox has the wrong perms
+	# (0755) while a stale deb sandbox is fine (4755 root). The old code
+	# checked the deb path first and PASSed; the electron-path sandbox
+	# is the one that must be judged -> FAIL.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	# Path-aware stub: electron's sandbox is bad, everything else good.
+	stat() {
+		if [[ $3 == "$TEST_TMP/app/chrome-sandbox" ]]; then
+			if [[ $2 == '%a' ]]; then echo '0755'; else echo 'root'; fi
+		else
+			if [[ $2 == '%a' ]]; then echo '4755'; else echo 'root'; fi
+		fi
+	}
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'perms=0755'* ]]
+	[[ $output != *'[PASS]'* ]]
 }
