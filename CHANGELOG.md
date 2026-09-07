@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `postinst` now removes the legacy `claude-desktop-bwrap` AppArmor profile that 2.x installs left behind, so it no longer survives an upgrade. The profile attaches `flags=(unconfined)` to the shared `/usr/bin/bwrap`, a path Ubuntu's own `bwrap-userns-restrict` also claims; AppArmor resolves neither attachment, logs `conflicting profile attachments`, and bwrap falls through to `unprivileged_userns`, which denies `setpcap` and `net_admin`. On Ubuntu 26.04 that takes out glycin — the sandboxed decoder GNOME 47+ routes *every* image through — so the symptoms are a GDM greeter with no user list and no background that cannot be logged into at all, `gnome-terminal-server` aborting with a GTK assertion at `gtkiconhelper.c` while loading the fallback `image-missing.png`, blank icons across the shell, and `gcr-prompter` failing to render so gnome-keyring stops prompting for ssh key passphrases. The profile is inert on 24.04 (no glycin), which makes this present as "the release upgrade broke my desktop" with nothing pointing at this package — and the 24.04 → 26.04 LTS upgrade path is exactly the population carrying it. `postrm` already handled the legacy names, but its case arm only matches `remove|purge|abort-install` and dpkg invokes the *old* package's `postrm` with `upgrade`, so the file survived every package upgrade; both profiles were confirmed coexisting on `claude-desktop-unofficial 1.30096.1-3.2.2`. Removal is gated on the marker header so admin-authored files of the same name are preserved, and `apparmor_parser -R` runs alongside the delete because the profile otherwise stays loaded in the kernel until the next reload. ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542), [#825](https://github.com/aaddrick/claude-desktop-debian/pull/825))
+
 ## [v3.2.4] — 2026-09-06
 
 ### Fixed
