@@ -62,6 +62,45 @@ else
 	fail 'Control lacks Replaces: claude-desktop (<< 1.16000)'
 fi
 
+# --- Control scripts: legacy bwrap profile cleanup (#542) ---
+# 2.x installs shipped an AppArmor profile attached to the shared
+# /usr/bin/bwrap. Nothing removed it on upgrade: dpkg runs the *old*
+# package's postrm with 'upgrade', and that cleanup arm only matches
+# remove|purge|abort-install. postinst therefore has to clear it, or the
+# stale profile keeps colliding with the distro's bwrap-userns-restrict
+# and breaks glycin image decoding on Ubuntu 26.04 (unloggable greeter).
+# Presence and syntax are asserted on every build; the behavioural test
+# can't run here, since the 24.04 runner blocks the user namespace bwrap
+# needs.
+control_dir=$(mktemp -d)
+if dpkg-deb -e "$deb_file" "$control_dir" 2>/dev/null; then
+	pass 'Control archive extracted with dpkg-deb -e'
+
+	if grep -q 'claude-desktop-bwrap' "$control_dir/postinst"; then
+		pass 'postinst clears the legacy bwrap profile (#542)'
+	else
+		fail 'postinst lacks the legacy bwrap cleanup (#542)'
+	fi
+
+	# The unload matters as much as the delete: removing the file
+	# alone leaves the profile loaded in the kernel, so the conflict
+	# survives until the next reboot.
+	if grep -q 'apparmor_parser -R' "$control_dir/postinst"; then
+		pass 'postinst unloads the legacy profile, not just deletes it'
+	else
+		fail 'postinst never runs apparmor_parser -R on the legacy profile'
+	fi
+
+	if sh -n "$control_dir/postinst" 2>/dev/null; then
+		pass 'postinst passes sh -n'
+	else
+		fail 'postinst fails sh -n'
+	fi
+else
+	fail 'dpkg-deb -e could not extract the control archive'
+fi
+rm -rf "$control_dir"
+
 # --- Install the package ---
 # Use --force-depends since we only care about file placement
 if sudo dpkg -i --force-depends "$deb_file"; then
