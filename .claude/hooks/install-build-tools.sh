@@ -83,7 +83,7 @@ install_node() {
 		major=${version%%.*}
 		minor=${version#*.}
 		minor=${minor%%.*}
-		if ((major > 22)) || { ((major == 22)) && ((minor >= 12)); }; then
+		if ((major > 22 || (major == 22 && minor >= 12))); then
 			skipped+=('node')
 			return 0
 		fi

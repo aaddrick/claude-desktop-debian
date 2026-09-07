@@ -123,30 +123,20 @@ readonly NODE_FALLBACK_VERSION='22.23.2'
 # wrong.
 node_version_at_least() {
 	local have="$1" want="$2"
-	local have_rest want_rest
-	local have_major have_minor want_major want_minor
 
 	# A version we can't parse is not a version we can vouch for.
 	[[ $have =~ ^[0-9]+(\.[0-9]+)*$ ]] || return 1
 	[[ $want =~ ^[0-9]+(\.[0-9]+)*$ ]] || return 1
 
-	have_major="${have%%.*}"
-	have_rest="${have#*.}"
-	want_major="${want%%.*}"
-	want_rest="${want#*.}"
+	local -a have_parts want_parts
+	IFS='.' read -ra have_parts <<< "$have"
+	IFS='.' read -ra want_parts <<< "$want"
 
-	# A bare major ("22") has no minor component to strip — the suffix
-	# removal above is a no-op there, so detect it and default to 0.
-	if [[ $have_rest == "$have" ]]; then
-		have_minor=0
-	else
-		have_minor="${have_rest%%.*}"
-	fi
-	if [[ $want_rest == "$want" ]]; then
-		want_minor=0
-	else
-		want_minor="${want_rest%%.*}"
-	fi
+	# A bare major ("22") carries no minor at all; the absent component
+	# reads as 0 rather than as "close enough", so "22" cannot clear a
+	# 22.12 floor.
+	local have_major="${have_parts[0]}" have_minor="${have_parts[1]:-0}"
+	local want_major="${want_parts[0]}" want_minor="${want_parts[1]:-0}"
 
 	(( have_major > want_major )) && return 0
 	(( have_major < want_major )) && return 1
@@ -308,7 +298,9 @@ setup_asar() {
 		|| [[ ! $asar_version =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
 		echo "asar is installed at '$asar_exec' but will not run:" >&2
 		echo "$asar_report" >&2
-		echo "@electron/asar needs Node.js v$NODE_MIN_VERSION+; this build is using $(node --version 2>/dev/null || echo 'no node')." >&2
+		echo "@electron/asar needs Node.js v$NODE_MIN_VERSION+; this" \
+			"build is using" \
+			"$(node --version 2>/dev/null || echo 'no node')." >&2
 		cd "$project_root" || exit 1
 		exit 1
 	fi
