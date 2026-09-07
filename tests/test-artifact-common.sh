@@ -272,6 +272,159 @@ _launch_smoke_cleanup() {
 	fi
 	[[ -n $_smoke_cache_root ]] && rm -rf "$_smoke_cache_root"
 	[[ -n $_smoke_xvfb_log ]] && rm -rf "$_smoke_xvfb_log"
+	_replaced_ui_cleanup
+}
+
+# Module-scope state so the caller's trap can reap the stand-in
+# processes run_replaced_ui_cleanup_test leaves behind on interrupt.
+_replaced_ui_pids=()
+_replaced_ui_tmp=''
+
+_replaced_ui_cleanup() {
+	local pid
+	for pid in "${_replaced_ui_pids[@]}"; do
+		kill -KILL "$pid" 2>/dev/null
+	done
+	[[ -n $_replaced_ui_tmp ]] && rm -rf "$_replaced_ui_tmp"
+}
+
+# Start a long-lived stand-in for a running UI: a copy of bash at $1,
+# blocked on a fifo, carrying the --class fingerprint the launcher keys
+# on. Prints the stand-in's own PID (not the setsid/runuser wrapper's).
+# $2 is the fifo, $3 the WM_CLASS, the rest the optional runuser prefix.
+# Runs in the caller's $(...), so the caller records the PID for the
+# trap — an append here would die with the subshell.
+_replaced_ui_spawn() {
+	local bin="$1" fifo="$2" wm_class="$3"
+	shift 3
+	cp /bin/bash "$bin" || return 1
+	# shellcheck disable=SC2016  # inner shell expands $1
+	"$@" setsid "$bin" -c 'read -r _ < "$1"' claude-desktop "$fifo" \
+		"--class=$wm_class" 3>&- </dev/null >/dev/null 2>&1 &
+	local deadline=$((SECONDS + 5)) pid=''
+	while ((SECONDS < deadline)); do
+		pid=$(pgrep -f -- "^$bin " | head -1)
+		[[ -n $pid ]] && break
+		sleep 0.2
+	done
+	[[ -n $pid ]] || return 1
+	echo "$pid"
+}
+
+# Exercise cleanup_replaced_desktop_ui through the INSTALLED launcher.
+# A fingerprinted stand-in whose executable has been unlinked — the
+# kernel marks /proc/PID/exe " (deleted)", exactly what dpkg/rpm do to
+# a running instance on upgrade — must be killed and logged; one whose
+# executable is intact must survive untouched. The cleanup runs before
+# the launcher's display check, so this needs no Xvfb: the launcher is
+# expected to exit 1 on "no display" after the cleanup has run.
+# AppImage has no leg here: the binary lives inside the FUSE mount,
+# which stays valid after the .AppImage file is replaced, so the marker
+# never appears and the cleanup is a no-op by construction.
+#
+# Usage: run_replaced_ui_cleanup_test LABEL RUN_AS LIB_DIR LAUNCHER...
+#   RUN_AS   unprivileged user to run as (empty = current user)
+#   LIB_DIR  the install's lib dir, holding launcher-common.sh
+run_replaced_ui_cleanup_test() {
+	local label="$1" run_as="$2" lib_dir="$3"
+	shift 3
+
+	local wm_class
+	wm_class=$(grep -oP "^readonly WM_CLASS='\K[^']+" \
+		"$lib_dir/launcher-common.sh")
+	if [[ -z $wm_class ]]; then
+		fail "$label: WM_CLASS not found in $lib_dir/launcher-common.sh"
+		return
+	fi
+
+	local -a as=()
+	if [[ -n $run_as ]]; then
+		if ! command -v runuser &>/dev/null; then
+			pass "Skipping replaced-UI cleanup test for $label (runuser missing)"
+			return
+		fi
+		as=(runuser -u "$run_as" --)
+	fi
+
+	local tmp
+	tmp=$(mktemp -d)
+	_replaced_ui_tmp="$tmp"
+	# The unprivileged user must traverse $tmp and write the redirected
+	# cache the launcher logs into.
+	[[ -n $run_as ]] && chmod 0777 "$tmp"
+	mkfifo "$tmp/block"
+	local launcher_log="$tmp/cache/claude-desktop-debian/launcher.log"
+
+	# Launcher with no display: every cleanup runs, then check_display
+	# exits 1. Nothing else about the exit status is asserted.
+	# env(1) takes -u only ahead of the NAME=VALUE pairs.
+	_run_launcher() {
+		"${as[@]}" env -u DISPLAY -u WAYLAND_DISPLAY \
+			"XDG_CACHE_HOME=$tmp/cache" "XDG_CONFIG_HOME=$tmp/config" \
+			"$@" >/dev/null 2>&1 || true
+	}
+
+	# --- replaced: executable unlinked underneath the process ---
+	local stale_pid
+	stale_pid=$(_replaced_ui_spawn "$tmp/claude-desktop" "$tmp/block" \
+		"$wm_class" "${as[@]}") || {
+		fail "$label: could not start the replaced-UI stand-in"
+		return
+	}
+	_replaced_ui_pids+=("$stale_pid")
+	rm "$tmp/claude-desktop"
+	if ! "${as[@]}" readlink "/proc/$stale_pid/exe" \
+		| grep -q ' (deleted)$'; then
+		fail "$label: stand-in's /proc/PID/exe lacks the (deleted) marker"
+		return
+	fi
+
+	_run_launcher "$@"
+
+	local deadline=$((SECONDS + 3))
+	while kill -0 "$stale_pid" 2>/dev/null && ((SECONDS < deadline)); do
+		sleep 0.2
+	done
+	if kill -0 "$stale_pid" 2>/dev/null; then
+		fail "$label: replaced UI stand-in (PID $stale_pid) survived launch"
+	else
+		pass "$label: replaced UI stand-in killed on launch"
+	fi
+	if grep -qF 'Killed replaced Claude Desktop UI' "$launcher_log" \
+		2>/dev/null; then
+		pass "$label: launcher logged the replaced-UI kill"
+	else
+		fail "$label: no 'Killed replaced Claude Desktop UI' in launcher log"
+	fi
+
+	# --- intact: same fingerprint, executable still on disk ---
+	local live_pid kills_before kills_after
+	live_pid=$(_replaced_ui_spawn "$tmp/claude-desktop-live" "$tmp/block" \
+		"$wm_class" "${as[@]}") || {
+		fail "$label: could not start the intact-UI stand-in"
+		return
+	}
+	_replaced_ui_pids+=("$live_pid")
+	kills_before=$(grep -cF 'Killed replaced Claude Desktop UI' \
+		"$launcher_log" 2>/dev/null || true)
+
+	_run_launcher "$@"
+
+	kills_after=$(grep -cF 'Killed replaced Claude Desktop UI' \
+		"$launcher_log" 2>/dev/null || true)
+	if kill -0 "$live_pid" 2>/dev/null; then
+		pass "$label: intact UI stand-in survived launch"
+	else
+		fail "$label: intact UI stand-in (PID $live_pid) was killed"
+	fi
+	if [[ ${kills_before:-0} == "${kills_after:-0}" ]]; then
+		pass "$label: no replaced-UI kill logged for an intact UI"
+	else
+		fail "$label: launcher logged a replaced-UI kill for an intact UI"
+	fi
+
+	kill "$live_pid" 2>/dev/null
+	unset -f _run_launcher
 }
 
 # True when any passed log file carries the sandbox-namespace-denied
