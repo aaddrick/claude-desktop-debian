@@ -260,7 +260,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 }
 
 @test "disable-gpu: crash signature deep in a large penultimate section is still detected" {
@@ -278,5 +279,6 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 }
