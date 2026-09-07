@@ -176,18 +176,18 @@ echo 'export CLAUDE_DISABLE_GPU=1' >> ~/.profile
 ```
 
 When `CLAUDE_DISABLE_GPU=1` is set, the launcher passes
-`--disable-gpu --disable-software-rasterizer` to the official binary
-(see `scripts/launcher-common.sh`). This is the same pair of flags
+`--disable-gpu` to the official binary
+(see `scripts/launcher-common.sh`). This is the same flag
 applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
 
 If the previous launch already died with the GPU-process FATAL
 signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
-auto-applies the same flags and keeps them applied on subsequent
+auto-applies the same flag and keeps it applied on subsequent
 launches. Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback
 when retesting hardware acceleration after a driver fix — any
-explicitly set value suppresses it; only `1` forces the flags on.
+explicitly set value suppresses it; only `1` forces the flag on.
 
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for

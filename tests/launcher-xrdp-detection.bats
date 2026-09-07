@@ -103,7 +103,8 @@ args_count() {
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'XRDP session detected' "$log_file"
 }
 
@@ -114,7 +115,8 @@ args_count() {
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'XRDP session detected' "$log_file"
 }
 
@@ -126,7 +128,7 @@ args_count() {
 	build_electron_args deb
 
 	[[ "$(args_count '--disable-gpu')" -eq 1 ]]
-	[[ "$(args_count '--disable-software-rasterizer')" -eq 1 ]]
+	[[ "$(args_count '--disable-software-rasterizer')" -eq 0 ]]
 	[[ "$(grep -c 'XRDP session detected' "$log_file")" -eq 1 ]]
 }
 
