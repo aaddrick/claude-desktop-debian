@@ -7,7 +7,7 @@ The launcher reads a small set of opt-in `CLAUDE_*` environment variables; every
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (only Niri defaults to native Wayland). See [Wayland Support](#wayland-support). |
-| `CLAUDE_DISABLE_GPU` | unset (auto) | `1` = disable hardware acceleration (`--disable-gpu --disable-software-rasterizer`). `0` = suppress the sticky auto-recovery after a GPU-process crash. Unset = auto-apply the flags when the previous launch died with the GPU FATAL signature. See [GPU](#gpu-claude_disable_gpu). |
+| `CLAUDE_DISABLE_GPU` | unset (auto) | `1` = disable hardware acceleration (`--disable-gpu`). `0` = suppress the sticky auto-recovery after a GPU-process crash. Unset = auto-apply the flag when the previous launch died with the GPU FATAL signature. See [GPU](#gpu-claude_disable_gpu). |
 | `CLAUDE_PASSWORD_STORE` | unset | Explicit escape hatch: when set, the value is passed verbatim as Chromium's `--password-store=`. When unset, the official build's `os_crypt` autodetection owns the decision. See [Password store](#password-store-claude_password_store). |
 | `CLAUDE_GTK_IM_MODULE` | unset | Propagated to `GTK_IM_MODULE` for Electron at startup; opt-in override for broken IBus/GTK input-method integration. See [Input method](#input-method-claude_gtk_im_module). |
 | `CLAUDE_TRAY_USE_DARK_ICON` | unset (auto on Cinnamon) | `1` = use upstream's light `TrayIconLinux-Dark.png` (for dark panels); `0` = force the dark `TrayIconLinux.png`. Unset lets the launcher auto-detect Cinnamon dark-panel themes ([#604](https://github.com/aaddrick/claude-desktop-debian/issues/604)). See [Tray icon](#tray-icon-claude_tray_use_dark_icon). |
@@ -57,7 +57,7 @@ export CLAUDE_USE_WAYLAND=1
 
 ## GPU (CLAUDE_DISABLE_GPU)
 
-`CLAUDE_DISABLE_GPU=1` makes the launcher pass `--disable-gpu --disable-software-rasterizer` to the official binary — the same workaround as the in-app Settings hardware-acceleration toggle, persisted via the environment instead. When the variable is **unset** and the previous launch died with Chromium's GPU-process FATAL signature ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)), the launcher auto-applies the same flags and keeps them applied on subsequent launches (sticky recovery). Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback when retesting hardware acceleration after a driver fix. The flags are also applied automatically inside XRDP sessions. See [troubleshooting.md](troubleshooting.md#repeated-electron-crashes--gpu-process-fatal-583) for the full workflow.
+`CLAUDE_DISABLE_GPU=1` makes the launcher pass `--disable-gpu` to the official binary — the same workaround as the in-app Settings hardware-acceleration toggle, persisted via the environment instead. When the variable is **unset** and the previous launch died with Chromium's GPU-process FATAL signature ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)), the launcher auto-applies the same flag and keeps it applied on subsequent launches (sticky recovery). Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback when retesting hardware acceleration after a driver fix. The flag is also applied automatically inside XRDP sessions. See [troubleshooting.md](troubleshooting.md#repeated-electron-crashes--gpu-process-fatal-583) for the full workflow.
 
 ## Password store (CLAUDE_PASSWORD_STORE)
 
