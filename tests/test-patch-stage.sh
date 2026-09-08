@@ -81,6 +81,55 @@ _stage_official() {
 		"$dest/resources/" || return 1
 }
 
+# The patch stage invokes "$asar_exec" as a single word, so a bare `npx`
+# fallback silently turns `extract-file` into a PACKAGE name: npx fetches
+# an unrelated `extract-file` from the registry, package.json is never
+# extracted, and the stage fails the WM_CLASS tripwire on an empty
+# desktopName instead of on anything real. Resolve a genuine asar or stop.
+#
+# Two traps the resolver has to close, both surfacing as that same
+# phantom WM_CLASS failure (#839):
+#
+#   - @electron/asar 4.x requires Node >= 22.12 and refuses to run
+#     ("CANNOT RUN WITH NODE 20.x") on the Node 20 that Debian 13 and
+#     other stable distros ship. Whether an unpinned install lands on
+#     4.x depends on the npm version (npm 9 takes `latest`; npm 10's
+#     manifest picker skips engine-incompatible versions), so pin the
+#     Node-20-compatible major explicitly instead of trusting resolution.
+#   - `-x` only proves a file exists. A 4.x binary under Node 20 is
+#     executable and still cannot run, so probe `--version` and stop
+#     with a message that names the real cause.
+_resolve_asar() {
+	asar_exec=$(command -v asar)
+	if [[ -z $asar_exec ]]; then
+		echo 'No asar on PATH; installing @electron/asar@3 locally...'
+		(
+			cd "$work_dir" || exit 1
+			echo '{"name":"patch-stage","version":"0.0.1","private":true}' \
+				> package.json || exit 1
+			npm install --no-save --no-audit --no-fund @electron/asar@3
+		) || {
+			echo 'Failed to install @electron/asar@3.' >&2
+			return 1
+		}
+		asar_exec="$work_dir/node_modules/.bin/asar"
+	fi
+	if [[ ! -x $asar_exec ]]; then
+		echo "asar is not executable: $asar_exec" >&2
+		return 1
+	fi
+	local asar_version
+	if ! asar_version=$("$asar_exec" --version 2>&1); then
+		echo "asar at $asar_exec cannot run under node $(node --version \
+			2>/dev/null || echo '?'):" >&2
+		echo "  $asar_version" >&2
+		echo '  @electron/asar 4.x needs Node >= 22.12; use @electron/asar@3' \
+			'on older Node, or a newer Node (#839).' >&2
+		return 1
+	fi
+	echo "Using asar executable: $asar_exec ($asar_version)"
+}
+
 main() {
 	local src="${1:-}"
 	local tmp
@@ -91,9 +140,9 @@ main() {
 	# Globals the patch stage reads.
 	work_dir="$tmp/work"
 	app_staging_dir="$tmp/staging"
-	asar_exec=$(command -v asar || command -v npx)
-	export work_dir app_staging_dir project_root asar_exec
 	mkdir -p "$work_dir" "$app_staging_dir/resources"
+	_resolve_asar || exit 1
+	export work_dir app_staging_dir project_root asar_exec
 
 	if [[ -n $src ]]; then
 		cp "$src/app.asar" "$app_staging_dir/resources/" || exit 1
