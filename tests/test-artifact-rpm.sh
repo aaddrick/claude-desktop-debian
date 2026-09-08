@@ -194,4 +194,11 @@ fi
 run_launch_smoke_test 'rpm package' '/usr/lib/claude-desktop-unofficial' \
 	"$smoke_user" /usr/bin/claude-desktop-unofficial
 
+# --- Replaced-UI cleanup through the installed launcher ---
+# A running instance whose binary rpm replaced underneath it must be
+# killed on the next launch; an intact one must be left alone. Runs as
+# the same throwaway user so the launcher's per-user pgrep sees it.
+run_replaced_ui_cleanup_test 'rpm launcher' "$smoke_user" \
+	/usr/lib/claude-desktop-unofficial /usr/bin/claude-desktop-unofficial
+
 print_summary

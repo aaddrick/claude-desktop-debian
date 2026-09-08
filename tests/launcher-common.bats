@@ -951,6 +951,114 @@ s.close()
 	[[ $status -ne 0 ]]
 }
 
+@test "cleanup_replaced_desktop_ui: kills UI with deleted executable" {
+	local stale_bin="$TEST_TMP/claude-bash"
+	local block_fifo="$TEST_TMP/block"
+	local stale_pid
+
+	mkfifo "$block_fifo"
+	cp /bin/bash "$stale_bin"
+	# fd 3 is bats' run-coordination pipe: a spawned process that
+	# inherits it keeps bats waiting for EOF if it ever survives the
+	# test, so close it in the child.
+	# shellcheck disable=SC2016  # inner shell expands $1
+	"$stale_bin" -c 'read -r _ < "$1"' \
+		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+	stale_pid=$!
+	sleep 0.1
+	rm "$stale_bin"
+
+	readlink -f "/proc/$stale_pid/exe" | grep -q ' (deleted)$'
+
+	setup_logging
+	run cleanup_replaced_desktop_ui
+
+	[[ $status -eq 0 ]]
+	run timeout 2 bash -c \
+		"while kill -0 '$stale_pid' 2>/dev/null; do sleep 0.1; done"
+	[[ $status -eq 0 ]]
+	run kill -0 "$stale_pid"
+	[[ $status -ne 0 ]]
+	grep -q 'Killed replaced Claude Desktop UI' "$log_file"
+}
+
+@test "cleanup_replaced_desktop_ui: leaves an intact-executable UI alone" {
+	# The safety claim: the (deleted) marker is the ONLY thing that
+	# licenses a kill. A fingerprinted process whose binary is still on
+	# disk must survive untouched and produce no "Killed replaced" log
+	# line. Replacing _claude_desktop_ui_is_replaced with an
+	# unconditional `return 0` turns this red while both positive cases
+	# stay green.
+	local live_bin="$TEST_TMP/claude-bash-intact"
+	local block_fifo="$TEST_TMP/block-intact"
+	local live_pid
+
+	mkfifo "$block_fifo"
+	cp /bin/bash "$live_bin"
+	# shellcheck disable=SC2016  # inner shell expands $1 (3>&-: see the
+	# fd-3 note in the deleted-executable test above)
+	"$live_bin" -c 'read -r _ < "$1"' \
+		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+	live_pid=$!
+	sleep 0.1
+	# Precondition: intact binary, no marker.
+	readlink "/proc/$live_pid/exe" | grep -qv ' (deleted)$'
+
+	setup_logging
+	# setup_logging creates the directory, not the file. Make the file
+	# exist so the "no log line" assertion below cannot pass vacuously
+	# on a missing file (grep would exit 2 either way).
+	touch "$log_file"
+	run cleanup_replaced_desktop_ui
+	[[ $status -eq 0 ]]
+
+	run kill -0 "$live_pid"
+	[[ $status -eq 0 ]]
+	[[ -f $log_file ]]
+	run grep 'Killed replaced Claude Desktop UI' "$log_file"
+	[[ $status -eq 1 ]]
+
+	kill "$live_pid" 2>/dev/null || true
+}
+
+@test "cleanup_replaced_desktop_ui: still kills when the install dir is gone" {
+	# A package migration or layout change removes the whole install
+	# directory, not just the binary. `readlink -f` fails on that shape
+	# (it canonicalizes through a now-missing parent), so this pins the
+	# plain-readlink detection: reverting it turns this red while the
+	# file-only-deleted test above stays green.
+	local stale_dir="$TEST_TMP/gone-install-dir"
+	local block_fifo="$TEST_TMP/block-dirgone"
+	local stale_pid
+
+	mkfifo "$block_fifo"
+	mkdir -p "$stale_dir"
+	cp /bin/bash "$stale_dir/claude-bash"
+	# shellcheck disable=SC2016  # inner shell expands $1 (3>&-: see the
+	# fd-3 note in the deleted-executable test above)
+	"$stale_dir/claude-bash" -c 'read -r _ < "$1"' \
+		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+	stale_pid=$!
+	sleep 0.1
+	rm -rf "$stale_dir"
+
+	# The very failure mode under test: -f cannot resolve this shape.
+	run readlink -f "/proc/$stale_pid/exe"
+	[[ $status -ne 0 ]]
+	readlink "/proc/$stale_pid/exe" | grep -q ' (deleted)$'
+
+	setup_logging
+	run cleanup_replaced_desktop_ui
+
+	[[ $status -eq 0 ]]
+	run timeout 2 bash -c \
+		"while kill -0 '$stale_pid' 2>/dev/null; do sleep 0.1; done"
+	[[ $status -eq 0 ]]
+	run kill -0 "$stale_pid"
+	[[ $status -ne 0 ]]
+	grep -q 'Killed replaced Claude Desktop UI' "$log_file"
+}
+
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
 	local marker="$TEST_TMP/cleanup-ran"
 	local electron="$TEST_TMP/electron"

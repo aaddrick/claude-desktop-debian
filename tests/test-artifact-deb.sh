@@ -226,6 +226,12 @@ run_version_flag_test 'deb launcher' \
 run_launch_smoke_test 'deb package' '/usr/lib/claude-desktop-unofficial' \
 	'' /usr/bin/claude-desktop-unofficial
 
+# --- Replaced-UI cleanup through the installed launcher ---
+# A running instance whose binary dpkg replaced underneath it must be
+# killed on the next launch; an intact one must be left alone.
+run_replaced_ui_cleanup_test 'deb launcher' '' \
+	/usr/lib/claude-desktop-unofficial /usr/bin/claude-desktop-unofficial
+
 # --- Transitional dummy package (amd64 leg only) ---
 # The amd64 build also emits claude-desktop_1.16000.0-1_all.deb: an
 # empty oldlibs package whose Depends pulls claude-desktop-unofficial
