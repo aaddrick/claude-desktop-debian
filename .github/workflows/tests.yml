@@ -14,6 +14,8 @@ on:
       - "tests/**"
       - "scripts/**"
       - ".github/workflows/tests.yml"
+      # ci-release-job.bats asserts on the release job's structure.
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
   workflow_dispatch:
