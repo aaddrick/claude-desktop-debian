@@ -81,7 +81,7 @@
 let
   # Bumped automatically by .github/workflows/check-claude-version.yml;
   # mirrors OFFICIAL_DEB_VERSION in scripts/setup/official-deb.sh.
-  version = "1.46388.2";
+  version = "1.49585.0";
 
   poolBase = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop";
 
@@ -92,11 +92,11 @@ let
   srcs = {
     x86_64-linux = {
       url = "${poolBase}/claude-desktop_${version}_amd64.deb";
-      hash = "sha256-mL9U6F5JFgaMQoFFmw8EMdj/aANHc/PumDEdcgZWarE=";
+      hash = "sha256-4LTOYxOUOmnpvWF0mik7/KJBtN+zf4jfZBG0tp7GekA=";
     };
     aarch64-linux = {
       url = "${poolBase}/claude-desktop_${version}_arm64.deb";
-      hash = "sha256-uUSiFUUogVu0dr+x5wkfij4ymzxn9sEd6NQWaKYDvZ4=";
+      hash = "sha256-ijrj4AfDaiE6FrG1OU46DINrrwz4ighJHoIClSricCA=";
     };
   };
 in
