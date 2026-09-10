@@ -53,6 +53,35 @@ else
 	fail 'Missing Provides: claude-desktop = <version>'
 fi
 
+# chrome-sandbox path, asserted by both the --noscripts regression
+# check below and the scripted-install check further down.
+chrome_sandbox='/usr/lib/claude-desktop-unofficial/chrome-sandbox'
+
+# --- Install (--noscripts regression guard, #617/#595) ---
+# #595 moved the chrome-sandbox setuid bit out of a %post chmod: the
+# spec now sets 4755 on the buildroot file in %install so the payload
+# itself carries the mode, which survives any install path that skips
+# scriptlets. --noscripts is the CI proxy for rpm-ostree/Silverblue
+# layered images, which cannot be simulated here. The scripted install
+# further below re-enables scriptlets, so it alone can't catch a
+# regression back to a %post chmod — run a --noscripts pass FIRST,
+# isolated from any state a scripted install or its %post could leave
+# behind, so the mode asserted here can only have come from the
+# payload.
+if rpm -ivh --nodeps --noscripts "$rpm_file"; then
+	pass 'rpm -ivh --noscripts succeeded'
+else
+	fail 'rpm -ivh --noscripts failed'
+fi
+assert_setuid "$chrome_sandbox" \
+	"Setuid bit set (noscripts install, #617): $chrome_sandbox"
+
+if rpm -e --noscripts claude-desktop-unofficial; then
+	pass 'rpm -e --noscripts succeeded'
+else
+	fail 'rpm -e --noscripts failed'
+fi
+
 # --- Install ---
 if rpm -ivh --nodeps "$rpm_file"; then
 	pass "rpm -ivh succeeded"
@@ -95,10 +124,12 @@ assert_executable "$electron_path"
 # %attr(4755, ...) entry, not by a %post chmod (#539). The check
 # guards against any regression that strips the suid bit — including
 # (but not limited to) reverting to a %post chmod, which silently
-# no-ops if the scriptlet is skipped (--noscripts, layered images).
-chrome_sandbox='/usr/lib/claude-desktop-unofficial/chrome-sandbox'
+# no-ops if the scriptlet is skipped (--noscripts, layered images) —
+# see the dedicated --noscripts install pass above (#617) for the
+# check that actually exercises that path.
 assert_file_exists "$chrome_sandbox"
-assert_setuid "$chrome_sandbox"
+assert_setuid "$chrome_sandbox" \
+	"Setuid bit set (scripted install): $chrome_sandbox"
 
 # --- Desktop entry validation ---
 desktop_file='/usr/share/applications/claude-desktop-unofficial.desktop'
