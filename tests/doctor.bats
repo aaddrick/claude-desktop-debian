@@ -6,6 +6,8 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 
+load 'test_helper'
+
 setup() {
 	TEST_TMP=$(mktemp -d)
 	export TEST_TMP
@@ -44,6 +46,7 @@ setup() {
 }
 
 teardown() {
+	_kill_stand_ins
 	if [[ -n "$TEST_TMP" && -d "$TEST_TMP" ]]; then
 		rm -rf "$TEST_TMP"
 	fi
@@ -737,14 +740,48 @@ SHIM
 	[[ $output == *'no lock file'* ]]
 }
 
-@test "_doctor_check_singleton_lock: symlink to a live PID — PASS" {
+# Pull the real launcher-common.sh into this test shell.
+#
+# The lock check delegates to _pid_is_claude_desktop, which lives in
+# launcher-common.sh beside the other /proc/PID/exe readers. At runtime
+# it is always in scope (launcher-common.sh sources doctor.sh), but
+# this file sources doctor.sh standalone, so the SingletonLock tests
+# source the real launcher-common.sh instead: a local stub would only
+# mirror the prod call, and a `declare -F` fallback in doctor.sh would
+# make these tests decoration.
+_source_launcher_common() {
+	# shellcheck source=scripts/launcher-common.sh
+	source "$SCRIPT_DIR/../scripts/launcher-common.sh"
+}
+
+@test "_doctor_check_singleton_lock: symlink to a live Claude Desktop PID — PASS" {
 	mkdir -p "$XDG_CONFIG_HOME/Claude"
-	# $$ is this test process: guaranteed alive for the kill -0 probe.
-	ln -s "myhost-$$" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	_source_launcher_common
+	_spawn_claude_desktop_stand_in
+	ln -s "myhost-$claude_pid" "$XDG_CONFIG_HOME/Claude/SingletonLock"
 	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'running process'* ]]
+}
+
+@test "_doctor_check_singleton_lock: symlink to a live PID that is not Claude Desktop — WARN, not PASS" {
+	# #784: kill -0 alone false-PASSes a stale lock whose PID has
+	# since been recycled by any other process of the same user.
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	_source_launcher_common
+	_spawn_plain_sleep
+	ln -s "myhost-$plain_pid" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	# Precondition: the PID really is signalable, so this test can
+	# only pass via the executable check.
+	kill -0 "$plain_pid"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output == *'stale lock'* ]]
+	[[ $output == *"PID $plain_pid is not a Claude Desktop process"* ]]
+	[[ $output == *"Fix: rm '$XDG_CONFIG_HOME/Claude/SingletonLock'"* ]]
 }
 
 @test "_doctor_check_singleton_lock: symlink to a dead PID — WARN, not PASS" {

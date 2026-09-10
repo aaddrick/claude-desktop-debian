@@ -733,11 +733,12 @@ _doctor_check_disk_space() {
 
 # Check the Chromium single-instance SingletonLock under the Claude
 # config dir. Electron writes it as a 'hostname-PID' symlink; a stale
-# one (dead PID) is self-healed — Chromium unlinks the orphan and
-# continues. The case that actually blocks startup is a non-symlink
-# regular file (possible after an unclean update): ReadLink returns
-# empty, the lock parse fails, and the symlink() retry hits EEXIST,
-# so the app quits on the next cold launch. That case must not be
+# one (dead PID, or a PID since recycled by an unrelated process) is
+# self-healed — Chromium unlinks the orphan and continues. The case
+# that actually blocks startup is a non-symlink regular file
+# (possible after an unclean update): ReadLink returns empty, the
+# lock parse fails, and the symlink() retry hits EEXIST, so the app
+# quits on the next cold launch. That case must not be
 # reported as "no lock file", which was a silent false PASS.
 #
 # Usage: _doctor_check_singleton_lock [config_dir]
@@ -749,7 +750,24 @@ _doctor_check_singleton_lock() {
 		lock_target="$(readlink "$lock_file" 2>/dev/null)" || true
 		lock_pid="${lock_target##*-}"
 		if [[ $lock_pid =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
-			_pass "SingletonLock: held by running process (PID $lock_pid)"
+			# Signalable is not enough (#784): a recycled PID held
+			# by any other same-user process made a stale lock PASS.
+			# _pid_is_claude_desktop lives in launcher-common.sh
+			# beside the other /proc/PID/exe readers. Guarded like
+			# load_launcher_config: a standalone `source doctor.sh`
+			# has no launcher-common.sh in scope and keeps the old
+			# verdict; doctor.bats sources the real file for these
+			# cases, so the guard never hides the branch from tests.
+			if ! declare -F _pid_is_claude_desktop > /dev/null \
+				|| _pid_is_claude_desktop "$lock_pid"; then
+				_pass "SingletonLock: held by running process" \
+					"(PID $lock_pid)"
+			else
+				_warn "SingletonLock: stale lock found" \
+					"(PID $lock_pid is not a Claude" \
+					'Desktop process)'
+				_info "Fix: rm '$lock_file'"
+			fi
 		else
 			_warn "SingletonLock: stale lock found" \
 				"(PID $lock_pid is not running)"
