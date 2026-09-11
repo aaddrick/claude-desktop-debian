@@ -6,6 +6,8 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 
+load 'test_helper'
+
 # Check whether a value exists in the electron_args array.
 # Supports glob patterns (e.g., '*WaylandWindowDecorations*').
 has_electron_arg() {
@@ -68,6 +70,7 @@ setup() {
 }
 
 teardown() {
+	_kill_stand_ins
 	if [[ -n "$TEST_TMP" && -d "$TEST_TMP" ]]; then
 		rm -rf "$TEST_TMP"
 	fi
@@ -664,15 +667,65 @@ teardown() {
 	[[ ! -L "$config_dir/SingletonLock" ]]
 }
 
-@test "cleanup_stale_lock: keeps lock for running process" {
+@test "cleanup_stale_lock: keeps lock held by a running Claude Desktop" {
 	local config_dir="$XDG_CONFIG_HOME/Claude"
 	mkdir -p "$config_dir"
-	# Use our own PID (guaranteed to be running)
-	ln -s "myhost-$$" "$config_dir/SingletonLock"
+	_spawn_claude_desktop_stand_in
+	ln -s "myhost-$claude_pid" "$config_dir/SingletonLock"
 	setup_logging
 	cleanup_stale_lock
-	# Lock should still exist
 	[[ -L "$config_dir/SingletonLock" ]]
+}
+
+@test "cleanup_stale_lock: keeps lock held by a pre-3.0 electron/dist instance" {
+	# The lock is shared with whatever Claude Desktop build is still
+	# running: across a 2.x -> 3.x upgrade that is the old tree's
+	# electron binary, launched with a different --class. Its lock is
+	# live; unlinking it would start a second instance on the profile.
+	# Pins the executable-PATH test: a basename match on
+	# `claude-desktop` turns this red.
+	local config_dir="$XDG_CONFIG_HOME/Claude"
+	mkdir -p "$config_dir"
+	_spawn_claude_desktop_stand_in \
+		'claude-desktop/node_modules/electron/dist/electron'
+	ln -s "myhost-$claude_pid" "$config_dir/SingletonLock"
+	setup_logging
+	cleanup_stale_lock
+	[[ -L "$config_dir/SingletonLock" ]]
+}
+
+@test "cleanup_stale_lock: keeps lock held by a replaced (deleted-exe) instance" {
+	# A UI whose binary dpkg/rpm replaced underneath it reads
+	# " (deleted)" on /proc/PID/exe but still holds the lock;
+	# cleanup_replaced_desktop_ui owns that case, this function must
+	# not pull the lock out from under a live process.
+	local config_dir="$XDG_CONFIG_HOME/Claude"
+	mkdir -p "$config_dir"
+	_spawn_claude_desktop_stand_in
+	rm "$TEST_TMP/claude-desktop"
+	# Precondition: the marker is there.
+	readlink "/proc/$claude_pid/exe" | grep -q ' (deleted)$'
+	ln -s "myhost-$claude_pid" "$config_dir/SingletonLock"
+	setup_logging
+	cleanup_stale_lock
+	[[ -L "$config_dir/SingletonLock" ]]
+}
+
+@test "cleanup_stale_lock: removes lock whose PID was reused by another process" {
+	# #784: kill -0 alone kept a stale lock forever once its PID had
+	# been recycled by any other process of the same user, which
+	# leaves every subsequent launch silently quitting.
+	local config_dir="$XDG_CONFIG_HOME/Claude"
+	mkdir -p "$config_dir"
+	_spawn_plain_sleep
+	ln -s "myhost-$plain_pid" "$config_dir/SingletonLock"
+	# Precondition: the PID really is signalable, so this test can
+	# only pass via the executable check.
+	kill -0 "$plain_pid"
+	setup_logging
+	cleanup_stale_lock
+	[[ ! -L "$config_dir/SingletonLock" ]]
+	grep -q "PID $plain_pid was reused by another process" "$log_file"
 }
 
 @test "cleanup_stale_lock: handles non-numeric PID in lock target" {

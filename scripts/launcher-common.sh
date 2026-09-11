@@ -515,6 +515,38 @@ _claude_desktop_ui_is_replaced() {
 	[[ $exe_path == *' (deleted)' ]]
 }
 
+# Is PID a Claude Desktop browser process, one that can legitimately
+# hold the SingletonLock in ~/.config/Claude?
+#
+# Keyed on the executable's path, NOT on the --class UI fingerprint
+# above. That fingerprint exists to find OUR instances for cleanup and
+# deliberately rejects everything else, but the lock is shared by every
+# Claude Desktop build on the machine: the official Anthropic .deb
+# (/usr/lib/claude-desktop/claude-desktop, launched without --class),
+# this project's deb/rpm/AppImage/Nix (.../claude-desktop/claude-desktop
+# or .../claude-desktop-unofficial/claude-desktop), and a pre-3.0 tree
+# still running across an upgrade
+# (/usr/lib/claude-desktop/node_modules/electron/dist/electron, with
+# --class=Claude). Each of them is a live holder, so the test is the one
+# thing they all share, `claude-desktop` somewhere in the path. A
+# basename set (claude-desktop, electron) would cover the same holders
+# but also count every unrelated node_modules/.../electron on a
+# developer machine as live. The " (deleted)" marker of a replaced
+# binary needs no special case: the path still carries the name, and
+# that process still holds the lock until cleanup_replaced_desktop_ui
+# reaps it.
+#
+# Errs toward "live" when /proc/PID/exe cannot be read (a zombie, or a
+# process that exec'd a setuid binary and is no longer dumpable):
+# keeping a stale lock costs nothing, Electron unlinks it itself on the
+# next start, while a wrong "stale" turns into a `Fix: rm` on a live
+# lock in the doctor.
+_pid_is_claude_desktop() {
+	local exe
+	exe=$(readlink "/proc/$1/exe" 2>/dev/null) || return 0
+	[[ $exe == *claude-desktop* ]]
+}
+
 # Terminate a live Claude Desktop UI whose executable was replaced
 # underneath it by dpkg/rpm. If left alive, the next launcher loses
 # Electron's single-instance lock to the old process and appears to
@@ -664,7 +696,15 @@ cleanup_stale_lock() {
 	[[ $lock_pid =~ ^[0-9]+$ ]] || return 0
 
 	if kill -0 "$lock_pid" 2>/dev/null; then
-		# Process is still running — lock is valid
+		# Signalable is not enough (#784): PIDs are recycled, so any
+		# other same-user process that inherits the number makes a
+		# dead instance's lock look held. Electron would unlink it
+		# itself on start; doing it here keeps the log honest.
+		_pid_is_claude_desktop "$lock_pid" && return 0
+
+		rm -f "$lock_file"
+		log_message "Removed stale SingletonLock (PID $lock_pid was" \
+			'reused by another process)'
 		return 0
 	fi
 
