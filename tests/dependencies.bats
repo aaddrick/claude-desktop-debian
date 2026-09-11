@@ -11,7 +11,9 @@
 # Two things are pinned here. node_version_at_least must reject the
 # 22.0-22.11 band that a major-only comparison waves through, and
 # setup_asar must fail at the point of install when the binary cannot
-# execute — including when the refusal path still exits zero.
+# execute. The shape that ships today is an exit of 1 with the
+# complaint on stderr; the stdout-shape arm is defense in depth for a
+# future release that answers through --version and exits zero.
 
 setup() {
 	source "$BATS_TEST_DIRNAME/../scripts/_common.sh"
@@ -36,13 +38,13 @@ setup() {
 
 @test "node version: Debian 13 stable's Node 20 is rejected" {
 	# The reported host in #839.
-	! node_version_at_least '20.19.2' "$NODE_MIN_VERSION"
+	! node_version_at_least '20.19.2' "$NODE_MIN_VERSION" || return 1
 }
 
 @test "node version: the 22.0-22.11 band is rejected" {
 	# The case a major-only comparison gets wrong.
-	! node_version_at_least '22.11.9' "$NODE_MIN_VERSION"
-	! node_version_at_least '22.0.0' "$NODE_MIN_VERSION"
+	! node_version_at_least '22.11.9' "$NODE_MIN_VERSION" || return 1
+	! node_version_at_least '22.0.0' "$NODE_MIN_VERSION" || return 1
 }
 
 @test "node version: the floor itself is accepted" {
@@ -55,22 +57,34 @@ setup() {
 }
 
 @test "node version: a bare major below the floor's major is rejected" {
-	! node_version_at_least '20' "$NODE_MIN_VERSION"
+	! node_version_at_least '20' "$NODE_MIN_VERSION" || return 1
 }
 
 @test "node version: a bare major equal to the floor's is rejected" {
 	# "22" carries no minor, so it cannot be shown to clear 22.12 —
 	# treat the absent component as 0 rather than as "close enough".
-	! node_version_at_least '22' "$NODE_MIN_VERSION"
+	! node_version_at_least '22' "$NODE_MIN_VERSION" || return 1
 }
 
 @test "node version: unparseable input is rejected, not arithmetic-evaluated" {
 	# Bare (( )) on these would either error or silently read them as 0;
 	# neither is an answer we should hand the gate.
-	! node_version_at_least '' "$NODE_MIN_VERSION"
-	! node_version_at_least 'v22.12.0' "$NODE_MIN_VERSION"
-	! node_version_at_least 'nightly' "$NODE_MIN_VERSION"
-	! node_version_at_least '22.12.0' 'nightly'
+	! node_version_at_least '' "$NODE_MIN_VERSION" || return 1
+	! node_version_at_least 'v22.12.0' "$NODE_MIN_VERSION" || return 1
+	! node_version_at_least 'nightly' "$NODE_MIN_VERSION" || return 1
+	! node_version_at_least '22.12.0' 'nightly' || return 1
+}
+
+@test "node version: input that arithmetic would clear the floor is rejected" {
+	# The cases above all read as 0 under a bare (( )), so they are
+	# rejected with or without the regex and cannot pin it. These clear
+	# the floor if they ever reach the arithmetic: (( 0x18 )) is 24 in
+	# base 16 and (( 22+1 )) is an expression, not a version. Whatever
+	# handed us one of these was not reporting a Node version, so the
+	# answer is "can't vouch for it", not "24 >= 22".
+	! node_version_at_least '0x18' "$NODE_MIN_VERSION" || return 1
+	! node_version_at_least '22+1' "$NODE_MIN_VERSION" || return 1
+	! node_version_at_least '22.12.0' '0x18' || return 1
 }
 
 # ---------------------------------------------------------------------
@@ -97,7 +111,10 @@ _stage_asar_stub() {
 }
 
 @test "setup_asar: an asar that exits non-zero fails the build" {
-	_stage_asar_stub 'echo "some failure" >&2; exit 1'
+	# The observed shape: @electron/asar 4.3.0 under Node 20.19.2 exits
+	# 1 with an empty stdout and its complaint on stderr.
+	_stage_asar_stub \
+		'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
 
 	run setup_asar
 	[[ $status -ne 0 ]]
@@ -116,12 +133,13 @@ _stage_asar_stub() {
 	[[ $output == *'will not run'* ]]
 }
 
-@test "setup_asar: an engine refusal that exits zero still fails the build" {
-	# The 4.x refusal prints to --version. Judging the exit code alone
-	# would make this pass and hand the patch stage a dead binary. Note
-	# the refusal text quotes the offending Node version, so an
-	# unanchored "contains a version number" match passes it too — the
-	# reply has to be judged from its start.
+@test "setup_asar: a refusal that exits zero would still fail the build" {
+	# Not what 4.3.0 does today — it exits 1 — but an exit code is not a
+	# contract, and a refusal routed through --version at exit zero
+	# would hand the patch stage a dead binary if the exit code were the
+	# only arm. Note the refusal text quotes the offending Node version,
+	# so an unanchored "contains a version number" match passes it too —
+	# the reply has to be judged from its start.
 	_stage_asar_stub \
 		'echo "CANNOT RUN WITH NODE 20.19.2"; echo "asar requires Node >=22.12.0."; exit 0'
 
@@ -132,7 +150,8 @@ _stage_asar_stub() {
 
 @test "setup_asar: the same refusal on stderr also fails the build" {
 	# Which stream the refusal takes is upstream's choice, not a
-	# contract; an empty stdout must fail the shape check too.
+	# contract; an empty stdout must fail the shape check on its own,
+	# with no help from the exit code.
 	_stage_asar_stub 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 0'
 
 	run setup_asar

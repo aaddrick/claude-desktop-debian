@@ -281,14 +281,15 @@ setup_asar() {
 	# it runs, or the first symptom is a patch "anchor mismatch" three
 	# stages downstream (#839).
 	#
-	# Two probes, because neither signal alone is sound. The exit code
-	# can't be trusted on its own — the refusal path prints its
-	# complaint through --version and is free to exit zero — and the
-	# reply can't be judged from a merged stream, since the refusal text
-	# carries the offending Node version and so contains a version
-	# number itself. So: judge the shape of stdout, report the merged
-	# output, and anchor the match at the start of the reply rather than
-	# searching it.
+	# Two probes. On 4.3.0 under Node 20.19.2 the refusal exits 1 with
+	# an empty stdout and the complaint on stderr, so the exit code
+	# catches the shape that ships today; the stdout test is defense in
+	# depth against a future release that prints its complaint through
+	# --version and exits zero. The reply also can't be judged from a
+	# merged stream, since the refusal text carries the offending Node
+	# version and so contains a version number itself. So: judge the
+	# shape of stdout, report the merged output, and anchor the match at
+	# the start of the reply rather than searching it.
 	local asar_report asar_probe_status asar_version
 	asar_report=$("$asar_exec" --version 2>&1)
 	asar_probe_status=$?
