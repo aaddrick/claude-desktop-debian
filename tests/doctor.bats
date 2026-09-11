@@ -1763,3 +1763,43 @@ _stub_stat() {
 	[[ $output == *'perms=0755'* ]]
 	[[ $output != *'[PASS]'* ]]
 }
+
+@test "_doctor_check_chrome_sandbox: appimage package type — INFO, no stat, no FAIL" {
+	# #785: the AppImage stages chrome-sandbox but its permission
+	# normalization drops the setuid bit and the mount/extract dir is
+	# owned by the running user, so the perms check always FAILed with
+	# an unactionable `sudo chown root:root /tmp/.mount_.../` hint --
+	# and it is moot anyway (--no-sandbox is unconditional there).
+	# A 0644 adjacent sandbox, the worst case, must still produce a
+	# single _info line and no stat call at all.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
+	# Tripwire: any stat call would print this and break the
+	# assertions below, so the "no stat" half is enforced, not
+	# decoration.
+	stat() { echo 'STAT-WAS-CALLED'; }
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron" 'appimage'
+	[[ $status -eq 0 ]]
+	[[ $output != *'STAT-WAS-CALLED'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'sudo chown'* ]]
+	[[ $output == *'not used'* ]]
+	[[ $output == *'--no-sandbox'* ]]
+	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb type still judges perms (#785 gate is appimage-only)" {
+	# Guards the gate's blast radius: the same bad 0644 sandbox must
+	# still FAIL when the package type is deb.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron" 'deb'
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'perms=644'* ]]
+}
