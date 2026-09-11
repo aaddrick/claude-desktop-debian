@@ -39,10 +39,11 @@ assert_executable() {
 }
 
 assert_setuid() {
-	if [[ -u $1 ]]; then
-		pass "Setuid bit set: $1"
+	local path="$1" desc="${2:-}"
+	if [[ -u $path ]]; then
+		pass "${desc:-"Setuid bit set: $path"}"
 	else
-		fail "Setuid bit not set: $1"
+		fail "${desc:-"Setuid bit not set: $path"}"
 	fi
 }
 
