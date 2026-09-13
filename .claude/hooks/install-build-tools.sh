@@ -70,24 +70,30 @@ install_imagemagick() {
 	fi
 }
 
+# The floor tracks @electron/asar's engines.node (>=22.12.0), which the
+# build's own setup_nodejs enforces — see NODE_MIN_VERSION in
+# scripts/setup/dependencies.sh. Node 22.0-22.11 is below it, so this
+# check reads the minor too rather than the major alone (#839).
 install_node() {
 	if command -v node &>/dev/null; then
-		local version_str version
+		local version_str version major minor
 		version_str=$(node --version 2>/dev/null)
-		# Extract major version: v20.10.0 -> 20
+		# v22.23.2 -> major 22, minor 23
 		version=${version_str#v}
-		version=${version%%.*}
-		if ((version >= 20)); then
+		major=${version%%.*}
+		minor=${version#*.}
+		minor=${minor%%.*}
+		if ((major > 22 || (major == 22 && minor >= 12))); then
 			skipped+=('node')
 			return 0
 		fi
-		log "Node.js version $version is too old, need v20+"
+		log "Node.js version $version is too old, need v22.12+"
 	fi
 
-	log 'Installing Node.js v20 via NodeSource...'
+	log 'Installing Node.js v22 via NodeSource...'
 
-	# Add NodeSource repository for Node.js 20
-	if curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -n -E bash - >> "$log_file" 2>&1; then
+	# Add NodeSource repository for Node.js 22
+	if curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -n -E bash - >> "$log_file" 2>&1; then
 		if sudo -n apt-get install -y -qq nodejs >> "$log_file" 2>&1; then
 			installed+=('node')
 			return 0

@@ -25,7 +25,7 @@ This script installs:
 | `convert` | imagemagick | Process tray icons for Linux |
 | `dpkg-deb` | dpkg-dev | Build .deb packages |
 | `libfuse2` | libfuse2 | Run AppImages |
-| `node` | nodejs | Node.js v20+ for npm/asar operations |
+| `node` | nodejs | Node.js v22.12+ for npm/asar operations (@electron/asar engine floor) |
 
 ## When to Use
 

@@ -106,22 +106,59 @@ setup_work_directory() {
 	mkdir -p "$work_dir" || exit 1
 }
 
+# The floor is set by @electron/asar, not by anything we run directly:
+# every 4.x release (4.0.0 onward) declares engines.node >=22.12.0 and
+# hard-refuses to start below it. npm only *warns* (EBADENGINE) about
+# that, so a too-old host used to install the bin, fail every asar
+# invocation, and surface downstream as the WM_CLASS tripwire rather
+# than as a Node error (#839). Keep both values in step with the engine
+# constraint of the asar release line the build resolves.
+readonly NODE_MIN_VERSION='22.12.0'
+readonly NODE_FALLBACK_VERSION='22.23.2'
+
+# True when $1 is at or above the x.y floor in $2. Both are bare Node
+# versions with no leading 'v'. The patch level is deliberately ignored:
+# the engine constraints we track have only ever moved on major.minor,
+# and comparing three components buys nothing but more parsing to get
+# wrong.
+node_version_at_least() {
+	local have="$1" want="$2"
+
+	# A version we can't parse is not a version we can vouch for.
+	[[ $have =~ ^[0-9]+(\.[0-9]+)*$ ]] || return 1
+	[[ $want =~ ^[0-9]+(\.[0-9]+)*$ ]] || return 1
+
+	local -a have_parts want_parts
+	IFS='.' read -ra have_parts <<< "$have"
+	IFS='.' read -ra want_parts <<< "$want"
+
+	# A bare major ("22") carries no minor at all; the absent component
+	# reads as 0 rather than as "close enough", so "22" cannot clear a
+	# 22.12 floor.
+	local have_major="${have_parts[0]}" have_minor="${have_parts[1]:-0}"
+	local want_major="${want_parts[0]}" want_minor="${want_parts[1]:-0}"
+
+	(( have_major > want_major )) && return 0
+	(( have_major < want_major )) && return 1
+	(( have_minor >= want_minor ))
+}
+
 setup_nodejs() {
 	section_header 'Node.js Setup'
 	echo 'Checking Node.js version...'
 
 	local node_version_ok=false
 	if command -v node &> /dev/null; then
-		local node_version node_major
+		local node_version
 		node_version=$(node --version | cut -d'v' -f2)
-		node_major="${node_version%%.*}"
 		echo "System Node.js version: v$node_version"
 
-		if (( node_major >= 20 )); then
+		if node_version_at_least "$node_version" "$NODE_MIN_VERSION"; then
 			echo "System Node.js version is adequate (v$node_version)"
 			node_version_ok=true
 		else
-			echo "System Node.js version is too old (v$node_version). Need v20+"
+			echo "System Node.js version is too old (v$node_version)." \
+				"Need v$NODE_MIN_VERSION+ (@electron/asar engine floor)"
 		fi
 	else
 		echo 'Node.js not found in system'
@@ -133,7 +170,7 @@ setup_nodejs() {
 	fi
 
 	# Node.js version inadequate - install locally
-	echo 'Installing Node.js v20 locally in build directory...'
+	echo "Installing Node.js v$NODE_FALLBACK_VERSION locally in build directory..."
 
 	# Node is build-host tooling: it runs asar here and never ships in
 	# the package, so it is keyed to uname -m, NOT to $architecture —
@@ -150,7 +187,7 @@ setup_nodejs() {
 			;;
 	esac
 
-	local node_version_to_install='20.18.1'
+	local node_version_to_install="$NODE_FALLBACK_VERSION"
 	local node_tarball="node-v${node_version_to_install}-linux-${node_arch}.tar.xz"
 	local node_url="https://nodejs.org/dist/v${node_version_to_install}/${node_tarball}"
 	local node_install_dir="$work_dir/node"
@@ -232,12 +269,44 @@ setup_asar() {
 
 	if [[ -f $asar_bin_path ]]; then
 		asar_exec="$(realpath "$asar_bin_path")"
-		echo "Using asar executable: $asar_exec"
 	else
 		echo "Failed to find asar binary at '$asar_bin_path' after installation attempt." >&2
 		cd "$project_root" || exit 1
 		exit 1
 	fi
+
+	# The bin existing is not the same as the bin working: an asar whose
+	# engines.node the host fails still installs (npm only warns) and
+	# still drops a wrapper here, which then refuses on every call. Prove
+	# it runs, or the first symptom is a patch "anchor mismatch" three
+	# stages downstream (#839).
+	#
+	# Two probes. On 4.3.0 under Node 20.19.2 the refusal exits 1 with
+	# an empty stdout and the complaint on stderr, so the exit code
+	# catches the shape that ships today; the stdout test is defense in
+	# depth against a future release that prints its complaint through
+	# --version and exits zero. The reply also can't be judged from a
+	# merged stream, since the refusal text carries the offending Node
+	# version and so contains a version number itself. So: judge the
+	# shape of stdout, report the merged output, and anchor the match at
+	# the start of the reply rather than searching it.
+	local asar_report asar_probe_status asar_version
+	asar_report=$("$asar_exec" --version 2>&1)
+	asar_probe_status=$?
+	asar_version=$("$asar_exec" --version 2>/dev/null)
+
+	if (( asar_probe_status != 0 )) \
+		|| [[ ! $asar_version =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+		echo "asar is installed at '$asar_exec' but will not run:" >&2
+		echo "$asar_report" >&2
+		echo "@electron/asar needs Node.js v$NODE_MIN_VERSION+; this" \
+			"build is using" \
+			"$(node --version 2>/dev/null || echo 'no node')." >&2
+		cd "$project_root" || exit 1
+		exit 1
+	fi
+
+	echo "Using asar executable: $asar_exec ($asar_version)"
 
 	cd "$project_root" || exit 1
 	section_footer 'Asar Tooling'
