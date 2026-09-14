@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # Shared helpers for artifact validation tests
 
+# _resolve_asar lives in the build's own common utilities so the audit
+# tool, the patch-stage harness and these artifact tests all share one
+# resolver instead of three copies. Resolve the path from this file
+# rather than a caller's, since each entrypoint sources us by its own
+# $script_dir.
+_artifact_common_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "$_artifact_common_dir/../scripts/_common.sh" || {
+	echo "Cannot source scripts/_common.sh from $_artifact_common_dir" >&2
+	exit 1
+}
+
 _pass_count=0
 _fail_count=0
 
@@ -128,19 +140,46 @@ validate_app_contents() {
 		fail 'Bundled cowork-vm-service.js missing from resources/'
 	fi
 
-	# Extract app.asar for deeper inspection if tools available
+	# Extract app.asar for deeper inspection. This is not optional
+	# cover: everything below — the package.json shape, productName,
+	# and the StartupWMClass/desktopName agreement that closes #779 —
+	# lives behind it, so a resolver that quietly gives up takes the
+	# whole block with it and leaves the suite green on nothing read.
+	#
+	# The old fallback was `npx --yes @electron/asar`, which under
+	# npm 9 resolves to a 4.x that refuses to start on Node 20 (#839);
+	# the extract then failed, $extracted stayed false, and the skip
+	# branch reported [PASS]. Resolve a runnable asar or fail.
+	#
+	# @electron/asar@3 (not @4): these tests only read the shipped
+	# archive, which every major does identically, and 3.4.1 declares
+	# engines.node >=10.12.0, so it runs anywhere. That is load-bearing
+	# for CI as much as for a laptop — test-artifacts.yml runs no
+	# actions/setup-node and takes whatever `apt-get install nodejs` or
+	# `dnf install nodejs` hands it, which is not guaranteed to clear
+	# 4.x's >=22.12.0 floor. It also keeps a local run on the Node 20
+	# host from #839 asserting instead of stopping at the resolver.
 	local extract_dir
 	extract_dir=$(mktemp -d)
 
-	local extracted=false
-	if command -v asar &>/dev/null; then
-		asar extract "$resources_dir/app.asar" "$extract_dir/app" \
-			&& extracted=true
-	elif command -v npx &>/dev/null; then
-		npx --yes @electron/asar extract \
-			"$resources_dir/app.asar" "$extract_dir/app" 2>/dev/null \
-			&& extracted=true
+	# Redirected to a file, not captured with $(...): _resolve_asar sets
+	# $asar_exec as a global, and a command substitution would run it in
+	# a subshell that throws that assignment away — leaving the extract
+	# below to invoke the empty string. Same subshell-discards-mutation
+	# class as the `run`-wrapped assertions in
+	# docs/learnings/test-methodology-and-coverage.md.
+	local asar_log="$extract_dir/asar-resolve.log"
+	if _resolve_asar "$extract_dir" 3 > "$asar_log" 2>&1; then
+		pass "$(tail -1 "$asar_log")"
+	else
+		fail "Could not resolve a runnable asar: $(cat "$asar_log")"
+		rm -rf "$extract_dir"
+		return 1
 	fi
+
+	local extracted=false
+	"$asar_exec" extract "$resources_dir/app.asar" "$extract_dir/app" \
+		&& extracted=true
 
 	if [[ $extracted == true ]]; then
 		# Upstream entry point (main has shipped as index.js and
@@ -187,7 +226,7 @@ validate_app_contents() {
 			fail 'No index*.js in .vite/build/'
 		fi
 	else
-		pass "Skipping asar extraction (tool not available)"
+		fail "asar extract failed on $resources_dir/app.asar"
 	fi
 
 	rm -rf "$extract_dir"

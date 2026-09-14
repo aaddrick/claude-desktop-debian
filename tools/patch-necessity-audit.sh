@@ -71,14 +71,17 @@ if [[ ! -f $asar_path ]]; then
 	exit 1
 fi
 
-asar_exec='npx --yes @electron/asar'
-if command -v asar &> /dev/null; then
-	asar_exec='asar'
-fi
+# @electron/asar@3 (not @4): this is an operator tool run on whatever
+# Node the host happens to have, and it only ever reads an asar — a job
+# every major does identically. 3.4.1 is the last release that runs on
+# the Node 20 that Debian 13 stable ships, so the audit keeps working
+# there. The build is the one that needs 4.x, and it gets it through
+# setup_asar under the enforced NODE_MIN_VERSION floor.
+_resolve_asar "$work_dir" 3 || exit 1
 
 contents_dir="$work_dir/app.asar.contents"
 echo 'Extracting official app.asar...'
-$asar_exec extract "$asar_path" "$contents_dir" || {
+"$asar_exec" extract "$asar_path" "$contents_dir" || {
 	echo 'Failed to extract app.asar' >&2
 	exit 1
 }
