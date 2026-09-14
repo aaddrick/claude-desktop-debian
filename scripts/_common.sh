@@ -99,7 +99,9 @@ _asar_node_floor_hint() {
 }
 
 # npm install @electron/asar@<major> into a directory. Split out so the
-# resolver can reach it from two places without duplicating the subshell.
+# resolver reads as a sequence of decisions instead of carrying an
+# install subshell inline; its no-asar and dead-asar paths both land
+# here.
 _asar_install() {
 	local install_dir="$1" major="$2"
 	(
@@ -165,13 +167,14 @@ _resolve_asar() {
 	fi
 
 	path_asar=$(command -v asar)
-	if [[ -n $path_asar ]]; then
-		if _asar_probe "$path_asar"; then
-			asar_exec="$path_asar"
-			echo "Using asar executable: $asar_exec" \
-				"($_asar_probe_version)"
-			return 0
-		fi
+	if [[ -z $path_asar ]]; then
+		echo "No asar on PATH; installing @electron/asar@$major into" \
+			"$install_dir..."
+	elif _asar_probe "$path_asar"; then
+		asar_exec="$path_asar"
+		echo "Using asar executable: $asar_exec ($_asar_probe_version)"
+		return 0
+	else
 		# Held, not reported here. If the install below also fails
 		# this refusal is the root cause and has to LEAD the final
 		# report — an offline host would otherwise read only "failed
@@ -180,12 +183,10 @@ _resolve_asar() {
 		# it, and npm's own error spew in between is exactly what
 		# buries it, so the detail is saved for the bottom where the
 		# operator is looking. What goes out now is a two-line notice.
-		path_refusal="asar at '$path_asar' will not run:"$'\n'"$_asar_probe_report"
+		path_refusal="asar at '$path_asar' will not run:"
+		path_refusal+=$'\n'"$_asar_probe_report"
 		echo "asar at '$path_asar' will not run." >&2
 		echo "Falling back to @electron/asar@$major..." >&2
-	else
-		echo "No asar on PATH; installing @electron/asar@$major into" \
-			"$install_dir..."
 	fi
 
 	if ! _asar_install "$install_dir" "$major"; then

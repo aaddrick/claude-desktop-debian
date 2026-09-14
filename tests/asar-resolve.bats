@@ -40,6 +40,7 @@ setup() {
 	_stub_npm_fail
 }
 
+# Put an executable `asar` on PATH. $1 = the stub's body.
 _stub_asar_on_path() {
 	printf '%s\n' '#!/usr/bin/env bash' "$1" > "$stub_bin/asar"
 	chmod +x "$stub_bin/asar"
@@ -60,6 +61,7 @@ _stub_npm_install() {
 	STUB
 	chmod +x "$stub_bin/npm"
 }
+
 # Put an `npm` on PATH that records its argv and then fails, standing in
 # for an offline host, a proxy, or a yanked version.
 _stub_npm_fail() {
