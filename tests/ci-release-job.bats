@@ -142,6 +142,23 @@ job_needs_line() {
 	[[ -z "$cond" ]]
 }
 
+@test "the node version clears the asar engine floor" {
+	# @electron/asar declares engines.node >=22.12.0 from 4.0.0 onward
+	# and refuses to start below it, but npm reports the mismatch as an
+	# EBADENGINE *warning* — so a too-old runtime here installs cleanly
+	# and yields a binary that exists and never runs. `command -v asar`
+	# in the reference-source step passes on that binary, which is why
+	# this is asserted at the setup step rather than left to the guard.
+	local block major
+	block=$(step_blocks 'actions/setup-node' | uncommented)
+	[[ -n "$block" ]]
+
+	major=$(grep -oE 'node-version:[[:space:]]*"?[0-9]+' <<<"$block" \
+		| head -1 | grep -oE '[0-9]+$')
+	[[ -n "$major" ]]
+	[[ "$major" -ge 22 ]]
+}
+
 @test "the reference-source step guards asar before invoking it" {
 	# A bare "the guard exists" grep would pass on a guard sitting after
 	# the call, or on a comment mentioning it — so strip comments and pin
