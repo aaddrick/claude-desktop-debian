@@ -20,6 +20,7 @@ There are three test surfaces:
 | Surface | Runs | Covers |
 |---|---|---|
 | **BATS unit tests** (`tests/*.bats`) | seconds, on every push/PR via `tests.yml` | pure shell helpers in `launcher-common.sh` and `doctor.sh` |
+| **Workflow structural tests** ([`tests/ci-release-job.bats`](../../tests/ci-release-job.bats)) | with the unit suite | invariants of the release job in `ci.yml` that only bite on a tag push |
 | **Artifact smoke tests** (`tests/test-artifact-*.sh`) | per built package, `test-artifacts.yml` matrix | deb/rpm/AppImage structure, `--doctor` dispatch, headless launch-to-ready |
 | **Manual test plan** ([`docs/testing/`](../testing/README.md)) | human sweeps across the VM fleet | GUI behavior BATS can't reach (tray, WCO, IME) |
 
@@ -120,6 +121,26 @@ Structural asserts ("the files exist") are not enough — [#666](https://github.
 
 > [!NOTE]
 > Known residual gaps are flagged, not hidden: rpm launch stays SKIP-not-PASS where the container denies the sandbox; GPU/renderer [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)-class crashes leave the main process alive and pass under Xvfb's SwiftShader fallback. Silent truncation of coverage reads as "we tested everything" when we didn't — say what was skipped.
+
+## Workflow structural tests
+
+The release job in [`ci.yml`](../../.github/workflows/ci.yml) only runs on a tag push, so a defect in it is discovered by the release it breaks. [`tests/ci-release-job.bats`](../../tests/ci-release-job.bats) moves the cheap half of that risk into the unit suite by asserting on the job's structure.
+
+The trap it was born from is worth stating on its own, because it is not a test trap and no amount of shell coverage would have caught it:
+
+> **`continue-on-error: true` renders a failed step as a green check, but its `outcome` is still `failure`.** Any step gated on `steps.<id>.outcome == 'success'` silently skips, and the run summary shows a ✓ next to the step that actually broke.
+
+The 2026-07-25 release is the worked example. `claude-desktop-versions` went private the day before; its `continue-on-error` checkout showed ✓ while its `outcome` skipped four gated setup steps — one of which installed `asar` for the reference-source step, which has nothing to do with the versions repo. That step exited 127, failed the job, and because `mirror-official-deb`, `update-apt-repo`, `update-dnf-repo` and `update-aur-repo` all carry `needs: [release]`, the build published to no channel at all. Diagnosis cost was mostly spent trusting the green checkmarks.
+
+Two rules came out of it, and both are pinned by the suite:
+
+- **A step's tooling is installed by a step gated on the same things that step is gated on — nothing more.** Convenience tooling shared across unrelated concerns is how one subsystem's outage reaches another.
+- **A step whose output is a nice-to-have must not be able to fail a job that gates publishing.** The reference-source step already had two `::warning::` + `exit 0` bail-outs; it just had an unguarded hard dependency above them. The test asserts every bail-out is a warning and that the guard precedes the call it guards.
+
+Two methodology notes specific to this surface:
+
+- **Parse, don't grep — and make the parser self-report.** `awk` splits the job on its step boundaries rather than pulling in a YAML library, which keeps the suite on the toolchain the rest of `tests/` uses. The risk is a parser that silently matches nothing and passes everything, so the first test asserts the parse's own shape (step count, a known step present, the region *not* bleeding into the next job) and every later test asserts its step block was found before reading a field out of it. Deleting the guarded step reds five tests; renaming the job reds eight.
+- **The comment-as-code near-miss.** A collapsed `run:` body still contains its `#` comments, so `command -v asar` in a comment satisfies a naive grep. Comment lines are stripped before assertion, and ordering (`guard before call`) is asserted rather than mere presence — replacing the guard with a comment that mentions it reds two tests.
 
 ## The doctor-check testability refactor
 
