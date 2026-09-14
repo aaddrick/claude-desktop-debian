@@ -35,7 +35,7 @@ _chunk() {
 	printf '%s' "$*" > "$build_dir/$name"
 }
 
-# The evidence column of the row a probe just appended.
+# The matrix row a probe just appended — name, verdict and evidence.
 _row() {
 	printf '%s\n' "${rows[@]}"
 }
@@ -322,6 +322,27 @@ _bundle_many_chunks() {
 	[[ $status -eq 0 ]] || return 1
 	[[ $output != *'Patch-necessity matrix'* ]] || return 1
 	[[ $output != *'Extracting'* ]]
+}
+
+@test "harness: --help prints the whole header, not a stale range" {
+	# The range was hardcoded as '2,20p' and the block had grown to 21
+	# lines, so --help cut off after the `needed?` verdict and dropped
+	# `check` — the verdict most rows in the matrix actually carry.
+	run "$BATS_TEST_DIRNAME/../tools/patch-necessity-audit.sh" --help
+	[[ $status -eq 0 ]] || return 1
+	[[ $output == *'not-needed'* ]] || return 1
+	[[ $output == *'needed?'* ]] || return 1
+	[[ $output == *'ambiguous'* ]]
+}
+
+@test "harness: --help stops at the header, not in the code" {
+	# The other direction: deriving the range must not run away past
+	# the closing banner and start printing the script itself. The
+	# OPENING banner is part of the header and always present, so the
+	# test is that exactly one survives, not zero.
+	run "$BATS_TEST_DIRNAME/../tools/patch-necessity-audit.sh" --help
+	[[ $output != *'script_dir='* ]] || return 1
+	[[ $(grep -c '^#====' <<< "$output") -eq 1 ]]
 }
 
 @test "harness: the run guard names main, so argv reaches it" {

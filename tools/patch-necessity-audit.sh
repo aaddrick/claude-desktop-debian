@@ -34,7 +34,13 @@ tree_dir=''
 local_deb_path=''
 
 usage() {
-	sed -n '2,20p' "${BASH_SOURCE[0]}"
+	# Derive the header's extent rather than hardcoding a line range.
+	# The old '2,20p' was correct when it was written and silently went
+	# stale as the block grew: --help stopped mid-list and dropped the
+	# `check` verdict, which is the most common one in the matrix.
+	local close
+	close=$(grep -n '^#====' "${BASH_SOURCE[0]}" | sed -n '2s/:.*//p')
+	sed -n "2,$((close - 1))p" "${BASH_SOURCE[0]}"
 	exit "${1:-0}"
 }
 
@@ -43,8 +49,7 @@ cleanup() {
 }
 
 # Parse argv, fetch or accept a tree, and stage it for the probes.
-# Sets: work_dir, tree_dir, app_dir, resources_dir, build_dir,
-#       main_view_js, contents_dir
+# Sets: work_dir, tree_dir, app_dir, build_dir, main_view_js
 _stage_tree() {
 	while (( $# )); do
 		case "$1" in
@@ -64,8 +69,7 @@ _stage_tree() {
 	fi
 
 	app_dir="$tree_dir/usr/lib/claude-desktop"
-	resources_dir="$app_dir/resources"
-	local asar_path="$resources_dir/app.asar"
+	local asar_path="$app_dir/resources/app.asar"
 
 	if [[ ! -f $asar_path ]]; then
 		echo "app.asar not found at $asar_path" >&2
@@ -81,7 +85,7 @@ _stage_tree() {
 	# NODE_MIN_VERSION floor.
 	_resolve_asar "$work_dir" 3 || return 1
 
-	contents_dir="$work_dir/app.asar.contents"
+	local contents_dir="$work_dir/app.asar.contents"
 	echo 'Extracting official app.asar...'
 	"$asar_exec" extract "$asar_path" "$contents_dir" || {
 		echo 'Failed to extract app.asar' >&2
@@ -128,8 +132,7 @@ _resolve_bundle() {
 			| LC_ALL=C sort
 	)
 	if (( ${#bundle_js[@]} == 0 )); then
-		echo "No .js files under $build_dir — upstream layout changed?" \
-			>&2
+		echo "No .js under $build_dir — upstream layout changed?" >&2
 		return 1
 	fi
 	echo "Probing ${#bundle_js[@]} JS file(s) under .vite/build/"
