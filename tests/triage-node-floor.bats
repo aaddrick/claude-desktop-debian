@@ -11,12 +11,15 @@
 #
 # Neither install fails loudly on an older runtime. What happens depends
 # on npm: a bare `npm install -g <name>` is a *range* spec (`*`), and
-# npm-pick-manifest >=9 — which npm 10.x bundles — filters ranges by
-# engines. So on Node 20 npm silently resolves asar to 3.4.1 and the
-# claude-code CLI to 2.1.197 (>=18.0.0) rather than refusing, and on
-# npm <=9, which does not filter, it resolves 4.3.0 and the EBADENGINE
-# mismatch is only a *warning*, so the wrapper installs and then dies on
-# every invocation.
+# npm-pick-manifest >=9.1.0 — which npm bundles from 10.8.2 — stops
+# short-circuiting a `*` range to the `latest` dist-tag when its engines
+# mismatch. So on Node 20 npm silently resolves asar to 3.4.1 and the
+# claude-code CLI to 2.1.197 (>=18.0.0) rather than refusing. Older npm
+# keeps the shortcut: it resolves 4.3.0, and the EBADENGINE mismatch is
+# only a *warning*, so the wrapper installs and then dies on every
+# invocation. Node 20.19.2 bundles npm 10.8.2, so a runner clears that
+# boundary by one patch release — which is the whole reason the outcome
+# was the runner's to decide rather than ours.
 #
 # Both outcomes are bugs and neither announces itself: one silently runs
 # a CLI pinned dozens of releases back, the other leaves a binary that
