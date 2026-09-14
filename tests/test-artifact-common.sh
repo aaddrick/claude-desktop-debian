@@ -148,8 +148,8 @@ validate_app_contents() {
 	#
 	# The old fallback was `npx --yes @electron/asar`, which under
 	# npm 9 resolves to a 4.x that refuses to start on Node 20 (#839);
-	# the extract then failed, $extracted stayed false, and the skip
-	# branch reported [PASS]. Resolve a runnable asar or fail.
+	# the extract then failed and the skip branch reported [PASS].
+	# Resolve a runnable asar or fail.
 	#
 	# @electron/asar@3 (not @4): these tests only read the shipped
 	# archive, which every major does identically, and 3.4.1 declares
@@ -177,56 +177,59 @@ validate_app_contents() {
 		return 1
 	fi
 
-	local extracted=false
-	"$asar_exec" extract "$resources_dir/app.asar" "$extract_dir/app" \
-		&& extracted=true
-
-	if [[ $extracted == true ]]; then
-		# Upstream entry point (main has shipped as index.js and
-		# index.pre.js across releases — assert the stable prefix,
-		# not the exact filename)
-		assert_contains "$extract_dir/app/package.json" \
-			'"main": ".vite/build/' \
-			'package.json main points into .vite/build/'
-
-		# productName drives Electron's userData path (~/.config/Claude);
-		# the build tripwires the same invariant at patch time
-		# (app-asar.sh)
-		assert_contains "$extract_dir/app/package.json" \
-			'"productName": "Claude"' \
-			'package.json productName is Claude'
-
-		# StartupWMClass must equal the asar desktopName minus its
-		# .desktop suffix — the field Chromium derives the runtime
-		# window class from. A drift here re-opens #779 (duplicate /
-		# generic taskbar icon on GNOME and KDE).
-		if [[ -n $desktop_file ]]; then
-			local desktop_name wm_class
-			desktop_name=$(grep -oP '"desktopName": "\K[^"]+' \
-				"$extract_dir/app/package.json")
-			wm_class="${desktop_name%.desktop}"
-			# Mirror _derive_wm_class's guard: the glob rejects both an
-			# empty value and one without a trailing .desktop suffix.
-			if [[ $desktop_name != *.desktop ]]; then
-				fail "asar desktopName '$desktop_name' is missing or has no .desktop suffix"
-			elif grep -qx "StartupWMClass=$wm_class" "$desktop_file"; then
-				pass "StartupWMClass matches asar desktopName ($wm_class)"
-			else
-				fail "StartupWMClass in $desktop_file does not match asar desktopName-derived '$wm_class'"
-			fi
-		fi
-
-		# Main process bundle exists
-		local main_bundle
-		main_bundle=$(find "$extract_dir/app/.vite/build" \
-			-maxdepth 1 -name 'index*.js' -type f | head -1)
-		if [[ -n $main_bundle ]]; then
-			pass 'Main process bundle present in .vite/build/'
-		else
-			fail 'No index*.js in .vite/build/'
-		fi
-	else
+	# The extract's own exit code is the last thing between a corrupt
+	# app.asar and a green suite, so treat a failure the same way as an
+	# unresolvable asar: report it and stop, rather than letting the
+	# assertions below read an empty tree.
+	if ! "$asar_exec" extract "$resources_dir/app.asar" \
+		"$extract_dir/app"; then
 		fail "asar extract failed on $resources_dir/app.asar"
+		rm -rf "$extract_dir"
+		return 1
+	fi
+
+	# Upstream entry point (main has shipped as index.js and
+	# index.pre.js across releases — assert the stable prefix,
+	# not the exact filename)
+	assert_contains "$extract_dir/app/package.json" \
+		'"main": ".vite/build/' \
+		'package.json main points into .vite/build/'
+
+	# productName drives Electron's userData path (~/.config/Claude);
+	# the build tripwires the same invariant at patch time
+	# (app-asar.sh)
+	assert_contains "$extract_dir/app/package.json" \
+		'"productName": "Claude"' \
+		'package.json productName is Claude'
+
+	# StartupWMClass must equal the asar desktopName minus its
+	# .desktop suffix — the field Chromium derives the runtime
+	# window class from. A drift here re-opens #779 (duplicate /
+	# generic taskbar icon on GNOME and KDE).
+	if [[ -n $desktop_file ]]; then
+		local desktop_name wm_class
+		desktop_name=$(grep -oP '"desktopName": "\K[^"]+' \
+			"$extract_dir/app/package.json")
+		wm_class="${desktop_name%.desktop}"
+		# Mirror _derive_wm_class's guard: the glob rejects both an
+		# empty value and one without a trailing .desktop suffix.
+		if [[ $desktop_name != *.desktop ]]; then
+			fail "asar desktopName '$desktop_name' is missing or has no .desktop suffix"
+		elif grep -qx "StartupWMClass=$wm_class" "$desktop_file"; then
+			pass "StartupWMClass matches asar desktopName ($wm_class)"
+		else
+			fail "StartupWMClass in $desktop_file does not match asar desktopName-derived '$wm_class'"
+		fi
+	fi
+
+	# Main process bundle exists
+	local main_bundle
+	main_bundle=$(find "$extract_dir/app/.vite/build" \
+		-maxdepth 1 -name 'index*.js' -type f | head -1)
+	if [[ -n $main_bundle ]]; then
+		pass 'Main process bundle present in .vite/build/'
+	else
+		fail 'No index*.js in .vite/build/'
 	fi
 
 	rm -rf "$extract_dir"
