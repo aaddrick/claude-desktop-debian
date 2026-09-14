@@ -9,12 +9,20 @@
 # engines.node >=22.12.0 since 4.0.0 and every 4.x release refuses to
 # start below it, and @anthropic-ai/claude-code declares >=22.0.0.
 #
-# npm reports either mismatch as an EBADENGINE *warning*, not an error,
-# so a too-old runtime installs the wrapper cleanly and leaves a binary
-# that exists and never runs. Nothing fails at install time, and the
-# failure surfaces later as a command that dies on first invocation —
-# which is why this is asserted at the setup step rather than left to a
-# `command -v` guard, which such a binary passes.
+# Neither install fails loudly on an older runtime. What happens depends
+# on npm: a bare `npm install -g <name>` is a *range* spec (`*`), and
+# npm-pick-manifest >=9 — which npm 10.x bundles — filters ranges by
+# engines. So on Node 20 npm silently resolves asar to 3.4.1 and the
+# claude-code CLI to 2.1.197 (>=18.0.0) rather than refusing, and on
+# npm <=9, which does not filter, it resolves 4.3.0 and the EBADENGINE
+# mismatch is only a *warning*, so the wrapper installs and then dies on
+# every invocation.
+#
+# Both outcomes are bugs and neither announces itself: one silently runs
+# a CLI pinned dozens of releases back, the other leaves a binary that
+# `command -v` finds and that cannot start. Asserting the runtime here
+# is what makes the resolved version deterministic instead of a property
+# of whichever npm the runner happens to ship.
 #
 # The floor is per-file rather than per-step on purpose: these workflows
 # set Node up only in order to install those tools, so every
