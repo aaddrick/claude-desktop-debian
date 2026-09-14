@@ -143,12 +143,15 @@ job_needs_line() {
 }
 
 @test "the node version clears the asar engine floor" {
-	# @electron/asar declares engines.node >=22.12.0 from 4.0.0 onward
-	# and refuses to start below it, but npm reports the mismatch as an
-	# EBADENGINE *warning* — so a too-old runtime here installs cleanly
-	# and yields a binary that exists and never runs. `command -v asar`
-	# in the reference-source step passes on that binary, which is why
-	# this is asserted at the setup step rather than left to the guard.
+	# @electron/asar declares engines.node >=22.12.0 from 4.0.0 onward.
+	# A too-old runtime does not fail the install: a bare `npm install`
+	# is a range spec, so npm-pick-manifest >=9 (npm 10.x) quietly
+	# resolves 3.4.1 instead, while npm <=9 does not filter and resolves
+	# 4.3.0, whose EBADENGINE is only a warning — leaving a binary that
+	# the reference-source step's `command -v asar` passes and that dies
+	# on `asar extract`. Neither outcome announces itself, and which one
+	# a run gets is the runner's npm, so the runtime is pinned here
+	# rather than left to that guard.
 	local block version_re='node-version:[[:space:]]*"?([0-9]+)'
 	block=$(step_blocks 'actions/setup-node' | uncommented)
 	[[ -n "$block" ]]
