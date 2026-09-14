@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
-# triage-node-floor.bats
-# The triage workflows set up a Node that can actually run the tools
-# they install.
+# workflow-node-floor.bats
+# Every workflow that installs floored tooling sets up a Node that can
+# actually run it.
 #
-# Both issue-triage.yml and issue-triage-v2.yml `npm install -g` tools
-# with a Node engine floor above 20: @electron/asar has declared
+# ci.yml, issue-triage.yml and issue-triage-v2.yml all `npm install -g`
+# tools with a Node engine floor above 20: @electron/asar has declared
 # engines.node >=22.12.0 since 4.0.0 and every 4.x release refuses to
 # start below it, and @anthropic-ai/claude-code declares >=22.0.0.
 #
@@ -33,12 +33,13 @@
 # reintroduces 20 reds here rather than waiting for a triage run.
 #
 # The file list is explicit rather than derived from a grep for the
-# install lines. ci.yml installs the same tools and has the same defect,
-# but it is repaired separately in #845 along with its own floor
-# assertion in ci-release-job.bats — deriving the list would couple this
-# suite to that PR's merge order and red this branch until it lands.
-# Fold ci.yml in here if #845 is ever abandoned. The build side carries
-# the third instance, as NODE_MIN_VERSION in
+# install lines, so adding a workflow that installs floored tooling is a
+# deliberate edit here rather than something a grep silently picks up or
+# silently misses. ci-release-job.bats asserted the ci.yml half
+# separately until #847; that assertion now lives here, because two
+# copies of one invariant drift — this suite already had the matching
+# prose corrected in one copy and missed in the other once. The build
+# side carries the remaining instance, as NODE_MIN_VERSION in
 # scripts/setup/dependencies.sh.
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
@@ -51,6 +52,7 @@ WORKFLOW_DIR="${SCRIPT_DIR}/../.github/workflows"
 readonly NODE_MIN_MAJOR=22
 
 readonly FLOORED_WORKFLOWS=(
+	ci.yml
 	issue-triage.yml
 	issue-triage-v2.yml
 )
