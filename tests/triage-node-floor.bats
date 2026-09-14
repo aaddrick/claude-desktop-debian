@@ -22,9 +22,12 @@
 # reintroduces 20 reds here rather than waiting for a triage run.
 #
 # The file list is explicit rather than derived from a grep for the
-# install lines, because ci.yml installs the same tools and carries its
-# own floor assertion in ci-release-job.bats. Same defect class in all
-# three, plus the build side's NODE_MIN_VERSION in
+# install lines. ci.yml installs the same tools and has the same defect,
+# but it is repaired separately in #845 along with its own floor
+# assertion in ci-release-job.bats — deriving the list would couple this
+# suite to that PR's merge order and red this branch until it lands.
+# Fold ci.yml in here if #845 is ever abandoned. The build side carries
+# the third instance, as NODE_MIN_VERSION in
 # scripts/setup/dependencies.sh.
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
@@ -41,12 +44,19 @@ readonly FLOORED_WORKFLOWS=(
 	issue-triage-v2.yml
 )
 
-# The `node-version` majors declared in workflow <1>, comments stripped
-# so a commented-out key cannot stand in for a live one.
+# The `node-version` majors declared in workflow <1>, comment lines
+# skipped so a commented-out key cannot stand in for a live one.
+#
+# `grep -oE` cannot return a capture group, so matching the key and
+# extracting its major would take two passes; `[[ =~ ]]` captures the
+# major directly into BASH_REMATCH.
 node_majors() {
-	grep -vE '^[[:space:]]*#' "${WORKFLOW_DIR}/$1" \
-		| grep -oE 'node-version:[[:space:]]*"?[0-9]+' \
-		| grep -oE '[0-9]+$'
+	local line re='node-version:[[:space:]]*"?([0-9]+)'
+	while IFS= read -r line; do
+		[[ "$line" =~ ^[[:space:]]*# ]] && continue
+		[[ "$line" =~ $re ]] || continue
+		printf '%s\n' "${BASH_REMATCH[1]}"
+	done < "${WORKFLOW_DIR}/$1"
 }
 
 @test "every workflow subject to the floor sets a node version" {
@@ -72,8 +82,8 @@ node_majors() {
 	done
 
 	[[ -z "$violations" ]] || {
-		echo "below the Node ${NODE_MIN_MAJOR} floor:" >&2
-		echo "$violations" >&2
+		printf 'below the Node %s floor:\n%s' \
+			"$NODE_MIN_MAJOR" "$violations" >&2
 		false
 	}
 }
