@@ -149,14 +149,14 @@ job_needs_line() {
 	# and yields a binary that exists and never runs. `command -v asar`
 	# in the reference-source step passes on that binary, which is why
 	# this is asserted at the setup step rather than left to the guard.
-	local block major
+	local block version_re='node-version:[[:space:]]*"?([0-9]+)'
 	block=$(step_blocks 'actions/setup-node' | uncommented)
 	[[ -n "$block" ]]
 
-	major=$(grep -oE 'node-version:[[:space:]]*"?[0-9]+' <<<"$block" \
-		| head -1 | grep -oE '[0-9]+$')
-	[[ -n "$major" ]]
-	[[ "$major" -ge 22 ]]
+	# A key that is missing, or present only as a comment, reds on the
+	# match itself — there is no major version to compare.
+	[[ "$block" =~ $version_re ]]
+	[[ "${BASH_REMATCH[1]}" -ge 22 ]]
 }
 
 @test "the reference-source step guards asar before invoking it" {
