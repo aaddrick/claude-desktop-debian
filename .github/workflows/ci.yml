@@ -138,9 +138,10 @@ jobs:
       # 4.0.0 onward, and the claude-code CLI installed further down
       # declares >=22.0.0. Neither install fails loudly below that —
       # what it does depends on the runner's npm. A bare install is a
-      # range spec, and npm-pick-manifest >=9 (npm 10.x) filters
-      # ranges by engines, so Node 20 quietly resolves asar 3.4.1 and
-      # CLI 2.1.197 instead. npm <=9 does not filter: it resolves
+      # range spec, and npm-pick-manifest >=9.1.0 (npm >=10.8.2, the
+      # npm Node 20 bundles) stops taking the latest-tag shortcut when
+      # engines mismatch, so Node 20 quietly resolves asar 3.4.1 and
+      # CLI 2.1.197 instead. Older npm keeps the shortcut: it resolves
       # 4.3.0, whose EBADENGINE is only a warning, leaving an asar
       # that `command -v` finds and that dies on first use — the
       # shape #839 was reported as, from a host whose npm is packaged
