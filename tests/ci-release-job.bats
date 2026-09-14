@@ -142,6 +142,26 @@ job_needs_line() {
 	[[ -z "$cond" ]]
 }
 
+@test "the node version clears the asar engine floor" {
+	# @electron/asar declares engines.node >=22.12.0 from 4.0.0 onward.
+	# A too-old runtime does not fail the install: a bare `npm install`
+	# is a range spec, so npm-pick-manifest >=9 (npm 10.x) quietly
+	# resolves 3.4.1 instead, while npm <=9 does not filter and resolves
+	# 4.3.0, whose EBADENGINE is only a warning — leaving a binary that
+	# the reference-source step's `command -v asar` passes and that dies
+	# on `asar extract`. Neither outcome announces itself, and which one
+	# a run gets is the runner's npm, so the runtime is pinned here
+	# rather than left to that guard.
+	local block version_re='node-version:[[:space:]]*"?([0-9]+)'
+	block=$(step_blocks 'actions/setup-node' | uncommented)
+	[[ -n "$block" ]]
+
+	# A key that is missing, or present only as a comment, reds on the
+	# match itself — there is no major version to compare.
+	[[ "$block" =~ $version_re ]]
+	[[ "${BASH_REMATCH[1]}" -ge 22 ]]
+}
+
 @test "the reference-source step guards asar before invoking it" {
 	# A bare "the guard exists" grep would pass on a guard sitting after
 	# the call, or on a comment mentioning it — so strip comments and pin

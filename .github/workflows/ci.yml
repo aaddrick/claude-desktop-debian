@@ -134,10 +134,19 @@ jobs:
       # exited 127, failing the release job and skipping the four
       # publish jobs that carry `needs: [release]`.
 
-      - name: Set up Node.js 20
+      # Node 22, not 20: asar declares engines.node >=22.12.0 from
+      # 4.0.0 onward and refuses to start below it, and the
+      # claude-code CLI installed further down declares >=22.0.0.
+      # npm reports both as an EBADENGINE *warning*, so an unpinned
+      # install on Node 20 succeeds and leaves a binary that exists
+      # and never runs. Package names are spelled bare on purpose —
+      # tests/ci-release-job.bats greps this region for the npm
+      # specifiers without stripping comments first.
+
+      - name: Set up Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install asar and prettier
         continue-on-error: true
