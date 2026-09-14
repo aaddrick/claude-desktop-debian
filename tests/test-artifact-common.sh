@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # Shared helpers for artifact validation tests
 
+# _resolve_asar lives in the build's own common utilities so the audit
+# tool, the patch-stage harness and these artifact tests all share one
+# resolver instead of three copies. Resolve the path from this file
+# rather than a caller's, since each entrypoint sources us by its own
+# $script_dir.
+_artifact_common_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_common.sh
+source "$_artifact_common_dir/../scripts/_common.sh" || {
+	echo "Cannot source scripts/_common.sh from $_artifact_common_dir" >&2
+	exit 1
+}
+
 _pass_count=0
 _fail_count=0
 
@@ -128,66 +140,96 @@ validate_app_contents() {
 		fail 'Bundled cowork-vm-service.js missing from resources/'
 	fi
 
-	# Extract app.asar for deeper inspection if tools available
+	# Extract app.asar for deeper inspection. This is not optional
+	# cover: everything below — the package.json shape, productName,
+	# and the StartupWMClass/desktopName agreement that closes #779 —
+	# lives behind it, so a resolver that quietly gives up takes the
+	# whole block with it and leaves the suite green on nothing read.
+	#
+	# The old fallback was `npx --yes @electron/asar`, which under
+	# npm 9 resolves to a 4.x that refuses to start on Node 20 (#839);
+	# the extract then failed and the skip branch reported [PASS].
+	# Resolve a runnable asar or fail.
+	#
+	# @electron/asar@3 (not @4): these tests only read the shipped
+	# archive, which every major does identically, and 3.4.1 declares
+	# engines.node >=10.12.0, so it runs anywhere. That is load-bearing
+	# for CI as much as for a laptop — test-artifacts.yml runs no
+	# actions/setup-node and takes whatever `apt-get install nodejs` or
+	# `dnf install nodejs` hands it, which is not guaranteed to clear
+	# 4.x's >=22.12.0 floor. It also keeps a local run on the Node 20
+	# host from #839 asserting instead of stopping at the resolver.
 	local extract_dir
 	extract_dir=$(mktemp -d)
 
-	local extracted=false
-	if command -v asar &>/dev/null; then
-		asar extract "$resources_dir/app.asar" "$extract_dir/app" \
-			&& extracted=true
-	elif command -v npx &>/dev/null; then
-		npx --yes @electron/asar extract \
-			"$resources_dir/app.asar" "$extract_dir/app" 2>/dev/null \
-			&& extracted=true
+	# Redirected to a file, not captured with $(...): _resolve_asar sets
+	# $asar_exec as a global, and a command substitution would run it in
+	# a subshell that throws that assignment away — leaving the extract
+	# below to invoke the empty string. Same subshell-discards-mutation
+	# class as the `run`-wrapped assertions in
+	# docs/learnings/test-methodology-and-coverage.md.
+	local asar_log="$extract_dir/asar-resolve.log"
+	if _resolve_asar "$extract_dir" 3 > "$asar_log" 2>&1; then
+		pass "$(tail -1 "$asar_log")"
+	else
+		fail "Could not resolve a runnable asar: $(cat "$asar_log")"
+		rm -rf "$extract_dir"
+		return 1
 	fi
 
-	if [[ $extracted == true ]]; then
-		# Upstream entry point (main has shipped as index.js and
-		# index.pre.js across releases — assert the stable prefix,
-		# not the exact filename)
-		assert_contains "$extract_dir/app/package.json" \
-			'"main": ".vite/build/' \
-			'package.json main points into .vite/build/'
+	# The extract's own exit code is the last thing between a corrupt
+	# app.asar and a green suite, so treat a failure the same way as an
+	# unresolvable asar: report it and stop, rather than letting the
+	# assertions below read an empty tree.
+	if ! "$asar_exec" extract "$resources_dir/app.asar" \
+		"$extract_dir/app"; then
+		fail "asar extract failed on $resources_dir/app.asar"
+		rm -rf "$extract_dir"
+		return 1
+	fi
 
-		# productName drives Electron's userData path (~/.config/Claude);
-		# the build tripwires the same invariant at patch time
-		# (app-asar.sh)
-		assert_contains "$extract_dir/app/package.json" \
-			'"productName": "Claude"' \
-			'package.json productName is Claude'
+	# Upstream entry point (main has shipped as index.js and
+	# index.pre.js across releases — assert the stable prefix,
+	# not the exact filename)
+	assert_contains "$extract_dir/app/package.json" \
+		'"main": ".vite/build/' \
+		'package.json main points into .vite/build/'
 
-		# StartupWMClass must equal the asar desktopName minus its
-		# .desktop suffix — the field Chromium derives the runtime
-		# window class from. A drift here re-opens #779 (duplicate /
-		# generic taskbar icon on GNOME and KDE).
-		if [[ -n $desktop_file ]]; then
-			local desktop_name wm_class
-			desktop_name=$(grep -oP '"desktopName": "\K[^"]+' \
-				"$extract_dir/app/package.json")
-			wm_class="${desktop_name%.desktop}"
-			# Mirror _derive_wm_class's guard: the glob rejects both an
-			# empty value and one without a trailing .desktop suffix.
-			if [[ $desktop_name != *.desktop ]]; then
-				fail "asar desktopName '$desktop_name' is missing or has no .desktop suffix"
-			elif grep -qx "StartupWMClass=$wm_class" "$desktop_file"; then
-				pass "StartupWMClass matches asar desktopName ($wm_class)"
-			else
-				fail "StartupWMClass in $desktop_file does not match asar desktopName-derived '$wm_class'"
-			fi
-		fi
+	# productName drives Electron's userData path (~/.config/Claude);
+	# the build tripwires the same invariant at patch time
+	# (app-asar.sh)
+	assert_contains "$extract_dir/app/package.json" \
+		'"productName": "Claude"' \
+		'package.json productName is Claude'
 
-		# Main process bundle exists
-		local main_bundle
-		main_bundle=$(find "$extract_dir/app/.vite/build" \
-			-maxdepth 1 -name 'index*.js' -type f | head -1)
-		if [[ -n $main_bundle ]]; then
-			pass 'Main process bundle present in .vite/build/'
+	# StartupWMClass must equal the asar desktopName minus its
+	# .desktop suffix — the field Chromium derives the runtime
+	# window class from. A drift here re-opens #779 (duplicate /
+	# generic taskbar icon on GNOME and KDE).
+	if [[ -n $desktop_file ]]; then
+		local desktop_name wm_class
+		desktop_name=$(grep -oP '"desktopName": "\K[^"]+' \
+			"$extract_dir/app/package.json")
+		wm_class="${desktop_name%.desktop}"
+		# Mirror _derive_wm_class's guard: the glob rejects both an
+		# empty value and one without a trailing .desktop suffix.
+		if [[ $desktop_name != *.desktop ]]; then
+			fail "asar desktopName '$desktop_name' is missing or has no .desktop suffix"
+		elif grep -qx "StartupWMClass=$wm_class" "$desktop_file"; then
+			pass "StartupWMClass matches asar desktopName ($wm_class)"
 		else
-			fail 'No index*.js in .vite/build/'
+			fail "StartupWMClass in $desktop_file does not match asar desktopName-derived '$wm_class'"
 		fi
+	fi
+
+	# Main process bundle exists
+	local main_bundle
+	main_bundle=$(find "$extract_dir/app/.vite/build" \
+		-maxdepth 1 -name 'index*.js' -type f | head -1)
+	if [[ -n $main_bundle ]]; then
+		pass 'Main process bundle present in .vite/build/'
 	else
-		pass "Skipping asar extraction (tool not available)"
+		fail 'No index*.js in .vite/build/'
 	fi
 
 	rm -rf "$extract_dir"
