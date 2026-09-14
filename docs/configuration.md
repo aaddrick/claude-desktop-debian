@@ -121,6 +121,16 @@ Requirements when flagged:
 
 Run `claude-desktop-unofficial --doctor` with the flag set to see the bwrap-path diagnostics. Isolation is namespace-level, not a VM — weaker than the KVM default, which is the trade for running where KVM can't. Any `COWORK_VM_BACKEND` value other than `bwrap` is a 2.x knob the official client ignores.
 
+Extra host paths can be exposed to the sandbox via `coworkBwrapMounts` (`additionalBinds` / `additionalROBinds`) in `~/.config/Claude/claude_desktop_linux_config.json`.
+
+> **Note for immutable distros (Fedora Silverblue, Bazzite):** on these
+> systems `/home` is a symlink to `/var/home` on the *host*, but the sandbox
+> has no such symlink — `$HOME` inside the sandbox is the literal
+> `/home/<user>` form. Use the same form in your config
+> (for example `"/home/cloud/dev"`, not `"/var/home/cloud/dev"`) so the
+> mount is accessible under `~/` inside the sandbox. Both forms are accepted
+> by the validator; only the `/home/...` form will appear under `$HOME`.
+
 ## Removed in v3.0.0
 
 The v3.0.0 rebase deleted the patches that read these variables. The doctor's legacy-environment check warns when any of them is still set:
