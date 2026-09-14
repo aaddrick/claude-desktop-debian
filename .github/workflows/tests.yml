@@ -16,6 +16,9 @@ on:
       - ".github/workflows/tests.yml"
       # ci-release-job.bats asserts on the release job's structure.
       - ".github/workflows/ci.yml"
+      # triage-node-floor.bats asserts on these workflows' Node setup.
+      - ".github/workflows/issue-triage.yml"
+      - ".github/workflows/issue-triage-v2.yml"
   pull_request:
     branches: [main]
   workflow_dispatch:

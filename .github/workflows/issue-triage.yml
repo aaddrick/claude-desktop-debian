@@ -108,7 +108,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Claude CLI
         run: npm install -g @anthropic-ai/claude-code
@@ -219,7 +219,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install extraction tools
         run: npm install -g @electron/asar prettier
@@ -295,7 +295,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Claude CLI
         run: npm install -g @anthropic-ai/claude-code
@@ -484,7 +484,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Claude CLI
         run: npm install -g @anthropic-ai/claude-code
