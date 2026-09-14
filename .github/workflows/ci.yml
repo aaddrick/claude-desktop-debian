@@ -135,11 +135,18 @@ jobs:
       # publish jobs that carry `needs: [release]`.
 
       # Node 22, not 20: asar declares engines.node >=22.12.0 from
-      # 4.0.0 onward and refuses to start below it, and the
-      # claude-code CLI installed further down declares >=22.0.0.
-      # npm reports both as an EBADENGINE *warning*, so an unpinned
-      # install on Node 20 succeeds and leaves a binary that exists
-      # and never runs. Package names are spelled bare on purpose —
+      # 4.0.0 onward, and the claude-code CLI installed further down
+      # declares >=22.0.0. Neither install fails loudly below that —
+      # what it does depends on the runner's npm. A bare install is a
+      # range spec, and npm-pick-manifest >=9 (npm 10.x) filters
+      # ranges by engines, so Node 20 quietly resolves asar 3.4.1 and
+      # CLI 2.1.197 instead. npm <=9 does not filter: it resolves
+      # 4.3.0, whose EBADENGINE is only a warning, leaving an asar
+      # that `command -v` finds and that dies on first use — the
+      # shape #839 was reported as, from a host whose npm is packaged
+      # separately from its Node. Both outcomes are silent, so pin
+      # the runtime and the resolved versions are ours rather than
+      # the runner's. Package names are spelled bare on purpose —
       # tests/ci-release-job.bats greps this region for the npm
       # specifiers without stripping comments first.
 
