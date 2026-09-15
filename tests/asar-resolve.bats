@@ -11,13 +11,17 @@
 # missing/empty" WM_CLASS failure in #839.
 #
 # #841 closed that for the build (a Node floor plus a run-check in
-# setup_asar). Two callers reached asar through an unpinned
-# `npx --yes @electron/asar` instead, outside setup_nodejs's reach:
-# tools/patch-necessity-audit.sh and tests/test-artifact-common.sh.
-# Both now share tests/test-patch-stage.sh's resolver, so the resolver
-# itself is pinned here once, and each call site is pinned for the two
-# properties a shared helper cannot enforce for it: that it calls the
-# resolver at all, and that no npx path survives beside it.
+# setup_asar); #846 gave the three non-build callers one shared
+# resolver. #849 is the remaining arm: a PATH asar that fails the
+# run-check now falls through to the pinned install instead of stopping,
+# because that install is usually the fix for that exact binary. The
+# invariant that has to survive every path is that an exit leaving the
+# caller without an asar still names the Node floor — losing that is
+# losing the whole point of #839.
+#
+# NOTE: setup() puts a FAILING npm stub on PATH. No test here may reach
+# the real registry, so a test that wants a successful install has to
+# say so with _stub_npm_install.
 
 setup() {
 	source "$BATS_TEST_DIRNAME/../scripts/_common.sh"
@@ -28,6 +32,12 @@ setup() {
 	install_dir="$BATS_TEST_TMPDIR/install"
 	mkdir -p "$stub_bin" "$install_dir"
 	PATH="$stub_bin:$PATH"
+
+	# Network-proof by default. Before #849 a dead PATH asar was
+	# terminal, so the refusal tests never reached an install; now they
+	# all fall through to one, and without this each would hit the live
+	# registry from a unit test.
+	_stub_npm_fail
 }
 
 # Put an executable `asar` on PATH. $1 = the stub's body.
@@ -52,40 +62,56 @@ _stub_npm_install() {
 	chmod +x "$stub_bin/npm"
 }
 
-# ---------------------------------------------------------------------
-# The run-check
-# ---------------------------------------------------------------------
-
-@test "resolve asar: a working asar on PATH is accepted and reported" {
-	_stub_asar_on_path 'echo 3.4.1'
-
-	run _resolve_asar "$install_dir"
-	[[ $status -eq 0 ]] || return 1
-	[[ $output == *'3.4.1'* ]]
+# Put an `npm` on PATH that records its argv and then fails, standing in
+# for an offline host, a proxy, or a yanked version.
+_stub_npm_fail() {
+	cat > "$stub_bin/npm" <<-STUB
+		#!/usr/bin/env bash
+		printf '%s\n' "\$*" >> "$BATS_TEST_TMPDIR/npm.args"
+		echo 'npm error code ENOTFOUND' >&2
+		exit 1
+	STUB
+	chmod +x "$stub_bin/npm"
 }
 
-@test "resolve asar: an asar that exits non-zero is refused" {
+# ---------------------------------------------------------------------
+# _asar_probe: the run-check itself
+# ---------------------------------------------------------------------
+
+@test "probe: a working asar passes and reports its version" {
+	_stub_asar_on_path 'echo 3.4.1'
+
+	_asar_probe "$stub_bin/asar" || return 1
+	[[ $_asar_probe_version == '3.4.1' ]]
+}
+
+@test "probe: a leading v is accepted (real asar prints v3.4.1)" {
+	# Not cosmetic — the shipped 3.4.1 wrapper answers `v3.4.1`, so a
+	# shape regex without the optional v rejects the version we pin.
+	_stub_asar_on_path 'echo v3.4.1'
+
+	_asar_probe "$stub_bin/asar" || return 1
+	[[ $_asar_probe_version == 'v3.4.1' ]]
+}
+
+@test "probe: an asar that exits non-zero fails" {
 	# The observed shape: @electron/asar 4.3.0 under Node 20.19.2 exits
 	# 1 with an empty stdout and its complaint on stderr.
 	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
 
-	run _resolve_asar "$install_dir"
-	[[ $status -ne 0 ]] || return 1
-	[[ $output == *'will not run'* ]]
+	if _asar_probe "$stub_bin/asar"; then return 1; fi
 }
 
-@test "resolve asar: a version-shaped reply on a non-zero exit is refused" {
+@test "probe: a version-shaped reply on a non-zero exit still fails" {
 	# The half the stdout-shape arm cannot see. Without this, the
 	# exit-code arm could be deleted with every other test staying
 	# green.
 	_stub_asar_on_path 'echo 3.4.1; exit 1'
 
-	run _resolve_asar "$install_dir"
-	[[ $status -ne 0 ]] || return 1
-	[[ $output == *'will not run'* ]]
+	if _asar_probe "$stub_bin/asar"; then return 1; fi
 }
 
-@test "resolve asar: a refusal that exits zero is refused" {
+@test "probe: a refusal that exits zero still fails" {
 	# An exit code is not a contract. Note the refusal text quotes the
 	# offending Node version, so an unanchored "contains a version
 	# number" match passes it too — the reply has to be judged from its
@@ -93,59 +119,167 @@ _stub_npm_install() {
 	_stub_asar_on_path \
 		'echo "CANNOT RUN WITH NODE 20.19.2"; echo "needs >=22.12.0."'
 
-	run _resolve_asar "$install_dir"
-	[[ $status -ne 0 ]] || return 1
-	[[ $output == *'will not run'* ]]
+	if _asar_probe "$stub_bin/asar"; then return 1; fi
 }
 
-@test "resolve asar: the same refusal on stderr at exit zero is refused" {
+@test "probe: the same refusal on stderr at exit zero still fails" {
 	# Which stream the refusal takes is upstream's choice; an empty
 	# stdout must fail the shape check with no help from the exit code.
 	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2'
 
-	run _resolve_asar "$install_dir"
-	[[ $status -ne 0 ]] || return 1
-	[[ $output == *'will not run'* ]]
+	if _asar_probe "$stub_bin/asar"; then return 1; fi
 }
 
-@test "resolve asar: noise on stderr does not refuse a working asar" {
+@test "probe: noise on stderr does not fail a working asar" {
 	# The judgment reads stdout precisely so a Node deprecation notice
 	# can't red a host where asar runs fine.
 	_stub_asar_on_path \
 		'echo "(node:1) DeprecationWarning: whatever" >&2; echo 3.4.1'
 
+	_asar_probe "$stub_bin/asar" || return 1
+	[[ $_asar_probe_version == '3.4.1' ]]
+}
+
+@test "probe: the merged report keeps stderr for the operator" {
+	# stdout is what gets judged; the report is what gets printed. If
+	# the report dropped stderr, the refusal text — the only thing
+	# naming the offending Node version — would never reach anyone.
+	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
+
+	if _asar_probe "$stub_bin/asar"; then return 1; fi
+	[[ $_asar_probe_report == *'CANNOT RUN'* ]]
+}
+
+@test "probe: a non-executable candidate fails before it is run" {
+	: > "$install_dir/asar"
+	chmod 644 "$install_dir/asar"
+
+	if _asar_probe "$install_dir/asar"; then return 1; fi
+	[[ $_asar_probe_report == *'not executable'* ]]
+}
+
+# ---------------------------------------------------------------------
+# The fallback
+# ---------------------------------------------------------------------
+
+@test "fallback: a dead PATH asar falls through to the pinned install" {
+	# The #849 host: Debian 13 (Node 20) carrying a stale global 4.x
+	# from an npm 9 that took `latest`. The install two lines down is
+	# the fix for that exact binary, so stopping at the refusal leaves
+	# the machine broken for no reason.
+	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
+	_stub_npm_install
+
 	run _resolve_asar "$install_dir"
 	[[ $status -eq 0 ]] || return 1
+	[[ $output == *'will not run'* ]] || return 1
+	[[ $output == *'Falling back'* ]] || return 1
 	[[ $output == *'3.4.1'* ]]
 }
 
-@test "resolve asar: the refusal names the Node floor, not just the tool" {
-	# The point of the check is that the operator learns it is a Node
-	# problem here rather than guessing at a patch anchor later.
-	_stub_asar_on_path 'exit 1'
+@test "fallback: the fallen-back resolver publishes the installed asar" {
+	# Not the dead PATH one. $asar_exec is the entire output of this
+	# function; reporting success while leaving the caller pointed at
+	# the refusing binary would be worse than stopping.
+	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
+	_stub_npm_install
+
+	_resolve_asar "$install_dir" > /dev/null 2>&1 || return 1
+	[[ $asar_exec == "$install_dir/node_modules/.bin/asar" ]]
+}
+
+@test "fallback: a working PATH asar wins with no install attempted" {
+	# Installing on top of a usable host asar would be wasted network
+	# and would hide a deliberately staged tool. Only a tool that
+	# cannot RUN gets overridden.
+	_stub_asar_on_path 'echo 9.9.9'
+	_stub_npm_install
+
+	run _resolve_asar "$install_dir"
+	[[ $status -eq 0 ]] || return 1
+	[[ $output == *'9.9.9'* ]] || return 1
+	[[ $output != *'Falling back'* ]] || return 1
+	[[ ! -e "$BATS_TEST_TMPDIR/npm.args" ]]
+}
+
+@test "fallback: when both fail, the PATH refusal leads the report" {
+	# The design risk of the whole change. On an offline host a naive
+	# fallback replaces the accurate "CANNOT RUN WITH NODE 20.19.2"
+	# with "failed to install", which points at the network instead of
+	# at the Node floor — strictly worse diagnosis for the same cause.
+	# The root cause has to come first and has to still be there.
+	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
+
+	run _resolve_asar "$install_dir"
+	[[ $status -ne 0 ]] || return 1
+	[[ $output == *'CANNOT RUN WITH NODE 20.19.2'*'Failed to install'* ]]
+}
+
+@test "fallback: when both fail, the Node floor is still named" {
+	# The #839 invariant. Any exit leaving the caller without an asar
+	# must say it is a Node problem, or the operator goes hunting for a
+	# patch anchor three stages downstream.
+	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
 
 	run _resolve_asar "$install_dir"
 	[[ $status -ne 0 ]] || return 1
 	[[ $output == *'22.12.0'* ]]
 }
 
-@test "resolve asar: a non-executable resolved binary is refused" {
+@test "fallback: a plain install failure also names the Node floor" {
+	# Same invariant on the no-PATH-asar path, where there is no
+	# refusal to lead with and the floor hint is the only diagnosis.
+	run _resolve_asar "$install_dir"
+	[[ $status -ne 0 ]] || return 1
+	[[ $output == *'Failed to install'* ]] || return 1
+	[[ $output == *'22.12.0'* ]]
+}
+
+@test "fallback: a dead install after a dead PATH asar reports both" {
+	# Two different refusals, so the assertion can prove the ordering
+	# rather than matching the same string twice.
+	_stub_asar_on_path 'echo "PATH ASAR IS DEAD" >&2; exit 1'
+	_stub_npm_install 'echo "INSTALLED ASAR IS DEAD" >&2; exit 1'
+
+	run _resolve_asar "$install_dir"
+	[[ $status -ne 0 ]] || return 1
+	[[ $output == *'PATH ASAR IS DEAD'*'INSTALLED ASAR IS DEAD'* ]] \
+		|| return 1
+	[[ $output == *'22.12.0'* ]]
+}
+
+@test "fallback: an install that lands a dead wrapper is refused" {
+	# The #839 shape end to end: npm reports EBADENGINE as a warning,
+	# exits zero, and leaves a wrapper that refuses on every call.
+	# Installing successfully is not the same as resolving, and there
+	# is nothing left to fall back to, so this one must stop.
+	_stub_npm_install 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
+
+	run _resolve_asar "$install_dir"
+	[[ $status -ne 0 ]] || return 1
+	[[ $output == *'will not run'* ]] || return 1
+	[[ $output == *'22.12.0'* ]]
+}
+
+@test "fallback: a non-executable installed wrapper is refused" {
 	# -x is the weaker of the two gates but still the first one: a
-	# wrapper that npm left unexecutable must not reach the probe.
-	_stub_npm_install
-	chmod -x "$stub_bin/npm" 2>/dev/null
-	mkdir -p "$install_dir/node_modules/.bin"
-	: > "$install_dir/node_modules/.bin/asar"
-	chmod 644 "$install_dir/node_modules/.bin/asar"
-	# npm is a no-op here (not executable is enough to skip the
-	# install), so point the resolver straight at the bad wrapper.
-	printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$stub_bin/npm"
+	# wrapper npm left unexecutable must not reach the version probe.
+	cat > "$stub_bin/npm" <<-STUB
+		#!/usr/bin/env bash
+		mkdir -p "\$PWD/node_modules/.bin"
+		: > "\$PWD/node_modules/.bin/asar"
+		chmod 644 "\$PWD/node_modules/.bin/asar"
+	STUB
 	chmod +x "$stub_bin/npm"
 
 	run _resolve_asar "$install_dir"
 	[[ $status -ne 0 ]] || return 1
 	[[ $output == *'not executable'* ]]
 }
+
+# ---------------------------------------------------------------------
+# Argument guards
+# ---------------------------------------------------------------------
 
 @test "resolve asar: an empty install dir is refused, not silently used" {
 	# A caller that forgets the argument must stop here rather than
@@ -159,8 +293,6 @@ _stub_npm_install() {
 	# The install subshell cd's into it, so without this the operator
 	# reads "Failed to install @electron/asar@3" for a directory that
 	# was never created.
-	_stub_npm_install
-
 	run _resolve_asar "$BATS_TEST_TMPDIR/nope"
 	[[ $status -ne 0 ]] || return 1
 	[[ $output == *'not a directory'* ]]
@@ -190,27 +322,16 @@ _stub_npm_install() {
 	[[ $(cat "$BATS_TEST_TMPDIR/npm.args") == *'@electron/asar@4'* ]]
 }
 
-@test "resolve asar: an asar on PATH wins over an install" {
-	# Installing on top of a usable host asar would be wasted network
-	# and would hide a deliberately staged tool.
-	_stub_asar_on_path 'echo 9.9.9'
+@test "resolve asar: the fallback install honours the caller's major" {
+	# The fallback reaches the install through a second path; a pin
+	# applied to only one of them would leave the stale-global host
+	# resolving whatever `latest` is.
+	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
 	_stub_npm_install
 
-	run _resolve_asar "$install_dir"
+	run _resolve_asar "$install_dir" 4
 	[[ $status -eq 0 ]] || return 1
-	[[ $output == *'9.9.9'* ]] || return 1
-	[[ ! -e "$BATS_TEST_TMPDIR/npm.args" ]]
-}
-
-@test "resolve asar: a wrapper that installs but cannot run is refused" {
-	# The whole #839 shape end to end: npm reports EBADENGINE as a
-	# warning, exits zero, and leaves a wrapper that refuses on every
-	# call. Installing successfully is not the same as resolving.
-	_stub_npm_install 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
-
-	run _resolve_asar "$install_dir"
-	[[ $status -ne 0 ]] || return 1
-	[[ $output == *'will not run'* ]]
+	[[ $(cat "$BATS_TEST_TMPDIR/npm.args") == *'@electron/asar@4'* ]]
 }
 
 # ---------------------------------------------------------------------
@@ -314,6 +435,8 @@ _stub_npm_install() {
 	# it — package.json shape, productName, and the
 	# StartupWMClass/desktopName agreement that closes #779. A suite
 	# that goes green on nothing read is worse than one that goes red.
+	# npm fails here (setup's default), so the #849 fallback cannot
+	# rescue this one and the caller must still see a failure.
 	_stub_asar_on_path 'echo "CANNOT RUN WITH NODE 20.19.2" >&2; exit 1'
 	source "$BATS_TEST_DIRNAME/test-artifact-common.sh"
 
