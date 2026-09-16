@@ -6,30 +6,30 @@ Maintainer: Claude Desktop Linux Maintainers
 Priority: optional
 Section: utils
 Filename: pool/main/c/claude-desktop/claude-desktop_1.16000.0-1_all.deb
-Size: 622
-SHA256: 0dbf0aa177d9185203e62f90980d1ce4be1f84cb252e2f5faa3d88410e8d5e7b
-SHA1: e9b2c0026bfe394dffb3c7a4122531337adc54f5
-MD5sum: 7ab08d1863ce2bc8497e0944dd3c0796
+Size: 626
+SHA256: 3958eae7fc23121ca16bfad0ad8e1f8dfbab79faa2f6c1df18939c129485a595
+SHA1: 2f17bcfa681c2061098e1a2c9fd86e204d12c167
+MD5sum: c2d587b15d6b3007d180b2807db950e8
 Description: Transitional package for the rename to claude-desktop-unofficial
  This dummy package eases upgrades from the legacy 'claude-desktop'
  community repack to its new name, claude-desktop-unofficial.
  It can be safely removed after the upgrade.
 
 Package: claude-desktop-unofficial
-Version: 1.52386.6-3.2.4
+Version: 2.110.0-3.2.4
 Architecture: amd64
 Conflicts: claude-desktop (<< 1.16000)
 Replaces: claude-desktop (<< 1.16000)
 Depends: libgtk-3-0, libnotify4, libnss3, xdg-utils, libatspi2.0-0, libdrm2, libgbm1, libxcb-dri3-0, libsecret-1-0, kde-cli-tools | kde-runtime | trash-cli | libglib2.0-bin | gvfs, libc6 (>= 2.34), libxtst6, libuuid1, xdg-desktop-portal, xdg-desktop-portal-gtk | xdg-desktop-portal-gnome | xdg-desktop-portal-kde
-Recommends: libasound2t64 | libasound2 | pulseaudio, libayatana-appindicator3-1 | libappindicator3-1, ca-certificates, gnome-keyring | kwalletd6 | kwalletd5, qemu-system-x86, ovmf, virtiofsd
+Recommends: libasound2t64 | libasound2 | pulseaudio, libayatana-appindicator3-1 | libappindicator3-1, ca-certificates, gnome-keyring | plasma-workspace, qemu-system-x86, ovmf, virtiofsd
 Maintainer: Claude Desktop Linux Maintainers
 Priority: optional
 Section: utils
-Filename: pool/main/c/claude-desktop-unofficial/claude-desktop-unofficial_1.52386.6-3.2.4_amd64.deb
-Size: 186673430
-SHA256: 1cfb6b50083db8959625c064c54c8a22d8a1b35f426d3f1c427a6471f1fca0b1
-SHA1: b8e0c1a49579d12b3e27fef66266ba3360633c17
-MD5sum: e326fff3506645e03abc9b0b051e65c2
+Filename: pool/main/c/claude-desktop-unofficial/claude-desktop-unofficial_2.110.0-3.2.4_amd64.deb
+Size: 186389392
+SHA256: f797dfb56183686d3b87c7ac4e29382aee629223d16430ec36a5c000963fd162
+SHA1: c1cdb2fd339678abd2a2d7542fafa6fdf3233ed7
+MD5sum: e2d396e0615fabc243814d662c5c5b31
 Description: Claude Desktop for Linux
  Claude is an AI assistant from Anthropic.
  This package provides the desktop interface for Claude.
