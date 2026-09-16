@@ -744,6 +744,47 @@ cleanup_stale_cowork_socket() {
 	log_message "Removed stale cowork-vm-service socket (no daemon running)"
 }
 
+# #855: reclaim disk space left behind when a vm_bundles bundle
+# migrated from the pre-3.0 win32-manifest-repurposed rootfs.vhdx
+# format to the official unix-native rootfs.img format.
+#
+# Before the v3.0.0 official-deb rebase, Linux Cowork worked by
+# repurposing the win32 manifest's VHDX entries (no native "unix"
+# manifest existed yet) and converting them to qcow2 on first use.
+# Anthropic's manifest has since grown a real "unix" platform entry
+# serving rootfs.img directly, and both the official coworkd and our
+# own bwrap fallback use that format without ever touching the old
+# VHDX pair again once it exists. Nothing deletes the superseded
+# files, so a bundle that predates the switch keeps ~11 GB of dead
+# rootfs.vhdx / rootfs.vhdx.zst forever.
+#
+# rootfs.img present is treated as proof the migration completed: no
+# code path anywhere converts back to vhdx once img exists, and a
+# bundle still on the old format alone (no rootfs.img yet) is left
+# untouched so an in-progress or vhdx-only install isn't disturbed.
+#
+# Fail-safe: never blocks launch.
+cleanup_stale_vm_bundle_images() {
+	local bundles_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/vm_bundles"
+	[[ -d $bundles_dir ]] || return 0
+
+	local bundle f removed
+	for bundle in "$bundles_dir"/*/; do
+		[[ -f "$bundle/rootfs.img" ]] || continue
+
+		removed=()
+		for f in "$bundle/rootfs.vhdx" "$bundle/rootfs.vhdx.zst"; do
+			[[ -f $f ]] || continue
+			rm -f "$f" 2>/dev/null && removed+=("${f##*/}")
+		done
+
+		if ((${#removed[@]} > 0)); then
+			log_message \
+				"Removed stale VM image(s) in ${bundle}: ${removed[*]} (#855)"
+		fi
+	done
+}
+
 # P1 (#768): rotate out-of-band backups of the user config and the
 # per-account Cowork store index files before launch, so the
 # poisoned-cache / corrupt-load wipe class is recoverable. Upstream's

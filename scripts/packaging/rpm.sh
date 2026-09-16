@@ -117,6 +117,7 @@ cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_cowork_socket
+cleanup_stale_vm_bundle_images
 heal_autostart_entry "/usr/bin/$package_name"
 backup_user_config
 
