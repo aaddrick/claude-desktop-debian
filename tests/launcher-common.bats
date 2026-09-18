@@ -781,6 +781,80 @@ s.close()
 }
 
 # =============================================================================
+# cleanup_stale_vm_bundle_images (#855)
+# =============================================================================
+
+@test "cleanup_stale_vm_bundle_images: no vm_bundles dir - returns 0" {
+	run cleanup_stale_vm_bundle_images
+	[[ $status -eq 0 ]]
+}
+
+@test "cleanup_stale_vm_bundle_images: bundle with only rootfs.vhdx is left alone" {
+	# Migration hasn't happened yet (no rootfs.img) - don't touch it.
+	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
+	mkdir -p "$bundle"
+	echo vhdx > "$bundle/rootfs.vhdx"
+	echo vhdxzst > "$bundle/rootfs.vhdx.zst"
+
+	setup_logging
+	cleanup_stale_vm_bundle_images
+	[[ -f "$bundle/rootfs.vhdx" ]]
+	[[ -f "$bundle/rootfs.vhdx.zst" ]]
+}
+
+@test "cleanup_stale_vm_bundle_images: removes stale vhdx pair once rootfs.img exists" {
+	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
+	mkdir -p "$bundle"
+	echo img > "$bundle/rootfs.img"
+	echo vhdx > "$bundle/rootfs.vhdx"
+	echo vhdxzst > "$bundle/rootfs.vhdx.zst"
+
+	setup_logging
+	cleanup_stale_vm_bundle_images
+	[[ ! -f "$bundle/rootfs.vhdx" ]]
+	[[ ! -f "$bundle/rootfs.vhdx.zst" ]]
+	[[ -f "$bundle/rootfs.img" ]]
+	grep -q "Removed stale VM image(s)" "$log_file"
+}
+
+@test "cleanup_stale_vm_bundle_images: bundle already migrated (no vhdx) - no-op, no log" {
+	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
+	mkdir -p "$bundle"
+	echo img > "$bundle/rootfs.img"
+
+	setup_logging
+	cleanup_stale_vm_bundle_images
+	[[ -f "$bundle/rootfs.img" ]]
+	! grep -q "Removed stale VM image" "$log_file"
+}
+
+@test "cleanup_stale_vm_bundle_images: only removes vhdx in bundles with rootfs.img, leaves siblings alone" {
+	local bundles="$XDG_CONFIG_HOME/Claude/vm_bundles"
+	mkdir -p "$bundles/migrated" "$bundles/not-migrated"
+	echo img > "$bundles/migrated/rootfs.img"
+	echo vhdx > "$bundles/migrated/rootfs.vhdx"
+	echo vhdx > "$bundles/not-migrated/rootfs.vhdx"
+
+	setup_logging
+	cleanup_stale_vm_bundle_images
+	[[ ! -f "$bundles/migrated/rootfs.vhdx" ]]
+	[[ -f "$bundles/not-migrated/rootfs.vhdx" ]]
+}
+
+@test "cleanup_stale_vm_bundle_images: log names the bundle without the glob's trailing slash" {
+	# The glob yields ".../claudevm.bundle/"; without the strip the log
+	# reads "claudevm.bundle/: rootfs.vhdx". Pin the exact tail.
+	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
+	mkdir -p "$bundle"
+	echo img > "$bundle/rootfs.img"
+	echo vhdx > "$bundle/rootfs.vhdx"
+
+	setup_logging
+	cleanup_stale_vm_bundle_images
+	grep -qF "in $bundle: rootfs.vhdx (#855)" "$log_file"
+}
+
+# =============================================================================
 # cleanup_orphaned_cowork_daemon
 #
 # Reaps a cowork-vm-service daemon left behind by a crashed UI, but only
