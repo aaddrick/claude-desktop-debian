@@ -841,43 +841,9 @@ s.close()
 	[[ -f "$bundles/not-migrated/rootfs.vhdx" ]]
 }
 
-@test "cleanup_stale_vm_bundle_images: COWORK_VM_BACKEND=kvm without qcow2 yet - vhdx kept" {
-	# The KVM fallback (cowork-vm-service.js) still sources rootfs.vhdx
-	# until it has produced its own rootfs.qcow2, and never reads
-	# rootfs.img. Deleting vhdx here would leave it with no rootfs it
-	# knows how to read.
-	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
-	mkdir -p "$bundle"
-	echo img > "$bundle/rootfs.img"
-	echo vhdx > "$bundle/rootfs.vhdx"
-
-	COWORK_VM_BACKEND=kvm
-	setup_logging
-	cleanup_stale_vm_bundle_images
-	[[ -f "$bundle/rootfs.vhdx" ]]
-	! grep -q "Removed stale VM image" "$log_file"
-}
-
-@test "cleanup_stale_vm_bundle_images: COWORK_VM_BACKEND=kvm with qcow2 already produced - vhdx removed" {
-	# Once the KVM fallback has converted, it no longer touches vhdx,
-	# so the normal cleanup applies.
-	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
-	mkdir -p "$bundle"
-	echo img > "$bundle/rootfs.img"
-	echo vhdx > "$bundle/rootfs.vhdx"
-	echo qcow2 > "$bundle/rootfs.qcow2"
-
-	COWORK_VM_BACKEND=kvm
-	setup_logging
-	cleanup_stale_vm_bundle_images
-	[[ ! -f "$bundle/rootfs.vhdx" ]]
-	[[ -f "$bundle/rootfs.qcow2" ]]
-	grep -q "Removed stale VM image(s)" "$log_file"
-}
-
-@test "cleanup_stale_vm_bundle_images: bundle path has no doubled slash in log or lookups" {
-	# The glob's trailing slash must be stripped before use, or paths
-	# render as ".../claudevm.bundle//rootfs.img" in the log.
+@test "cleanup_stale_vm_bundle_images: log names the bundle without the glob's trailing slash" {
+	# The glob yields ".../claudevm.bundle/"; without the strip the log
+	# reads "claudevm.bundle/: rootfs.vhdx". Pin the exact tail.
 	local bundle="$XDG_CONFIG_HOME/Claude/vm_bundles/claudevm.bundle"
 	mkdir -p "$bundle"
 	echo img > "$bundle/rootfs.img"
@@ -885,8 +851,7 @@ s.close()
 
 	setup_logging
 	cleanup_stale_vm_bundle_images
-	grep -q "Removed stale VM image(s)" "$log_file"
-	! grep -q "bundle//" "$log_file"
+	grep -qF "in $bundle: rootfs.vhdx (#855)" "$log_file"
 }
 
 # =============================================================================

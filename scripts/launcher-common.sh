@@ -758,19 +758,15 @@ cleanup_stale_cowork_socket() {
 # predates the switch keeps ~11 GB of dead rootfs.vhdx /
 # rootfs.vhdx.zst forever.
 #
-# rootfs.img present is treated as proof the migration completed for
-# the official coworkd path; a bundle still on the old format alone
-# (no rootfs.img yet) is left untouched so an in-progress or
-# vhdx-only install isn't disturbed. One backend still sources vhdx
-# directly, though: the KVM fallback in
-# scripts/cowork-fallback/cowork-vm-service.js converts rootfs.vhdx
-# to rootfs.qcow2 on first use and never reads rootfs.img at all. A
-# bundle that has img (coworkd already migrated it) but not yet a
-# qcow2 loses its only usable rootfs for that backend if vhdx is
-# deleted out from under it, and the manifest no longer serves vhdx
-# to Linux, so it can't come back. That backend only runs when
-# explicitly requested, so skip cleanup there rather than guess
-# whether it's about to be used.
+# rootfs.img present is treated as proof the migration completed; a
+# bundle still on the old format alone (no rootfs.img yet) is left
+# untouched so an in-progress or vhdx-only install isn't disturbed.
+# The only code that ever read rootfs.vhdx on Linux is the 2.x KVM
+# backend in scripts/cowork-fallback/cowork-vm-service.js (vhdx ->
+# qcow2 on first use). It still exists but is unreachable in 3.x:
+# the daemon only spawns behind the asar gate
+# COWORK_VM_BACKEND=bwrap, and that value selects the bwrap backend
+# inside it. So no reachable path needs the vhdx once img exists.
 #
 # Fail-safe: never blocks launch.
 cleanup_stale_vm_bundle_images() {
@@ -781,13 +777,6 @@ cleanup_stale_vm_bundle_images() {
 	for bundle in "$bundles_dir"/*/; do
 		bundle=${bundle%/}
 		[[ -f "$bundle/rootfs.img" ]] || continue
-
-		# KVM fallback still sources rootfs.vhdx until it has
-		# produced rootfs.qcow2 (cowork-vm-service.js).
-		if [[ ${COWORK_VM_BACKEND:-} == 'kvm' \
-			&& ! -f "$bundle/rootfs.qcow2" ]]; then
-			continue
-		fi
 
 		removed=()
 		for f in "$bundle/rootfs.vhdx" "$bundle/rootfs.vhdx.zst"; do
