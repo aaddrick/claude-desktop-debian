@@ -752,16 +752,25 @@ cleanup_stale_cowork_socket() {
 # repurposing the win32 manifest's VHDX entries (no native "unix"
 # manifest existed yet) and converting them to qcow2 on first use.
 # Anthropic's manifest has since grown a real "unix" platform entry
-# serving rootfs.img directly, and both the official coworkd and our
-# own bwrap fallback use that format without ever touching the old
-# VHDX pair again once it exists. Nothing deletes the superseded
-# files, so a bundle that predates the switch keeps ~11 GB of dead
-# rootfs.vhdx / rootfs.vhdx.zst forever.
+# serving rootfs.img directly, and the official coworkd uses that
+# format without ever touching the old VHDX pair again once it
+# exists. Nothing deletes the superseded files, so a bundle that
+# predates the switch keeps ~11 GB of dead rootfs.vhdx /
+# rootfs.vhdx.zst forever.
 #
-# rootfs.img present is treated as proof the migration completed: no
-# code path anywhere converts back to vhdx once img exists, and a
-# bundle still on the old format alone (no rootfs.img yet) is left
-# untouched so an in-progress or vhdx-only install isn't disturbed.
+# rootfs.img present is treated as proof the migration completed for
+# the official coworkd path; a bundle still on the old format alone
+# (no rootfs.img yet) is left untouched so an in-progress or
+# vhdx-only install isn't disturbed. One backend still sources vhdx
+# directly, though: the KVM fallback in
+# scripts/cowork-fallback/cowork-vm-service.js converts rootfs.vhdx
+# to rootfs.qcow2 on first use and never reads rootfs.img at all. A
+# bundle that has img (coworkd already migrated it) but not yet a
+# qcow2 loses its only usable rootfs for that backend if vhdx is
+# deleted out from under it, and the manifest no longer serves vhdx
+# to Linux, so it can't come back. That backend only runs when
+# explicitly requested, so skip cleanup there rather than guess
+# whether it's about to be used.
 #
 # Fail-safe: never blocks launch.
 cleanup_stale_vm_bundle_images() {
@@ -770,7 +779,15 @@ cleanup_stale_vm_bundle_images() {
 
 	local bundle f removed
 	for bundle in "$bundles_dir"/*/; do
+		bundle=${bundle%/}
 		[[ -f "$bundle/rootfs.img" ]] || continue
+
+		# KVM fallback still sources rootfs.vhdx until it has
+		# produced rootfs.qcow2 (cowork-vm-service.js).
+		if [[ ${COWORK_VM_BACKEND:-} == 'kvm' \
+			&& ! -f "$bundle/rootfs.qcow2" ]]; then
+			continue
+		fi
 
 		removed=()
 		for f in "$bundle/rootfs.vhdx" "$bundle/rootfs.vhdx.zst"; do

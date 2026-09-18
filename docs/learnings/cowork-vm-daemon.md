@@ -22,18 +22,25 @@ VHDX entries and converted `rootfs.vhdx` → `rootfs.qcow2` on first use
 (the KVM backend in the old `scripts/cowork-vm-service.js`, now under
 `scripts/cowork-fallback/`). The manifest has since grown a real
 `unix.{arch}` entry serving `rootfs.img` directly
-(`publishedAt: 2026-08-13` in one observed copy), which both the
-official `coworkd` and the current bwrap fallback use natively — no
-`rootfs.qcow2` is ever produced from it.
+(`publishedAt: 2026-08-13` in one observed copy), which the official
+`coworkd` uses natively — no `rootfs.qcow2` is ever produced from it.
+The bwrap fallback doesn't use a rootfs image at all, so it's
+unaffected either way. The KVM fallback's `cowork-vm-service.js`
+(~L1571) is the one holdout: it still sources `rootfs.vhdx` and
+converts it to `rootfs.qcow2` on first use, and never reads
+`rootfs.img`.
 
 Nothing deletes the old VHDX pair when a bundle created before that
 switch picks up `rootfs.img`: a bundle from before ~2026-08 can carry
 `rootfs.vhdx` + `rootfs.vhdx.zst` (~11 GB combined) forever alongside
-a fully working `rootfs.img`, since no code path — upstream or ours —
-converts back to vhdx once img exists. `cleanup_stale_vm_bundle_images`
-in `scripts/launcher-common.sh` treats `rootfs.img` present as proof
-of a completed migration and removes the leftover files; a bundle
-still on the old format alone is left untouched.
+a fully working `rootfs.img`. `cleanup_stale_vm_bundle_images` in
+`scripts/launcher-common.sh` treats `rootfs.img` present as proof the
+coworkd migration completed and removes the leftover files; a bundle
+still on the old format alone is left untouched, and so is any
+bundle while `COWORK_VM_BACKEND=kvm` is set and that backend hasn't
+produced its own `rootfs.qcow2` yet — deleting vhdx out from under it
+at that point would leave it with no rootfs it knows how to read,
+and the manifest no longer serves vhdx to Linux for it to re-download.
 
 ## Architecture Overview
 
