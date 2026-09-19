@@ -160,6 +160,8 @@ Co-Authored-By: Claude <claude@anthropic.com>
 
 Contributors are listed in chronological order: inspirational projects first (k3d3, emsi, leobuskin), then contributors ordered by when their contribution was merged or implemented.
 
+**A returning contributor gets one entry, not a second one.** If the name already appears, add a sub-bullet under the existing entry at its original chronological position — converting a single-line `- **[name](url)** for ...` entry into a `- **[name](url)**` header plus sub-bullets if needed — rather than appending a new entry lower in the file.
+
 ## Working with Minified JavaScript
 
 ### Important Guidelines
