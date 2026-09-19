@@ -1038,3 +1038,76 @@ jobs:
           git commit -m "Update to v${PKGVER}"
           git push
 
+
+  # A tag push is the release, and nobody watches the Actions tab for
+  # it: the v3.2.4+claude2.2553.0 build died on a pool-lag 404 and went
+  # unnoticed until the next day's bump superseded it (#859). When any
+  # job in the tag chain fails, open one tracking issue per tag (or
+  # append to it on a re-run) so the failure lands in the inbox. Same
+  # shape as the apt-repo-heartbeat issue. `always()` keeps this job
+  # alive when an upstream job failed; the `contains` keeps it quiet
+  # when nothing did (skipped publish jobs are not failures).
+  report-tag-failure:
+    name: Report tag build failure
+    runs-on: ubuntu-latest
+    if: >-
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      contains(needs.*.result, 'failure')
+    needs:
+      - test-flags
+      - build
+      - test-artifacts
+      - test-artifacts-arm64
+      - release
+      - mirror-official-deb
+      - update-apt-repo
+      - update-dnf-repo
+      - update-aur-repo
+    permissions:
+      issues: write
+
+    steps:
+      - name: Open or update the tag's failure issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const tag = process.env.TAG;
+            const needs = JSON.parse(process.env.NEEDS);
+            const failed = Object.entries(needs)
+              .filter(([, job]) => job.result === 'failure')
+              .map(([name]) => `\`${name}\``);
+            const label = 'release-failure';
+            const title = `Tag build failed: ${tag}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Tag \`${tag}\` failed at ${new Date().toISOString()}.`,
+              `Failed jobs: ${failed.join(', ')}`,
+              `Run: ${runUrl}`,
+              '',
+              'Runbook: RELEASING.md § "A tag build fails".',
+            ].join('\n');
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              labels: label,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                ...context.repo,
+                title,
+                body,
+                labels: [label],
+              });
+            }

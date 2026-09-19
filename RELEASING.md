@@ -75,6 +75,17 @@ The [`release`](.github/workflows/ci.yml) job in `ci.yml` is gated on `startsWit
 
 ## If something goes wrong mid-release
 
-- **Build fails.** Push the fix to `main`, then re-tag with a new `+claude` suffix (or a `+rebuild.N` suffix if upstream hasn't moved). The original tag stays — releases are append-only.
+- **A tag build fails.** See [A tag build fails](#a-tag-build-fails) below.
 - **A bad release shipped.** Mark the GitHub Release as a pre-release / draft and ship a follow-up. Don't delete artifacts that may already be cached by the APT/DNF Worker.
 - **The `check-claude-version` workflow conflicts with your local branch.** Pull URL changes from `main` before pushing your tag — the workflow autobumps `scripts/setup/detect-host.sh` between your work and your tag.
+
+### A tag build fails
+
+CI opens (or appends to) an issue labelled `release-failure` titled `Tag build failed: <tag>` whenever any job in the tag chain fails, with the failed job names and the run link. Nobody has to watch the Actions tab. Work the issue like this:
+
+1. **Read the failed job's log through the API, not `gh run view --log-failed`.** The build legs are reusable-workflow jobs and `--log-failed` prints nothing for them. Use `gh api repos/aaddrick/claude-desktop-debian/actions/jobs/<job-id>/logs` (job ids from `gh api .../actions/runs/<run-id>/jobs`).
+2. **`Failed to download …/claude-desktop_<ver>_<arch>.deb` is pool lag.** The official `Packages` index lists a file minutes before the CDN serves it. The build now retries for a few minutes and `check-claude-version` won't tag until both files answer a HEAD 200, so this should be rare; if it still happens, re-run the failed jobs from the Actions UI once `curl -sI <url>` returns 200. Re-running keeps the tag.
+3. **Anything else:** push the fix to `main`, then re-tag with a new `+claude` suffix (or a `+rebuild.N` suffix if upstream hasn't moved). The original tag stays — releases are append-only, and tooling may already reference it.
+4. **Upstream moved on before you got to it** (a `<ver+1>` tag built and released): close the issue noting it's superseded. The orphan tag stays for the same reason.
+
+Close the issue by hand once the tag has a release; nothing auto-closes it.
