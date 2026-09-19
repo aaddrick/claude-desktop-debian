@@ -72,16 +72,17 @@ node_majors() {
 	done < "${WORKFLOW_DIR}/$1"
 }
 
-# The number of live `actions/setup-node` steps in workflow <1>, comment
-# lines skipped so a commented-out step cannot inflate the count.
+# The live `actions/setup-node` steps in workflow <1>, one per line and
+# comment lines skipped so a commented-out step cannot inflate the count.
+# Emitted rather than counted so the caller counts both sides of the
+# comparison below the same way.
 setup_node_steps() {
-	local line n=0
+	local line
 	while IFS= read -r line; do
 		[[ "$line" =~ ^[[:space:]]*# ]] && continue
 		[[ "$line" == *uses:*actions/setup-node* ]] || continue
-		n=$(( n + 1 ))
+		printf '%s\n' "$line"
 	done < "${WORKFLOW_DIR}/$1"
-	printf '%s\n' "$n"
 }
 
 @test "every workflow subject to the floor sets a node version" {
@@ -127,7 +128,7 @@ setup_node_steps() {
 	# the value.
 	local workflow steps keys mismatches=''
 	for workflow in "${FLOORED_WORKFLOWS[@]}"; do
-		steps=$(setup_node_steps "$workflow")
+		steps=$(setup_node_steps "$workflow" | wc -l)
 		keys=$(node_majors "$workflow" | wc -l)
 		[[ "$steps" -eq "$keys" ]] && continue
 		mismatches+="${workflow}: ${steps} setup-node step(s),"
