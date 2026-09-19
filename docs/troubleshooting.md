@@ -52,6 +52,31 @@ Runtime logs are available at:
 ~/.cache/claude-desktop-debian/launcher.log
 ```
 
+The file holds the launcher's own lines plus everything the app writes
+to stdout/stderr for the session. It rotates at 5 MiB on the next
+launch (`.1`, `.2` kept), and within a session the app's output is
+bounded: runs of an identical line collapse to one copy plus
+`[launcher] last line repeated N more times`, and after 20 MiB of
+output a `[launcher] output cap ... reached` line is written and the
+rest of the session's app output is dropped. Both markers in a bug
+report mean the app was looping on that message.
+
+### `launcher.log` is gigabytes in size
+
+Builds before the [#864](https://github.com/aaddrick/claude-desktop-debian/issues/864)
+fix had no in-session bound, so an app message stuck in a loop (a GPU
+error, an IPC handler failure) could write tens of gigabytes before the
+next launch rotated the file. Close Claude Desktop and delete the files;
+nothing depends on them:
+
+```bash
+rm ~/.cache/claude-desktop-debian/launcher.log*
+```
+
+Then upgrade. If a current build still shows the `output cap` marker,
+the message just above it is what was looping — worth an issue with
+that line.
+
 ## Common Issues
 
 ### Window Scaling Issues

@@ -1210,6 +1210,133 @@ STUB
 }
 
 # =============================================================================
+# run_electron_and_cleanup: bounded session log (#864)
+# =============================================================================
+#
+# Electron's whole stdout/stderr goes into launcher.log for the life of
+# the session; a looping Chromium message wrote 32 GB in a morning. The
+# filter must collapse repeats, stop writing at the cap, and never
+# close the pipe on the child. Each test's stub finishes by touching a
+# marker and exiting with a distinct code, so "the child survived and
+# ran to completion" is asserted directly rather than inferred.
+
+# Write a stub "electron" that runs $1 as its body, then touches
+# $TEST_TMP/done and exits $2.
+_stub_electron() {
+	local body="$1" code="$2"
+	cat > "$TEST_TMP/electron" <<STUB
+#!/usr/bin/env bash
+$body
+touch "$TEST_TMP/done"
+exit $code
+STUB
+	chmod +x "$TEST_TMP/electron"
+	cleanup_after_electron_exit() { :; }
+}
+
+@test "run_electron_and_cleanup: identical lines collapse to one plus a repeat count" {
+	_stub_electron 'for ((i = 0; i < 1000; i++)); do echo "GPU process exited unexpectedly"; done' 5
+	setup_logging
+	run run_electron_and_cleanup "$TEST_TMP/electron"
+	[[ $status -eq 5 ]]
+	[[ -f $TEST_TMP/done ]]
+	[[ $(grep -c 'GPU process exited unexpectedly' "$log_file") -eq 1 ]]
+	grep -qF '[launcher] last line repeated 999 more times' "$log_file"
+}
+
+@test "run_electron_and_cleanup: distinct lines stop at the cap, marker written, child completes" {
+	# 1000 distinct ~40-byte lines (~40 KB) against a 4 KiB cap.
+	_stub_electron 'for ((i = 0; i < 1000; i++)); do printf "distinct line %06d padding padding\n" "$i"; done' 6
+	setup_logging
+	ELECTRON_LOG_CAP_BYTES=4096
+	run run_electron_and_cleanup "$TEST_TMP/electron"
+	[[ $status -eq 6 ]]
+	[[ -f $TEST_TMP/done ]]
+	grep -qF '[launcher] output cap (4096 bytes) reached' "$log_file"
+	# Nothing after the marker but the launcher's own lines: the size
+	# is the cap plus one marker line plus the exit/end lines.
+	[[ $(stat -c '%s' "$log_file") -lt 5000 ]]
+	[[ $(grep -c 'distinct line' "$log_file") -lt 1000 ]]
+}
+
+@test "run_electron_and_cleanup: a child that floods past the cap still runs to completion" {
+	_stub_electron 'for ((i = 0; i < 3000; i++)); do printf "flood %06d padding padding padding\n" "$i"; done; echo "still alive after cap"' 8
+	setup_logging
+	ELECTRON_LOG_CAP_BYTES=2048
+	run run_electron_and_cleanup "$TEST_TMP/electron"
+	[[ $status -eq 8 ]]
+	[[ -f $TEST_TMP/done ]]
+	grep -qF 'output cap (2048 bytes) reached' "$log_file"
+	# Dropped, as designed.
+	! grep -qF 'still alive after cap' "$log_file" || return 1
+}
+
+@test "_electron_output_filter: never closes its stdin after the cap" {
+	# The property that keeps Electron off SIGPIPE/EPIPE. Tested on
+	# the filter itself with an endless writer through a plain pipe:
+	# a filter that keeps reading holds the pipeline open until
+	# `timeout` kills it (rc 124); one that exits at the cap breaks
+	# the pipe and the pipeline ends at once with some other status.
+	# (Not tested through the fifo on purpose: mawk lingers in
+	# pipe_read after `exit` when its stdin is a fifo, which would
+	# hide a closed-pipe regression behind an implementation quirk.)
+	# Distinct lines, or the dedupe would swallow them before the cap.
+	run timeout 1 bash -c '
+		source "'"$TEST_TMP"'/launcher-common.sh"
+		awk "BEGIN { for (i = 0; ; i++) print \"flood \" i \" padding padding\" }" \
+			| ELECTRON_LOG_CAP_BYTES=2048 _electron_output_filter \
+			> /dev/null'
+	[[ $status -eq 124 ]]
+}
+
+@test "run_electron_and_cleanup: child's last output lands before the exit line" {
+	_stub_electron 'echo "first"; echo "last line from electron"' 0
+	setup_logging
+	run run_electron_and_cleanup "$TEST_TMP/electron"
+	[[ $status -eq 0 ]]
+	local last exit_line
+	last=$(grep -n 'last line from electron' "$log_file" | cut -d: -f1)
+	exit_line=$(grep -n 'Electron exited with code: 0' "$log_file" | cut -d: -f1)
+	[[ -n $last && -n $exit_line ]]
+	(( last < exit_line ))
+}
+
+@test "run_electron_and_cleanup: falls back to a plain redirect when the pipe can't be made" {
+	# Point TMPDIR at a file so mktemp -d fails; launch must still work
+	# and still log, just unbounded (the pre-#864 behaviour).
+	_stub_electron 'echo "fallback path output"' 4
+	setup_logging
+	: > "$TEST_TMP/not-a-dir"
+	TMPDIR="$TEST_TMP/not-a-dir"
+	run run_electron_and_cleanup "$TEST_TMP/electron"
+	[[ $status -eq 4 ]]
+	[[ -f $TEST_TMP/done ]]
+	grep -qF 'fallback path output' "$log_file"
+	grep -qF 'Electron exited with code: 4' "$log_file"
+}
+
+@test "run_electron_and_cleanup: leaves no fifo directory behind" {
+	_stub_electron 'echo hi' 0
+	setup_logging
+	TMPDIR="$TEST_TMP"
+	run run_electron_and_cleanup "$TEST_TMP/electron"
+	[[ $status -eq 0 ]]
+	[[ -z $(ls -d "$TEST_TMP"/claude-launcher.* 2>/dev/null) ]]
+}
+
+@test "_electron_output_filter: default cap is 20 MiB" {
+	# Pin the default so a stray edit can't quietly make it 20 KiB or
+	# unbounded: 21 MiB of distinct input must trip the marker with
+	# the documented byte count.
+	unset ELECTRON_LOG_CAP_BYTES
+	local last
+	last=$(yes '0123456789012345678901234567890123456789012345678901234567890123' \
+		| head -c $((21 * 1024 * 1024)) | awk '{ print NR ": " $0 }' \
+		| _electron_output_filter | tail -n 1)
+	[[ $last == *'output cap (20971520 bytes) reached'* ]]
+}
+
+# =============================================================================
 # Doctor helper functions
 # =============================================================================
 
