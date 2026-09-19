@@ -353,9 +353,11 @@ SHIM
 	run _doctor_check_recent_crashes \
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
-	[[ $(sed -n 1p "$TEST_TMP/coredumpctl.args") == 'list' ]]
-	[[ $(sed -n 2p "$TEST_TMP/coredumpctl.args") == 'claude-desktop' ]]
-	! grep -qx 'electron' "$TEST_TMP/coredumpctl.args" || return 1
+	local -a argv
+	mapfile -t argv < "$TEST_TMP/coredumpctl.args"
+	[[ ${argv[0]} == 'list' ]]
+	[[ ${argv[1]} == 'claude-desktop' ]]
+	[[ ${argv[*]} != *electron* ]]
 }
 
 @test "_doctor_check_recent_crashes: no coredumpctl on PATH — silent" {

@@ -509,10 +509,7 @@ _doctor_check_recent_crashes() {
 	# main process and of every GPU/renderer child (they re-exec the
 	# same binary). 2.x shipped a binary named `electron`, and this
 	# probe matched that until #861: on every 3.x install it was
-	# silent, whatever the crash count. If the exact electron_path
-	# matches any entry's EXE column, prefer that tighter count;
-	# otherwise fall back to all claude-desktop entries, which can
-	# include Anthropic's official package installed side by side.
+	# silent, whatever the crash count.
 	local listing total_count path_count
 	listing=$(coredumpctl list claude-desktop \
 		--since='7 days ago' --no-pager 2>/dev/null) || return 0
