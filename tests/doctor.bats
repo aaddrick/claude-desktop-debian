@@ -307,18 +307,34 @@ _skip_gtk_query() {
 # =============================================================================
 
 # Install a coredumpctl shim. $1 is the coredumpctl-list-style
-# multi-line output to emit (header + entry rows). The shim ignores
-# its arguments — tests don't exercise the filter syntax.
+# multi-line output to emit (header + entry rows). The shim records
+# its argv in $TEST_TMP/coredumpctl.args so a test can pin the COMM
+# match word: a bare non-path match is a COMM filter, and matching
+# the wrong name silences the probe entirely (#861).
 _install_coredumpctl_shim() {
 	mkdir -p "$TEST_TMP/bin"
 	cat > "$TEST_TMP/bin/coredumpctl" <<SHIM
 #!/usr/bin/env bash
+printf '%s\\n' "\$@" > "$TEST_TMP/coredumpctl.args"
 cat <<'OUT'
 $1
 OUT
 SHIM
 	chmod +x "$TEST_TMP/bin/coredumpctl"
 	export PATH="$TEST_TMP/bin:$PATH"
+}
+
+@test "_doctor_check_recent_crashes: matches COMM claude-desktop, not electron" {
+	# The official ELF shipped since v3.0.0 is named claude-desktop, so
+	# that is the comm systemd-coredump records. `list electron` (the
+	# 2.x binary name) matched nothing on any 3.x install.
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE'
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
+	[[ $status -eq 0 ]]
+	[[ $(sed -n 1p "$TEST_TMP/coredumpctl.args") == 'list' ]]
+	[[ $(sed -n 2p "$TEST_TMP/coredumpctl.args") == 'claude-desktop' ]]
+	! grep -qx 'electron' "$TEST_TMP/coredumpctl.args" || return 1
 }
 
 @test "_doctor_check_recent_crashes: no coredumpctl on PATH — silent" {
@@ -348,7 +364,7 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 	run _doctor_check_recent_crashes \
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
-	[[ $output == *'Recent Electron crashes: 1'* ]]
+	[[ $output == *'Recent Claude Desktop crashes: 1'* ]]
 	[[ $output != *'[WARN]'* ]]
 }
 
@@ -361,25 +377,26 @@ Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-des
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
-	[[ $output == *'Recent Electron crashes: 3'* ]]
+	[[ $output == *'Recent Claude Desktop crashes: 3'* ]]
 	[[ $output == *'CLAUDE_DISABLE_GPU=1'* ]]
 	[[ $output == *'/issues/583'* ]]
 }
 
 @test "_doctor_check_recent_crashes: path mismatch falls back with footnote" {
-	# Three crashes from a DIFFERENT electron binary (e.g., Slack).
-	# Caller passes claude-desktop's electron path, which doesn't
-	# match — helper falls back to total count and adds the footnote
-	# so the user knows the count may be cross-app.
+	# Three crashes from a DIFFERENT claude-desktop binary: Anthropic's
+	# official package installed side by side shares the comm. Caller
+	# passes our path, which doesn't match — helper falls back to the
+	# total count and adds the footnote so the user knows the count
+	# may belong to the other install.
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
-Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
-Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M'
+Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/claude-desktop/claude-desktop 30M
+Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/claude-desktop/claude-desktop 30M
+Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/claude-desktop/claude-desktop 30M'
 	run _doctor_check_recent_crashes \
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
-	[[ $output == *'may be from other Electron apps'* ]]
+	[[ $output == *'may be from another Claude Desktop install'* ]]
 }
 
 @test "_doctor_check_recent_crashes: empty electron_path falls back" {
@@ -389,8 +406,8 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 	# emits the info line based on the unfiltered total.
 	run _doctor_check_recent_crashes ''
 	[[ $status -eq 0 ]]
-	[[ $output == *'Recent Electron crashes: 1'* ]]
-	[[ $output == *'may be from other Electron apps'* ]]
+	[[ $output == *'Recent Claude Desktop crashes: 1'* ]]
+	[[ $output == *'may be from another Claude Desktop install'* ]]
 }
 
 # =============================================================================

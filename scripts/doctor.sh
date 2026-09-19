@@ -487,36 +487,42 @@ _doctor_check_filename_limit() {
 	fi
 }
 
-# Surface a warning when systemd-coredump shows N+ recent Electron
-# crashes. The most common cause on Linux is the GPU process FATAL
-# exhaustion tracked in #583 — workaround for affected users is the
-# upstream Settings → disable hardware acceleration toggle, or
+# Surface a warning when systemd-coredump shows N+ recent Claude
+# Desktop crashes. The most common cause on Linux is the GPU process
+# FATAL exhaustion tracked in #583 — workaround for affected users is
+# the upstream Settings → disable hardware acceleration toggle, or
 # CLAUDE_DISABLE_GPU=1 in the environment for headless persistence.
 #
 # Arguments: $1 = electron path (e.g.,
 #   /usr/lib/claude-desktop-unofficial/claude-desktop)
-#   Used to filter results to claude-desktop's electron when possible;
-#   falls back to all-electron crashes when the path doesn't match
-#   (e.g., AppImage mount paths are transient).
+#   Used to narrow the count to this package's binary when possible;
+#   falls back to every claude-desktop-named crash when the path
+#   doesn't match (e.g., AppImage mount paths are transient).
 _doctor_check_recent_crashes() {
 	local electron_path="${1:-}"
 	command -v coredumpctl &>/dev/null || return 0
 
-	# `coredumpctl list electron` filters by COMM=electron. If the
-	# exact electron_path matches any entry's EXE column, prefer that
-	# tighter count; otherwise fall back to all-electron entries.
+	# A bare non-path match is a COMM match. The official ELF we ship
+	# since v3.0.0 is named claude-desktop, so that is the comm of the
+	# main process and of every GPU/renderer child (they re-exec the
+	# same binary). 2.x shipped a binary named `electron`, and this
+	# probe matched that until #861: on every 3.x install it was
+	# silent, whatever the crash count. If the exact electron_path
+	# matches any entry's EXE column, prefer that tighter count;
+	# otherwise fall back to all claude-desktop entries, which can
+	# include Anthropic's official package installed side by side.
 	local listing total_count path_count
-	listing=$(coredumpctl list electron \
+	listing=$(coredumpctl list claude-desktop \
 		--since='7 days ago' --no-pager 2>/dev/null) || return 0
 	[[ -n $listing ]] || return 0
 
 	# Drop the header line; count remaining entries.
-	# Assumes `coredumpctl list electron`'s COMM=electron filter
-	# excludes `-- Reboot --` separator rows from the listing (true
-	# on systemd as of writing). The path-matched branch below uses
-	# index($0, p) so it's unaffected even if that ever changes;
-	# revisit this total-count branch if a future systemd version
-	# starts leaking reboot markers into per-COMM listings.
+	# Assumes the per-COMM filter excludes `-- Reboot --` separator
+	# rows from the listing (true on systemd as of writing). The
+	# path-matched branch below uses index($0, p) so it's unaffected
+	# even if that ever changes; revisit this total-count branch if a
+	# future systemd version starts leaking reboot markers into
+	# per-COMM listings.
 	total_count=$(awk 'NR>1 && NF>0' <<< "$listing" | wc -l)
 	((total_count == 0)) && return 0
 
@@ -528,21 +534,21 @@ _doctor_check_recent_crashes() {
 	fi
 
 	# Use the path-matched count when available; else the unfiltered
-	# count with a footnote so the user knows it may include other
-	# Electron apps (Slack, VSCode, etc.).
+	# count with a footnote so the user knows it may include the
+	# official claude-desktop package or another install of ours.
 	local count footnote=''
 	if ((path_count > 0)); then
 		count=$path_count
 	else
 		count=$total_count
-		footnote=' (some entries may be from other Electron apps)'
+		footnote=' (some entries may be from another Claude Desktop install)'
 	fi
 
 	# Threshold tuned against the #583 repro (~10 crashes over 7 days
 	# on the affected laptop); a noisy session typically clears 3 in a
 	# week, so 3 is the floor for "worth surfacing the workaround".
 	if ((count >= 3)); then
-		_warn "Recent Electron crashes: $count in last 7 days$footnote"
+		_warn "Recent Claude Desktop crashes: $count in last 7 days$footnote"
 		_info \
 			'Most common cause: Chromium GPU process FATAL (#583).' \
 			'Try one of:'
@@ -552,7 +558,7 @@ _doctor_check_recent_crashes() {
 			'Tracking:' \
 			'https://github.com/aaddrick/claude-desktop-debian/issues/583'
 	elif ((count > 0)); then
-		_info "Recent Electron crashes: $count in last 7 days$footnote"
+		_info "Recent Claude Desktop crashes: $count in last 7 days$footnote"
 	fi
 }
 
