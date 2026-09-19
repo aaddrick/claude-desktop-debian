@@ -53,6 +53,49 @@ official_deb_pin() {
 	official_deb_filename="${pool_path##*/}"
 }
 
+# Is a pool file actually fetchable, not merely listed? The official
+# Packages index can run ahead of the CDN serving the pool: the
+# 2.2553.0 arm64 entry was indexed (so the cross-arch gate passed and
+# the tag was cut) while the .deb itself still answered 404, and the
+# tag build died on it (#859). A HEAD probe, no body. Used by
+# check-claude-version before it tags; never by the pinned build.
+# Usage: official_deb_pool_ready POOL_PATH
+official_deb_pool_ready() {
+	local pool_path="$1"
+
+	[[ -n $pool_path ]] || return 1
+	curl -fsSI --max-time 30 -o /dev/null "$OFFICIAL_APT_BASE/$pool_path"
+}
+
+# Download URL to DEST, retrying on failure with a doubling delay. One
+# attempt is the wrong shape against the pool lag above: the file
+# usually turns up minutes after its index entry. Attempts and the
+# first delay are env-tunable so tests don't sleep. A failed attempt's
+# partial file is removed so the caller never sees a truncated .deb.
+# Usage: _download_official_deb URL DEST
+_download_official_deb() {
+	local url="$1" dest="$2"
+	local attempts="${OFFICIAL_DEB_DL_ATTEMPTS:-5}"
+	local delay="${OFFICIAL_DEB_DL_DELAY:-15}"
+	local try
+
+	for (( try = 1; try <= attempts; try++ )); do
+		if wget -q --show-progress -O "$dest" "$url"; then
+			return 0
+		fi
+		rm -f "$dest"
+		if (( try < attempts )); then
+			echo "Download attempt $try/$attempts failed;" \
+				"retrying in ${delay}s..." >&2
+			sleep "$delay"
+			delay=$(( delay * 2 ))
+		fi
+	done
+
+	echo "Failed to download $url after $attempts attempts" >&2
+	return 1
+}
+
 # Query the official Packages index for the newest claude-desktop entry.
 # Used by CI (check-claude-version) and the doctor drift check, never by
 # the pinned build itself. Sets resolved_official_{version,filename,
@@ -153,11 +196,8 @@ fetch_official_deb() {
 	else
 		echo "Downloading official Claude Desktop $OFFICIAL_DEB_VERSION" \
 			"for $architecture..."
-		if ! wget -q --show-progress -O "$claude_deb_path" \
-			"$official_deb_url"; then
-			echo "Failed to download $official_deb_url" >&2
-			exit 1
-		fi
+		_download_official_deb "$official_deb_url" "$claude_deb_path" \
+			|| exit 1
 		echo "Download complete: $official_deb_filename"
 
 		if ! verify_sha256 "$claude_deb_path" "$official_deb_sha256" \

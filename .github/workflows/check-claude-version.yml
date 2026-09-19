@@ -92,6 +92,24 @@ jobs:
           fi
 
           if [[ "$UPDATE_NEEDED" == "true" ]]; then
+            # Pool readiness gate: the index can run ahead of the CDN,
+            # so agreeing versions are not yet a fetchable pair. The
+            # 2.2553.0 arm64 .deb was indexed but still 404 when the
+            # tag build ran, which killed the build and left a tag with
+            # no release (#859). Only tag once both files answer a HEAD 200;
+            # the next scheduled run picks the version up otherwise.
+            source scripts/setup/official-deb.sh
+            for pool_path in \
+              "${{ steps.resolve.outputs.amd64_filename }}" \
+              "${{ steps.resolve.outputs.arm64_filename }}"; do
+              if ! official_deb_pool_ready "$pool_path"; then
+                echo "pool lag — $pool_path is indexed but not yet" \
+                  "fetchable; skipping until it is"
+                echo "update_needed=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
+
             NEW_TAG="v${REPO_VERSION}+claude${VER}"
             {
               echo "update_needed=true"
