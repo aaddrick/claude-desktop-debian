@@ -117,8 +117,10 @@ _pkg_installed() {
 # keyboard input in the chat (#550). Surfaces:
 #   - CLAUDE_GTK_IM_MODULE override visibility (informational)
 #   - XWayland-with-IBus routing note: on a Wayland session Electron
-#     defaults to XWayland (preserves global hotkeys), which forces
-#     the IBus path through XIM — a known weak link for some IMEs.
+#     defaults to XWayland (the conservative rendering path), which
+#     forces the IBus path through XIM — a known weak link for some
+#     IMEs. Native Wayland keeps the global hotkey on GNOME/KDE via
+#     the GlobalShortcuts portal (#690); only wlroots loses it.
 #   - ibus-gtk3 package missing when GTK_IM_MODULE=ibus
 #   - GTK immodules cache stale: active module not listed by
 #     gtk-query-immodules-3.0 (--update-cache fixes it)
@@ -140,7 +142,7 @@ _doctor_check_im_modules() {
 			'IBus path goes through XIM (lossy for some IMEs).'
 		_info \
 			'Tip: CLAUDE_USE_WAYLAND=1 enables native Wayland IME' \
-			'(loses global hotkeys).'
+			'(global hotkey via portal on GNOME/KDE; lost on wlroots).'
 	fi
 
 	# Nothing further to check without an active IM module.
@@ -1574,8 +1576,14 @@ _doctor_check_effective_sandbox() {
 
 # Report the active display server (Wayland/X11) and, on Wayland, the
 # desktop and whether Electron runs natively (CLAUDE_USE_WAYLAND=1) or
-# via XWayland (default, preserves global hotkeys). Fails when neither
-# DISPLAY nor WAYLAND_DISPLAY is set (TTY / broken session).
+# via XWayland (the default: mature rendering/IME/HiDPI path). Since
+# #690 native Wayland routes Quick Entry's global hotkey through the
+# XDG GlobalShortcuts portal, so it works on GNOME and KDE (after the
+# one-time permission dialog) and is lost only on wlroots compositors,
+# whose portal has no GlobalShortcuts backend. Before #690 the tip
+# here said native Wayland "disables global hotkeys" — inverted
+# (#862). Fails when neither DISPLAY nor WAYLAND_DISPLAY is set (TTY /
+# broken session).
 #
 # Usage: _doctor_check_display_server
 _doctor_check_display_server() {
@@ -1586,9 +1594,10 @@ _doctor_check_display_server() {
 		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
 			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
 		else
-			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
+			_info 'Mode: X11 via XWayland (default)'
 			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
-			_info '     (disables global hotkeys)'
+			_info '     (global hotkey via the GlobalShortcuts portal on' \
+				'GNOME/KDE; lost on wlroots compositors)'
 		fi
 	elif [[ -n "${DISPLAY:-}" ]]; then
 		_pass "Display server: X11 (DISPLAY=$DISPLAY)"

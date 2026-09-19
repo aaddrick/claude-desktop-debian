@@ -2,7 +2,7 @@
 
 # Wayland global shortcuts via the XDG GlobalShortcuts portal
 
-Quick Entry's global hotkey (`Ctrl+Alt+Space`) is focus-bound on modern GNOME Wayland; the native-Wayland path now routes it through the XDG GlobalShortcuts portal (a merged `--enable-features=…,GlobalShortcutsPortal`), opt-in on GNOME via `CLAUDE_USE_WAYLAND=1` — which fixes GNOME ≤ 49, but GNOME 50 / xdg-desktop-portal ≥ 1.20 is still blocked by an upstream Electron gap ([electron/electron#51875](https://github.com/electron/electron/issues/51875)).
+Quick Entry's global hotkey (`Ctrl+Alt+Space`) is focus-bound on modern GNOME Wayland; the native-Wayland path now routes it through the XDG GlobalShortcuts portal (a merged `--enable-features=…,GlobalShortcutsPortal`), opt-in on GNOME via `CLAUDE_USE_WAYLAND=1` — which fixes GNOME ≤ 49 on the bytes it was verified against. GNOME 50 / xdg-desktop-portal ≥ 1.20 was blocked by an upstream Electron gap ([electron/electron#51875](https://github.com/electron/electron/issues/51875)); that closed on 2026-08-23 as fixed in Chromium 152 / Electron 44, which the official build we ship has carried since 2.2553.x (Electron 44.2.0, Chromium 152.0.7977.76). GNOME 50 is therefore *expected* to work now but is unverified by us — #805's Fedora GNOME reporter is the retest (#862).
 
 ## The problem (#404)
 
@@ -12,7 +12,7 @@ That stopped working on GNOME. mutter (GNOME ≥ 49) no longer honours XWayland-
 
 ## The launcher change (necessary, not sufficient)
 
-Electron ≥ 35 (we bundle 41) exposes Chromium's `GlobalShortcutsPortal` feature: under the **native Wayland ozone platform** it is *supposed* to route `globalShortcut.register()` through the `org.freedesktop.portal.GlobalShortcuts` D-Bus interface instead of an X11 grab. So `build_electron_args` adds `GlobalShortcutsPortal` to the native-Wayland feature set.
+Electron ≥ 35 (the official build ships 44.2.0 as of 2.2553.1; the 2.x pipeline bundled 41) exposes Chromium's `GlobalShortcutsPortal` feature: under the **native Wayland ozone platform** it is *supposed* to route `globalShortcut.register()` through the `org.freedesktop.portal.GlobalShortcuts` D-Bus interface instead of an X11 grab. So `build_electron_args` adds `GlobalShortcutsPortal` to the native-Wayland feature set.
 
 GNOME Wayland is **not** auto-flipped to native Wayland. `detect_display_backend` still only auto-forces Niri (no XWayland at all). The reason: GNOME Wayland is the default session for a large slice of users, and moving it off mature XWayland is a rendering / IME / HiDPI / fractional-scaling risk — shipped on argv-only verification, and on GNOME 50 the portal route is a no-op anyway (so those users would take the risk for zero benefit). GNOME users opt in with `CLAUDE_USE_WAYLAND=1`, which fully works on **GNOME ≤ 49** after the one-time portal dialog. Auto-selecting native Wayland on GNOME is deferred to a follow-up gated on a real "still renders correctly" check, not just "the flag reached argv."
 
@@ -24,7 +24,7 @@ KDE/Sway/Hyprland likewise stay on XWayland by default (opt in with `=1`).
 
 - **Chromium honours only the *last* `--enable-features=` switch.** Two separate `--enable-features=A` `--enable-features=B` on one command line silently drops `A`. When this was diagnosed, `build_electron_args` emitted up to two (`WindowControlsOverlay` for the hidden-titlebar machinery — removed along with that machinery in the v3.0.0 rebase — and `UseOzonePlatform,WaylandWindowDecorations` for native Wayland), so adding a third would have clobbered the others. The function accumulates into one `enable_features` array and emits a single comma-joined `--enable-features=` at the end (today only the native-Wayland set: `UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal`). The test-harness `argvHasFlag` (`tools/test-harness/src/lib/argv.ts`) already matches a subkey inside a comma-joined value, so `S12` passes against the merged form.
 
-## Why GNOME 50 is still broken — and how it was proven
+## Why GNOME 50 was broken through Electron 43 — and how it was proven
 
 On Fedora 44 / GNOME 50.2 / xdg-desktop-portal **1.21.2**, `globalShortcut.register()` returns `false` and the portal is **never contacted** (no `CreateSession`, no `BindShortcuts`). The feature flag has zero observable effect:
 
@@ -50,15 +50,15 @@ BindShortcuts OK -> id='open-quick-entry' trigger='Press <Control><Alt>space'
 
 Secondary gate: GNOME's backend also rejects app ids that are not reverse-DNS and backed by an installed `.desktop` (`gnome-control-center-global-shortcuts-provider: Discarded shortcut bind request … invalid app_id >gsportalproof<`). Electron's default app id is the executable name (`claude-desktop`), which has no dot and would likely also fail this even once `Registry.Register` is wired up.
 
-Why it works on GNOME ≤ 49: older xdg-desktop-portal derived the app id from the systemd scope automatically and did not require `Registry.Register`. GNOME 50 / portal 1.21 introduced the requirement Chromium hasn't adopted.
+Why it works on GNOME ≤ 49: older xdg-desktop-portal derived the app id from the systemd scope automatically and did not require `Registry.Register`. GNOME 50 / portal 1.21 introduced the requirement Chromium had not adopted at the time.
 
-Filed upstream: [electron/electron#51875](https://github.com/electron/electron/issues/51875) (accepted, milestone `42-x-y`) and the underlying Chromium bug at [crbug 520262204](https://issues.chromium.org/issues/520262204) — fundamentally the `components/dbus/xdg/portal.cc` skip-`Register()`-on-`kUnitStarted` gap, surfacing through Electron.
+Filed upstream: [electron/electron#51875](https://github.com/electron/electron/issues/51875) and the underlying Chromium bug at [crbug 520262204](https://issues.chromium.org/issues/520262204). **Resolved upstream:** Chromium CL 8102824 ("Register app ID with the portal even when a systemd scope started", 2026-07-20) shipped in Chromium 152; the Electron issue closed 2026-08-23 as fixed in Electron 44 with no cherry-pick to 42/43. The official `.deb` moved to Electron 44.2.0 with 2.2553.x, so the gap below is history for what we ship, kept as the diagnosis record — fundamentally the `components/dbus/xdg/portal.cc` skip-`Register()`-on-`kUnitStarted` gap, surfacing through Electron.
 
 ## First-run UX and escape hatch
 
 When the portal path *does* engage (GNOME ≤ 49), GNOME shows a **one-time permission dialog** the first time the shortcut is registered; the user must accept it to bind the shortcut. Expected portal behaviour, not a bug. A dismissed or denied dialog persists in the portal permission store and later `globalShortcut.register()` calls then fail silently; clearing the stored decision with `flatpak permission-reset <app-id>` (the store is shared with non-Flatpak apps) should re-trigger the dialog on the next launch — untested here.
 
-`CLAUDE_USE_WAYLAND` is tri-state: `1` forces native Wayland, `0` forces XWayland (skipping auto-detect), unset auto-detects. The `0` value is the escape hatch for a GNOME user who hits a native-Wayland rendering regression and wants the old XWayland behaviour back (losing global-shortcut-from-unfocused in the process — which on GNOME 50 is not yet working anyway).
+`CLAUDE_USE_WAYLAND` is tri-state: `1` forces native Wayland, `0` forces XWayland (skipping auto-detect), unset auto-detects. The `0` value is the escape hatch for a GNOME user who hits a native-Wayland rendering regression and wants the old XWayland behaviour back (losing global-shortcut-from-unfocused in the process).
 
 ## wlroots caveat (Niri / Sway / Hyprland)
 
@@ -70,4 +70,4 @@ The portal flag is harmless where the compositor's portal has no GlobalShortcuts
 - `tools/test-harness/src/runners/S12_global_shortcuts_portal_flag.spec.ts` — GNOME-W flag-in-argv detector (passes: the launcher delivers the flag).
 - `tools/test-harness/src/runners/S14_quick_entry_from_other_focus_niri.spec.ts` — Niri portal `BindShortcuts` detector (known-failing by design).
 - `docs/testing/cases/shortcuts-and-input.md` (S12/S14), `docs/testing/quick-entry-closeout.md` (QE-6).
-- Upstream blockers: [electron/electron#51875](https://github.com/electron/electron/issues/51875), Chromium [crbug 520262204](https://issues.chromium.org/issues/520262204).
+- Upstream blockers (both resolved, fixed in Electron 44 / Chromium 152): [electron/electron#51875](https://github.com/electron/electron/issues/51875), Chromium [crbug 520262204](https://issues.chromium.org/issues/520262204).

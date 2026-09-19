@@ -120,6 +120,14 @@ _skip_gtk_query() {
 	[[ $output == *'CLAUDE_USE_WAYLAND=1'* ]]
 }
 
+@test "_doctor_check_im_modules: XWayland note's tip does not claim native Wayland loses hotkeys" {
+	XDG_SESSION_TYPE='wayland'
+	unset CLAUDE_USE_WAYLAND
+	run _doctor_check_im_modules debian
+	[[ $output == *'global hotkey via portal on GNOME/KDE'* ]]
+	[[ $output != *'loses global hotkeys'* ]]
+}
+
 @test "_doctor_check_im_modules: no XWayland note when CLAUDE_USE_WAYLAND=1" {
 	XDG_SESSION_TYPE='wayland'
 	CLAUDE_USE_WAYLAND='1'
@@ -194,6 +202,19 @@ _skip_gtk_query() {
 	[[ $output == *'Display server: Wayland'* ]]
 	[[ $output == *'Desktop: GNOME'* ]]
 	[[ $output == *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: native-Wayland tip names the portal, not a hotkey loss" {
+	# Since #690 native Wayland keeps the global hotkey on GNOME/KDE via
+	# the GlobalShortcuts portal; the old tip said it "disables global
+	# hotkeys", steering GNOME users away from the fix (#862).
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_CURRENT_DESKTOP='GNOME'
+	run _doctor_check_display_server
+	[[ $output == *'GlobalShortcuts portal on GNOME/KDE'* ]]
+	[[ $output == *'lost on wlroots'* ]]
+	[[ $output != *'disables global hotkeys'* ]]
+	[[ $output != *'for global hotkey support'* ]]
 }
 
 @test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=1 — native mode" {
