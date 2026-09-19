@@ -72,6 +72,18 @@ node_majors() {
 	done < "${WORKFLOW_DIR}/$1"
 }
 
+# The number of live `actions/setup-node` steps in workflow <1>, comment
+# lines skipped so a commented-out step cannot inflate the count.
+setup_node_steps() {
+	local line n=0
+	while IFS= read -r line; do
+		[[ "$line" =~ ^[[:space:]]*# ]] && continue
+		[[ "$line" == *uses:*actions/setup-node* ]] || continue
+		n=$(( n + 1 ))
+	done < "${WORKFLOW_DIR}/$1"
+	printf '%s\n' "$n"
+}
+
 @test "every workflow subject to the floor sets a node version" {
 	# Guards the test below: a file that vanished, was renamed, or
 	# stopped declaring a version at all would otherwise pass it on
@@ -97,6 +109,34 @@ node_majors() {
 	[[ -z "$violations" ]] || {
 		printf 'below the Node %s floor:\n%s' \
 			"$NODE_MIN_MAJOR" "$violations" >&2
+		false
+	}
+}
+
+@test "every setup-node step declares its own node-version" {
+	# The two tests above leave one hole between them: test 1 asks only
+	# for at least one version per file, and test 2 judges only the
+	# versions that are present. So deleting a single `node-version`
+	# key from a file that has others passes both, and that step
+	# silently takes the runner's default Node instead of ours.
+	#
+	# Today that default clears the floor (22.23.2 on ubuntu-latest),
+	# which is exactly why it would go unnoticed until the day it does
+	# not. Whether the runtime is ours or the runner's is the thing
+	# this suite exists to pin, so the count is asserted rather than
+	# the value.
+	local workflow steps keys mismatches=''
+	for workflow in "${FLOORED_WORKFLOWS[@]}"; do
+		steps=$(setup_node_steps "$workflow")
+		keys=$(node_majors "$workflow" | wc -l)
+		[[ "$steps" -eq "$keys" ]] && continue
+		mismatches+="${workflow}: ${steps} setup-node step(s),"
+		mismatches+=" ${keys} node-version key(s)"$'\n'
+	done
+
+	[[ -z "$mismatches" ]] || {
+		printf 'setup-node steps without a node-version:\n%s' \
+			"$mismatches" >&2
 		false
 	}
 }
