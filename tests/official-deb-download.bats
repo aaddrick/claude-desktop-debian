@@ -42,24 +42,26 @@ teardown() {
 }
 
 # Install a wget shim that fails the first FAIL_N calls and then writes
-# DEST on success. Each call appends a line to $COUNTER.
+# DEST on success. Each call appends a line to $COUNTER. The heredocs
+# below are quoted, so the shims read as plain bash; what varies per
+# test travels in the environment they already inherit.
 shim_wget() {
-	local fail_n="$1"
-	cat > "$SHIM_DIR/wget" <<EOF
+	export WGET_FAIL_N="$1"
+	cat > "$SHIM_DIR/wget" <<'EOF'
 #!/usr/bin/env bash
 echo wget >> "$COUNTER"
-n=\$(grep -c wget "$COUNTER")
+n=$(grep -c wget "$COUNTER")
 dest=''
-while [[ \$# -gt 0 ]]; do
-	if [[ \$1 == -O ]]; then dest=\$2; shift; fi
+while [[ $# -gt 0 ]]; do
+	if [[ $1 == -O ]]; then dest=$2; shift; fi
 	shift
 done
-if (( n <= $fail_n )); then
+if (( n <= WGET_FAIL_N )); then
 	# Mimic a 404: wget leaves an empty output file behind.
-	: > "\$dest"
+	: > "$dest"
 	exit 8
 fi
-echo payload > "\$dest"
+echo payload > "$dest"
 exit 0
 EOF
 	chmod +x "$SHIM_DIR/wget"
@@ -67,11 +69,11 @@ EOF
 
 # Install a curl shim answering EXIT for every call; records argv.
 shim_curl() {
-	local exit_code="$1"
-	cat > "$SHIM_DIR/curl" <<EOF
+	export CURL_EXIT="$1"
+	cat > "$SHIM_DIR/curl" <<'EOF'
 #!/usr/bin/env bash
-echo "curl \$*" >> "$COUNTER"
-exit $exit_code
+echo "curl $*" >> "$COUNTER"
+exit "$CURL_EXIT"
 EOF
 	chmod +x "$SHIM_DIR/curl"
 }
@@ -129,9 +131,9 @@ wget_calls() {
 	shim_wget 99
 	OFFICIAL_DEB_DL_ATTEMPTS=4
 	# Shim sleep to record the requested delays instead of waiting.
-	cat > "$SHIM_DIR/sleep" <<EOF
+	cat > "$SHIM_DIR/sleep" <<'EOF'
 #!/usr/bin/env bash
-echo "sleep \$1" >> "$COUNTER"
+echo "sleep $1" >> "$COUNTER"
 EOF
 	chmod +x "$SHIM_DIR/sleep"
 	OFFICIAL_DEB_DL_DELAY=15

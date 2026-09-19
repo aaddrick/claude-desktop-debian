@@ -51,8 +51,13 @@ job_if() {
 # Every job header in ci.yml that carries a tag gate.
 tag_gated_jobs() {
 	awk '
-		/^  [A-Za-z0-9_-]+:[[:space:]]*$/ { job = $0; sub(/^  /, "", job); sub(/:.*/, "", job) }
-		/startsWith\(github\.ref, .refs\/tags\/v.\)/ && job != "report-tag-failure" { print job }
+		/^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
+			job = $0
+			sub(/^  /, "", job)
+			sub(/:.*/, "", job)
+		}
+		/startsWith\(github\.ref, .refs\/tags\/v.\)/ &&
+			job != "report-tag-failure" { print job }
 	' "$CI_YML" | sort -u
 }
 
@@ -116,6 +121,19 @@ tag_gated_jobs() {
 	region=$(job_region report-tag-failure)
 	[[ $region == *'NEEDS: ${{ toJSON(needs) }}'* ]]
 	[[ $region == *"job.result === 'failure'"* ]]
+}
+
+@test "mirror job downloads through the retrying helper, not bare wget" {
+	# The second bare-wget site the #859 triage found: the post-release
+	# mirror fetches the same pool files and had the same one-shot
+	# exposure. It sources official-deb.sh already, so the helper is in
+	# scope; a revert to `wget -q -O` here would fail the mirror on the
+	# first 404 while the build leg retries.
+	local region
+	region=$(job_region mirror-official-deb)
+	[[ -n $region ]]
+	[[ $region == *'_download_official_deb "$official_deb_url"'* ]]
+	[[ $region != *'wget '* ]]
 }
 
 @test "checker probes both pool files before tagging" {

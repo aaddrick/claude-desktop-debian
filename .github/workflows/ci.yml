@@ -463,10 +463,13 @@ jobs:
               exit 1
             }
             echo "Mirroring $official_deb_filename ($arch)..."
-            if ! wget -q -O "$official_deb_filename" "$official_deb_url"; then
+            # Same pool-lag exposure as the build (#859): retry rather
+            # than fail the mirror on one 404.
+            _download_official_deb "$official_deb_url" \
+                "$official_deb_filename" || {
               echo "::error::Failed to download $official_deb_url"
               exit 1
-            fi
+            }
             if ! verify_sha256 "$official_deb_filename" \
                 "$official_deb_sha256" "official $arch .deb"; then
               exit 1
@@ -1037,7 +1040,6 @@ jobs:
           fi
           git commit -m "Update to v${PKGVER}"
           git push
-
 
   # A tag push is the release, and nobody watches the Actions tab for
   # it: the v3.2.4+claude2.2553.0 build died on a pool-lag 404 and went
