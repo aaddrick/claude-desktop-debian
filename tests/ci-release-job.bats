@@ -148,6 +148,33 @@ job_needs_line() {
 # and this pair had already drifted once when the npm mechanism was
 # corrected in one copy and missed in the other.
 
+@test "the claude-code CLI install is version-pinned" {
+	# The CLI runs with ANTHROPIC_API_KEY, so a floating `latest` is a
+	# supply-chain hole — the same reasoning the triage workflows carry.
+	# Asserted even though its only consumer (compare-releases) is
+	# currently `if: false`: the pin is what makes re-enabling that step
+	# safe, and an unpinned install would otherwise sit here unnoticed
+	# until the day it is switched back on.
+	#
+	# Matched on the package name rather than on `npm install -g <pkg>`,
+	# so `npm i -g` and `npm install --global` cannot pass vacuously by
+	# presenting no line to judge.
+	local block installs line
+	block=$(step_blocks '@anthropic-ai/claude-code' | uncommented)
+	[[ -n "$block" ]]
+
+	# `step_blocks` matches the block on its raw text, so a comment
+	# naming the package keeps the block non-empty once `uncommented`
+	# strips that comment out — and the loop below would then have no
+	# line to judge and pass green. Count first, so that shape reds.
+	installs=$(grep -cF '@anthropic-ai/claude-code' <<<"$block" || true)
+	[[ "$installs" -ge 1 ]]
+
+	while IFS= read -r line; do
+		[[ "$line" == *"claude-code@"* ]]
+	done < <(grep -F '@anthropic-ai/claude-code' <<<"$block")
+}
+
 @test "the reference-source step guards asar before invoking it" {
 	# A bare "the guard exists" grep would pass on a guard sitting after
 	# the call, or on a comment mentioning it — so strip comments and pin

@@ -187,7 +187,13 @@ jobs:
       - name: Install claude-code CLI
         if: steps.checkout_versions.outcome == 'success'
         continue-on-error: true
-        run: npm install -g @anthropic-ai/claude-code
+        # Version-pinned like the SHA-pinned actions above, and like the
+        # triage workflows: this CLI runs with the Anthropic API key, so
+        # a floating `latest` is a supply-chain hole. Bump deliberately.
+        # Its only consumer is the compare-releases step below, which is
+        # currently `if: false`; the pin is what makes re-enabling that
+        # step safe rather than something to remember at the time.
+        run: npm install -g @anthropic-ai/claude-code@2.1.214
 
       - name: Checkout repo for git history
         id: checkout_repo
