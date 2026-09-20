@@ -17,9 +17,10 @@ run-name: |
 #
 # Triggers: fires automatically on `issues: [opened]`; also accepts
 # `workflow_dispatch` for re-runs, dry-run testing, and manual
-# triage on backfilled issues. v1 (issue-triage.yml) is kept as a
-# workflow_dispatch-only fallback — its `issues` trigger was
-# disabled when v2 took over production routing.
+# triage on backfilled issues. This is the only triage workflow —
+# the v1 fallback was deleted in #868 rather than backported to the
+# posture below, because an unexercised fallback that differed from
+# it was the larger liability (#867).
 # See docs/issue-triage/README.md.
 
 on:

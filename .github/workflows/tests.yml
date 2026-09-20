@@ -14,10 +14,10 @@ on:
       - "tests/**"
       - "scripts/**"
       - ".github/workflows/tests.yml"
-      # ci-release-job.bats asserts on the release job's structure, and
-      # workflow-node-floor.bats on the Node floor of all three.
+      # ci-release-job.bats asserts on the release job's structure,
+      # workflow-node-floor.bats on the Node floor of both, and
+      # triage-workflow-hardening.bats on the triage posture.
       - ".github/workflows/ci.yml"
-      - ".github/workflows/issue-triage.yml"
       - ".github/workflows/issue-triage-v2.yml"
   pull_request:
     branches: [main]
