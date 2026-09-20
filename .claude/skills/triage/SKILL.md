@@ -7,7 +7,7 @@ Trigger the automated issue triage GitHub Actions workflow for the specified iss
 
 ## Your Task
 
-Trigger the `Issue Triage` workflow via `workflow_dispatch` for issue number `$ARGUMENTS`.
+Trigger the `Issue Triage v2` workflow via `workflow_dispatch` for issue number `$ARGUMENTS`.
 
 ### Steps
 
@@ -40,7 +40,7 @@ done
 4. **Trigger the workflow**
 
 ```bash
-gh workflow run "Issue Triage" -f issue_number="$issue_number"
+gh workflow run issue-triage-v2.yml -f issue_number="$issue_number"
 ```
 
 5. **Monitor the run**
@@ -48,7 +48,7 @@ gh workflow run "Issue Triage" -f issue_number="$issue_number"
 ```bash
 # Wait for the run to appear
 sleep 5
-run_id=$(gh run list --workflow issue-triage.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+run_id=$(gh run list --workflow issue-triage-v2.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 echo "Workflow run: https://github.com/aaddrick/claude-desktop-debian/actions/runs/$run_id"
 
 # Watch it

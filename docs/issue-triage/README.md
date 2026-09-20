@@ -1,6 +1,6 @@
 # Issue Triage Pipeline
 
-Automated first-pass triage for GitHub issues. Fires on `issues: [opened]` as the production path; `workflow_dispatch` is available for manual re-runs and dry-run testing. The legacy v1 workflow (`issue-triage.yml`) is kept as a manual-only fallback and no longer auto-triggers.
+Automated first-pass triage for GitHub issues. Fires on `issues: [opened]` as the production path; `workflow_dispatch` is available for manual re-runs and dry-run testing.
 
 The pipeline classifies the issue, investigates likely root cause against the repo and upstream beautified source, validates every factual claim mechanically and with a fresh-context LLM reviewer, and posts an **explicitly non-authoritative draft comment** plus triage labels once findings clear hard gates.
 
@@ -766,7 +766,7 @@ Design-time decisions about runtime posture — privacy, security, failure handl
 
 ### Rollout posture
 
-The pipeline lives at `.github/workflows/issue-triage-v2.yml` and fires automatically on `issues: [opened]`. `workflow_dispatch` is kept for manual re-runs, dry-run testing, and triage on backfilled issues. The legacy v1 workflow (`issue-triage.yml`) is kept as a `workflow_dispatch`-only fallback — its `issues` trigger was removed when v2 took over production routing. Rollback to v1-as-primary is a one-file change in either workflow.
+The pipeline lives at `.github/workflows/issue-triage-v2.yml` and fires automatically on `issues: [opened]`. `workflow_dispatch` is kept for manual re-runs, dry-run testing, and triage on backfilled issues. It is the only triage workflow. The legacy v1 workflow was deleted in #868: it had not run since v2 took over production routing, and it differed from production on an unpinned CLI, `--dangerously-skip-permissions` over attacker-controlled issue text, and a checkout that persisted credentials — so the rollback it existed to enable would have silently adopted the pre-hardening posture (#867). There is no fallback pipeline; if v2 breaks, triage is manual until it is fixed.
 
 During the pre-production phase, the pipeline was dispatched against real issues with `dry_run=true` across the canonical failure-mode set (identifier hallucination, missed-site, version drift, false duplicate). Archived artifacts (`investigation.json`, `validation.json`, `review.json`) are retained 14 days per run so the maintainer can inspect any surprising output.
 
@@ -777,7 +777,6 @@ Single reference table for where each piece of the pipeline lives on disk.
 | Purpose | Path |
 |---------|------|
 | Production pipeline workflow | `.github/workflows/issue-triage-v2.yml` |
-| Legacy v1 workflow (manual fallback) | `.github/workflows/issue-triage.yml` |
 | Stage prompts | `.claude/scripts/prompts/{stage}.txt` — classify, classify-doublecheck-bug-vs-enhancement, investigate, investigate-enhancement, review, review-enhancement, comment-findings, comment-enhancement |
 | Output schemas | `.claude/scripts/schemas/{stage}.json` — passed to `claude --json-schema` |
 | Fixed taxonomies | `.claude/scripts/taxonomies/{name}.json` — `enhancement-design-questions`, `suspicious-input-tells`, `label-blocklist` |

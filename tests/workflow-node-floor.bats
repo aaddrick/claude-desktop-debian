@@ -4,7 +4,7 @@
 # Every workflow that installs floored tooling sets up a Node that can
 # actually run it.
 #
-# ci.yml, issue-triage.yml and issue-triage-v2.yml all `npm install -g`
+# ci.yml and issue-triage-v2.yml both `npm install -g`
 # tools with a Node engine floor above 20: @electron/asar has declared
 # engines.node >=22.12.0 since 4.0.0 and every 4.x release refuses to
 # start below it, and @anthropic-ai/claude-code declares >=22.0.0.
@@ -53,7 +53,6 @@ readonly NODE_MIN_MAJOR=22
 
 readonly FLOORED_WORKFLOWS=(
 	ci.yml
-	issue-triage.yml
 	issue-triage-v2.yml
 )
 
