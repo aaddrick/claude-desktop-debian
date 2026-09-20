@@ -159,9 +159,16 @@ job_needs_line() {
 	# Matched on the package name rather than on `npm install -g <pkg>`,
 	# so `npm i -g` and `npm install --global` cannot pass vacuously by
 	# presenting no line to judge.
-	local block line
+	local block installs line
 	block=$(step_blocks '@anthropic-ai/claude-code' | uncommented)
 	[[ -n "$block" ]]
+
+	# `step_blocks` matches the block on its raw text, so a comment
+	# naming the package keeps the block non-empty once `uncommented`
+	# strips that comment out — and the loop below would then have no
+	# line to judge and pass green. Count first, so that shape reds.
+	installs=$(grep -cF '@anthropic-ai/claude-code' <<<"$block" || true)
+	[[ "$installs" -ge 1 ]]
 
 	while IFS= read -r line; do
 		[[ "$line" == *"claude-code@"* ]]
