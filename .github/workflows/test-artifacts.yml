@@ -51,7 +51,7 @@ jobs:
         # object file` (exit 127). The Ubuntu runner already carries them.
         run: |
           dnf install -y findutils file nodejs npm \
-            xorg-x11-server-Xvfb dbus-daemon util-linux procps-ng \
+            xorg-x11-server-Xvfb xdotool dbus-daemon util-linux procps-ng \
             nss nspr atk at-spi2-atk at-spi2-core cups-libs gtk3 \
             libdrm mesa-libgbm alsa-lib libX11 libXcomposite libXdamage \
             libXext libXfixes libXrandr libxcb libxkbcommon pango cairo \
@@ -62,22 +62,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y file libfuse2 nodejs npm \
-            xvfb dbus-x11 procps
+            xvfb xdotool dbus-x11 procps
 
       # Fail loud if a smoke-test tool is missing. Without this guard a
       # missing/renamed tool turns run_launch_smoke_test into a silent
       # green skip (it does `pass "$skip"; return`), masking the test.
+      # xdotool is listed because its absence skips the window-existence
+      # probe (#616) the same silent way — an apt/dnf edit that drops it
+      # must break the job, not quietly narrow what the job proves. The
+      # harness drives Xvfb directly now, so xvfb-run is no longer used.
       - name: Verify smoke-test tools are present (Ubuntu)
         if: matrix.format != 'rpm'
         run: |
-          for t in xvfb-run dbus-run-session setsid; do
+          for t in Xvfb xdotool dbus-run-session setsid; do
             command -v "$t" >/dev/null || { echo "::error::missing $t"; exit 1; }
           done
 
       - name: Verify smoke-test tools are present (Fedora)
         if: matrix.format == 'rpm'
         run: |
-          for t in xvfb-run dbus-run-session setsid runuser; do
+          for t in Xvfb xdotool dbus-run-session setsid runuser; do
             command -v "$t" >/dev/null || { echo "::error::missing $t"; exit 1; }
           done
 

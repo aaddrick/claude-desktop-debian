@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- The artifact launch smoke test now asserts that the app actually mapped a window, not just that its main process survived. The harness stops renting its display from `xvfb-run -a` — which exports `DISPLAY` only into the process it wraps, leaving the test shell unable to address that server at all — and starts `Xvfb` itself, delegating display-number allocation to the server's own `-displayfd` so parallel jobs cannot collide. After the readiness marker and the grace window, `xdotool` polls for a mapped window carrying the `WM_CLASS` the artifact under test baked in, read off the launcher's own `Executing: ` line rather than hardcoded. That closes the "main process alive with no UI" hole — a `BrowserWindow` constructor throw, a `loadURL` rejection, a renderer crash at startup — which the alive-only probe passed. It is a narrowing, not a closing: a window is mapped before `loadURL` resolves, so a blank window still passes, and the scope note in `test-artifact-common.sh` says so. `xdotool` joins the fail-loud tool guard in `test-artifacts.yml` on both the Ubuntu and Fedora legs, so an apt/dnf edit that drops it breaks the job instead of quietly narrowing what the job proves. ([#616](https://github.com/aaddrick/claude-desktop-debian/issues/616))
+
 ### Fixed
 
 - The triage-vocabulary test queries the canonical repo's label set instead of whatever repo the workflow happens to run in. `tests.yml` exported `GH_REPO=github.repository`, so on a contributor's fork the live intersection ran against the fork's nine default labels, eight of the twelve pinned names came up missing, and every push to a fork branch went red. The test now names `aaddrick/claude-desktop-debian` explicitly; a fork's `GITHUB_TOKEN` can read a public repo's labels, so nothing else changes. ([#870](https://github.com/aaddrick/claude-desktop-debian/pull/870))

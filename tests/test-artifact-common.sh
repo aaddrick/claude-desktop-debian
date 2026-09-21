@@ -280,9 +280,23 @@ run_version_flag_test() {
 # within a second or two). Ref: #670 (deb/rpm), #646 (AppImage
 # readiness-poll pattern this generalizes).
 #
-# Scope: main-process startup only. GPU/renderer crashes (#583-class)
-# leave the main process alive and pass — Xvfb has no GPU, so Electron
-# falls back to SwiftShader and that path isn't exercised here.
+# Scope: main-process startup, plus a mapped-window check (#616). Once
+# the grace window is clear the harness asks the X server it started
+# whether a *mapped* window carrying the artifact's own WM_CLASS
+# exists, which catches a main process that survives with no UI at all
+# (BrowserWindow constructor throw, loadURL rejection, renderer crash
+# during startup). It does not prove the renderer painted anything
+# real: verified against the pinned 2.2553.1 bundle, the main window is
+# constructed with `show: i && !u` (`u` is hard-coded false upstream;
+# `i` is true unless launched with --startup or as an OS login item)
+# and `opacity: +!!earlyWindowShow`, so it maps at construction — the
+# only `ready-to-show` handlers on it emit telemetry. That is what
+# makes the probe independent of claude.ai being reachable, and it is
+# also the limit: a network error behind a blank (or opacity-0) window
+# still passes. GPU/renderer crashes
+# (#583-class) after startup still leave the main process and its
+# window alive — Xvfb has no GPU, so Electron falls back to SwiftShader
+# and that path isn't exercised here either.
 #
 # Usage:
 #   run_launch_smoke_test <label> <pkill_match> <run_as> <cmd> [args...]
@@ -295,16 +309,58 @@ run_version_flag_test() {
 #                  real setuid-sandbox path.
 #     cmd [args]   the launch command
 #
-# Tool absence (xvfb-run/dbus-run-session/setsid, or runuser when a
-# run_as user is requested) is a skip, not a failure — matching
-# validate_app_contents. Loud failure on missing tools belongs at the
-# workflow layer.
+# Tool absence (Xvfb/dbus-run-session/setsid, or runuser when a run_as
+# user is requested) is a skip, not a failure — matching
+# validate_app_contents; a missing xdotool skips the window probe alone
+# and leaves the rest of the launch test running. Loud failure on
+# missing tools belongs at the workflow layer, and test-artifacts.yml
+# verifies every one of these — xdotool included — before the suite
+# runs, so none of these skips can fire in CI.
 
 # Module-scope state so the caller's trap can reap an interrupted launch.
 _smoke_launch_pid=''
+_smoke_xvfb_pid=''
 _smoke_cache_root=''
-_smoke_xvfb_log=''
+_smoke_tmp=''
 _smoke_pkill_match=''
+
+# Reap the harness's own X server. It is ours now rather than
+# xvfb-run's, and it lives deliberately OUTSIDE the launch process
+# group so the test shell can keep talking to it while the app is
+# reaped — which means no group kill ever reaches it.
+#
+# TERM before KILL so the server unlinks /tmp/.X11-unix/X<N> and
+# /tmp/.X<N>-lock on the way out; SIGKILL alone leaves both behind on
+# every run. Clears the PID so a second cleanup pass can't signal a
+# number bash has already reaped and the kernel may have recycled.
+_smoke_reap_xvfb() {
+	[[ -n $_smoke_xvfb_pid ]] || return 0
+	kill -TERM "$_smoke_xvfb_pid" 2>/dev/null
+	local i
+	for ((i = 0; i < 10; i++)); do
+		kill -0 "$_smoke_xvfb_pid" 2>/dev/null || break
+		sleep 0.1
+	done
+	kill -KILL "$_smoke_xvfb_pid" 2>/dev/null
+	wait "$_smoke_xvfb_pid" 2>/dev/null
+	_smoke_xvfb_pid=''
+}
+
+# Release everything one launch allocated: the X server and the two
+# throwaway trees. Every exit path of run_launch_smoke_test lands here
+# — normal, early-return and trap — so the handles are cleared rather
+# than just the resources freed: the trap handler is installed on EXIT
+# *and* INT/TERM, so a Ctrl-C runs it twice, and an empty handle is
+# what makes the second pass a no-op instead of a signal to a PID bash
+# has already reaped and the kernel may have recycled.
+_smoke_release() {
+	_smoke_reap_xvfb
+	[[ -n $_smoke_cache_root ]] && rm -rf "$_smoke_cache_root"
+	[[ -n $_smoke_tmp ]] && rm -rf "$_smoke_tmp"
+	_smoke_launch_pid=''
+	_smoke_cache_root=''
+	_smoke_tmp=''
+}
 
 _launch_smoke_cleanup() {
 	if [[ -n $_smoke_launch_pid ]]; then
@@ -313,8 +369,7 @@ _launch_smoke_cleanup() {
 		[[ -n $_smoke_pkill_match ]] \
 			&& pkill -KILL -f "$_smoke_pkill_match" 2>/dev/null
 	fi
-	[[ -n $_smoke_cache_root ]] && rm -rf "$_smoke_cache_root"
-	[[ -n $_smoke_xvfb_log ]] && rm -rf "$_smoke_xvfb_log"
+	_smoke_release
 	_replaced_ui_cleanup
 }
 
@@ -487,14 +542,211 @@ _smoke_sandbox_denied() {
 	return 1
 }
 
+# The narrow sandbox escape hatch, worded once. Both the pre-marker
+# branch and the window probe can land on it, and two copies of a
+# paragraph this long drift.
+_smoke_sandbox_skip() {
+	pass "$1: SKIP — Chromium sandbox cannot initialize in this container (namespace creation denied by seccomp/userns policy); launch not exercised here. App boots where the sandbox is permitted (see deb/appimage jobs)."
+}
+
+# Everything the harness captured about a launch, dumped to stderr.
+# Both failure paths need it: a window probe that fails because the app
+# crashed *after* the grace window is unreadable without the launcher
+# log that recorded the exit code.
+_smoke_dump_logs() {
+	local launcher_log="$1" launch_log="$2" xserver_log="$3"
+	if [[ -f $launcher_log ]]; then
+		echo '--- launcher.log (last 40 lines) ---' >&2
+		tail -40 "$launcher_log" >&2
+		echo '------------------------------------' >&2
+	fi
+	if [[ -s $launch_log ]]; then
+		echo '--- launch stderr (last 20 lines) ---' >&2
+		tail -20 "$launch_log" >&2
+		echo '-------------------------------------' >&2
+	fi
+	if [[ -s $xserver_log ]]; then
+		echo '--- Xvfb stderr (last 20 lines) ---' >&2
+		tail -20 "$xserver_log" >&2
+		echo '-----------------------------------' >&2
+	fi
+}
+
+# True once the launch is over: the launcher recorded Electron's exit
+# code, or the process group leader is gone. One definition, because
+# the grace window and the window probe both poll on it and a verdict
+# split between two copies of this test is a bug neither loop shows.
+_smoke_app_died() {
+	local launcher_log="$1"
+	[[ -f $launcher_log ]] \
+		&& grep -qF 'Electron exited with code:' "$launcher_log" \
+		&& return 0
+	kill -0 "$_smoke_launch_pid" 2>/dev/null || return 0
+	return 1
+}
+
+# Window-existence probe (#616). Asks the X server the harness started
+# whether the app mapped a window whose class is the one the artifact
+# under test baked in.
+#
+# The class is read off the artifact, not guessed: it is derived at
+# build time from the asar's package.json `desktopName`
+# (scripts/patches/app-asar.sh) and lands in the launcher as
+# `readonly WM_CLASS=` and in the .desktop file as `StartupWMClass=`.
+# Here we take it from the `--class=` token on the launcher's own
+# `Executing: ` line, which is the only copy reachable identically from
+# all three formats (the deb/rpm launcher lives at a fixed path, the
+# AppImage's is inside a squashfs the harness never mounts).
+# validate_app_contents already pins WM_CLASS == StartupWMClass ==
+# desktopName from the other direction, so the three agree or that
+# assertion is red first.
+#
+# What is probed is the real X11 class, NOT the `--class=` cmdline
+# fingerprint: launcher-common.sh:274-275 notes that Chromium ignores
+# `--class` for the window class and derives it from `desktopName`, so
+# a cmdline match would prove something else entirely.
+#
+# Verification level, honestly: this catches "main process alive, no
+# UI". It does not catch a mapped-but-blank window — see the scope note
+# above run_launch_smoke_test.
+_smoke_window_probe() {
+	local label="$1" display="$2" launcher_log="$3"
+	local launch_log="$4" xserver_log="$5"
+	local probe_timeout=20
+
+	if ! command -v xdotool &>/dev/null; then
+		pass "$label: window probe skipped (xdotool missing)"
+		return
+	fi
+
+	# Anchored on the exec line, not on the first `--class=` anywhere in
+	# the log: the launcher also logs an env block and (on the cleanup
+	# path) the cmdlines of processes it matched, any of which could
+	# grow a `--class=` and silently hand the probe the wrong class.
+	local wm_class
+	wm_class=$(grep -oP -- 'Executing: .*?--class=\K[^[:space:]]+' \
+		"$launcher_log" | head -1)
+	if [[ -z $wm_class ]]; then
+		fail "$label: no --class= on the launcher's Executing: line" \
+			'— cannot resolve the window class to probe for'
+		return
+	fi
+
+	# `xdotool search` takes the pattern as its ONE positional argument;
+	# --class is a flag saying "match it against the window class", not
+	# an option that takes a value. The pattern is a POSIX extended
+	# regex compiled with REG_ICASE, so anchor it and escape the dots a
+	# reverse-DNS class carries (com.anthropic.Claude) — and the
+	# case-insensitivity is load-bearing, because Chromium capitalizes
+	# res_class ("xmessage" -> "Xmessage") while res_name stays lower.
+	local pattern
+	pattern=$(sed -E 's/[][^$.|?*+(){}\]/\\&/g' <<<"$wm_class")
+
+	local deadline=$((SECONDS + probe_timeout)) found=0 died=0
+	local xserver_dead=0
+	while ((SECONDS < deadline)); do
+		# --onlyvisible is the mapped check: an IsUnmapped window does
+		# not count as a UI the user could see.
+		if [[ -n $(DISPLAY="$display" xdotool search --onlyvisible \
+			--class "^$pattern$" 2>/dev/null) ]]; then
+			found=1
+			break
+		fi
+		# Same liveness predicate the grace window polls on, so the two
+		# loops can't disagree about whether the app is still up.
+		if _smoke_app_died "$launcher_log"; then
+			died=1
+			break
+		fi
+		# Every xdotool call above is 2>/dev/null, so a dead X server
+		# looks exactly like "no window found". Without this tick the
+		# verdict would blame the artifact for the harness's own
+		# display dying.
+		if ! kill -0 "$_smoke_xvfb_pid" 2>/dev/null; then
+			xserver_dead=1
+			break
+		fi
+		sleep 0.5
+	done
+
+	if ((found == 1)); then
+		pass "$label mapped an X11 window of class '$wm_class'"
+		return
+	fi
+
+	local detail
+	if ((died == 1)); then
+		# Narrow escape hatch, checked HERE and nowhere else in this
+		# function. The readiness marker is written before the launcher
+		# execs Electron, so a container that denies Chromium's
+		# namespace sandbox can abort the wrong side of the grace
+		# window and land here rather than in the pre-marker branch.
+		# But it belongs strictly inside the died branch: a main
+		# process that is still alive cannot have been killed by
+		# sandbox denial, and _smoke_sandbox_denied matches the bare
+		# string zygote_host_impl_linux — which Chromium also logs as a
+		# benign OOM-score warning on hosts without CAP_SYS_RESOURCE.
+		# Checked any earlier, that warning would downgrade the
+		# live-but-windowless failure this probe exists to catch.
+		if _smoke_sandbox_denied "$launcher_log" "$launch_log"; then
+			_smoke_sandbox_skip "$label"
+			return
+		fi
+		# Outlived the grace window, then died before any window
+		# appeared: a post-grace crash, not a mapping problem. This is
+		# the #583-class case the probe is most likely to catch first,
+		# so name the cause — blaming the window would send the reader
+		# after the wrong bug.
+		detail="$label died after the grace window without mapping a"
+		detail+=" window of class '$wm_class'"
+	elif ((xserver_dead == 1)); then
+		# The harness's fault, not the artifact's. Say so, or the next
+		# reader spends the afternoon looking for a window bug.
+		detail="$label: the harness's Xvfb on $display died while the"
+		detail+=' probe was running — launch not judged'
+	else
+		# Still alive with no window. Listing the same class WITHOUT
+		# --onlyvisible separates "no such window at all" from "it
+		# exists but never mapped" — but the list is mapped-or-not, so
+		# don't label it as proof of an unmapped window: a window that
+		# maps in the last tick before the deadline shows up here too.
+		local matching
+		matching=$(DISPLAY="$display" xdotool search --class \
+			"^$pattern$" 2>/dev/null | tr '\n' ' ')
+		# Same one-positional-pattern rule as above: `--any --name
+		# --class` are three flags and '.' is the pattern ("a non-empty
+		# name or class"). getwindowclassname does not exist in the
+		# xdotool Ubuntu ships (1:3.20160805.1), so names are all we
+		# can print here.
+		echo "--- mapped windows on $display ---" >&2
+		local wid
+		while read -r wid; do
+			[[ -n $wid ]] || continue
+			printf '  %s %s\n' "$wid" \
+				"$(DISPLAY="$display" xdotool getwindowname \
+					"$wid" 2>/dev/null)" >&2
+		done < <(DISPLAY="$display" xdotool search --onlyvisible \
+			--any --name --class '.' 2>/dev/null)
+		echo '----------------------------------' >&2
+		detail="$label: no mapped window of class '$wm_class' on"
+		detail+=" $display within ${probe_timeout}s"
+		if [[ -n $matching ]]; then
+			detail+=" (ids with that class, mapped or not:"
+			detail+=" $matching)"
+		fi
+	fi
+	_smoke_dump_logs "$launcher_log" "$launch_log" "$xserver_log"
+	fail "$detail"
+}
+
 run_launch_smoke_test() {
 	local label="$1" pkill_match="$2" run_as="$3"
 	shift 3
 
 	local skip="Skipping launch smoke test for $label"
-	if ! { command -v xvfb-run && command -v dbus-run-session \
+	if ! { command -v Xvfb && command -v dbus-run-session \
 		&& command -v setsid; } &>/dev/null; then
-		pass "$skip (xvfb-run/dbus-run-session/setsid missing)"
+		pass "$skip (Xvfb/dbus-run-session/setsid missing)"
 		return
 	fi
 	if [[ -n $run_as ]] && ! command -v runuser &>/dev/null; then
@@ -502,38 +754,124 @@ run_launch_smoke_test() {
 		return
 	fi
 
-	local cache_root xvfb_log launcher_log
+	local cache_root smoke_tmp launch_log xserver_log launcher_log
 	cache_root=$(mktemp -d)
-	xvfb_log=$(mktemp)
+	smoke_tmp=$(mktemp -d)
+	launch_log="$smoke_tmp/launch.log"
+	xserver_log="$smoke_tmp/xserver.log"
 	launcher_log="$cache_root/claude-desktop-debian/launcher.log"
 	_smoke_cache_root="$cache_root"
-	_smoke_xvfb_log="$xvfb_log"
+	_smoke_tmp="$smoke_tmp"
 	_smoke_pkill_match="$pkill_match"
 
-	# setsid puts xvfb-run + Xvfb + dbus + launcher + electron in a fresh
-	# process group; xvfb-run's own EXIT trap leaves Xvfb behind on TERM,
-	# so we reap via kill -- -PGID below. XDG_CACHE_HOME is redirected so
-	# the test owns the launcher log the readiness marker is written to
-	# (the launcher execs electron with stdout/stderr >> "$log_file").
+	# The X server is started here rather than via `xvfb-run -a` so the
+	# test shell shares the display with the app and can probe it
+	# (#616): xvfb-run exports DISPLAY only into the process it wraps,
+	# so xdotool run from here would fail with "Can't open display"
+	# rather than report "no window found".
+	#
+	# Display-number allocation was xvfb-run -a's job, so take it over
+	# deliberately: -displayfd hands the choice back to the server,
+	# which binds the first free number and writes it to the fd. That is
+	# race-free against parallel jobs on one host, unlike any
+	# scan-for-a-free-number-then-bind loop (including xvfb-run -a's,
+	# which retries on collision). -nolisten tcp keeps the server local.
+	#
+	# -ac (access control off) is added on the privilege-drop path so
+	# the rpm leg's throwaway user reaches the server deterministically
+	# rather than depending on the host-based fallback an auth-less
+	# server applies to local clients. Note what it is NOT: a security
+	# boundary. Unlike xvfb-run we create no MIT-MAGIC-COOKIE, so this
+	# display has no authorization records with or without -ac and any
+	# local client can attach for the life of the test. That is accepted
+	# for a throwaway display inside a CI job — said plainly here rather
+	# than dressed up as hardening.
+	local display_file="$smoke_tmp/display"
+	: >"$display_file"
+	local -a xvfb_args=(-displayfd 3 -screen 0 1280x720x24
+		-nolisten tcp)
+	[[ -n $run_as ]] && xvfb_args+=(-ac)
+	Xvfb "${xvfb_args[@]}" 3>"$display_file" >"$xserver_log" 2>&1 &
+	_smoke_xvfb_pid=$!
+
+	local deadline display='' display_num='' xvfb_dead=0
+	deadline=$((SECONDS + 10))
+	while ((SECONDS < deadline)); do
+		# `read` succeeds only once the terminating newline has landed,
+		# so a half-written number can't be mistaken for a display.
+		if IFS= read -r display_num <"$display_file" \
+			&& [[ $display_num =~ ^[0-9]+$ ]]; then
+			display=":$display_num"
+			break
+		fi
+		if ! kill -0 "$_smoke_xvfb_pid" 2>/dev/null; then
+			xvfb_dead=1
+			break
+		fi
+		sleep 0.2
+	done
+	if [[ -z $display ]]; then
+		# An unsupported flag or an unwritable /tmp/.X11-unix kills the
+		# server in milliseconds; calling that a 10s timeout sends the
+		# reader after a timing problem that isn't there.
+		if ((xvfb_dead == 1)); then
+			fail "$label: Xvfb exited before reporting a display"
+		else
+			fail "$label: Xvfb did not report a display within 10s"
+		fi
+		# Nothing was launched yet, so only the server has anything
+		# to say — the empty paths are skipped by the dumper's tests.
+		_smoke_dump_logs '' '' "$xserver_log"
+		_smoke_release
+		return
+	fi
+
+	# setsid puts dbus + launcher + electron in a fresh process group so
+	# we can reap the whole tree via kill -- -PGID below (Xvfb itself
+	# stays out of that group on purpose — see _launch_smoke_cleanup).
+	# XDG_CACHE_HOME is redirected so the test owns the launcher log the
+	# readiness marker is written to (the launcher execs electron with
+	# stdout/stderr >> "$log_file").
+	# XDG_CONFIG_HOME is redirected too, now that the verdict depends on
+	# a window appearing: ~/.config/Claude is where hide-to-tray and
+	# window state persist, so a maintainer running this against their
+	# own profile could hard-fail a healthy artifact — and the launcher
+	# honours XDG_CONFIG_HOME everywhere (launcher-common.sh:617, :685,
+	# :814, :877), so this also keeps the test out of the real
+	# ~/.config/autostart. Every leg now boots a first-run profile,
+	# which is what CI's throwaway runner always gave us anyway.
+	local config_root="$cache_root/config"
+	mkdir -p "$config_root"
+
 	local -a runner=(setsid)
 	if [[ -n $run_as ]]; then
 		# The unprivileged user must be able to write the redirected
-		# cache (and read the world-readable install + setuid sandbox).
-		chmod 0777 "$cache_root"
+		# cache and config (and read the world-readable install +
+		# setuid sandbox).
+		chmod 0777 "$cache_root" "$config_root"
 		runner+=(runuser -u "$run_as" --)
 	fi
-	runner+=(env "XDG_CACHE_HOME=$cache_root"
-		xvfb-run -a -s '-screen 0 1280x720x24'
-		dbus-run-session -- "$@")
+	# WAYLAND_DISPLAY and CLAUDE_USE_WAYLAND are the two inputs that
+	# still matter once WAYLAND_DISPLAY is unset — detect_display_backend
+	# also reads XDG_CURRENT_DESKTOP and NIRI_SOCKET, but both sit behind
+	# the is_wayland gate — and both are unset here: inherited from a
+	# maintainer's Wayland session they
+	# would put the app on the real compositor, its surface would never
+	# appear on the Xvfb display, and the window probe would fail a
+	# healthy artifact. (run_replaced_ui_cleanup_test unsets DISPLAY and
+	# WAYLAND_DISPLAY for a related reason — it wants no UI at all.)
+	runner+=(env -u WAYLAND_DISPLAY -u CLAUDE_USE_WAYLAND
+		"XDG_CACHE_HOME=$cache_root" "XDG_CONFIG_HOME=$config_root"
+		"DISPLAY=$display" dbus-run-session -- "$@")
 
-	"${runner[@]}" >"$xvfb_log" 2>&1 &
+	"${runner[@]}" >"$launch_log" 2>&1 &
 	_smoke_launch_pid=$!
 
 	# Poll for the launcher's pre-exec marker or early process death,
 	# up to 30s; then hold a grace window in which an immediate app
 	# crash (SyntaxError-class, bad ELF) still fails the test.
 	local readiness_marker='Executing: '
-	local readiness_timeout=30 grace=8 deadline saw_marker=0
+	local readiness_timeout=30 grace=8 saw_marker=0
 	deadline=$((SECONDS + readiness_timeout))
 	while ((SECONDS < deadline)); do
 		if [[ -f $launcher_log ]] \
@@ -550,12 +888,7 @@ run_launch_smoke_test() {
 		# to stay alive (the launcher logs the exit code if it dies).
 		deadline=$((SECONDS + grace))
 		while ((SECONDS < deadline)); do
-			if [[ -f $launcher_log ]] && grep -qF \
-				'Electron exited with code:' "$launcher_log"; then
-				saw_marker=0
-				break
-			fi
-			if ! kill -0 "$_smoke_launch_pid" 2>/dev/null; then
+			if _smoke_app_died "$launcher_log"; then
 				saw_marker=0
 				break
 			fi
@@ -565,6 +898,8 @@ run_launch_smoke_test() {
 
 	if ((saw_marker == 1)); then
 		pass "$label reached ready state under Xvfb"
+		_smoke_window_probe "$label" "$display" "$launcher_log" \
+			"$launch_log" "$xserver_log"
 	else
 		# Build the failure detail message, but defer the fail/skip
 		# verdict until after we've dumped and scanned the logs below.
@@ -578,24 +913,15 @@ run_launch_smoke_test() {
 			detail="$label exited before reaching ready state"
 			detail+=" (exit: $exit_code)"
 		fi
-		if [[ -f $launcher_log ]]; then
-			echo '--- launcher.log (last 40 lines) ---' >&2
-			tail -40 "$launcher_log" >&2
-			echo '------------------------------------' >&2
-		fi
-		if [[ -s $xvfb_log ]]; then
-			echo '--- xvfb-run stderr (last 20 lines) ---' >&2
-			tail -20 "$xvfb_log" >&2
-			echo '---------------------------------------' >&2
-		fi
+		_smoke_dump_logs "$launcher_log" "$launch_log" "$xserver_log"
 		# Narrow skip: the GHA container's default seccomp/userns policy
 		# blocks Chromium's namespace sandbox, so the zygote aborts before
 		# the readiness marker. That's an environment limit, not an app
 		# defect (deb/appimage jobs prove the same code boots where the
 		# sandbox is allowed). Treat ONLY this signature as a skip; every
 		# other pre-marker exit stays a hard failure.
-		if _smoke_sandbox_denied "$launcher_log" "$xvfb_log"; then
-			pass "$label: SKIP — Chromium sandbox cannot initialize in this container (namespace creation denied by seccomp/userns policy); launch not exercised here. App boots where the sandbox is permitted (see deb/appimage jobs)."
+		if _smoke_sandbox_denied "$launcher_log" "$launch_log"; then
+			_smoke_sandbox_skip "$label"
 		else
 			fail "$detail"
 		fi
@@ -614,10 +940,10 @@ run_launch_smoke_test() {
 		pkill -KILL -f "$pkill_match" 2>/dev/null || true
 	fi
 
-	rm -rf "$cache_root" "$xvfb_log"
-	_smoke_launch_pid=''
-	_smoke_cache_root=''
-	_smoke_xvfb_log=''
+	# The X server outlives the group kill by design (the probe above
+	# needed it while the app was still up), so it is reaped explicitly
+	# here — the same call the trap path makes.
+	_smoke_release
 }
 
 print_summary() {
