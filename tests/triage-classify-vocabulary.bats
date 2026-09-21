@@ -22,6 +22,10 @@ WORKFLOW="${REPO_ROOT}/.github/workflows/issue-triage-v2.yml"
 PROMPT="${REPO_ROOT}/.claude/scripts/prompts/classify.txt"
 SCHEMA="${REPO_ROOT}/.claude/scripts/schemas/classify.json"
 
+# The repo whose label set is the vocabulary. Not `github.repository`:
+# see the live test below.
+readonly CANONICAL_REPO='aaddrick/claude-desktop-debian'
+
 # Label names the pipeline states by hand rather than reading from the
 # injected block, with the site that states each:
 #
@@ -37,11 +41,7 @@ SCHEMA="${REPO_ROOT}/.claude/scripts/schemas/classify.json"
 #
 # A rename on any of these degrades the pipeline without erroring, so
 # the live-set test below is what makes it fail loudly instead.
-readonly # The repo whose label set is the vocabulary. Not `github.repository`:
-# see the live test below.
-CANONICAL_REPO='aaddrick/claude-desktop-debian'
-
-PINNED_LABELS=(
+readonly PINNED_LABELS=(
 	'priority: critical'
 	'priority: medium'
 	'security'
