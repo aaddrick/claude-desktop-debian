@@ -32,6 +32,86 @@ lesson stands):
 const fsMatch = region.match(/([$\w]+)\.existsSync\(/);
 ```
 
+### A capture narrower than the shape splices mid-identifier
+
+`[$\w]+` fixes the character class. The same failure recurs one
+widening later at the level of the *shape*: a capture that cannot
+express the whole construct still matches its tail, and regex
+engines match leftmost-**possible**, not leftmost-intended.
+
+`tray-icon-selection.sh` captured the DE-detector callee as
+"bare identifier, or the `(0,x.y)` indirect form" while the electron
+handle one line down already allowed `[\w$]+(?:\.[\w$]+)*`. Against
+1.26832.0's pristine ternary the asymmetry bit:
+
+```js
+t=p.lt()===`gnome`||R.nativeTheme.shouldUseDarkColors?`TrayIconLinux-Dark.png`:…
+```
+
+The match started at `lt`, the `p.` stayed in the retained prefix, and
+the splice glued the injected expression onto it:
+
+```js
+t=p.process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||…
+```
+
+`p` carries no `process` property in that scope, so the tray builder
+threw on its first read, the tray never registered, and the global
+Sentry handler swallowed it. Two releases shipped that way (1.26832.0,
+1.28929.0); 1.30096.x and 1.32885.1 happened to emit a bare callee and
+were clean. Whether a release breaks is luck of the minifier.
+
+Four things generalize:
+
+- **Keep captures for the same construct symmetric.** Two adjacent
+  captures of "a callee" that admit different shapes is a bug waiting
+  for the minifier to find it.
+- **A match-count assertion is not a splice assertion.** The
+  exactly-1 check passed throughout — there *was* exactly one ternary.
+  Count says the shape is present; it says nothing about where the
+  match begins. Assert the splice point separately, so a shape the
+  capture cannot express hard-fails instead of corrupting the bundle.
+- **Assert the splice point with an allowlist, not a denylist.** The
+  first cut of that guard rejected a preceding `[\w$.]`, which reads as
+  equivalent and isn't: `await lt()` walks through it (the preceding
+  char is a space) and moves the `await` onto the injected expression,
+  and `this.#lt()` walks through it to emit `this.#process.env.…`, an
+  undeclared private name — a SyntaxError that takes out the whole main
+  chunk rather than just the tray. Enumerating bad prefixes only moves
+  the goalposts to the next shape nobody pictured, which is the same
+  mistake one level up. State the requirement positively instead: the
+  retained prefix must *end an expression*, so its last non-whitespace
+  token has to be a punctuator that can be followed by a fresh one
+  (`[=(,;:?|{[]`, `=>`) or `return`. Choose that set against the real
+  bundles rather than from the grammar, and pin it from *both* sides: a
+  fixture per way a prefix can survive the match, and a fixture per
+  prefix that must keep passing, because an allowlist tightened one
+  character too far is a spurious build failure on a release nobody is
+  watching. `&` stays out because an `a&&` prefix would be absorbed by
+  the injected `||`-chain and the guard it expresses silently lost.
+  `|` is in — but as the status quo, not as a clean composition: with
+  `e||` retained in front, the `=0` state reduces to `e||!1||!1` → `e`.
+  A prefix the anchor cannot see is a limit on the patch's *reach*,
+  which the splice guard neither creates nor fixes; note it rather than
+  letting a passing test imply the semantics were checked.
+- **An idempotency guard keyed to a substring can be satisfied by the
+  corruption.** `code.includes(applied)` matched the mispatched text,
+  because `p.` + `applied` contains `applied`. The second pass logged
+  "already applied" and shipped the damage. Run every occurrence
+  through the same splice-point predicate: one that doesn't start an
+  expression means a prior build spliced mid-expression, so the bundle
+  is corrupt rather than patched and deserves its own named failure.
+
+The test that would have caught it is a fixture in the shape the
+capture cannot express. `tray-icon-selection.bats` covered the
+`(0,Ei.oPe)()` indirect form and a bare callee, never a plain `p.lt()`
+chain, which is why the suite stayed green through both broken
+releases. The near-miss fixtures that pin the splice guard are chosen
+the same way — `p?.lt()`, `await lt()`, `this.#lt()` — one shape per
+way a prefix can survive the match, plus an `e||AL()` fixture that
+must keep *passing* so the allowlist can't be tightened into a
+false hard-fail.
+
 ## The beautified false-negative trap
 
 Testing a regex against `build-reference/` is not verification. The
@@ -120,9 +200,13 @@ treated as a class of breakage rather than one delimiter change:
   ``e?.id===`ubuntu` ``. `let` likewise replaced most `const`/`var`
   emission, so `(?:const|let)` beats either alone.
 - **Callee indirection appeared where there was none.** `X.spawn(` became
-  `(0,ye.spawn)(`. The tray patch already tolerated this shape
-  (`(?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+)`); it is now the default, not
-  a special case, and every call-site anchor wants it.
+  `(0,ye.spawn)(`. The tray patch already tolerated this shape; it is now
+  the default, not a special case, and every call-site anchor wants it.
+  Tolerate the plain property chain in the same alternation —
+  `(?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+(?:\.[\w$]+)*)`. The tray patch
+  originally shipped without that second `(?:\.[\w$]+)*` and mispatched
+  two releases; see "A capture narrower than the shape splices
+  mid-identifier" above.
 
 One inference worth flagging rather than asserting: when concatenation
 is re-emitted as interpolation, a message that was one contiguous
