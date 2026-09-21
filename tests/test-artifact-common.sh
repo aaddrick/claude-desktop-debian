@@ -346,6 +346,22 @@ _smoke_reap_xvfb() {
 	_smoke_xvfb_pid=''
 }
 
+# Release everything one launch allocated: the X server and the two
+# throwaway trees. Every exit path of run_launch_smoke_test lands here
+# — normal, early-return and trap — so the handles are cleared rather
+# than just the resources freed: the trap handler is installed on EXIT
+# *and* INT/TERM, so a Ctrl-C runs it twice, and an empty handle is
+# what makes the second pass a no-op instead of a signal to a PID bash
+# has already reaped and the kernel may have recycled.
+_smoke_release() {
+	_smoke_reap_xvfb
+	[[ -n $_smoke_cache_root ]] && rm -rf "$_smoke_cache_root"
+	[[ -n $_smoke_tmp ]] && rm -rf "$_smoke_tmp"
+	_smoke_launch_pid=''
+	_smoke_cache_root=''
+	_smoke_tmp=''
+}
+
 _launch_smoke_cleanup() {
 	if [[ -n $_smoke_launch_pid ]]; then
 		# Negative PID targets the whole process group.
@@ -353,15 +369,7 @@ _launch_smoke_cleanup() {
 		[[ -n $_smoke_pkill_match ]] \
 			&& pkill -KILL -f "$_smoke_pkill_match" 2>/dev/null
 	fi
-	_smoke_reap_xvfb
-	[[ -n $_smoke_cache_root ]] && rm -rf "$_smoke_cache_root"
-	[[ -n $_smoke_tmp ]] && rm -rf "$_smoke_tmp"
-	# The handler is installed on EXIT *and* INT/TERM, so a Ctrl-C runs
-	# it twice: clear the state it acts on, or the second pass signals
-	# PIDs that are already gone.
-	_smoke_launch_pid=''
-	_smoke_cache_root=''
-	_smoke_tmp=''
+	_smoke_release
 	_replaced_ui_cleanup
 }
 
@@ -564,6 +572,19 @@ _smoke_dump_logs() {
 	fi
 }
 
+# True once the launch is over: the launcher recorded Electron's exit
+# code, or the process group leader is gone. One definition, because
+# the grace window and the window probe both poll on it and a verdict
+# split between two copies of this test is a bug neither loop shows.
+_smoke_app_died() {
+	local launcher_log="$1"
+	[[ -f $launcher_log ]] \
+		&& grep -qF 'Electron exited with code:' "$launcher_log" \
+		&& return 0
+	kill -0 "$_smoke_launch_pid" 2>/dev/null || return 0
+	return 1
+}
+
 # Window-existence probe (#616). Asks the X server the harness started
 # whether the app mapped a window whose class is the one the artifact
 # under test baked in.
@@ -633,12 +654,7 @@ _smoke_window_probe() {
 		fi
 		# Same liveness predicate the grace window polls on, so the two
 		# loops can't disagree about whether the app is still up.
-		if [[ -f $launcher_log ]] && grep -qF \
-			'Electron exited with code:' "$launcher_log"; then
-			died=1
-			break
-		fi
-		if ! kill -0 "$_smoke_launch_pid" 2>/dev/null; then
+		if _smoke_app_died "$launcher_log"; then
 			died=1
 			break
 		fi
@@ -806,10 +822,7 @@ run_launch_smoke_test() {
 		# Nothing was launched yet, so only the server has anything
 		# to say — the empty paths are skipped by the dumper's tests.
 		_smoke_dump_logs '' '' "$xserver_log"
-		_smoke_reap_xvfb
-		rm -rf "$cache_root" "$smoke_tmp"
-		_smoke_cache_root=''
-		_smoke_tmp=''
+		_smoke_release
 		return
 	fi
 
@@ -875,12 +888,7 @@ run_launch_smoke_test() {
 		# to stay alive (the launcher logs the exit code if it dies).
 		deadline=$((SECONDS + grace))
 		while ((SECONDS < deadline)); do
-			if [[ -f $launcher_log ]] && grep -qF \
-				'Electron exited with code:' "$launcher_log"; then
-				saw_marker=0
-				break
-			fi
-			if ! kill -0 "$_smoke_launch_pid" 2>/dev/null; then
+			if _smoke_app_died "$launcher_log"; then
 				saw_marker=0
 				break
 			fi
@@ -935,12 +943,7 @@ run_launch_smoke_test() {
 	# The X server outlives the group kill by design (the probe above
 	# needed it while the app was still up), so it is reaped explicitly
 	# here — the same call the trap path makes.
-	_smoke_reap_xvfb
-
-	rm -rf "$cache_root" "$smoke_tmp"
-	_smoke_launch_pid=''
-	_smoke_cache_root=''
-	_smoke_tmp=''
+	_smoke_release
 }
 
 print_summary() {
