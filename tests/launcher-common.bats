@@ -1460,6 +1460,159 @@ STUB
 }
 
 # =============================================================================
+# backup_user_config (P1 #768): rotate out-of-band copies of the user
+# config and the Cowork stores before launch, so the config-wipe class
+# stays recoverable (docs/learnings/config-wipe-guard.md)
+# =============================================================================
+
+# Absolute path of rotation slot $2 for the flattened backup name $1.
+# The literal cache-relative path is the pin: moving the backup tree
+# has to turn these tests red, so this must not re-derive it from the
+# function under test.
+_backup_slot() {
+	echo "$XDG_CACHE_HOME/claude-desktop-debian/config-backups/$1.$2"
+}
+
+# Contents of rotation slot $2 for the flattened backup name $1.
+_backup_body() {
+	cat "$(_backup_slot "$1" "$2")"
+}
+
+# Write $1 verbatim (no trailing newline) into the user config.
+_write_user_config() {
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	printf '%s' "$1" \
+		> "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json"
+}
+
+@test "backup_user_config: no user config - returns 0 and stays quiet" {
+	# First-ever launch. Dropping the per-source existence test leaves
+	# cp failing on a missing file, which both fails the function (it
+	# is the last command in the loop) and, without the redirect,
+	# prints cp's diagnostic over the launcher's own output.
+	run backup_user_config
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+	[[ ! -e "$(_backup_slot claude_desktop_config.json 1)" ]]
+}
+
+@test "backup_user_config: first launch - slot .1 is a byte-identical copy" {
+	local cfg="$XDG_CONFIG_HOME/Claude/claude_desktop_config.json"
+	_write_user_config '{"mcpServers":{"fs":{"command":"npx"}}}'
+
+	setup_logging
+	backup_user_config
+
+	# Recovery is a plain file copy, so the bytes have to round-trip.
+	cmp -s "$cfg" "$(_backup_slot claude_desktop_config.json 1)"
+	grep -q 'Backed up claude_desktop_config.json (keep 5)' "$log_file"
+}
+
+@test "backup_user_config: changed config rotates the previous copy to .2" {
+	_write_user_config '{"mcpServers":{"fs":{"command":"npx"}}}'
+	setup_logging
+	backup_user_config
+
+	# The wipe mode: the live file comes back as an empty object.
+	_write_user_config '{}'
+	backup_user_config
+
+	local name=claude_desktop_config.json
+	[[ $(_backup_body "$name" 1) == '{}' ]]
+	[[ $(_backup_body "$name" 2) == \
+		'{"mcpServers":{"fs":{"command":"npx"}}}' ]]
+}
+
+@test "backup_user_config: unchanged config does not rotate or log" {
+	_write_user_config '{"mcpServers":{}}'
+	setup_logging
+	backup_user_config
+	: > "$log_file"
+
+	backup_user_config
+
+	# Rotating on every launch would walk the last good copy off the
+	# end of the five slots after four idle starts.
+	[[ ! -e "$(_backup_slot claude_desktop_config.json 2)" ]]
+	! grep -q 'Backed up' "$log_file"
+}
+
+@test "backup_user_config: keeps five slots and drops the oldest" {
+	setup_logging
+	local i
+	for i in {1..7}; do
+		_write_user_config "{\"n\":$i}"
+		backup_user_config
+	done
+
+	local name=claude_desktop_config.json
+	[[ $(_backup_body "$name" 1) == '{"n":7}' ]]
+	[[ $(_backup_body "$name" 5) == '{"n":3}' ]]
+	[[ ! -e "$(_backup_slot "$name" 6)" ]]
+}
+
+@test "backup_user_config: nested Cowork stores flatten into one name" {
+	local store="$XDG_CONFIG_HOME/Claude/local-agent-mode-sessions"
+	store="$store/acct-uuid/org-uuid"
+	mkdir -p "$store"
+	echo spaces > "$store/spaces.json"
+	echo remote > "$store/remote-session-spaces.json"
+	echo tasks > "$store/scheduled-tasks.json"
+	echo other > "$store/history.json"
+
+	setup_logging
+	backup_user_config
+
+	local base='local-agent-mode-sessions__acct-uuid__org-uuid'
+	[[ $(_backup_body "${base}__spaces.json" 1) == spaces ]]
+	[[ $(_backup_body "${base}__remote-session-spaces.json" 1) == remote ]]
+	[[ $(_backup_body "${base}__scheduled-tasks.json" 1) == tasks ]]
+
+	# Flattening, not basename: two accounts' spaces.json must not
+	# collide in one slot.
+	[[ ! -e "$(_backup_slot spaces.json 1)" ]]
+	# Only the three known stores are rotated.
+	[[ ! -e "$(_backup_slot "${base}__history.json" 1)" ]]
+}
+
+@test "backup_user_config: falls back to HOME/.cache when XDG unset" {
+	# The function re-derives the cache root rather than reusing
+	# setup_logging's, so the fallback needs its own case.
+	unset XDG_CACHE_HOME
+	_write_user_config '{"mcpServers":{}}'
+
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	backup_user_config
+
+	local slot="$HOME/.cache/claude-desktop-debian/config-backups"
+	slot="$slot/claude_desktop_config.json.1"
+	[[ $(cat "$slot") == '{"mcpServers":{}}' ]]
+}
+
+@test "backup_user_config: unwritable backup dir - returns 0 silently" {
+	local jail="$TEST_TMP/readonly"
+	mkdir -p "$jail"
+	chmod 500 "$jail"
+	# Fail-safe: the rotation must never block launch. Root,
+	# CAP_DAC_OVERRIDE and mode-ignoring mounts all leave the jail
+	# writable, and then there is no failure to be fail-safe about;
+	# one predicate covers all three.
+	[[ -w $jail ]] && skip 'directory mode not enforced here'
+
+	_write_user_config '{"mcpServers":{}}'
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	export XDG_CACHE_HOME="$jail/cache"
+
+	run backup_user_config
+	[[ $status -eq 0 ]]
+	# mkdir's own diagnostic must not reach the launch output either.
+	[[ -z $output ]]
+	! grep -q 'Backed up' "$log_file"
+}
+
+# =============================================================================
 # heal_autostart_entry (AUTO-1): repoint the app-written XDG autostart
 # entry from the raw ELF / ephemeral AppImage mount to the launcher
 # =============================================================================
