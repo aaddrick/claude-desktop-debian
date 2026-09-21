@@ -62,6 +62,35 @@ classify_step() {
 	     f { print }' "${WORKFLOW}"
 }
 
+# True when label name <1> is one PINNED_LABELS already accounts for.
+is_pinned() {
+	local pinned
+	for pinned in "${PINNED_LABELS[@]}"; do
+		[[ "$1" == "$pinned" ]] && return 0
+	done
+	return 1
+}
+
+# Skip the calling test when `gh` cannot reach the API — except in CI,
+# where a missing or unauthenticated `gh` would turn the live-set
+# assertion into a silent no-op, so it fails there instead.
+require_gh() {
+	local reason
+	if ! command -v gh >/dev/null 2>&1; then
+		reason='gh not installed'
+	elif ! gh auth status >/dev/null 2>&1; then
+		reason='gh not authenticated'
+	else
+		return 0
+	fi
+
+	if [[ -n "${CI:-}" ]]; then
+		echo "${reason} — cannot verify the live label set" >&2
+		return 1
+	fi
+	skip "${reason}"
+}
+
 @test "the classify prompt, schema and workflow are all present" {
 	# Guards every test below: a renamed or vanished file would
 	# otherwise satisfy the negative assertions on empty input.
@@ -122,14 +151,10 @@ classify_step() {
 	# reaches for first, and `format: aur` / `format: nix` vs `nix` is
 	# exactly how the drift showed up. Anything found here that is not
 	# pinned above is a list growing back.
-	local found offenders='' name pinned hit
+	local found name offenders=''
 	while IFS= read -r found; do
 		name="${found//\`/}"
-		hit=''
-		for pinned in "${PINNED_LABELS[@]}"; do
-			[[ "$name" == "$pinned" ]] && hit=yes && break
-		done
-		[[ -n "$hit" ]] && continue
+		is_pinned "$name" && continue
 		offenders+="${name}"$'\n'
 	done < <(grep -ohE '`(priority|format|platform): [a-z0-9|]+`' \
 		"${PROMPT}" "${SCHEMA}" | sort -u)
@@ -146,20 +171,7 @@ classify_step() {
 	# intersect it against `gh label list` so a rename fails loudly
 	# rather than degrading a prompt. Same source as the Stage 9 gate.
 	local labels name missing=''
-	if ! command -v gh >/dev/null 2>&1; then
-		if [[ -n "${CI:-}" ]]; then
-			echo 'gh missing in CI — cannot verify label set' >&2
-			false
-		fi
-		skip 'gh not installed'
-	fi
-	if ! gh auth status >/dev/null 2>&1; then
-		if [[ -n "${CI:-}" ]]; then
-			echo 'gh unauthenticated in CI' >&2
-			false
-		fi
-		skip 'gh not authenticated'
-	fi
+	require_gh
 
 	labels=$(gh label list --limit 200 --json name --jq '.[].name') || {
 		echo 'gh label list failed' >&2
