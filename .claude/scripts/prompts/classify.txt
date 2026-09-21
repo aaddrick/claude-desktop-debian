@@ -103,11 +103,21 @@ is worse than a deferral.
   one weak signal or a short body.
 - `claimed_version`: exact version string from `--doctor` output,
   `claude-desktop (X.Y.Z)`, or an AppImage filename. Null if absent.
-- `suggested_labels`: labels that match *this repo's* vocabulary. Safe
-  choices include `priority: high|medium|low`, `format: deb|rpm|appimage|nix|aur`,
-  `platform: amd64|arm64`, `cowork`, `mcp`, `tray`, `nix`, `build`,
-  `regression`, `documentation`. Never emit `priority: critical` — that's
-  a maintainer call. Never invent labels. Empty array if unsure.
+- `suggested_labels`: names copied verbatim from the `<repo_labels>`
+  block below. That block is this repo's live label set, read from
+  `gh label list` at the start of the run, and it is the whole
+  vocabulary — there is no second list to remember. Do not invent a
+  label, do not reshape one (a namespaced label's suffix is not a
+  label on its own), and do not carry a name over from another repo.
+  Never emit `priority: critical` — that's a maintainer call. Empty
+  array if unsure.
+
+  Reach for `security` when the issue describes exposure in what we
+  ship, or in what runs with our credentials: the packaged artifacts
+  and the paths they install into on one side, the workflows that hold
+  the API key and repo write access on the other. A hardened default
+  rolled back is exposure; an opt-in recipe a user has to choose for
+  themselves is not.
 - `duplicate_of`: integer issue number iff classification is `duplicate`;
   null otherwise.
 - `regression_of`: integer PR number iff the reporter *explicitly* names a

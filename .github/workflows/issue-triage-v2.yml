@@ -203,8 +203,25 @@ jobs:
           title=$(jq -r '.title' /tmp/triage/issue.json)
           body=$(jq -r '.body // ""' /tmp/triage/issue.json)
 
+          # The repo's live label vocabulary, cached two steps earlier.
+          # Interpolated rather than hardcoded in classify.txt: a
+          # hand-maintained list drifts on the first rename, and the
+          # only symptom is a Stage 9 "not in repo label set" notice on
+          # a run nobody re-reads (#867). Trusted input, so it goes in
+          # ahead of the untrusted issue wrappers.
+          label_lines=$(jq -r '.[] | "- `" + . + "`"' \
+            /tmp/triage/repo-labels.json)
+          if [[ -z "${label_lines}" ]]; then
+            echo "::error::repo label set empty — refusing to classify"
+            exit 1
+          fi
+
           {
             cat .claude/scripts/prompts/classify.txt
+            echo ""
+            echo "<repo_labels source=\"gh label list, trusted\">"
+            printf '%s\n' "${label_lines}"
+            echo "</repo_labels>"
             echo ""
             echo "<issue_title source=\"reporter, untrusted\">${title}</issue_title>"
             echo ""
