@@ -37,7 +37,11 @@ SCHEMA="${REPO_ROOT}/.claude/scripts/schemas/classify.json"
 #
 # A rename on any of these degrades the pipeline without erroring, so
 # the live-set test below is what makes it fail loudly instead.
-readonly PINNED_LABELS=(
+readonly # The repo whose label set is the vocabulary. Not `github.repository`:
+# see the live test below.
+CANONICAL_REPO='aaddrick/claude-desktop-debian'
+
+PINNED_LABELS=(
 	'priority: critical'
 	'priority: medium'
 	'security'
@@ -173,7 +177,14 @@ require_gh() {
 	local labels name missing=''
 	require_gh
 
-	labels=$(gh label list --limit 200 --json name --jq '.[].name') || {
+	# Always the canonical repo, named explicitly. The vocabulary being
+	# pinned is this project's, and the triage pipeline only ever runs
+	# there; a bare `gh label list` takes GH_REPO or the git remote, and
+	# on a contributor's fork that is the fork, whose label set is
+	# GitHub's nine defaults — eight of the twelve names below missing
+	# and every push to a fork branch red.
+	labels=$(gh label list --repo "$CANONICAL_REPO" --limit 200 \
+		--json name --jq '.[].name') || {
 		echo 'gh label list failed' >&2
 		false
 	}

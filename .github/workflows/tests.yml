@@ -56,9 +56,10 @@ jobs:
       - name: Run BATS test suite
         env:
           # Scoped to this step: `gh label list` is the whole use, and
-          # the suite runs fork-authored code on pull_request.
+          # the suite runs fork-authored code on pull_request. The test
+          # names the canonical repo itself (a fork's label set is not
+          # the vocabulary), so no GH_REPO here.
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         # Cowork tests load scripts/cowork-fallback/cowork-vm-service.js
         # via `node` — the `nodejs` install above is what they need.
         # The cowork-fallback suites cover the bwrap fallback daemon and
