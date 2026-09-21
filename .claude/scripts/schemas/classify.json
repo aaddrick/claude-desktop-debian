@@ -24,7 +24,7 @@
     "suggested_labels": {
       "type": "array",
       "items": {"type": "string"},
-      "description": "Repo-vocabulary labels (e.g. 'priority: high', 'format: rpm', 'cowork', 'tray'). Stage 9 filters these through the cached repo label set and the blocklist before applying. Do not invent new labels."
+      "description": "Label names copied verbatim from the `<repo_labels>` block in the prompt — this repo's live label set, read from `gh label list` at the start of the run. Stage 9 filters these through that same cached set and the blocklist before applying. Do not invent new labels and do not reshape one."
     },
     "duplicate_of": {
       "type": ["integer", "null"],
