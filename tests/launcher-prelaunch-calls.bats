@@ -207,12 +207,12 @@ heal_call() {
 }
 
 @test "every pre-launch call appears exactly once in every launcher" {
-	local script body call hits count offenders=''
+	local script body call count offenders=''
 	for script in "${PACKAGING_SCRIPTS[@]}"; do
 		body=$(launcher_heredoc "$script")
 		for call in "${PRELAUNCH_CALLS[@]}"; do
-			hits=$(call_lines "$call" <<<"$body")
-			count=$(grep -c . <<<"$hits" || true)
+			count=$(call_lines "$call" <<<"$body" \
+				| grep -c . || true)
 			[[ "$count" -eq 1 ]] && continue
 			offenders+="${script}: ${call}:"
 			offenders+=" ${count} call site(s), want 1"$'\n'
@@ -229,7 +229,7 @@ heal_call() {
 @test "every pre-launch call runs after setup_logging, before the exec" {
 	# A cleanup that runs after the exec is not a cleanup, and
 	# log_message needs setup_logging to have run first.
-	local script body start end call hits offenders=''
+	local script body start end call line offenders=''
 	for script in "${PACKAGING_SCRIPTS[@]}"; do
 		body=$(launcher_heredoc "$script")
 		start=$(grep -E '^[0-9]+:setup_logging \|\| exit 1$' \
@@ -244,14 +244,14 @@ heal_call() {
 		}
 
 		for call in "${PRELAUNCH_CALLS[@]}"; do
-			hits=$(call_lines "$call" <<<"$body" | head -1)
-			[[ -n "$hits" ]] || {
+			line=$(call_lines "$call" <<<"$body" | head -1)
+			[[ -n "$line" ]] || {
 				offenders+="${script}: ${call}: no call site"$'\n'
 				continue
 			}
-			[[ "$hits" -gt "$start" && "$hits" -lt "$end" ]] \
+			[[ "$line" -gt "$start" && "$line" -lt "$end" ]] \
 				&& continue
-			offenders+="${script}: ${call}: line ${hits} outside"
+			offenders+="${script}: ${call}: line ${line} outside"
 			offenders+=" (${start}, ${end})"$'\n'
 		done
 	done
@@ -268,15 +268,15 @@ heal_call() {
 	# in the packaging script's own body, where it would run at build
 	# time instead of at launch. Counting the whole file and the
 	# heredoc separately makes the two disagree in that case.
-	local script body call inside outside offenders=''
+	local script body call inside in_file offenders=''
 	for script in "${PACKAGING_SCRIPTS[@]}"; do
 		body=$(launcher_heredoc "$script")
 		for call in "${PRELAUNCH_CALLS[@]}"; do
 			inside=$(call_lines "$call" <<<"$body" \
 				| grep -c . || true)
-			outside=$(file_calls "$script" "$call")
-			[[ "$inside" -eq "$outside" ]] && continue
-			offenders+="${script}: ${call}: ${outside} in file,"
+			in_file=$(file_calls "$script" "$call")
+			[[ "$inside" -eq "$in_file" ]] && continue
+			offenders+="${script}: ${call}: ${in_file} in file,"
 			offenders+=" ${inside} in the launcher"$'\n'
 		done
 	done
