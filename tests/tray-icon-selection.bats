@@ -272,6 +272,76 @@ _assert_chunk_untouched() {
 		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
 }
 
+@test "tray icon override: a bare return prefix patches" {
+	# The only allowlist entry nothing else exercises. Every other
+	# fixture sits behind `=`, `|` or `=>`; drop `return` from
+	# spliceSafe and this is the single case that reds.
+	_make_chunk \
+		'case"png":return ek()==="gnome"||a.nativeTheme.shouldUseDarkColors?"TrayIconLinux-Dark.png":"TrayIconLinux.png"'
+	patch_tray_icon_env_override
+	grep -qF 'return process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||process.env.CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(ek()==="gnome"||a.nativeTheme.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"' \
+		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
+}
+
+@test "tray icon override: the shipped 2.2553.1 form patches verbatim" {
+	# Byte-fidelity, not extra coverage — it reds under the same
+	# mutation as the `t=e||` case above (drop `|` from spliceSafe) and
+	# under no other. Kept because every other fixture paraphrases
+	# upstream, and `patching-minified-js.md` is explicit that a regex
+	# verified against a paraphrase is not verified. This is what the
+	# installed 2.2553.1 main chunk actually carries, read out of the
+	# .deb rather than a beautified copy (#876).
+	_make_chunk \
+		'case"png":return e||ek()==="gnome"||a.nativeTheme.shouldUseDarkColors?"TrayIconLinux-Dark.png":"TrayIconLinux.png"'
+	patch_tray_icon_env_override
+	grep -qF 'return e||process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||process.env.CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(ek()==="gnome"||a.nativeTheme.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"' \
+		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
+}
+
+@test "tray icon override: =0 loses to the rebuild flag at runtime" {
+	# Every other case in this file greps the patched TEXT. This one
+	# runs it, because the defect in #876 is a truth table, not a
+	# splice: with upstream's `e||` retained in front, =0 reduces the
+	# whole condition to `e`.
+	#
+	# `e` is upstream's tray REBUILD flag, not a theme signal — the
+	# caller passes !1 normally and !0 only when it retries after a
+	# caught tray-creation exception. So =0 works on every normal
+	# launch and is silently ignored on the rebuild, which is the
+	# narrow claim #876 makes.
+	#
+	# This asserts the behavior that ships today, not the behavior
+	# docs/configuration.md promises. When #876 is fixed the second
+	# value flips to TrayIconLinux.png and this case reds — that is
+	# the point: whoever fixes it is sent to the doc that still says
+	# =0 pins the plain glyph unconditionally.
+	_make_chunk \
+		'function icon(e){switch("png"){case"png":return e||ek()==="gnome"||a.nativeTheme.shouldUseDarkColors?"TrayIconLinux-Dark.png":"TrayIconLinux.png"}}'
+	patch_tray_icon_env_override
+
+	# Stubs pick the branch the env var is supposed to own: not GNOME,
+	# not a dark GTK scheme, so upstream's own condition is false and
+	# only the flag and `e` can decide.
+	cat > "$BATS_TEST_TMPDIR/run.js" <<-'EOF'
+		const fs = require('fs');
+		const path = require('path');
+		const src = fs.readFileSync(process.argv[2], 'utf8');
+		const prelude = 'const ek=()=>"kde";' +
+			'const a={nativeTheme:{shouldUseDarkColors:false}};';
+		const mod = path.join(path.dirname(process.argv[2]), 'mod.js');
+		fs.writeFileSync(mod, prelude + src + ';module.exports=icon;');
+		const icon = require(mod);
+		console.log(icon(false), icon(true));
+	EOF
+
+	run env CLAUDE_TRAY_USE_DARK_ICON=0 node \
+		"$BATS_TEST_TMPDIR/run.js" \
+		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
+	[[ $status -eq 0 ]]
+	# Normal launch honors =0. Rebuild does not. Second value is #876.
+	[[ $output == 'TrayIconLinux.png TrayIconLinux-Dark.png' ]]
+}
+
 @test "tray icon override: an arrow-body ternary still patches" {
 	# The other way the allowlist can be too tight: a minifier rewrite of
 	# function(){return X?A:B} into ()=>X?A:B puts `=>` in front of the
