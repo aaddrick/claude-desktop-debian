@@ -333,13 +333,11 @@ _patch_fails() {
 }
 
 @test "retirement tripwire: registry rows name a known retirement kind" {
-	local patch_fn
+	local patch_fn row
 	for patch_fn in "${!patch_retirement[@]}"; do
-		[[ ${patch_retirement[$patch_fn]} =~ ^(bytes|behavior|never):\  ]] \
-			|| {
-				printf 'bad kind for %s: %s\n' "$patch_fn" \
-					"${patch_retirement[$patch_fn]}" >&2
-				return 1
-			}
+		row=${patch_retirement[$patch_fn]}
+		[[ $row =~ ^(bytes|behavior|never):\  ]] && continue
+		printf 'bad kind for %s: %s\n' "$patch_fn" "$row" >&2
+		return 1
 	done
 }
