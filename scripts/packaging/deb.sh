@@ -382,6 +382,36 @@ EOF
 chmod +x "$package_root/DEBIAN/postrm" || exit 1
 echo 'Postrm script created'
 
+# --- apport crash blacklist (#582) ---
+# On Ubuntu, core_pattern pipes every crash to apport, which drops a
+# multi-megabyte report under /var/crash/; update-notifier-crash then
+# emits journal lines that rsyslog forwards to /var/log/syslog. An
+# Electron process that crash-loops (see #583) drives that to hundreds
+# of gigabytes — a reporter measured 190 GB. Blacklisting our binaries
+# in apport's own drop-in directory breaks the feedback loop without
+# disabling apport for anything else. The paths track $package_name so a
+# future rename can't silently unpin them. The main ELF's children
+# (zygote, renderer, gpu) are re-execs of the same path, so one line
+# covers the whole Chromium tree; chrome_crashpad_handler is a separate
+# binary that can crash on its own. deb-only: apport is Debian/Ubuntu,
+# Fedora uses abrt, and an AppImage has no package hooks.
+echo 'Creating apport crash blacklist...'
+install -Dm 644 /dev/stdin \
+	"$package_root/etc/apport/blacklist.d/$package_name" << EOF
+/usr/lib/$package_name/claude-desktop
+/usr/lib/$package_name/chrome_crashpad_handler
+EOF
+echo 'apport blacklist created'
+
+# Register the blacklist as a conffile. The package is built with raw
+# dpkg-deb --build, which — unlike debhelper — does NOT auto-register
+# /etc files as conffiles, so without this the file is a plain package
+# file and an admin edit is clobbered on upgrade.
+echo 'Creating conffiles...'
+echo "/etc/apport/blacklist.d/$package_name" \
+	> "$package_root/DEBIAN/conffiles"
+echo 'Conffiles created'
+
 # --- Build .deb Package ---
 echo 'Building .deb package...'
 deb_file="$work_dir/${package_name}_${version}_${architecture}.deb"
