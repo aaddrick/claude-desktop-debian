@@ -1109,3 +1109,33 @@ assertEqual(result[bindIdx + 2], '/tmp', 'bind dst');
 	[[ "$body" == *'/usr/lib/qemu/virtiofsd'* ]]
 	[[ "$body" == *'/usr/lib/virtiofsd'* ]]
 }
+
+# =============================================================================
+# Session teardown flags (#369)
+#
+# The fallback daemon must take its sessions down with it on quit. Two
+# things guarantee that; this file's live tests cover the mount-arg
+# merge, but nothing pinned the isolation flags on the actual session
+# spawn. BwrapBackend.spawn is not exported and execs bwrap, so this is
+# a structural pin on the spawn call's argv: the session must be
+# unshared into its own PID namespace AND carry --die-with-parent, which
+# is what makes bwrap SIGKILL the whole sandbox when the daemon dies —
+# covering even the launcher reaper's SIGTERM-timeout SIGKILL of a stuck
+# daemon (a plain SIGKILL runs no graceful stopVM). Drop the flag and a
+# quit that SIGKILLs the daemon orphans the sandbox; this reds.
+# =============================================================================
+
+@test "BwrapBackend session spawn carries PID-namespace + die-with-parent" {
+	local svc="${SCRIPT_DIR}/../cowork-vm-service.js"
+	# The four tokens must appear in this order in a single push() on the
+	# session command, unshare-pid immediately guarding die-with-parent
+	# and new-session, then the -- command separator.
+	run perl -0ne 'exit(!(
+		/bwrapArgs\.push\(\s*
+		 .--unshare-pid.,\s*
+		 .--die-with-parent.,\s*
+		 .--new-session.,\s*
+		 .--.,/sx
+	))' "$svc"
+	[[ "$status" -eq 0 ]]
+}
