@@ -299,6 +299,41 @@ separates "anchor missing" from "already applied" in the build log:
 
 PR #436 verified by running the patch twice and diffing the output.
 
+## Retirement: a patch must change the pristine bundle
+
+Every build patches the freshly extracted official `app.asar`, so an
+active patch that changes no bytes there is a signal, not a success:
+
+```
+Retirement tripwire: patch_org_plugins_path changed nothing in the official bundle.
+  Retires by: bytes: no linux case upstream (unreported)
+```
+
+`_run_active_patches` in `app-asar.sh` digests `.vite/build/` before
+and after each patch and fails the build on a no-op. The patch's own
+log line is not evidence: `org-plugins.sh` prints `Added Linux
+org-plugins path` after a `sed` that may not have matched, and every
+idempotency guard in the suite keys on *our* injected bytes, so an
+upstream fix never reads as "already applied" — it reads as a quiet
+no-op, or as an anchor miss indistinguishable from a re-minify.
+
+When it fires, the `patch_retirement` row next to `active_patches`
+says what "fixed upstream" means for that patch:
+
+- **`bytes`** — diff the bundle against the last version where the
+  patch applied. If upstream shipped the fix, delete the patch and its
+  row; if the anchor merely moved, re-derive it.
+- **`behavior`** — the bug is outside `app.asar` (quick-window's is in
+  Electron), so a no-op is always an anchor reshape. Retire only on a
+  live repro that no longer reproduces.
+- **`never`** — our own feature (the bwrap backend). A no-op is
+  breakage; fix the anchor.
+
+The harness's second pass (`tests/test-patch-stage.sh`) runs with
+`PATCH_STAGE_RERUN=1`, which inverts the check: over an already-patched
+bundle every patch must change *nothing*, so a guard that misses its
+own output is named instead of surfacing as a bare hash diff.
+
 ## Anchor selection: prefer literals over identifiers
 
 The above sections cover making a patch work on first run. This one

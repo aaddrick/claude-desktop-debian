@@ -53,6 +53,28 @@ active_patches=(
 	patch_tray_icon_env_override
 )
 
+# Retirement tripwire: how each active patch stops being needed. Every
+# build starts from the pristine official bundle, so a patch that
+# changes no bytes there has lost its reason to exist or its anchor —
+# _check_patch_effect fails the build either way and prints this entry
+# so whoever triages knows what "fixed upstream" means for that patch.
+#
+#   bytes      upstream can ship the fix in app.asar; a no-op is the
+#              retirement signal (or an anchor reshape — read the diff)
+#   behavior   the bug lives outside app.asar (e.g. in Electron), so
+#              bytes cannot prove it fixed; retire only on a repro that
+#              no longer reproduces, and a no-op is an anchor reshape
+#   never      our own feature, not an upstream bug; a no-op is breakage
+#
+# Every entry in active_patches needs a row (tests/app-asar.bats).
+declare -gA patch_retirement=(
+	[patch_quick_window]='behavior: Electron-on-KDE stale focus (#393)'
+	[patch_org_plugins_path]='bytes: no linux case upstream (unreported)'
+	[patch_virtiofsd_probe]='bytes: 771-cowork-virtiofsd-probe.md'
+	[patch_cowork_bwrap]='never: opt-in bwrap backend (#772)'
+	[patch_tray_icon_env_override]='bytes: 604-tray-panel-theme.md'
+)
+
 # The #768 config-wipe guard (config.sh) is NOT wired: a contrarian
 # review (see docs/learnings/config-wipe-guard.md) established that the
 # primary fix is launcher-side backup rotation (backup_user_config in
@@ -106,6 +128,62 @@ _check_upstream_tripwires() {
 	fi
 
 	echo 'Upstream tripwires clear (updater off on Linux, menu bar on)'
+}
+
+# Digest every file under .vite/build (relative to CWD, like
+# _resolve_anchor_file). Every active patch writes here, because every
+# one resolves its target through _resolve_anchor_file; a patch that
+# writes anywhere else is invisible to this check and would trip a false
+# "changed nothing". A missing or empty tree fails rather than hashing
+# to a constant that compares equal on both sides.
+_bundle_digest() {
+	local build_dir='app.asar.contents/.vite/build'
+
+	[[ -d $build_dir ]] || return 1
+	[[ -n $(find "$build_dir" -type f -print -quit) ]] || return 1
+	find "$build_dir" -type f -print0 | LC_ALL=C sort -z \
+		| xargs -0 sha256sum | sha256sum | cut -d' ' -f1
+}
+
+# A patch's own success message is not evidence that it changed
+# anything: org-plugins.sh reports "Added" after a sed that may not have
+# matched. So the orchestrator measures instead. On the pristine bundle
+# every active patch must change bytes (a no-op means upstream fixed it
+# or the anchor moved); on a re-run over an already-patched bundle
+# (PATCH_STAGE_RERUN=1, the harness's idempotency pass) none may.
+_check_patch_effect() {
+	local patch_fn="$1"
+	local before="$2"
+	local after="$3"
+	local retire="${patch_retirement[$patch_fn]:-no patch_retirement entry}"
+
+	if [[ ${PATCH_STAGE_RERUN:-} == 1 ]]; then
+		[[ $before == "$after" ]] && return 0
+		echo "Idempotency: $patch_fn changed an already-patched" \
+			'bundle on re-run — its guard misses its own output.' >&2
+		return 1
+	fi
+
+	[[ $before != "$after" ]] && return 0
+	echo "Retirement tripwire: $patch_fn changed nothing in the" \
+		'official bundle.' >&2
+	echo "  Retires by: $retire" >&2
+	echo '  Either upstream shipped the fix (drop the patch from' \
+		'active_patches) or its anchor moved and the patch skipped' \
+		'(re-derive the anchor). Decide before shipping.' >&2
+	return 1
+}
+
+# Run every active patch, checking each one's effect on the bundle.
+_run_active_patches() {
+	local patch_fn before after
+
+	for patch_fn in "${active_patches[@]}"; do
+		before=$(_bundle_digest) || return 1
+		"$patch_fn" || return 1
+		after=$(_bundle_digest) || return 1
+		_check_patch_effect "$patch_fn" "$before" "$after" || return 1
+	done
 }
 
 # Read one field out of the asar's package.json without a full extract.
@@ -269,10 +347,7 @@ patch_app_asar() {
 	echo "Bundle layout: $js_count JS files under .vite/build," \
 		"$chunk_count chunk requires from index.js"
 
-	local patch_fn
-	for patch_fn in "${active_patches[@]}"; do
-		"$patch_fn" || exit 1
-	done
+	_run_active_patches || exit 1
 
 	# Repack, preserving upstream's unpacked set exactly. The unpack
 	# expression is derived from the shipped app.asar.unpacked tree
