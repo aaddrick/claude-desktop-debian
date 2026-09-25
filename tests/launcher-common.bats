@@ -993,9 +993,11 @@ s.close()
 	grep -q '^kill -KILL 4242$' "$TEST_TMP/kills"
 }
 
-# End-to-end reap legs (#369): a REAL fallback daemon, no stubbed
-# pgrep/kill/sleep. The four stubbed cases above assert the recorded
-# `kill` argv and the log line; they cannot prove the daemon process
+# End-to-end reap legs (#369): a REAL fallback daemon reaped by REAL
+# kill/sleep (pgrep is scoped to the stand-in — see the per-test note —
+# but the signals it drives are real). The four stubbed cases above
+# assert the recorded `kill` argv and the log line; they cannot prove
+# the daemon process
 # actually dies. A regression that still logs and records a plausible
 # kill but never reaps the real process — a wrong pid resolution, a
 # poll that never fires, the SIGKILL escalation dropped — passes the
@@ -1003,7 +1005,7 @@ s.close()
 # #857 left uncovered. On this box the reaper SIGTERM-reaps a live
 # daemon in well under the 2s grace window.
 @test "cleanup_orphaned_cowork_daemon: real orphan is reaped on quit" {
-	# pgrep/kill/sleep are the REAL ones; only the "is a UI alive?"
+	# kill/sleep are the REAL ones, and only the "is a UI alive?"
 	# predicate is stubbed false, to model "the app has quit" without
 	# depending on whether a real Claude Desktop happens to be running
 	# on the host (its --class scan would otherwise see it and bail —
@@ -1011,6 +1013,13 @@ s.close()
 	# real, so a `kill "$pid"` -> `kill -0 "$pid"` slip still reds here.
 	_claude_desktop_ui_is_alive() { return 1; }
 	_spawn_cowork_daemon_stand_in
+	# pgrep -f 'cowork-vm-service\.js' is host-wide, so leaving it real
+	# would make the reaper SIGTERM/SIGKILL every same-user process whose
+	# cmdline names the script — a dev's live fallback daemon, an editor
+	# open on the file (the #534 host-wide pgrep -f trap, destructive
+	# here). Scope it to this stand-in; the signals stay real, so the
+	# kill path is still exercised and a bystander is never touched.
+	pgrep() { command pgrep "$@" | grep -x -- "$cowork_pid"; }
 
 	setup_logging
 	# `run` so the wait loop's `((_wait++))` (returns 1 at _wait=0)
@@ -1040,10 +1049,11 @@ s.close()
 	# The daemon ignores SIGTERM (trap "" TERM), so the grace window
 	# elapses and the reaper must escalate to SIGKILL to reap it. A real
 	# SIGKILL cannot be trapped, so surviving here means the escalation
-	# never actually fired. UI predicate stubbed false for the same
-	# host-isolation reason as the test above.
+	# never actually fired. UI predicate stubbed false, and pgrep scoped
+	# to the stand-in, for the same host-isolation reasons as above.
 	_claude_desktop_ui_is_alive() { return 1; }
 	_spawn_cowork_daemon_stand_in trap
+	pgrep() { command pgrep "$@" | grep -x -- "$cowork_pid"; }
 
 	setup_logging
 	# `run` so the wait loop's `((_wait++))` (returns 1 at _wait=0)
