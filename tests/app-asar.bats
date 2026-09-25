@@ -319,6 +319,17 @@ _patch_fails() {
 	[[ $status -eq 1 ]]
 }
 
+@test "retirement tripwire: an empty build tree fails, not passes" {
+	# Near-miss of the missing-tree case: the directory exists but holds
+	# no files, so xargs would still run sha256sum once on empty input
+	# and both digests would be the same constant.
+	mkdir -p "$BATS_TEST_TMPDIR/app.asar.contents/.vite/build"
+	cd "$BATS_TEST_TMPDIR" || return 1
+	active_patches=(_patch_noop)
+	PATCH_STAGE_RERUN=1 run _run_active_patches
+	[[ $status -eq 1 ]]
+}
+
 @test "retirement tripwire: every active patch has a registry entry" {
 	# Sourcing app-asar.sh resets active_patches to the shipped list.
 	local patch_fn missing=()

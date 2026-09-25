@@ -131,11 +131,16 @@ _check_upstream_tripwires() {
 }
 
 # Digest every file under .vite/build (relative to CWD, like
-# _resolve_anchor_file): the only tree the active patches write to.
+# _resolve_anchor_file). Every active patch writes here, because every
+# one resolves its target through _resolve_anchor_file; a patch that
+# writes anywhere else is invisible to this check and would trip a false
+# "changed nothing". A missing or empty tree fails rather than hashing
+# to a constant that compares equal on both sides.
 _bundle_digest() {
 	local build_dir='app.asar.contents/.vite/build'
 
 	[[ -d $build_dir ]] || return 1
+	[[ -n $(find "$build_dir" -type f -print -quit) ]] || return 1
 	find "$build_dir" -type f -print0 | LC_ALL=C sort -z \
 		| xargs -0 sha256sum | sha256sum | cut -d' ' -f1
 }
