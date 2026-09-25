@@ -223,6 +223,41 @@ behavior to persist across reinstalls and config resets.
 
 Tracking issue: [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583).
 
+### `/var/log/syslog` grows to hundreds of GB on Ubuntu ([#582](https://github.com/aaddrick/claude-desktop-debian/issues/582))
+
+On Ubuntu, every process crash is piped to apport, which writes a
+multi-megabyte report under `/var/crash/`; `update-notifier-crash` then
+emits journal lines that rsyslog forwards to `/var/log/syslog`. When an
+Electron process crash-loops (the underlying crash is
+[#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)),
+that feedback loop drives syslog to hundreds of gigabytes — one reporter
+measured 190 GB. The crashing process shows up as `update-notifier-crash`
+in the journal, not `claude-desktop`, which is why it is easy to miss.
+
+The `.deb` package ships an apport blacklist
+(`/etc/apport/blacklist.d/claude-desktop-unofficial`) that breaks the
+loop for the Electron ELF and the crashpad handler, without disabling
+apport for anything else. Nothing to configure on a current install.
+
+On an **older build that predates this fix**, stop the growth by
+blacklisting the binary yourself, then reclaim the space:
+
+```bash
+echo /usr/lib/claude-desktop-unofficial/claude-desktop \
+  | sudo tee /etc/apport/blacklist.d/claude-desktop-unofficial
+sudo rm -f /var/crash/_usr_lib_claude-desktop*.crash
+sudo truncate -s 0 /var/log/syslog
+```
+
+apport reads the blacklist on every crash, so no service restart is
+needed; deleting the reports already under `/var/crash/` stops
+`update-notifier-crash` re-processing them.
+
+The trade-off is that apport's "send a crash report" dialog no longer
+fires for Claude Desktop. Those reports go to errors.ubuntu.com, not to
+this project, so nothing is lost. Fedora (abrt) and the AppImage are
+unaffected — apport is Debian/Ubuntu-only.
+
 ### Black screen on Fedora KDE with Intel Iris Xe ([#706](https://github.com/aaddrick/claude-desktop-debian/issues/706))
 
 If the window opens but renders entirely black on Fedora KDE with
