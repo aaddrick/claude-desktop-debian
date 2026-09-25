@@ -30,6 +30,41 @@ _spawn_plain_sleep() {
 	_await_exe "$plain_pid" "$(readlink -f "$(command -v sleep)")"
 }
 
+# Spawn a REAL process standing in for the cowork-vm-service fallback
+# daemon: its argv carries the `cowork-vm-service.js` fingerprint the
+# reaper greps for (pgrep -f), but no --class, so the UI scan skips it
+# and only cleanup_orphaned_cowork_daemon matches. exec -a overrides
+# argv[0] with the full fake command line. Blocks on a fifo until
+# signalled. Pass "trap" to make it ignore SIGTERM (stands in for a
+# stuck daemon, forcing the reaper's SIGKILL escalation). Sets
+# $cowork_pid. Unlike the stubbed pgrep/kill tests, this exercises the
+# real signals against a real process — a `kill`->`kill -0` regression
+# the stubs would wave through fails here (#369, the end-to-end reap leg
+# #857 conceded). Reaped in _kill_stand_ins.
+_spawn_cowork_daemon_stand_in() {
+	local disp=''
+	[[ ${1:-} == trap ]] && disp='trap "" TERM; '
+	local fifo="$TEST_TMP/cowork-block"
+	[[ -p $fifo ]] || mkfifo "$fifo"
+	bash -c "exec -a 'node cowork-vm-service.js -socket sock' \
+		bash -c '${disp}read -r _ < \"\$1\"' _ '$fifo'" 3>&- &
+	cowork_pid=$!
+	_await_cowork_cmdline "$cowork_pid"
+}
+
+# Wait until /proc/PID/cmdline carries the daemon fingerprint: exec -a
+# lands a moment after `&`, so matching straight away would be racy
+# (mirrors _await_exe, but the daemon is matched by cmdline not exe).
+_await_cowork_cmdline() {
+	local pid="$1" i cmd
+	for ((i = 0; i < 50; i++)); do
+		cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+		[[ $cmd == *cowork-vm-service.js* ]] && return 0
+		sleep 0.1
+	done
+	return 1
+}
+
 # Wait until /proc/PID/exe shows the exec'd binary: the fork carries
 # the parent's exe until exec lands, so asserting straight after `&`
 # would be racy.
@@ -44,11 +79,12 @@ _await_exe() {
 }
 
 # Reap whatever the spawners above started. Call from teardown.
+# SIGKILL (not SIGTERM) so the trap-TERM cowork stand-in dies too.
 _kill_stand_ins() {
 	local pid
-	for pid in "${claude_pid:-}" "${plain_pid:-}"; do
+	for pid in "${claude_pid:-}" "${plain_pid:-}" "${cowork_pid:-}"; do
 		[[ -n $pid ]] || continue
-		kill "$pid" 2>/dev/null || true
+		kill -KILL "$pid" 2>/dev/null || true
 	done
-	unset claude_pid plain_pid
+	unset claude_pid plain_pid cowork_pid
 }
