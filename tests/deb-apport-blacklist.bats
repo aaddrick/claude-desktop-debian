@@ -78,8 +78,14 @@ uncommented() {
 	# A write to DEBIAN/conffiles ...
 	grep -qE '>[[:space:]]*"\$(\{)?package_root(\})?/DEBIAN/conffiles"' \
 		<<<"$body"
-	# ... carrying the blacklist's install path.
-	grep -qE '/etc/apport/blacklist\.d/\$(\{)?package_name' <<<"$body"
+	# ... whose payload is the blacklist path. Anchored to the `echo`
+	# statement itself, not matched loose against the whole body: the
+	# same path appears on the `install -D` target line, so a loose grep
+	# stays green even when the conffiles echo points somewhere else
+	# (caught only by the artifact leg otherwise).
+	grep -qE \
+		'^[[:space:]]*echo "/etc/apport/blacklist\.d/\$(\{)?package_name(\})?"' \
+		<<<"$body"
 }
 
 @test "the blacklist file carries no comment lines" {

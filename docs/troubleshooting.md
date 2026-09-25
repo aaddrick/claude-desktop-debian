@@ -245,9 +245,13 @@ blacklisting the binary yourself, then reclaim the space:
 ```bash
 echo /usr/lib/claude-desktop-unofficial/claude-desktop \
   | sudo tee /etc/apport/blacklist.d/claude-desktop-unofficial
-sudo systemctl restart apport.service
+sudo rm -f /var/crash/_usr_lib_claude-desktop*.crash
 sudo truncate -s 0 /var/log/syslog
 ```
+
+apport reads the blacklist on every crash, so no service restart is
+needed; deleting the reports already under `/var/crash/` stops
+`update-notifier-crash` re-processing them.
 
 The trade-off is that apport's "send a crash report" dialog no longer
 fires for Claude Desktop. Those reports go to errors.ubuntu.com, not to
