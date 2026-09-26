@@ -46,6 +46,7 @@ setup() {
 	unset DISPLAY
 	unset WAYLAND_DISPLAY
 	unset CLAUDE_USE_WAYLAND
+	unset CLAUDE_FORCE_SANDBOX
 	unset NIRI_SOCKET
 	unset XDG_CURRENT_DESKTOP
 	unset XDG_SESSION_TYPE
@@ -1833,6 +1834,52 @@ _write_launcher_cfg() {
 	_write_launcher_cfg 'LD_PRELOAD=/tmp/evil.so'
 	load_launcher_config
 	[[ -z ${LD_PRELOAD:-} ]]
+}
+
+@test "load_launcher_config: sandbox override reaches Wayland launch args" {
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	setup_logging
+	is_wayland=true
+	# RPM uses the deb argument builder. Exercise both Wayland backends.
+	local package_type backend
+	for package_type in deb nix; do
+		for backend in true false; do
+			unset CLAUDE_FORCE_SANDBOX
+			load_launcher_config
+			use_x11_on_wayland="$backend"
+			build_electron_args "$package_type"
+			run has_electron_arg '--no-sandbox'
+			[[ $status -eq 1 ]]
+		done
+	done
+}
+
+@test "load_launcher_config: sandbox environment overrides config" {
+	setup_logging
+	is_wayland=true
+	use_x11_on_wayland=false
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	export CLAUDE_FORCE_SANDBOX=0
+	load_launcher_config
+	build_electron_args deb
+	has_electron_arg '--no-sandbox'
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=0'
+	export CLAUDE_FORCE_SANDBOX=1
+	load_launcher_config
+	build_electron_args deb
+	run has_electron_arg '--no-sandbox'
+	[[ $status -eq 1 ]]
+}
+
+@test "load_launcher_config: sandbox override preserves AppImage args" {
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	setup_logging
+	load_launcher_config
+	[[ $CLAUDE_FORCE_SANDBOX == 1 ]]
+	is_wayland=true
+	use_x11_on_wayland=false
+	build_electron_args appimage
+	has_electron_arg '--no-sandbox'
 }
 
 @test "load_launcher_config: environment wins over the config file" {

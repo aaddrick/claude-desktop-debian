@@ -1079,6 +1079,7 @@ load_launcher_config() {
 	# space-delimited match for the key that follows it.
 	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE'
 	allowlist+=' CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU'
+	allowlist+=' CLAUDE_FORCE_SANDBOX'
 	allowlist+=' CLAUDE_TRAY_USE_DARK_ICON'
 	allowlist+=' COWORK_VM_BACKEND COWORK_NODE_PATH '
 	local line key val
