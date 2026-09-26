@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.0] — 2026-09-27
+
 ### Added
 
 - The build fails when an active asar patch changes nothing in the official bundle. Every build patches pristine upstream bytes, so a no-op means upstream shipped the fix (retire the patch) or its anchor moved (re-derive it) — and until now neither was visible: each patch's idempotency guard keys on our own injected bytes, so an upstream fix read as a quiet no-op, and `org-plugins.sh` logs `Added` whether or not its `sed` matched. The orchestrator now digests `.vite/build/` around each patch instead of trusting its log line, and prints the patch's new `patch_retirement` row (`bytes` / `behavior` / `never`) so the triager knows what "fixed upstream" means for it. The patch-stage harness's second pass inverts the check (`PATCH_STAGE_RERUN=1`: no patch may change an already-patched bundle), naming a broken idempotency guard instead of reporting a bare hash diff. Verified against 2.7032.0: all five patches change the pristine bundle, and feeding the patched bundle back as "official" fails on the first patch.
