@@ -794,8 +794,15 @@ run_launch_smoke_test() {
 	Xvfb "${xvfb_args[@]}" 3>"$display_file" >"$xserver_log" 2>&1 &
 	_smoke_xvfb_pid=$!
 
+	# The ceiling on Xvfb reporting its display. The loop below exits
+	# the moment the number lands, so a healthy start pays nothing for
+	# headroom; a server that dies is caught by the kill -0 check in
+	# milliseconds, not by this. 10s tripped twice in September 2026 on
+	# the native arm64 runner (#881's first run, and main at 4779b4f),
+	# each time with Xvfb alive but slow and a clean re-run passing.
+	local xvfb_timeout=30
 	local deadline display='' display_num='' xvfb_dead=0
-	deadline=$((SECONDS + 10))
+	deadline=$((SECONDS + xvfb_timeout))
 	while ((SECONDS < deadline)); do
 		# `read` succeeds only once the terminating newline has landed,
 		# so a half-written number can't be mistaken for a display.
@@ -812,12 +819,13 @@ run_launch_smoke_test() {
 	done
 	if [[ -z $display ]]; then
 		# An unsupported flag or an unwritable /tmp/.X11-unix kills the
-		# server in milliseconds; calling that a 10s timeout sends the
+		# server in milliseconds; calling that a timeout sends the
 		# reader after a timing problem that isn't there.
 		if ((xvfb_dead == 1)); then
 			fail "$label: Xvfb exited before reporting a display"
 		else
-			fail "$label: Xvfb did not report a display within 10s"
+			fail "$label: Xvfb did not report a display" \
+				"within ${xvfb_timeout}s"
 		fi
 		# Nothing was launched yet, so only the server has anything
 		# to say — the empty paths are skipped by the dumper's tests.

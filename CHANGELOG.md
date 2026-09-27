@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- The artifact launch smoke test gives Xvfb 30 seconds to report its display, up from 10. The native arm64 runner twice started Xvfb alive but slower than 10s (the first CI run on [#881](https://github.com/aaddrick/claude-desktop-debian/pull/881), and `main` at 4779b4f), turning a healthy build red until a re-run. The loop still exits the moment the display lands, and a server that dies is still reported in milliseconds by the liveness check, so only a slow-but-alive start benefits from the headroom.
 - The test harness's pre-launch cleanup no longer kills every same-user process whose command line mentions `cowork-vm-service.js`. `cleanupPreLaunch` ran a host-wide `pkill -f`, so running the harness SIGTERMed an editor or `tail -f` open on the script, the same bystander class [#882](https://github.com/aaddrick/claude-desktop-debian/issues/882) fixed in the launcher. It now reaps only PIDs matching the launcher's argv fingerprint (argv[1] ending in `/cowork-vm-service.js`, argv[2] `-socket`, same user, not itself), via a TypeScript port of `_cowork_fallback_daemon_pids`; S30's leak check uses the same helper, so an open editor no longer fails it. ([#890](https://github.com/aaddrick/claude-desktop-debian/issues/890))
 
 ## [v3.3.0] — 2026-09-27
