@@ -16,14 +16,14 @@
 # packaging scripts, not a built package, so it pins that the launcher
 # *source* makes the calls in the right region — not that the shipped
 # launcher executes them against real stale state. That end-to-end leg
-# (one fixture per helper: a stale lock, an orphaned daemon, a dead
-# socket) is the gap #857 concedes in its own Out-of-scope section.
+# (one fixture per helper: a stale lock, an orphaned daemon) is the
+# gap #857 concedes in its own Out-of-scope section.
 # `cleanup_replaced_desktop_ui` is the only one with such a leg today,
 # via `run_replaced_ui_cleanup_test` for deb and rpm.
 #
 # Search scope is the three packaging scripts alone, deliberately.
 # `cleanup_after_electron_exit` in scripts/launcher-common.sh re-runs
-# four of these same names *after* Electron exits, so a repo-wide grep
+# three of these same names *after* Electron exits, so a repo-wide grep
 # for the names is satisfied without any launcher calling anything.
 # There is no fourth launcher: nix/claude-desktop.nix and nix/fhs.nix
 # contain none of these calls.
@@ -48,18 +48,18 @@ readonly PACKAGING_SCRIPTS=(
 # one bad merge away from. Copying this list per format would pin only
 # that each format matches its own copy.
 #
-# Eight entries, where #857 as filed listed six. Its table also covers
+# Seven entries, where #857 as filed listed six. Its table also covers
 # `cleanup_replaced_desktop_ui` (which its sed reproducer omits, because
 # deb and rpm have an artifact-test leg for it — AppImage has none, so
 # the static pin is its only coverage), and #856 landed
 # `cleanup_stale_vm_bundle_images` in all three launchers after the
-# issue was written.
+# issue was written. #888 removed `cleanup_stale_cowork_socket`: it
+# cleaned the 2.x socket name, which nothing in 3.x binds.
 readonly PRELAUNCH_CALLS=(
 	cleanup_replaced_desktop_ui
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers
 	cleanup_stale_lock
-	cleanup_stale_cowork_socket
 	cleanup_stale_vm_bundle_images
 	heal_autostart_entry
 	backup_user_config
@@ -313,6 +313,51 @@ heal_call() {
 
 	[[ -z "$offenders" ]] || {
 		printf 'wrong heal_autostart_entry argument:\n%s' \
+			"$offenders" >&2
+		false
+	}
+}
+@test "every launcher command is a builtin or a launcher-common function" {
+	# The tests above pin the calls that must be there. This one catches
+	# a call that must not be: a helper deleted or renamed in
+	# launcher-common.sh while a launcher still calls it. Bash does not
+	# fail on that. It prints "command not found" into the log and
+	# carries on, so the only symptom is the helper's job not being done
+	# (#888 deleted cleanup_stale_cowork_socket; a missed call site would
+	# have passed every test above).
+	#
+	# A column-0 command in the launcher heredoc must be a shell keyword
+	# or builtin (`if`, `cd`, `exit`, `source`), a variable assignment,
+	# or a function that launcher-common.sh defines at column 0. Names
+	# are checked against compgen's lists rather than `type -t`, so a
+	# function bats or this file defines cannot shadow the answer.
+	local common="${SCRIPT_DIR}/../scripts/launcher-common.sh"
+	local -A shell_words=()
+	local word script line checked=0 offenders=''
+	while read -r word; do
+		shell_words[$word]=1
+	done < <(compgen -k; compgen -b)
+
+	for script in "${PACKAGING_SCRIPTS[@]}"; do
+		while read -r line; do
+			[[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && continue
+			word=${line%%[[:space:]]*}
+			[[ -n ${shell_words[$word]:-} ]] && continue
+			checked=$((checked + 1))
+			grep -qE "^${word}\(\) \{" "$common" && continue
+			offenders+="${script}: ${word}"$'\n'
+		done < <(uncommented_launcher "$script" | grep -E '^[^[:space:]]')
+	done
+
+	# Every pinned call is a launcher-common function, so a filter that
+	# dropped everything would check fewer names than that.
+	((checked >= ${#PRELAUNCH_CALLS[@]} * ${#PACKAGING_SCRIPTS[@]})) || {
+		printf 'checked only %d commands\n' "$checked" >&2
+		false
+	}
+	[[ -z "$offenders" ]] || {
+		printf '%s\n%s' \
+			'launcher calls a function launcher-common.sh does not define:' \
 			"$offenders" >&2
 		false
 	}

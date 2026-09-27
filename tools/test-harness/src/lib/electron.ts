@@ -348,7 +348,7 @@ function resolveInstall(): AppPaths {
 }
 
 // Mirrors the pre-launch cleanup in launcher-common.sh (cleanup_orphaned_
-// cowork_daemon + cleanup_stale_lock + cleanup_stale_cowork_socket).
+// cowork_daemon + cleanup_stale_lock).
 //
 // When `configDir` is provided (isolated test mode), the SingletonLock
 // path is relative to that dir rather than ~/.config/Claude — the host
@@ -371,18 +371,6 @@ export async function cleanupPreLaunch(configDir?: string): Promise<void> {
 		}
 	} catch {
 		// Lock doesn't exist or isn't a symlink — both fine.
-	}
-
-	const sockPath = join(
-		process.env.XDG_RUNTIME_DIR ?? '/tmp',
-		'cowork-vm-service.sock',
-	);
-	if (existsSync(sockPath)) {
-		try {
-			rmSync(sockPath, { force: true });
-		} catch {
-			// Stale socket may already be gone.
-		}
 	}
 }
 
