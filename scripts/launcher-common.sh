@@ -600,12 +600,12 @@ _cowork_fallback_daemon_pids() {
 # Kill orphaned cowork-vm-service daemon processes.
 # After a crash or unclean shutdown the cowork daemon may outlive the
 # main Electron UI process.  The orphaned daemon holds LevelDB locks
-# in ~/.config/Claude/Local Storage/ AND keeps the Unix socket at
-# $XDG_RUNTIME_DIR/cowork-vm-service.sock bound, which causes a new
-# launch to either silently quit (LevelDB) or connect to the stale
-# daemon (socket) and hang with a blank window.
-# Must run BEFORE cleanup_stale_lock / cleanup_stale_cowork_socket
-# so that stale files left behind by the daemon can be cleaned up.
+# in ~/.config/Claude/Local Storage/ AND keeps the Unix socket the
+# client passed it (-socket $XDG_RUNTIME_DIR/claude-cowork-vm.sock)
+# bound, which causes a new launch to either silently quit (LevelDB)
+# or connect to the stale daemon (socket) and hang with a blank window.
+# Must run BEFORE cleanup_stale_lock so that stale files left behind
+# by the daemon can be cleaned up.
 cleanup_orphaned_cowork_daemon() {
 	local -a pids
 	mapfile -t pids < <(_cowork_fallback_daemon_pids)
@@ -620,8 +620,9 @@ cleanup_orphaned_cowork_daemon() {
 
 	# No UI process found — daemon is orphaned, terminate it.
 	# _kill_pids_escalating SIGKILLs a daemon still alive ~2s after
-	# SIGTERM, so cleanup_stale_cowork_socket (which runs next)
-	# reliably sees no daemon.
+	# SIGTERM. The socket it leaves behind needs no launcher cleanup:
+	# the client respawns on ECONNREFUSED and the next daemon unlinks
+	# the stale path before it binds (#888).
 	_kill_pids_escalating 'Killed orphaned cowork-vm-service daemon' \
 		"${pids[@]}"
 }
@@ -724,39 +725,6 @@ cleanup_stale_lock() {
 
 	rm -f "$lock_file"
 	log_message "Removed stale SingletonLock (PID $lock_pid no longer running)"
-}
-
-# Clean up stale cowork-vm-service socket if no daemon is listening.
-# The service daemon creates a Unix socket at
-# $XDG_RUNTIME_DIR/cowork-vm-service.sock. After a crash or unclean
-# shutdown, the socket file persists but nothing is listening, causing
-# ECONNREFUSED instead of ENOENT when the app tries to connect.
-#
-# NOTE: this function MUST run after cleanup_orphaned_cowork_daemon,
-# which is responsible for killing any orphaned daemon.  Given that
-# ordering, the presence of a live daemon proves the socket is in
-# use; the absence of a daemon proves the socket is stale.
-# We use that invariant directly instead of depending on socat (not
-# shipped by default on Debian/Ubuntu) or an age heuristic (the old
-# 24h fallback effectively disabled the cleanup for any recent
-# crash).
-cleanup_stale_cowork_socket() {
-	local sock="${XDG_RUNTIME_DIR:-/tmp}/cowork-vm-service.sock"
-
-	[[ -S $sock ]] || return 0
-
-	# If a cowork daemon is alive, it owns this socket; leave it.
-	# cleanup_orphaned_cowork_daemon has already run and removed any
-	# orphan (with SIGKILL escalation), so anything still alive here
-	# is a non-orphaned, live daemon. Same fingerprint as the reaper,
-	# so a process that only names the script can't pin the socket.
-	if [[ -n $(_cowork_fallback_daemon_pids) ]]; then
-		return 0
-	fi
-
-	# No daemon — the socket file is left over from a crash.
-	rm -f "$sock"
-	log_message "Removed stale cowork-vm-service socket (no daemon running)"
 }
 
 # #855: reclaim disk space left behind when a vm_bundles bundle
@@ -950,7 +918,6 @@ cleanup_after_electron_exit() {
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers
 	cleanup_stale_lock
-	cleanup_stale_cowork_socket
 }
 
 _electron_launcher_forward_signal() {
