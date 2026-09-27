@@ -568,6 +568,35 @@ cleanup_replaced_desktop_ui() {
 		"${pids[@]}"
 }
 
+# PIDs of this user's bwrap-fallback cowork daemon, one per line.
+#
+# Fingerprinted by argv shape, not by a `cowork-vm-service.js`
+# substring: the substring also matches an editor, `tail -f` or a
+# shell that merely names the file, and the reaper below SIGKILLs
+# whatever this returns (#882, the #534 host-wide pgrep -f class).
+# cowork-bwrap.sh spawn swap B starts the daemon as exactly
+#   <node> <resourcesPath>/cowork-vm-service.js -socket <sock>
+# so argv[1] ends in /cowork-vm-service.js and argv[2] is -socket.
+# The official Rust helper (cowork-linux-helper) never matches.
+#
+# pgrep only narrows the candidates; the argv check decides. Scoped
+# to this user and skipping our own launcher bash and its parent,
+# like _claude_desktop_ui_pids. cmdline is read NUL-split into an
+# array because `tr '\0' ' '` would lose the argument boundaries.
+_cowork_fallback_daemon_pids() {
+	local pid
+	local -a argv
+	for pid in \
+		$(pgrep -u "$(id -u)" -f 'cowork-vm-service\.js' 2>/dev/null); do
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
+		mapfile -d '' argv 2>/dev/null < "/proc/$pid/cmdline" \
+			|| continue
+		[[ ${argv[1]:-} == */cowork-vm-service.js ]] || continue
+		[[ ${argv[2]:-} == -socket ]] || continue
+		printf '%s\n' "$pid"
+	done
+}
+
 # Kill orphaned cowork-vm-service daemon processes.
 # After a crash or unclean shutdown the cowork daemon may outlive the
 # main Electron UI process.  The orphaned daemon holds LevelDB locks
@@ -578,9 +607,9 @@ cleanup_replaced_desktop_ui() {
 # Must run BEFORE cleanup_stale_lock / cleanup_stale_cowork_socket
 # so that stale files left behind by the daemon can be cleaned up.
 cleanup_orphaned_cowork_daemon() {
-	local cowork_pids pid
-	cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
-		|| return 0
+	local -a pids
+	mapfile -t pids < <(_cowork_fallback_daemon_pids)
+	[[ ${#pids[@]} -gt 0 ]] || return 0
 
 	# A live Claude Desktop UI process means the daemon is expected;
 	# leave it alone.  See _claude_desktop_ui_is_alive for why neither
@@ -590,26 +619,11 @@ cleanup_orphaned_cowork_daemon() {
 	fi
 
 	# No UI process found — daemon is orphaned, terminate it.
-	# Escalate to SIGKILL if a daemon is stuck and does not exit
-	# after SIGTERM within ~2s, so cleanup_stale_cowork_socket
-	# (which runs next) reliably sees no daemon.
-	for pid in $cowork_pids; do
-		kill "$pid" 2>/dev/null || true
-	done
-	local _wait=0
-	while ((_wait < 20)); do
-		pgrep -f 'cowork-vm-service\.js' &>/dev/null || break
-		sleep 0.1
-		((_wait++))
-	done
-	if pgrep -f 'cowork-vm-service\.js' &>/dev/null; then
-		for pid in $cowork_pids; do
-			kill -KILL "$pid" 2>/dev/null || true
-		done
-		log_message "Killed orphaned cowork-vm-service daemon (SIGKILL, PIDs: $cowork_pids)"
-	else
-		log_message "Killed orphaned cowork-vm-service daemon (PIDs: $cowork_pids)"
-	fi
+	# _kill_pids_escalating SIGKILLs a daemon still alive ~2s after
+	# SIGTERM, so cleanup_stale_cowork_socket (which runs next)
+	# reliably sees no daemon.
+	_kill_pids_escalating 'Killed orphaned cowork-vm-service daemon' \
+		"${pids[@]}"
 }
 
 _desktop_helper_cmdline_matches() {
@@ -734,8 +748,9 @@ cleanup_stale_cowork_socket() {
 	# If a cowork daemon is alive, it owns this socket; leave it.
 	# cleanup_orphaned_cowork_daemon has already run and removed any
 	# orphan (with SIGKILL escalation), so anything still alive here
-	# is a non-orphaned, live daemon.
-	if pgrep -f 'cowork-vm-service\.js' &>/dev/null; then
+	# is a non-orphaned, live daemon. Same fingerprint as the reaper,
+	# so a process that only names the script can't pin the socket.
+	if [[ -n $(_cowork_fallback_daemon_pids) ]]; then
 		return 0
 	fi
 

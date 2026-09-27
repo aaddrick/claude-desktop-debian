@@ -852,6 +852,58 @@ _source_launcher_common() {
 }
 
 # =============================================================================
+# _doctor_check_cowork_daemon: orphaned fallback daemon (#882)
+#
+# Detection is the reaper's own _cowork_fallback_daemon_pids, so these
+# source the real launcher-common.sh (see _source_launcher_common) and
+# use real stand-ins with pgrep scoped to them. Only the live-UI
+# predicate is stubbed, to decouple from a Claude Desktop running on
+# the host.
+# =============================================================================
+
+@test "_doctor_check_cowork_daemon: silent when launcher-common is not in scope" {
+	run _doctor_check_cowork_daemon
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_cowork_daemon: orphaned daemons warn with their PIDs space-separated" {
+	_source_launcher_common
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_daemon_stand_in
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $output == *'[WARN]'*'Cowork bwrap daemon: orphaned'* ]]
+	# Either order: pgrep lists by PID, which only matches spawn order
+	# until PIDs wrap.
+	local a="${cowork_pids[0]}" b="${cowork_pids[1]}"
+	[[ $output == *"(PIDs: $a $b)"* || $output == *"(PIDs: $b $a)"* ]]
+}
+
+@test "_doctor_check_cowork_daemon: daemon with a live UI passes" {
+	_source_launcher_common
+	_claude_desktop_ui_is_alive() { return 0; }
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $output == *'[PASS]'*'Cowork bwrap daemon: running'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_cowork_daemon: a process naming the script is not reported (#882)" {
+	# The doctor must report what the reaper would kill, and the reaper
+	# spares this: no orphan WARN pointing users at a phantom daemon.
+	_source_launcher_common
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_bystander_stand_in editor
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+# =============================================================================
 # _doctor_check_pkg_version: package-manager ownership (#711)
 # =============================================================================
 
