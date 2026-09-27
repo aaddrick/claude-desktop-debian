@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { launchClaude } from '../lib/electron.js';
+import { coworkFallbackDaemonPids, launchClaude } from '../lib/electron.js';
 import { skipUnlessRow } from '../lib/row.js';
 import { QuickEntry } from '../lib/quickentry.js';
 import { sleep } from '../lib/retry.js';
@@ -148,14 +148,15 @@ test('S30 — Quick Entry shortcut becomes a no-op after full app exit', async (
 	// any of these signals.
 
 	// (a) No leftover 2.x cowork-vm-service pids (defensive — the
-	// daemon died with the v3.0.0 rebase, but pre-launch cleanup
-	// still pkills strays, mirroring the launcher's migration-era
-	// cleanup). The official cowork-linux-helper is deliberately
-	// NOT probed here: a pid-unscoped pgrep would false-positive on
-	// a concurrently running host instance. Pid-scoped helper
-	// lifecycle coverage is 3.1-followup territory.
-	const coworkPids = await pgrepPids('cowork-vm-service\\.js');
-	const coworkPidsRemaining = Array.from(coworkPids);
+	// daemon only ships as the bwrap fallback, and pre-launch
+	// cleanup still reaps strays like the launcher does). Matched by
+	// the launcher's argv fingerprint, not a substring, so an editor
+	// open on cowork-vm-service.js is not a leak. The official
+	// cowork-linux-helper is deliberately NOT probed here: a
+	// pid-unscoped pgrep would false-positive on a concurrently
+	// running host instance. Pid-scoped helper lifecycle coverage is
+	// 3.1-followup territory.
+	const coworkPidsRemaining = await coworkFallbackDaemonPids();
 
 	// (b) SNI item is deregistered. The connection should be gone
 	// post-exit, so getConnectionPid against the formerly-owned
