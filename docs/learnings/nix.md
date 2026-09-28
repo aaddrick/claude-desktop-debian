@@ -183,6 +183,44 @@ dir is the correct value for any that did. This path is **unverified** —
 the nvidia box never took the Vulkan branch; it's wired defensively for
 the mesa configs that might.
 
+### Host-helper paths inside app.asar
+
+The official bundle spawns host helpers by absolute path:
+`/usr/bin/secret-tool` (Chrome import outside KDE), `/usr/bin/busctl`
+(KWallet preflight, GlobalShortcuts portal probe), `/bin/ps` and
+`/usr/bin/pgrep` (process diagnostics), `/bin/bash` (the agent
+toolset's persistent shell) and `/usr/bin/kwallet-query` (Chrome
+import on KDE). NixOS has only `/bin/sh` and `/usr/bin/env`, so each
+spawn fails with `ENOENT`. The FHS env provides `/usr/bin`, but it runs
+the app under bwrap, and every Claude Code session the app spawns
+inherits `NoNewPrivs` (no `sudo`) and an allowlisted `/etc`.
+
+`nix/claude-desktop.nix` rewrites the quoted literals to store paths in
+`postInstall` (`hostHelpers`); `kwallet-query` only with
+`withKwallet = true`, because it pulls in Qt. Things the rewrite has to
+get right:
+
+- The build fails if a literal is missing before the rewrite, or still
+  present in any quote style after it. The minifier has turned strings
+  into template literals before (1.26832.0), and `substituteInPlace`
+  only matches the double-quoted form.
+- The bundled V8 code cache (`compile-cache/*.jsc`) is dropped for every
+  patched chunk. V8 accepts a cache for an edit that keeps the source
+  length and then runs the unpatched code.
+- `asar pack --unpack` matches the glob against the crawled path, so the
+  glob is built from absolute paths under the extraction root. Pack
+  never clears a stale `app.asar.unpacked`, so it writes into a fresh
+  directory, and the result is compared with the official unpacked set
+  by content and by the new header.
+- `asar extract` writes unpacked files 0644; the official modes are
+  restored (`github-mcp-server` and the `.node` bindings are
+  executable).
+
+Electron's asar integrity check is macOS/Windows only, so the repacked
+archive loads on Linux despite `EnableEmbeddedAsarIntegrityValidation`.
+`OnlyLoadAppFromAsar` is set, so an unpacked `resources/app` directory
+is not an alternative to repacking.
+
 ### The SRI auto-bump contract
 
 Once the stub is replaced, `check-claude-version` expects this shape
