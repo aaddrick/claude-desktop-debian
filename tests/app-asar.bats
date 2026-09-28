@@ -226,3 +226,129 @@ _write_bundle() {
 	[[ $output == *'.desktop'* ]]
 	[[ $output == *'#779'* ]]
 }
+
+# =============================================================================
+# Retirement tripwire (_run_active_patches / _check_patch_effect)
+#
+# Every build starts from the pristine official bundle, so an active
+# patch that changes no bytes there has either been fixed upstream or
+# lost its anchor — both need a human before shipping. A patch's own
+# "applied" message is not evidence (org-plugins.sh prints "Added"
+# after a sed that may not have matched), so the orchestrator measures
+# the bundle before and after each patch instead.
+# =============================================================================
+
+# Stub patches, run with CWD at the fake resources dir. Each touches a
+# different kind of change so the digest is exercised on all of them.
+_patch_edits() {
+	printf 'patched\n' >> app.asar.contents/.vite/build/index.js
+}
+_patch_edits_chunk() {
+	sed -i 's/core/core+fix/' app.asar.contents/.vite/build/index.chunk-a.js
+}
+_patch_noop() { :; }
+# Changes bytes and THEN fails, so a loop that ignored the failure would
+# pass the effect check and run the next patch — a failing no-op would
+# be stopped by the tripwire instead, and hide that bug.
+_patch_fails() {
+	printf 'half\n' >> app.asar.contents/.vite/build/index.js
+	return 1
+}
+
+@test "retirement tripwire: a patch that changes the bundle passes" {
+	_make_build_tree 'require("./index.chunk-a.js")' 'index.chunk-a.js:core'
+	active_patches=(_patch_edits _patch_edits_chunk)
+	run _run_active_patches
+	[[ $status -eq 0 ]]
+	[[ $output != *'tripwire'* ]]
+}
+
+@test "retirement tripwire: a no-op patch fails the build, named" {
+	_make_build_tree 'require("./index.chunk-a.js")' 'index.chunk-a.js:core'
+	patch_retirement[_patch_noop]='bytes: test-report.md'
+	active_patches=(_patch_edits _patch_noop)
+	run _run_active_patches
+	[[ $status -eq 1 ]]
+	[[ $output == *'Retirement tripwire: _patch_noop changed nothing'* ]]
+	# The registry entry is what tells the triager what "fixed" means.
+	[[ $output == *'Retires by: bytes: test-report.md'* ]]
+	# Near-miss: the patch that did change bytes is not the one blamed.
+	[[ $output != *'_patch_edits changed nothing'* ]]
+}
+
+@test "retirement tripwire: a no-op with no registry entry still fails" {
+	_make_build_tree 'x'
+	active_patches=(_patch_noop)
+	run _run_active_patches
+	[[ $status -eq 1 ]]
+	[[ $output == *'no patch_retirement entry'* ]]
+}
+
+@test "retirement tripwire: a failing patch stops the loop" {
+	_make_build_tree 'x'
+	active_patches=(_patch_fails _patch_edits)
+	run _run_active_patches
+	[[ $status -eq 1 ]]
+	# _patch_edits never ran: only _patch_fails's line was appended.
+	[[ $(< app.asar.contents/.vite/build/index.js) == $'x\nhalf' ]]
+}
+
+@test "retirement tripwire: re-run accepts a patch that changes nothing" {
+	_make_build_tree 'x'
+	active_patches=(_patch_noop)
+	PATCH_STAGE_RERUN=1 run _run_active_patches
+	[[ $status -eq 0 ]]
+}
+
+@test "retirement tripwire: re-run rejects a patch that changes bytes" {
+	# An idempotency guard that misses its own output re-applies on the
+	# second pass; name the patch rather than leave a bare hash diff.
+	_make_build_tree 'x'
+	active_patches=(_patch_edits)
+	PATCH_STAGE_RERUN=1 run _run_active_patches
+	[[ $status -eq 1 ]]
+	[[ $output == *'Idempotency: _patch_edits changed'* ]]
+}
+
+@test "retirement tripwire: a missing build tree fails, not passes" {
+	# Without the tree the digest is empty on both sides and would
+	# compare equal — a false no-op on pass 1, a false pass on re-run.
+	cd "$BATS_TEST_TMPDIR" || return 1
+	active_patches=(_patch_noop)
+	PATCH_STAGE_RERUN=1 run _run_active_patches
+	[[ $status -eq 1 ]]
+}
+
+@test "retirement tripwire: an empty build tree fails, not passes" {
+	# Near-miss of the missing-tree case: the directory exists but holds
+	# no files, so xargs would still run sha256sum once on empty input
+	# and both digests would be the same constant.
+	mkdir -p "$BATS_TEST_TMPDIR/app.asar.contents/.vite/build"
+	cd "$BATS_TEST_TMPDIR" || return 1
+	active_patches=(_patch_noop)
+	PATCH_STAGE_RERUN=1 run _run_active_patches
+	[[ $status -eq 1 ]]
+}
+
+@test "retirement tripwire: every active patch has a registry entry" {
+	# Sourcing app-asar.sh resets active_patches to the shipped list.
+	local patch_fn missing=()
+	for patch_fn in "${active_patches[@]}"; do
+		[[ -n ${patch_retirement[$patch_fn]:-} ]] || missing+=("$patch_fn")
+	done
+	(( ${#active_patches[@]} > 0 ))
+	(( ${#missing[@]} == 0 )) || {
+		printf 'no patch_retirement entry: %s\n' "${missing[@]}" >&2
+		return 1
+	}
+}
+
+@test "retirement tripwire: registry rows name a known retirement kind" {
+	local patch_fn row
+	for patch_fn in "${!patch_retirement[@]}"; do
+		row=${patch_retirement[$patch_fn]}
+		[[ $row =~ ^(bytes|behavior|never):\  ]] && continue
+		printf 'bad kind for %s: %s\n' "$patch_fn" "$row" >&2
+		return 1
+	done
+}

@@ -18,7 +18,9 @@
  *   3. host  — fallback, no isolation
  *
  * Protocol:
- *   Transport: Unix domain socket at $XDG_RUNTIME_DIR/cowork-vm-service.sock
+ *   Transport: Unix domain socket at the path the client passes as
+ *              `-socket <path>` ($XDG_RUNTIME_DIR/claude-cowork-vm.sock);
+ *              $XDG_RUNTIME_DIR/cowork-vm-service.sock without the flag
  *   Framing:   4-byte big-endian length prefix + JSON payload
  *   Request:   { method: "methodName", params: {...} }
  *   Response:  { success: true, result: {...} } or { success: false, error: "..." }

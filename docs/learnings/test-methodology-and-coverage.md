@@ -103,7 +103,7 @@ Two ways to intercept an external command, and the choice is not stylistic:
 | **Function stub** (`pgrep() { return 1; }`) | the call runs **in the test shell** | bash function lookup beats `PATH`; `export -f` is a no-op here since it's the same shell |
 | **PATH shim** (a script in `$TEST_TMP/bin`, prepended to `PATH`) | the call runs in a **subshell / command substitution** | `$(loginctl …)` forks a child where an un-exported function never reaches |
 
-[#534](https://github.com/aaddrick/claude-desktop-debian/pull/534) fixed a test that used real `pgrep`: on any box running Claude Desktop, `cleanup_stale_cowork_socket` saw the developer's live `cowork-vm-service.js`, took its correct early-return, and skipped the `rm -f` the test expected — so it failed on maintainers' machines and passed in CI. The fix is a function stub. Contrast [`launcher-xrdp-detection.bats`](../../tests/launcher-xrdp-detection.bats), which needs a PATH shim because `loginctl` is called via `$(…)`.
+[#534](https://github.com/aaddrick/claude-desktop-debian/pull/534) fixed a test that used real `pgrep`: on any box running Claude Desktop, `cleanup_stale_cowork_socket` (deleted since, in [#888](https://github.com/aaddrick/claude-desktop-debian/issues/888)) saw the developer's live `cowork-vm-service.js`, took its correct early-return, and skipped the `rm -f` the test expected — so it failed on maintainers' machines and passed in CI. The fix was a function stub. Contrast [`launcher-xrdp-detection.bats`](../../tests/launcher-xrdp-detection.bats), which needs a PATH shim because `loginctl` is called via `$(…)`.
 
 ### `pkill` sweeps must match the real exec path — and only in CI
 

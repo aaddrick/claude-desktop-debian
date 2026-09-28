@@ -46,6 +46,7 @@ setup() {
 	unset DISPLAY
 	unset WAYLAND_DISPLAY
 	unset CLAUDE_USE_WAYLAND
+	unset CLAUDE_FORCE_SANDBOX
 	unset NIRI_SOCKET
 	unset XDG_CURRENT_DESKTOP
 	unset XDG_SESSION_TYPE
@@ -751,36 +752,6 @@ teardown() {
 }
 
 # =============================================================================
-# cleanup_stale_cowork_socket
-# =============================================================================
-
-@test "cleanup_stale_cowork_socket: no socket - returns 0" {
-	run cleanup_stale_cowork_socket
-	[[ $status -eq 0 ]]
-}
-
-@test "cleanup_stale_cowork_socket: removes stale socket file" {
-	# Create a socket-like file (not a real socket, but -S check needs a socket)
-	# Use python to create a real unix socket for the test
-	local sock="$XDG_RUNTIME_DIR/cowork-vm-service.sock"
-	python3 -c "
-import socket, sys
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.bind(sys.argv[1])
-s.close()
-" "$sock" 2>/dev/null || skip "Cannot create test unix socket"
-
-	# Stub pgrep so the test is isolated from host process state:
-	# a real cowork-vm-service daemon on the developer machine would
-	# trip the function's "daemon alive, leave socket alone" branch.
-	pgrep() { return 1; }
-
-	setup_logging
-	cleanup_stale_cowork_socket
-	[[ ! -S "$sock" ]]
-}
-
-# =============================================================================
 # cleanup_stale_vm_bundle_images (#855)
 # =============================================================================
 
@@ -855,12 +826,116 @@ s.close()
 }
 
 # =============================================================================
+# _cowork_fallback_daemon_pids (#882)
+#
+# The reaper SIGKILLs whatever this returns, so it is pinned against REAL
+# processes: the argv it checks comes from /proc, which a stubbed pgrep
+# returning a made-up PID has no entry for. pgrep is scoped to this
+# test's stand-ins (_scope_pgrep_to_stand_ins), so a developer's live
+# daemon is never read; bystanders stay inside that scope, so it is the
+# argv check that drops them.
+# =============================================================================
+
+@test "_cowork_fallback_daemon_pids: matches the spawn-swap-B daemon argv" {
+	_scope_pgrep_to_stand_ins
+	_spawn_cowork_daemon_stand_in
+	run _cowork_fallback_daemon_pids
+	[[ $status -eq 0 ]]
+	[[ $output == "$cowork_pid" ]]
+}
+
+# One test per bystander shape: each is the only thing standing between
+# a dropped argv check and a kill, so each needs its own red.
+@test "_cowork_fallback_daemon_pids: skips an editor on the script (argv[2] not -socket)" {
+	_scope_pgrep_to_stand_ins
+	_spawn_cowork_bystander_stand_in editor
+	# Precondition: the scoped pgrep does see it, so only the argv
+	# check can be what drops it.
+	run pgrep -u "$(id -u)" -f 'cowork-vm-service\.js'
+	[[ $output == "${bystander_pids[0]}" ]]
+	run _cowork_fallback_daemon_pids
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_cowork_fallback_daemon_pids: skips a hand-run relative-path daemon (argv[1] not absolute)" {
+	_scope_pgrep_to_stand_ins
+	_spawn_cowork_bystander_stand_in relative
+	run pgrep -u "$(id -u)" -f 'cowork-vm-service\.js'
+	[[ $output == "${bystander_pids[0]}" ]]
+	run _cowork_fallback_daemon_pids
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_cowork_fallback_daemon_pids: skips a command line packed into argv[0]" {
+	_scope_pgrep_to_stand_ins
+	_spawn_cowork_bystander_stand_in packed
+	run pgrep -u "$(id -u)" -f 'cowork-vm-service\.js'
+	[[ $output == "${bystander_pids[0]}" ]]
+	run _cowork_fallback_daemon_pids
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_cowork_fallback_daemon_pids: candidates are scoped to the current user" {
+	# Another user's daemon can't be spawned without root, so pin the
+	# flag itself by recording pgrep's argv.
+	pgrep() { printf '%s\n' "$*" > "$TEST_TMP/pgrep.args"; return 1; }
+	_cowork_fallback_daemon_pids
+	[[ $(< "$TEST_TMP/pgrep.args") == "-u $(id -u) -f "* ]]
+}
+
+# The launcher's own bash (and its parent) is never daemon-shaped in
+# practice, so these give it that shape: a script started with the
+# daemon's argv runs the predicate and hands it the one PID under test
+# as the only candidate. Without the skip the argv check would accept it.
+_run_predicate_as_daemon() {
+	local script="$1"
+	# shellcheck disable=SC2016  # inner shell expands $@
+	run env LC="$TEST_TMP/launcher-common.sh" \
+		bash -c 'exec -a node bash "$@"' _ "$script" -socket sock
+}
+
+@test "_cowork_fallback_daemon_pids: never returns the calling shell (\$\$)" {
+	local dir="$TEST_TMP/self"
+	mkdir -p "$dir"
+	cat > "$dir/cowork-vm-service.js" <<-'EOF'
+		source "$LC"
+		pgrep() { printf '%s\n' "$$"; }
+		_cowork_fallback_daemon_pids
+	EOF
+	_run_predicate_as_daemon "$dir/cowork-vm-service.js"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_cowork_fallback_daemon_pids: never returns the caller's parent (\$PPID)" {
+	local dir="$TEST_TMP/parent"
+	mkdir -p "$dir"
+	cat > "$dir/child.sh" <<-'EOF'
+		source "$LC"
+		pgrep() { printf '%s\n' "$PPID"; }
+		_cowork_fallback_daemon_pids
+	EOF
+	# The daemon-shaped parent waits for the child (`; exit $?` rules
+	# out any exec-the-last-command shortcut), so the child's $PPID is
+	# the daemon-shaped process.
+	printf 'bash %q; exit $?\n' "$dir/child.sh" \
+		> "$dir/cowork-vm-service.js"
+	_run_predicate_as_daemon "$dir/cowork-vm-service.js"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+# =============================================================================
 # cleanup_orphaned_cowork_daemon
 #
 # Reaps a cowork-vm-service daemon left behind by a crashed UI, but only
-# when no live Claude UI is running. pgrep/kill/sleep are stubbed; the
-# "live UI" case uses a real background process so the /proc cmdline and
-# status reads resolve naturally without faking /proc.
+# when no live Claude UI is running. The daemon and bystanders are real
+# processes (see _cowork_fallback_daemon_pids above); the "live UI" case
+# also uses a real background process so the /proc cmdline and status
+# reads resolve naturally without faking /proc.
 # =============================================================================
 
 @test "cleanup_orphaned_cowork_daemon: no daemon running — no action, no log" {
@@ -909,17 +984,19 @@ s.close()
 		_i=$((_i + 1))
 	done
 
-	# Match on "$*", not "$2": the UI scan passes -u <uid> and a `--`
+	# A real daemon stand-in, so the candidate survives the argv check
+	# and only the live-UI short-circuit can be what spares it. Match
+	# on "$*", not "$2": the UI scan passes -u <uid> and a `--`
 	# end-of-options separator before the pattern, so the pattern is
 	# not at a fixed argument position.
+	_spawn_cowork_daemon_stand_in
 	pgrep() {
 		if [[ $* == *cowork-vm-service* ]]; then
-			echo 4242
+			command pgrep "$@" | grep -x -- "$cowork_pid"
 		elif [[ $* == *--class=com.anthropic.Claude* ]]; then
 			echo "$ui_pid"
 		fi
 	}
-	kill() { echo "kill $*" >> "$TEST_TMP/kills"; }
 
 	setup_logging
 	cleanup_orphaned_cowork_daemon
@@ -927,70 +1004,135 @@ s.close()
 	builtin kill "$ui_pid" 2>/dev/null
 
 	[[ $rc -eq 0 ]]
-	# Daemon kill must never have been attempted.
-	[[ ! -f "$TEST_TMP/kills" ]]
+	# The daemon must still be alive, and no reap logged.
+	kill -0 "$cowork_pid"
+	[[ ! -f $log_file ]]
 }
 
-@test "cleanup_orphaned_cowork_daemon: orphan exits on SIGTERM — no SIGKILL" {
-	# Daemon present, no live UI. The daemon disappears once SIGTERM is
-	# sent, so the escalation to SIGKILL must not fire.
-	local term_sent="$TEST_TMP/term_sent"
-	pgrep() {
-		if [[ $* == *cowork-vm-service* ]]; then
-			[[ -f $term_sent ]] && return 1
-			echo 4242
-		else
-			# UI scan (--class fingerprint): no live UI.
-			return 1
-		fi
-	}
-	kill() {
-		echo "kill $*" >> "$TEST_TMP/kills"
-		# A plain SIGTERM ($1 is the PID, not -KILL) reaps the daemon.
-		[[ $1 == -KILL ]] || : > "$term_sent"
-	}
-	sleep() { :; }
+# End-to-end reap legs (#369): a REAL fallback daemon reaped by REAL
+# kill/sleep (pgrep is scoped to the stand-ins — see
+# _scope_pgrep_to_stand_ins — but the signals it drives are real). The
+# former stubbed exit/escalate cases fed pgrep a made-up PID, which the
+# argv fingerprint (#882) now rightly drops for lack of a /proc entry;
+# these legs cover the same ground against real processes. A regression
+# that still logs a plausible kill but never reaps the real process — a
+# wrong pid resolution, a poll that never fires, the SIGKILL escalation
+# dropped — reds here. On this box the reaper SIGTERM-reaps a live
+# daemon in well under the 2s grace window.
+@test "cleanup_orphaned_cowork_daemon: real orphan is reaped on quit" {
+	# kill/sleep are the REAL ones, and only the "is a UI alive?"
+	# predicate is stubbed false, to model "the app has quit" without
+	# depending on whether a real Claude Desktop happens to be running
+	# on the host (its --class scan would otherwise see it and bail —
+	# the flake this box actually hit). The kill path under test stays
+	# real, so a `kill "$pid"` -> `kill -0 "$pid"` slip still reds here.
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
 
 	setup_logging
-	# Via `run` so the function's internal `((_wait++))` (which returns 1
-	# when _wait starts at 0) doesn't trip bats' errexit. Production has
-	# no set -e, so this is a harness concern, not a code defect.
+	# `run` so _kill_pids_escalating's `((waited++))` (returns 1 at
+	# waited=0) does not trip bats errexit; the real kills still fire
+	# from the subshell. Production has no set -e.
 	run cleanup_orphaned_cowork_daemon
 
-	grep -q 'Killed orphaned cowork-vm-service daemon (PIDs: 4242)' \
+	# The real process must be gone. Poll briefly: signal delivery and
+	# reaping are near-instant but can lag under a loaded runner.
+	local _i=0
+	while kill -0 "$cowork_pid" 2>/dev/null; do
+		((_i >= 30)) && break
+		sleep 0.1
+		_i=$((_i + 1))
+	done
+	run kill -0 "$cowork_pid"
+	[[ $status -ne 0 ]]
+	grep -qE \
+		"Killed orphaned cowork-vm-service daemon .*\\b$cowork_pid\\b" \
 		"$log_file"
-	# Negative assertions via `run` + status: a bare `! grep` that isn't
-	# the last command does not fail a bats test (SC2314), so it would be
-	# a hollow check.
+	# SIGTERM sufficed — escalation must not have fired.
 	run grep -q 'SIGKILL' "$log_file"
 	[[ $status -ne 0 ]]
-	grep -q '^kill 4242$' "$TEST_TMP/kills"
-	run grep -qF -- '-KILL' "$TEST_TMP/kills"
-	[[ $status -ne 0 ]]
 }
 
-@test "cleanup_orphaned_cowork_daemon: orphan survives SIGTERM — escalates to SIGKILL" {
-	# Daemon never dies, so after the SIGTERM grace window the function
-	# escalates to SIGKILL and logs the SIGKILL variant.
-	pgrep() {
-		if [[ $* == *cowork-vm-service* ]]; then
-			echo 4242
-		else
-			# UI scan (--class fingerprint): no live UI.
-			return 1
-		fi
-	}
-	kill() { echo "kill $*" >> "$TEST_TMP/kills"; }
-	sleep() { :; }
+@test "cleanup_orphaned_cowork_daemon: real stuck orphan escalates to SIGKILL" {
+	# The daemon ignores SIGTERM (trap "" TERM), so the grace window
+	# elapses and the reaper must escalate to SIGKILL to reap it. A real
+	# SIGKILL cannot be trapped, so surviving here means the escalation
+	# never actually fired. UI predicate stubbed false, and pgrep scoped
+	# to the stand-in, for the same host-isolation reasons as above.
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_daemon_stand_in trap
+	_scope_pgrep_to_stand_ins
 
 	setup_logging
-	# `run` for the same errexit reason as the SIGTERM test above.
+	# `run` for the same errexit reason as above.
 	run cleanup_orphaned_cowork_daemon
 
-	grep -q 'Killed orphaned cowork-vm-service daemon (SIGKILL, PIDs: 4242)' \
+	local _i=0
+	while kill -0 "$cowork_pid" 2>/dev/null; do
+		((_i >= 30)) && break
+		sleep 0.1
+		_i=$((_i + 1))
+	done
+	run kill -0 "$cowork_pid"
+	[[ $status -ne 0 ]]
+	grep -qE \
+		"Killed orphaned cowork-vm-service daemon \\(SIGKILL, PIDs: .*\\b$cowork_pid\\b" \
 		"$log_file"
-	grep -q '^kill 4242$' "$TEST_TMP/kills"
-	grep -q '^kill -KILL 4242$' "$TEST_TMP/kills"
+}
+
+@test "cleanup_orphaned_cowork_daemon: reaps the daemon, spares processes naming the script (#882)" {
+	# The destructive case: on a fresh launch no UI is alive, so the
+	# argv fingerprint alone decides who gets SIGTERM then SIGKILL.
+	# Every bystander is inside the scoped pgrep, so a substring match
+	# would reap them all — as the pre-#882 reaper did.
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_daemon_stand_in
+	_spawn_cowork_bystander_stand_in editor
+	_spawn_cowork_bystander_stand_in relative
+	_spawn_cowork_bystander_stand_in packed
+	_scope_pgrep_to_stand_ins
+
+	setup_logging
+	# `run` for the same errexit reason as above.
+	run cleanup_orphaned_cowork_daemon
+
+	local _i=0
+	while kill -0 "$cowork_pid" 2>/dev/null; do
+		((_i >= 30)) && break
+		sleep 0.1
+		_i=$((_i + 1))
+	done
+	run kill -0 "$cowork_pid"
+	[[ $status -ne 0 ]]
+	local pid
+	for pid in "${bystander_pids[@]}"; do
+		kill -0 "$pid" || return 1
+	done
+	# The log names the daemon, and only the daemon.
+	grep -qx \
+		"Killed orphaned cowork-vm-service daemon (PIDs: $cowork_pid)" \
+		"$log_file"
+}
+
+@test "cleanup_orphaned_cowork_daemon: several orphans log on one line, space-separated" {
+	# pgrep prints one PID per line; interpolating that list straight
+	# into the message split the log entry across lines.
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_daemon_stand_in
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+
+	setup_logging
+	# `run` for the same errexit reason as above.
+	run cleanup_orphaned_cowork_daemon
+
+	# pgrep lists by PID, which is spawn order unless PIDs wrapped, so
+	# accept either order rather than flake on a wrap.
+	local a="${cowork_pids[0]}" b="${cowork_pids[1]}"
+	grep -qxE \
+		"Killed orphaned cowork-vm-service daemon \\(PIDs: ($a $b|$b $a)\\)" \
+		"$log_file"
 }
 
 # =============================================================================
@@ -1752,6 +1894,52 @@ _write_launcher_cfg() {
 	_write_launcher_cfg 'LD_PRELOAD=/tmp/evil.so'
 	load_launcher_config
 	[[ -z ${LD_PRELOAD:-} ]]
+}
+
+@test "load_launcher_config: sandbox override reaches Wayland launch args" {
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	setup_logging
+	is_wayland=true
+	# RPM uses the deb argument builder. Exercise both Wayland backends.
+	local package_type backend
+	for package_type in deb nix; do
+		for backend in true false; do
+			unset CLAUDE_FORCE_SANDBOX
+			load_launcher_config
+			use_x11_on_wayland="$backend"
+			build_electron_args "$package_type"
+			run has_electron_arg '--no-sandbox'
+			[[ $status -eq 1 ]]
+		done
+	done
+}
+
+@test "load_launcher_config: sandbox environment overrides config" {
+	setup_logging
+	is_wayland=true
+	use_x11_on_wayland=false
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	export CLAUDE_FORCE_SANDBOX=0
+	load_launcher_config
+	build_electron_args deb
+	has_electron_arg '--no-sandbox'
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=0'
+	export CLAUDE_FORCE_SANDBOX=1
+	load_launcher_config
+	build_electron_args deb
+	run has_electron_arg '--no-sandbox'
+	[[ $status -eq 1 ]]
+}
+
+@test "load_launcher_config: sandbox override preserves AppImage args" {
+	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	setup_logging
+	load_launcher_config
+	[[ $CLAUDE_FORCE_SANDBOX == 1 ]]
+	is_wayland=true
+	use_x11_on_wayland=false
+	build_electron_args appimage
+	has_electron_arg '--no-sandbox'
 }
 
 @test "load_launcher_config: environment wins over the config file" {

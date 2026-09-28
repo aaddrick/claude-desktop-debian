@@ -789,6 +789,38 @@ _doctor_check_singleton_lock() {
 	fi
 }
 
+# Report an orphaned cowork-vm-service daemon.
+#
+# cowork-vm-service.js is the bwrap fallback daemon (opt-in
+# COWORK_VM_BACKEND=bwrap, patch_cowork_bwrap); it was also OUR 2.x
+# VM daemon. Either way, a daemon whose parent UI is gone is orphaned
+# (holding a stale socket), and the launcher reaps it on the next
+# start. When the UI is alive the daemon is healthy (expected on the
+# flagged path).
+#
+# Detection is the reaper's own predicate,
+# _cowork_fallback_daemon_pids, and live-UI detection is
+# _claude_desktop_ui_is_alive, both in launcher-common.sh: the doctor
+# reports exactly what cleanup_orphaned_cowork_daemon would kill, and
+# a process that only names the script is neither (#882). Guarded like
+# _doctor_check_tray_icon: a standalone `source doctor.sh` has no
+# launcher-common.sh in scope and stays silent.
+_doctor_check_cowork_daemon() {
+	declare -F _cowork_fallback_daemon_pids > /dev/null || return 0
+
+	local -a pids
+	mapfile -t pids < <(_cowork_fallback_daemon_pids)
+	[[ ${#pids[@]} -gt 0 ]] || return 0
+
+	if _claude_desktop_ui_is_alive; then
+		_pass 'Cowork bwrap daemon: running (parent alive)'
+		return 0
+	fi
+	_warn 'Cowork bwrap daemon: orphaned' "(PIDs: ${pids[*]})"
+	_info 'Fix: Restart Claude Desktop' \
+		'(daemon will be cleaned up automatically)'
+}
+
 # Report the installed claude-desktop version from the package manager
 # that actually owns the install (#711). On dual-DB hosts (e.g. a
 # Fedora box with dpkg installed for deb work) a stale dpkg record
@@ -1814,28 +1846,7 @@ print(len(servers))
 	_doctor_check_filename_limit
 
 	# -- Orphaned cowork-vm-service daemon --
-	# cowork-vm-service.js is the bwrap fallback daemon (opt-in
-	# COWORK_VM_BACKEND=bwrap, patch_cowork_bwrap); it was also OUR 2.x
-	# VM daemon. Either way, a daemon whose parent UI is gone is
-	# orphaned — holding a stale socket — so we reap it. When the UI is
-	# alive the daemon is healthy (expected on the flagged path). Live-UI
-	# detection matches cleanup_orphaned_cowork_daemon:
-	# _claude_desktop_ui_is_alive in launcher-common.sh fingerprints the
-	# --class=$WM_CLASS flag (since #700 the launchers no longer pass
-	# app.asar in argv), excluding Chromium helpers (--type=...), cowork
-	# helpers, our own launcher bash, and stopped/zombie processes.
-	local _cowork_pids
-	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) || true
-	if [[ -n $_cowork_pids ]]; then
-		if ! _claude_desktop_ui_is_alive; then
-			_warn "Cowork bwrap daemon: orphaned" \
-				"(PIDs: $_cowork_pids)"
-			_info 'Fix: Restart Claude Desktop' \
-				'(daemon will be cleaned up automatically)'
-		else
-			_pass 'Cowork bwrap daemon: running (parent alive)'
-		fi
-	fi
+	_doctor_check_cowork_daemon
 
 	# -- Recent crashes --
 	# Surfaces the GPU process FATAL pattern (#583) before users

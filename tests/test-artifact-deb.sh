@@ -96,6 +96,17 @@ if dpkg-deb -e "$deb_file" "$control_dir" 2>/dev/null; then
 	else
 		fail 'postinst fails sh -n'
 	fi
+
+	# The apport blacklist must be a registered conffile (#582), or an
+	# admin edit is clobbered on upgrade. dpkg-deb --build only honours
+	# an explicit DEBIAN/conffiles, so this proves the entry shipped.
+	if [[ -f "$control_dir/conffiles" ]] && grep -qx \
+			'/etc/apport/blacklist.d/claude-desktop-unofficial' \
+			"$control_dir/conffiles"; then
+		pass 'apport blacklist is a registered conffile (#582)'
+	else
+		fail 'apport blacklist missing from DEBIAN/conffiles (#582)'
+	fi
 else
 	fail 'dpkg-deb -e could not extract the control archive'
 fi
@@ -140,6 +151,17 @@ assert_file_exists '/usr/lib/claude-desktop-unofficial/launcher-common.sh'
 electron_path='/usr/lib/claude-desktop-unofficial/claude-desktop'
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
+
+# apport crash blacklist (#582). The installed file must list both the
+# Electron ELF and the crashpad handler by their absolute installed
+# paths, or apport still captures multi-megabyte cores into the journal.
+apport_blacklist='/etc/apport/blacklist.d/claude-desktop-unofficial'
+assert_file_exists "$apport_blacklist"
+assert_contains "$apport_blacklist" "$electron_path" \
+	'apport blacklist lists the Electron ELF (#582)'
+assert_contains "$apport_blacklist" \
+	'/usr/lib/claude-desktop-unofficial/chrome_crashpad_handler' \
+	'apport blacklist lists the crashpad handler (#582)'
 
 # chrome-sandbox
 assert_file_exists \
