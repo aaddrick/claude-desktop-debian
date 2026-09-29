@@ -228,6 +228,39 @@ assert(validateMountPath('/cowork-bats-895-not-yet').valid,
 	[[ "$status" -eq 0 ]]
 }
 
+@test "validateMountPath: follows a dangling symlink to where it will land (#895)" {
+	# realpathSync() also fails on a symlink whose target doesn't exist
+	# yet, and the parent fallback then kept the link's own name, so
+	# ~/dangle -> outside/newdir passed the \$HOME check and would bind
+	# outside HOME once the target is created.
+	mkdir -p "$TEST_TMP/home" "$TEST_TMP/outside"
+	ln -s "$TEST_TMP/outside/newdir" "$TEST_TMP/home/dangle"
+	ln -s "$TEST_TMP/outside/newdir" "$TEST_TMP/home/dangledir"
+	ln -s "$TEST_TMP/home/inside-new" "$TEST_TMP/home/dangle-in-abs"
+	ln -s inside-new "$TEST_TMP/home/dangle-in-rel"
+	ln -s loop-b "$TEST_TMP/home/loop-a"
+	ln -s loop-a "$TEST_TMP/home/loop-b"
+	export HOME="$TEST_TMP/home"
+	run node -e "${NODE_PREAMBLE}
+const h = os.homedir();
+const rw = (p) => validateMountPath(p, { readWrite: true }).valid;
+assert(!rw(h + '/dangle'), 'dangling link out of HOME');
+assert(!rw(h + '/dangledir/sub'), 'missing path under dangling link out of HOME');
+assert(rw(h + '/dangle-in-abs'), 'dangling absolute link inside HOME');
+assert(rw(h + '/dangle-in-rel'), 'dangling relative link inside HOME');
+// A symlink loop must stop at the kernel's 40-hop limit. Counting the
+// reads is the only way to see it: an unbounded walk ends in a stack
+// overflow that the fallback's own catch swallows, so it still returns.
+const readlinkSync = fs.readlinkSync;
+let reads = 0;
+fs.readlinkSync = (...a) => { reads++; return readlinkSync(...a); };
+validateMountPath(h + '/loop-a', { readWrite: true });
+fs.readlinkSync = readlinkSync;
+assert(reads > 0 && reads <= 41, 'loop followed ' + reads + ' links');
+"
+	[[ "$status" -eq 0 ]]
+}
+
 # =============================================================================
 # loadBwrapMountsConfig
 # =============================================================================

@@ -711,13 +711,24 @@ const FORBIDDEN_MOUNT_PATHS = new Set(['/', '/proc', '/dev', '/sys']);
 // path that does not exist yet resolves through its longest existing
 // prefix, so a symlinked parent can't hide where the path lands once it
 // is created (#895).
-function resolveExistingPrefix(p) {
+function resolveExistingPrefix(p, depth = 0) {
     try {
         return fs.realpathSync(p);
     } catch (_) {
+        // A dangling symlink exists but realpath can't follow it; the
+        // kernel will, once its target appears, so follow the link text.
+        // 40 is the kernel's own hop limit, so a loop still terminates.
+        if (depth < 40) {
+            try {
+                const target = fs.readlinkSync(p);
+                return resolveExistingPrefix(
+                    path.resolve(path.dirname(p), target), depth + 1);
+            } catch (_) { /* not a symlink */ }
+        }
         const parent = path.dirname(p);
         if (parent === p) return p;
-        return path.join(resolveExistingPrefix(parent), path.basename(p));
+        return path.join(resolveExistingPrefix(parent, depth),
+            path.basename(p));
     }
 }
 
