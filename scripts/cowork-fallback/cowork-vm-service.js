@@ -712,17 +712,12 @@ const FORBIDDEN_MOUNT_PATHS = new Set(['/', '/proc', '/dev', '/sys']);
 // prefix, so a symlinked parent can't hide where the path lands once it
 // is created (#895).
 function resolveExistingPrefix(p) {
-    const tail = [];
-    let head = p;
-    for (;;) {
-        try {
-            return path.join(fs.realpathSync(head), ...tail);
-        } catch (_) {
-            const parent = path.dirname(head);
-            if (parent === head) return p;
-            tail.unshift(path.basename(head));
-            head = parent;
-        }
+    try {
+        return fs.realpathSync(p);
+    } catch (_) {
+        const parent = path.dirname(p);
+        if (parent === p) return p;
+        return path.join(resolveExistingPrefix(parent), path.basename(p));
     }
 }
 
