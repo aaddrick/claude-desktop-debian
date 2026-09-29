@@ -33,6 +33,7 @@
   autoPatchelfHook,
   addDriverRunpath,
   makeWrapper,
+  asar,
   # DT_NEEDED of the main Electron ELF (objdump -p on 1.18286.0)
   alsa-lib,
   at-spi2-atk,
@@ -76,14 +77,70 @@
   pciutils,
   pipewire,
   wayland,
+  # Absolute-path helpers the app spawns; see hostHelpers below.
+  bash,
+  procps,
+  kdePackages,
+  # Chrome import on KDE reads the key with kwallet-query; pulls in Qt.
+  withKwallet ? false,
 }:
 
 let
   # Bumped automatically by .github/workflows/check-claude-version.yml;
   # mirrors OFFICIAL_DEB_VERSION in scripts/setup/official-deb.sh.
-  version = "2.7032.0";
+  version = "2.9939.4";
 
   poolBase = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop";
+
+  # The official bundle spawns these host helpers by absolute path. NixOS
+  # has no /usr/bin (only /usr/bin/env) and no /bin/bash, so each spawn
+  # fails with ENOENT: Chrome import reports "Couldn't read Google
+  # Chrome's key from your desktop keyring", and the agent toolset's
+  # persistent shell never starts. postInstall rewrites the quoted JS
+  # literals to store paths. The FHS env would also satisfy them, but it
+  # runs the app under bwrap (NoNewPrivs, allowlisted /etc), which every
+  # Claude Code session spawned by the app inherits: sudo refuses to run
+  # and /etc/ssh, /etc/gitconfig etc. are missing.
+  #
+  # /usr/bin/kwallet-query is only needed for Chrome import on KDE and
+  # pulls in Qt, so it is rewritten only with withKwallet = true. Not
+  # rewritten: /usr/bin/update-desktop-database (only reached after reading
+  # /usr/share/applications/com.anthropic.Claude.desktop, absent on NixOS).
+  hostHelpers = {
+    "/usr/bin/secret-tool" = "${libsecret}/bin/secret-tool";
+    "/usr/bin/busctl" = "${systemd}/bin/busctl";
+    "/bin/ps" = "${procps}/bin/ps";
+    "/usr/bin/pgrep" = "${procps}/bin/pgrep";
+    "/bin/bash" = "${bash}/bin/bash";
+  }
+  // lib.optionalAttrs withKwallet {
+    "/usr/bin/kwallet-query" = "${kdePackages.kwallet}/bin/kwallet-query";
+  };
+
+  rewriteHelper = literal: target: ''
+    files=$(grep -rlF --include='*.js' '"${literal}"' "$work/app" || true)
+    if [[ -z $files ]]; then
+      echo "claude-desktop: literal \"${literal}\" not found in app.asar" >&2
+      exit 1
+    fi
+    for f in $files; do
+      substituteInPlace "$f" --replace-fail '"${literal}"' '"${target}"'
+      patched+=("$f")
+    done
+    if grep -rqE "[\"'\`]${literal}[\"'\`]" "$work/app"; then
+      echo "claude-desktop: literal ${literal} still present in app.asar" >&2
+      exit 1
+    fi
+  '';
+
+  # Same opt-in passthrough as scripts/launcher-common.sh: pass
+  # --password-store only when CLAUDE_PASSWORD_STORE is set, otherwise
+  # leave Chromium's own choice alone (D-002).
+  passwordStorePassthrough = ''
+    if [[ -n ''${CLAUDE_PASSWORD_STORE-} ]]; then
+      set -- "--password-store=$CLAUDE_PASSWORD_STORE" "$@"
+    fi
+  '';
 
   # One url + one hash per arch block — the auto-bump range-seds from
   # each arch name to the next closing brace, so nothing else in this
@@ -92,11 +149,11 @@ let
   srcs = {
     x86_64-linux = {
       url = "${poolBase}/claude-desktop_${version}_amd64.deb";
-      hash = "sha256-Hn9FBLylsvay08QSPRRdcnZH538u4tBGhQcR5h59exE=";
+      hash = "sha256-PP3bI78pEeBeJ7TtOFa455XflGQ7LDW1nesxfPmVvKA=";
     };
     aarch64-linux = {
       url = "${poolBase}/claude-desktop_${version}_arm64.deb";
-      hash = "sha256-bcp5+kyLZSZ3gLVGDGJxWYUuLfoq0BHQOgSI978ibsM=";
+      hash = "sha256-EI7XnqFksIxPoLtDh97vR3mVez8Pmy2YmONZ82Pr8bw=";
     };
   };
 in
@@ -113,6 +170,7 @@ stdenv.mkDerivation {
     dpkg
     autoPatchelfHook
     makeWrapper
+    asar
   ];
 
   buildInputs = [
@@ -207,9 +265,59 @@ stdenv.mkDerivation {
     makeWrapper $out/lib/claude-desktop/claude-desktop \
       $out/bin/claude-desktop \
       --prefix VK_ADD_DRIVER_FILES : \
-        "${addDriverRunpath.driverLink}/share/vulkan/icd.d"
+        "${addDriverRunpath.driverLink}/share/vulkan/icd.d" \
+      --run ${lib.escapeShellArg passwordStorePassthrough}
 
     runHook postInstall
+  '';
+
+  # Rewrite hostHelpers inside app.asar and repack it. Runs before
+  # fixup, so autoPatchelf still sees the final tree.
+  #
+  #   - A missing literal fails the build rather than silently shipping
+  #     a stale path after an upstream re-minification, and so does a
+  #     literal left in any quote style after the rewrite (the minifier
+  #     has turned strings into template literals before).
+  #   - The bundled V8 code cache (compile-cache/*.jsc) is dropped for
+  #     every patched file: V8 accepts a cache for an edit that keeps the
+  #     source length and would run the unpatched code.
+  #   - asar pack matches --unpack against the crawled path, so the glob
+  #     is built from absolute paths under the extraction root. It packs
+  #     into a fresh directory because pack never clears a stale
+  #     app.asar.unpacked; the unpacked set is then compared by content
+  #     and by the new header.
+  #   - asar extract writes unpacked files 0644; restore the official
+  #     modes (github-mcp-server and the .node bindings are executable).
+  postInstall = ''
+    resources=$out/lib/claude-desktop/resources
+    work=$(mktemp -d)
+    patched=()
+
+    asar extract "$resources/app.asar" "$work/app"
+
+    ${lib.concatStrings (lib.mapAttrsToList rewriteHelper hostHelpers)}
+
+    for f in "''${patched[@]}"; do
+      rm -f "$work/app/compile-cache/$(basename "$f")".*.jsc
+    done
+
+    (cd "$resources/app.asar.unpacked" && find . -type f | sort) \
+      > "$work/unpacked"
+    unpack="{$(sed "s|^\./|$work/app/|" "$work/unpacked" | paste -sd,)}"
+    mkdir "$work/out"
+    asar pack "$work/app" "$work/out/app.asar" --unpack "$unpack"
+
+    diff -r "$resources/app.asar.unpacked" "$work/out/app.asar.unpacked"
+    asar list --is-pack "$work/out/app.asar" \
+      | sed -n 's|^unpack *: /|./|p' | sort | diff "$work/unpacked" -
+    while read -r f; do
+      chmod --reference="$resources/app.asar.unpacked/$f" \
+        "$work/out/app.asar.unpacked/$f"
+    done < "$work/unpacked"
+
+    rm -r "$resources/app.asar" "$resources/app.asar.unpacked"
+    mv "$work/out/app.asar" "$work/out/app.asar.unpacked" "$resources/"
+    rm -r "$work"
   '';
 
   # chrome-sandbox ships SUID in the official .deb, but the Nix store
