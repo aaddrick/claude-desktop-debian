@@ -317,6 +317,37 @@ heal_call() {
 		false
 	}
 }
+
+# The words in command position in the launcher heredoc of <1>, one per
+# line. A command position is the start of a line, or what follows `;`,
+# `&&`, `||`, `|`, a standalone `{`, `!` or one of the keywords `if`,
+# `elif`, `then`, `else`, `while`, `until` and `do`. So
+# `if ! check_display; then` yields `check_display`, and
+# `setup_logging || exit 1` yields both `setup_logging` and `exit`.
+#
+# Quoted strings, `[[ … ]]` tests and `${…}` expansions are dropped
+# first, so a word inside them (a log message, a `-x` operand, a `:-`
+# default) is never read as a command. That also drops a `$(…)` inside
+# double quotes, and a line that starts with an assignment keeps its
+# whole right-hand side in the assignment word: a helper called only
+# from a command substitution is out of scope.
+#
+# `{` splits only as a standalone word, so the `{` of an unquoted
+# `${HOME}` never opens a command position. A `case <word> in` header
+# splits too, and a leading case pattern (`wayland)`) is skipped and the
+# word after it is checked instead, so a deleted helper called inside a
+# case arm still reds, on one line or several.
+command_words() {
+	uncommented_launcher "$1" \
+		| sed -E -e "s/'[^']*'//g" -e 's/"[^"]*"//g' \
+			-e 's/\[\[[^]]*\]\]//g' -e 's/\$\{[^}]*\}//g' \
+		| sed -E -e 's/(;|&&|\|\||\||!)/\n/g' \
+			-e 's/\<case[[:space:]]+([^[:space:]]+[[:space:]]+)?in\>/\n/g' \
+			-e 's/(^|[[:space:]])\{([[:space:]]|$)/\n/g' \
+			-e 's/\<(if|elif|then|else|while|until|do)\>/\n/g' \
+		| awk '{ w = 1; if ($1 ~ /\)$/) w = 2 } NF >= w { print $w }'
+}
+
 @test "every launcher command is a builtin or a launcher-common function" {
 	# The tests above pin the calls that must be there. This one catches
 	# a call that must not be: a helper deleted or renamed in
@@ -326,38 +357,52 @@ heal_call() {
 	# (#888 deleted cleanup_stale_cowork_socket; a missed call site would
 	# have passed every test above).
 	#
-	# A column-0 command in the launcher heredoc must be a shell keyword
-	# or builtin (`if`, `cd`, `exit`, `source`), a variable assignment,
-	# or a function that launcher-common.sh defines at column 0. Names
-	# are checked against compgen's lists rather than `type -t`, so a
-	# function bats or this file defines cannot shadow the answer.
+	# Every word in command position (see command_words) must be a shell
+	# keyword or builtin, a variable assignment, or a function that
+	# sourcing launcher-common.sh provides. That covers calls inside an
+	# `if`, such as `check_display`, and functions launcher-common.sh
+	# pulls in from doctor.sh, such as `run_doctor`. The function list
+	# comes from `declare -F` in a clean bash that sourced the file, so
+	# neither a grep of one file nor a function bats defines can decide
+	# it. An external program in command position fails too: no
+	# launcher runs one today, so a new one should be added here on
+	# purpose.
 	local common="${SCRIPT_DIR}/../scripts/launcher-common.sh"
-	local -A shell_words=()
-	local word script line checked=0 offenders=''
+	local -A shell_words=() provided=()
+	local word script checked=0 offenders=''
 	while read -r word; do
 		shell_words[$word]=1
 	done < <(compgen -k; compgen -b)
+	# shellcheck disable=SC2016  # the inner shell expands $1
+	while read -r _ _ word; do
+		provided[$word]=1
+	done < <(env -i HOME="$HOME" PATH="$PATH" \
+		bash --noprofile --norc -c \
+		'source "$1" >/dev/null 2>&1; declare -F' _ "$common")
+	((${#provided[@]} > 0)) || {
+		printf 'sourcing %s defined no functions\n' "$common" >&2
+		false
+	}
 
 	for script in "${PACKAGING_SCRIPTS[@]}"; do
-		while read -r line; do
-			[[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && continue
-			word=${line%%[[:space:]]*}
+		while read -r word; do
+			[[ $word =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && continue
 			[[ -n ${shell_words[$word]:-} ]] && continue
 			checked=$((checked + 1))
-			grep -qE "^${word}\(\) \{" "$common" && continue
+			[[ -n ${provided[$word]:-} ]] && continue
 			offenders+="${script}: ${word}"$'\n'
-		done < <(uncommented_launcher "$script" | grep -E '^[^[:space:]]')
+		done < <(command_words "$script")
 	done
 
-	# Every pinned call is a launcher-common function, so a filter that
+	# Every pinned call is a launcher-common function, so a parse that
 	# dropped everything would check fewer names than that.
 	((checked >= ${#PRELAUNCH_CALLS[@]} * ${#PACKAGING_SCRIPTS[@]})) || {
 		printf 'checked only %d commands\n' "$checked" >&2
 		false
 	}
 	[[ -z "$offenders" ]] || {
-		printf '%s\n%s' \
-			'launcher calls a function launcher-common.sh does not define:' \
+		printf '%s %s\n%s' 'not a shell builtin or keyword,' \
+			'and not a function launcher-common.sh provides:' \
 			"$offenders" >&2
 		false
 	}
