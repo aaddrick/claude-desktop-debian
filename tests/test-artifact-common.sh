@@ -739,6 +739,18 @@ _smoke_window_probe() {
 	fail "$detail"
 }
 
+# Wall-clock microseconds, locale-proof: EPOCHREALTIME's separator is
+# the locale's decimal point, so strip every non-digit.
+_smoke_now_us() {
+	printf '%s' "${EPOCHREALTIME//[!0-9]/}"
+}
+
+# Seconds since a _smoke_now_us stamp, to a tenth: "4.2s".
+_smoke_since() {
+	local us=$(($(_smoke_now_us) - $1))
+	printf '%d.%ds' $((us / 1000000)) $((us % 1000000 / 100000))
+}
+
 run_launch_smoke_test() {
 	local label="$1" pkill_match="$2" run_as="$3"
 	shift 3
@@ -797,11 +809,14 @@ run_launch_smoke_test() {
 	# The ceiling on Xvfb reporting its display. The loop below exits
 	# the moment the number lands, so a healthy start pays nothing for
 	# headroom; a server that dies is caught by the kill -0 check in
-	# milliseconds, not by this. 10s tripped twice in September 2026 on
-	# the native arm64 runner (#881's first run, and main at 4779b4f),
-	# each time with Xvfb alive but slow and a clean re-run passing.
-	local xvfb_timeout=30
+	# milliseconds, not by this. 10s tripped three times in September
+	# 2026 on the native arm64 runner (#881's first run, and main at
+	# 2f94ade and 4779b4f), each time with Xvfb alive but slow and a
+	# clean re-run passing. The elapsed time is logged below so the
+	# ceiling can be tuned from measurements.
+	local xvfb_timeout=30 xvfb_t0
 	local deadline display='' display_num='' xvfb_dead=0
+	xvfb_t0=$(_smoke_now_us)
 	deadline=$((SECONDS + xvfb_timeout))
 	while ((SECONDS < deadline)); do
 		# `read` succeeds only once the terminating newline has landed,
@@ -833,6 +848,9 @@ run_launch_smoke_test() {
 		_smoke_release
 		return
 	fi
+
+	printf '[INFO] %s: Xvfb reported %s after %s (limit %ds)\n' \
+		"$label" "$display" "$(_smoke_since "$xvfb_t0")" "$xvfb_timeout"
 
 	# setsid puts dbus + launcher + electron in a fresh process group so
 	# we can reap the whole tree via kill -- -PGID below (Xvfb itself
@@ -879,12 +897,15 @@ run_launch_smoke_test() {
 	# up to 30s; then hold a grace window in which an immediate app
 	# crash (SyntaxError-class, bad ELF) still fails the test.
 	local readiness_marker='Executing: '
-	local readiness_timeout=30 grace=8 saw_marker=0
+	local readiness_timeout=30 grace=8 saw_marker=0 ready_t0
+	ready_t0=$(_smoke_now_us)
 	deadline=$((SECONDS + readiness_timeout))
 	while ((SECONDS < deadline)); do
 		if [[ -f $launcher_log ]] \
 			&& grep -qF "$readiness_marker" "$launcher_log"; then
 			saw_marker=1
+			printf '[INFO] %s: readiness marker after %s (limit %ds)\n' \
+				"$label" "$(_smoke_since "$ready_t0")" "$readiness_timeout"
 			break
 		fi
 		kill -0 "$_smoke_launch_pid" 2>/dev/null || break
