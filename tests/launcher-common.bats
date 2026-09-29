@@ -63,9 +63,21 @@ setup() {
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
+	#
+	# The placeholder gets a test-only class, NOT the production
+	# com.anthropic.Claude. The UI reapers find their targets with a
+	# host-wide `pgrep -u $UID -f -- --class=$WM_CLASS`, so with the
+	# production class every real-kill test also targets the user's
+	# running Claude Desktop. Once dpkg has replaced its binary, its
+	# /proc/PID/exe ends in " (deleted)" and the
+	# cleanup_replaced_desktop_ui tests SIGTERM it, the quit guard
+	# vetoes the quit, and the 2s escalation SIGKILLs it (exit 137)
+	# along with every Claude Code session inside it. $$ keeps
+	# concurrent bats runs from reaping each other's stand-ins.
+	local test_wm_class="com.anthropic.ClaudeBatsTest$$"
 	cp "$SCRIPT_DIR/../scripts/launcher-common.sh" "$TEST_TMP/launcher-common.sh"
 	cp "$SCRIPT_DIR/../scripts/doctor.sh" "$TEST_TMP/doctor.sh"
-	sed -i 's/@@WM_CLASS@@/com.anthropic.Claude/' "$TEST_TMP/launcher-common.sh"
+	sed -i "s/@@WM_CLASS@@/$test_wm_class/" "$TEST_TMP/launcher-common.sh"
 	# shellcheck source=scripts/launcher-common.sh
 	source "$TEST_TMP/launcher-common.sh"
 }
@@ -436,7 +448,7 @@ teardown() {
 	is_wayland=false
 	setup_logging
 	build_electron_args deb
-	has_electron_arg '--class=com.anthropic.Claude'
+	has_electron_arg "--class=$WM_CLASS"
 }
 
 @test "build_electron_args: X11 deb defaults to a minimal argv (opt-in policy)" {
@@ -449,7 +461,7 @@ teardown() {
 	setup_logging
 	build_electron_args deb
 	[[ ${#electron_args[@]} -eq 1 ]]
-	[[ ${electron_args[0]} == '--class=com.anthropic.Claude' ]]
+	[[ ${electron_args[0]} == "--class=$WM_CLASS" ]]
 }
 
 @test "build_electron_args: CLAUDE_PASSWORD_STORE set - passes flag + logs it" {
@@ -959,7 +971,7 @@ _run_predicate_as_daemon() {
 	# stand-in's argv[0] is renamed to carry it via exec -a. Its state
 	# is sleeping (not T/t/Z), so the function treats it as a live UI
 	# and must NOT kill the daemon.
-	bash -c 'exec -a "--class=com.anthropic.Claude" sleep 300' &
+	bash -c "exec -a '--class=$WM_CLASS' sleep 300" &
 	ui_pid=$!
 	# Wait for the exec to land before running the reaper: on a loaded
 	# runner the child can still carry its pre-exec argv when the UI
@@ -993,7 +1005,7 @@ _run_predicate_as_daemon() {
 	pgrep() {
 		if [[ $* == *cowork-vm-service* ]]; then
 			command pgrep "$@" | grep -x -- "$cowork_pid"
-		elif [[ $* == *--class=com.anthropic.Claude* ]]; then
+		elif [[ $* == *"--class=$WM_CLASS"* ]]; then
 			echo "$ui_pid"
 		fi
 	}
@@ -1195,7 +1207,7 @@ _run_predicate_as_daemon() {
 	# longer appears in any cmdline, so the --class flag from
 	# build_electron_args is the only stable UI signature.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/claude-desktop --class=com.anthropic.Claude --enable-features=WaylandWindowDecorations "
+		"/usr/lib/claude-desktop/claude-desktop --class=$WM_CLASS --enable-features=WaylandWindowDecorations "
 	[[ $status -eq 0 ]]
 
 	# Another Electron app's asar path must not match.
@@ -1205,18 +1217,18 @@ _run_predicate_as_daemon() {
 
 	# Look-alike WM class is rejected by the trailing-space anchor.
 	run _claude_desktop_ui_cmdline_matches \
-		"/opt/claude-dev/electron --class=com.anthropic.ClaudeDev "
+		"/opt/claude-dev/electron --class=${WM_CLASS}Dev "
 	[[ $status -ne 0 ]]
 
 	# Chromium helpers (--type=) never count as the UI, even if a
 	# --class flag leaked into their argv.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=com.anthropic.Claude "
+		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$XDG_CONFIG_HOME/Claude --class=$WM_CLASS "
 	[[ $status -ne 0 ]]
 
 	# The cowork daemon never counts as the UI.
 	run _claude_desktop_ui_cmdline_matches \
-		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js --class=com.anthropic.Claude "
+		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js --class=$WM_CLASS "
 	[[ $status -ne 0 ]]
 }
 
@@ -1232,7 +1244,7 @@ _run_predicate_as_daemon() {
 	# test, so close it in the child.
 	# shellcheck disable=SC2016  # inner shell expands $1
 	"$stale_bin" -c 'read -r _ < "$1"' \
-		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+		claude-test "$block_fifo" "--class=$WM_CLASS" 3>&- &
 	stale_pid=$!
 	sleep 0.1
 	rm "$stale_bin"
@@ -1267,7 +1279,7 @@ _run_predicate_as_daemon() {
 	# shellcheck disable=SC2016  # inner shell expands $1 (3>&-: see the
 	# fd-3 note in the deleted-executable test above)
 	"$live_bin" -c 'read -r _ < "$1"' \
-		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+		claude-test "$block_fifo" "--class=$WM_CLASS" 3>&- &
 	live_pid=$!
 	sleep 0.1
 	# Precondition: intact binary, no marker.
@@ -1306,7 +1318,7 @@ _run_predicate_as_daemon() {
 	# shellcheck disable=SC2016  # inner shell expands $1 (3>&-: see the
 	# fd-3 note in the deleted-executable test above)
 	"$stale_dir/claude-bash" -c 'read -r _ < "$1"' \
-		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+		claude-test "$block_fifo" "--class=$WM_CLASS" 3>&- &
 	stale_pid=$!
 	sleep 0.1
 	rm -rf "$stale_dir"
@@ -1326,6 +1338,45 @@ _run_predicate_as_daemon() {
 	run kill -0 "$stale_pid"
 	[[ $status -ne 0 ]]
 	grep -q 'Killed replaced Claude Desktop UI' "$log_file"
+}
+
+@test "cleanup_replaced_desktop_ui: spares a production-class UI" {
+	# Stands in for the user's real Claude Desktop right after an apt
+	# upgrade: production --class, binary deleted underneath it. The
+	# suite must never reap it. setup() gives the sourced library a
+	# test-only WM_CLASS precisely so this process is invisible to the
+	# host-wide pgrep; reverting that substitution to
+	# com.anthropic.Claude turns this red. (It would also make every
+	# kill test above SIGKILL a real, upgraded Claude Desktop, which is
+	# how this was found.)
+	local stale_bin="$TEST_TMP/claude-bash-prod"
+	local block_fifo="$TEST_TMP/block-prod"
+	local prod_pid
+
+	[[ $WM_CLASS != 'com.anthropic.Claude' ]]
+
+	mkfifo "$block_fifo"
+	cp /bin/bash "$stale_bin"
+	# shellcheck disable=SC2016  # inner shell expands $1 (3>&-: see the
+	# fd-3 note in the deleted-executable test above)
+	"$stale_bin" -c 'read -r _ < "$1"' \
+		claude-test "$block_fifo" --class=com.anthropic.Claude 3>&- &
+	prod_pid=$!
+	sleep 0.1
+	rm "$stale_bin"
+	readlink "/proc/$prod_pid/exe" | grep -q ' (deleted)$'
+
+	setup_logging
+	touch "$log_file"
+	run cleanup_replaced_desktop_ui
+	[[ $status -eq 0 ]]
+
+	run kill -0 "$prod_pid"
+	[[ $status -eq 0 ]]
+	run grep 'Killed replaced Claude Desktop UI' "$log_file"
+	[[ $status -eq 1 ]]
+
+	kill "$prod_pid" 2>/dev/null || true
 }
 
 @test "run_electron_and_cleanup: runs cleanup after Electron exits and preserves status" {
