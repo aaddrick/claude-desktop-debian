@@ -317,25 +317,35 @@ heal_call() {
 		false
 	}
 }
+
 # The words in command position in the launcher heredoc of <1>, one per
 # line. A command position is the start of a line, or what follows `;`,
-# `&&`, `||`, `|`, `{`, `!` or one of the keywords `if`, `elif`, `then`,
-# `else`, `while`, `until` and `do`. So `if ! check_display; then`
-# yields `check_display`, and `setup_logging || exit 1` yields both
-# `setup_logging` and `exit`.
+# `&&`, `||`, `|`, a standalone `{`, `!` or one of the keywords `if`,
+# `elif`, `then`, `else`, `while`, `until` and `do`. So
+# `if ! check_display; then` yields `check_display`, and
+# `setup_logging || exit 1` yields both `setup_logging` and `exit`.
 #
-# Quoted strings and `[[ … ]]` tests are dropped first, so a word inside
-# them (a log message, a `-x` operand) is never read as a command. That
-# also drops a `$(…)` inside double quotes, and a line that starts with
-# an assignment keeps its whole right-hand side in the assignment word:
-# a helper called only from a command substitution is out of scope.
+# Quoted strings, `[[ … ]]` tests and `${…}` expansions are dropped
+# first, so a word inside them (a log message, a `-x` operand, a `:-`
+# default) is never read as a command. That also drops a `$(…)` inside
+# double quotes, and a line that starts with an assignment keeps its
+# whole right-hand side in the assignment word: a helper called only
+# from a command substitution is out of scope.
+#
+# `{` splits only as a standalone word, so the `{` of an unquoted
+# `${HOME}` never opens a command position. A `case <word> in` header
+# splits too, and a leading case pattern (`wayland)`) is skipped and the
+# word after it is checked instead, so a deleted helper called inside a
+# case arm still reds, on one line or several.
 command_words() {
 	uncommented_launcher "$1" \
 		| sed -E -e "s/'[^']*'//g" -e 's/"[^"]*"//g' \
-			-e 's/\[\[[^]]*\]\]//g' \
-		| sed -E -e 's/(;|&&|\|\||\||\{|!)/\n/g' \
+			-e 's/\[\[[^]]*\]\]//g' -e 's/\$\{[^}]*\}//g' \
+		| sed -E -e 's/(;|&&|\|\||\||!)/\n/g' \
+			-e 's/\<case[[:space:]]+([^[:space:]]+[[:space:]]+)?in\>/\n/g' \
+			-e 's/(^|[[:space:]])\{([[:space:]]|$)/\n/g' \
 			-e 's/\<(if|elif|then|else|while|until|do)\>/\n/g' \
-		| awk 'NF { print $1 }'
+		| awk '{ w = 1; if ($1 ~ /\)$/) w = 2 } NF >= w { print $w }'
 }
 
 @test "every launcher command is a builtin or a launcher-common function" {
@@ -391,10 +401,9 @@ command_words() {
 		false
 	}
 	[[ -z "$offenders" ]] || {
-		printf '%s\n%s' \
-			'not a shell builtin or keyword, and not a function' \
-			'launcher-common.sh provides:' >&2
-		printf '\n%s' "$offenders" >&2
+		printf '%s %s\n%s' 'not a shell builtin or keyword,' \
+			'and not a function launcher-common.sh provides:' \
+			"$offenders" >&2
 		false
 	}
 }
