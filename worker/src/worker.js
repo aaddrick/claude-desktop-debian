@@ -70,7 +70,10 @@ export default {
 			LEGACY_RPM_RE.exec(url.pathname);
 		if (m) {
 			const { asset, claudeVer, repoVer } = m.groups;
-			const tag = `v${repoVer}+claude${claudeVer}`;
+			// Tags carry a literal '+'; percent-encode it so the
+			// Location is canonical and routes the same for every
+			// client (#897).
+			const tag = encodeURIComponent(`v${repoVer}+claude${claudeVer}`);
 			return Response.redirect(`${RELEASES}/${tag}/${asset}`, 302);
 		}
 		const t = TRANSITIONAL_DEB_RE.exec(url.pathname);
