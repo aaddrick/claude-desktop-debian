@@ -184,6 +184,50 @@ assertDeepEqual(result, { valid: true }, 'symlink to /opt should be accepted');
 	[[ "$status" -eq 0 ]]
 }
 
+@test "validateMountPath: rejects a dot-dot segment after a symlink (#895)" {
+	# path.resolve() drops '..' lexically, but bwrap gets the raw string
+	# and the kernel applies '..' after the symlink: ~/etclink/../etc
+	# validated as ~/etc and bound /etc.
+	mkdir -p "$TEST_TMP/home/a..b"
+	ln -s /etc "$TEST_TMP/home/etclink"
+	ln -s / "$TEST_TMP/home/rootlink"
+	export HOME="$TEST_TMP/home"
+	run node -e "${NODE_PREAMBLE}
+const h = os.homedir();
+const r1 = validateMountPath(h + '/etclink/../etc', { readWrite: true });
+assert(!r1.valid && r1.reason.includes('segments'),
+    'rw bind of /etc through ~/etclink/..: ' + r1.reason);
+const r2 = validateMountPath(h + '/rootlink/../proc');
+assert(!r2.valid && r2.reason.includes('segments'),
+    'ro bind of /proc through ~/rootlink/..: ' + r2.reason);
+// Near miss: '..' inside a name is not a '..' segment.
+const r3 = validateMountPath(h + '/a..b', { readWrite: true });
+assertDeepEqual(r3, { valid: true }, 'name containing ..');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "validateMountPath: resolves a not-yet-created path through its existing parent (#895)" {
+	# realpathSync() fails on a path that doesn't exist, and the old
+	# fallback kept the lexical form, so ~/outlink/not-yet passed the
+	# \$HOME check and would bind outside HOME once created.
+	mkdir -p "$TEST_TMP/home" "$TEST_TMP/outside"
+	ln -s "$TEST_TMP/outside" "$TEST_TMP/home/outlink"
+	export HOME="$TEST_TMP/home"
+	run node -e "${NODE_PREAMBLE}
+const h = os.homedir();
+const rw = (p) => validateMountPath(p, { readWrite: true }).valid;
+assert(!rw(h + '/outlink/not-yet'), 'missing leaf under symlink out of HOME');
+assert(!rw(h + '/outlink/not-yet/deeper'), 'missing chain under symlink out of HOME');
+assert(rw(h + '/not-yet/deeper'), 'missing chain under HOME');
+// The missing tail must be kept: resolving only the existing prefix
+// would turn this into '/', which is forbidden.
+assert(validateMountPath('/cowork-bats-895-not-yet').valid,
+    'missing top-level RO path');
+"
+	[[ "$status" -eq 0 ]]
+}
+
 # =============================================================================
 # loadBwrapMountsConfig
 # =============================================================================
