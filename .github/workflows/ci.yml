@@ -639,9 +639,12 @@ jobs:
           # can't be set (DNS points at Cloudflare, not Pages, so Pages
           # can't provision its own cert). Cloudflare/Worker answers
           # both schemes, so http vs https is cosmetic here.
+          # The Worker percent-encodes the tag's '+' as %2B (#898);
+          # accept either form so the check tracks the tag, not its
+          # encoding (#900).
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
-            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}(\\+|%2B)claude${claudeVer}/"
             "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$deb_url"
@@ -881,9 +884,12 @@ jobs:
           # can't be set (DNS points at Cloudflare, not Pages, so Pages
           # can't provision its own cert). Cloudflare/Worker answers
           # both schemes, so http vs https is cosmetic here.
+          # The Worker percent-encodes the tag's '+' as %2B (#898);
+          # accept either form so the check tracks the tag, not its
+          # encoding (#900).
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
-            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}(\\+|%2B)claude${claudeVer}/"
             "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$rpm_url"
