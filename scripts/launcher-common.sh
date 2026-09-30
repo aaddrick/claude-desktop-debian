@@ -872,7 +872,7 @@ heal_autostart_entry() {
 	local launcher="$1"
 	local entry_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
 	local entry="$entry_dir/claude-desktop.desktop"
-	local exec_line current args rest escaped new_line tmp line
+	local exec_line current args rest new_line tmp line
 	local replaced=false
 
 	[[ -n $launcher && -f $entry ]] || return 0
@@ -898,8 +898,7 @@ heal_autostart_entry() {
 		*) return 0 ;;
 	esac
 
-	escaped=$(_desktop_exec_quote "$launcher")
-	new_line="Exec=$escaped$args"
+	new_line="Exec=$(_desktop_exec_quote "$launcher")$args"
 
 	# Rewrite only the first Exec line; keep everything else verbatim.
 	tmp="$entry.tmp.$$"
