@@ -1232,6 +1232,90 @@ _run_predicate_as_daemon() {
 	[[ $status -ne 0 ]]
 }
 
+# #903: Anthropic's official build runs its Electron main without
+# --class, so a --class-only gate saw "no UI" while it was up and let
+# the reapers kill its helpers. The stand-ins are real processes whose
+# exe is named claude-desktop, and pgrep is scoped to them so a real
+# Claude Desktop on the host can't satisfy (or be reaped by) any case.
+
+@test "_claude_desktop_ui_is_alive: an official-style main without --class is a live UI (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	_spawn_claude_main_stand_in
+	run _claude_desktop_ui_is_alive
+	[[ $status -eq 0 ]]
+}
+
+@test "_claude_desktop_ui_is_alive: a --type= helper of that binary is not a UI (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	_spawn_claude_main_stand_in --type=renderer
+	run _claude_desktop_ui_is_alive
+	[[ $status -ne 0 ]]
+}
+
+@test "_claude_desktop_ui_is_alive: a stopped official-style main is not a UI (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	_spawn_claude_main_stand_in
+	kill -STOP "$stand_in_pid"
+	run _claude_desktop_ui_is_alive
+	kill -CONT "$stand_in_pid"
+	[[ $status -ne 0 ]]
+}
+
+@test "_claude_desktop_ui_is_alive: an upgraded main (deleted exe) is still a live UI (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	_spawn_claude_main_stand_in
+	rm "$(readlink "/proc/$stand_in_pid/exe")"
+	readlink "/proc/$stand_in_pid/exe" | grep -q ' (deleted)$'
+	run _claude_desktop_ui_is_alive
+	[[ $status -eq 0 ]]
+}
+
+# The helper stand-in fakes an official in-tree renderer:
+# argv[0] /usr/lib/claude-desktop/claude-desktop plus --type=renderer.
+_spawn_official_helper_stand_in() {
+	local fifo="$TEST_TMP/helper-block"
+	mkfifo "$fifo"
+	bash -c "exec -a /usr/lib/claude-desktop/claude-desktop \
+		bash -c 'read -r _ < \"\$1\"' _ '$fifo' --type=renderer" 3>&- &
+	helper_pid=$!
+	main_stand_in_pids+=("$helper_pid")
+	local i
+	for ((i = 0; i < 50; i++)); do
+		tr '\0' ' ' < "/proc/$helper_pid/cmdline" 2>/dev/null \
+			| grep -q -- '--type=renderer' && return 0
+		sleep 0.1
+	done
+	return 1
+}
+
+@test "cleanup_stale_desktop_helpers: spares the official app's helpers while its main runs (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	_spawn_claude_main_stand_in
+	_spawn_official_helper_stand_in
+	setup_logging
+	run cleanup_stale_desktop_helpers
+	sleep 0.3
+	run kill -0 "$helper_pid"
+	[[ $status -eq 0 ]]
+	run grep -q 'Killed stale Claude Desktop helpers' "$log_file"
+	[[ $status -ne 0 ]]
+}
+
+@test "cleanup_stale_desktop_helpers: still reaps that helper once no main is alive (#903 control)" {
+	_scope_pgrep_to_main_stand_ins
+	_spawn_official_helper_stand_in
+	setup_logging
+	run cleanup_stale_desktop_helpers
+	local i
+	for ((i = 0; i < 30; i++)); do
+		kill -0 "$helper_pid" 2>/dev/null || break
+		sleep 0.1
+	done
+	run kill -0 "$helper_pid"
+	[[ $status -ne 0 ]]
+	grep -q 'Killed stale Claude Desktop helpers' "$log_file"
+}
+
 @test "cleanup_replaced_desktop_ui: kills UI with deleted executable" {
 	local stale_bin="$TEST_TMP/claude-bash"
 	local block_fifo="$TEST_TMP/block"
