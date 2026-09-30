@@ -141,14 +141,33 @@ assertDeepEqual(result, { valid: true }, 'rw under home');
 	# /var/home/<user>. Without resolving $HOME before comparing, both the
 	# symlink form (/home/user/dir) and the real form (/var/home/user/dir)
 	# were rejected with "Read-write mounts must be under $HOME".
+	#
+	# This test builds the layout in TEST_TMP so it exercises the fix on
+	# every host (CI runs on Ubuntu, where /home is not a symlink and the
+	# un-pinned test passes even without the fix).
+
+	local fake_home fake_varhome
+	fake_home="${TEST_TMP}/fake-home"
+	fake_varhome="${TEST_TMP}/fake-varhome"
+	mkdir -p "${fake_home}" "${fake_varhome}/cloud/dev"
+	ln -s "${fake_varhome}" "${fake_home}/home_link"
+
+	# Set HOME to the symlink form so os.homedir() returns the unresolved
+	# path.  validateMountPath then sees the same situation as on
+	# Silverblue/Bazzite: os.homedir() = "/home/<user>", but
+	# realpathSync() = "/var/home/<user>".  Both forms must pass.
+	local home_path
+	home_path="${fake_home}/home_link"
+	export HOME="${home_path}"
 	run node -e "${NODE_PREAMBLE}
-const home = os.homedir();
+
+const home = require('os').homedir();
 let realHome = home;
 try { realHome = require('fs').realpathSync(home); } catch (_) {}
 
 // Symlink form: must pass regardless of whether realpath differs
-const r1 = validateMountPath(home + '/dev', { readWrite: true });
-assert(r1.valid, 'symlink-form home path must be accepted: ' + home + '/dev');
+const r1 = validateMountPath(home + '/cloud/dev', { readWrite: true });
+assert(r1.valid, 'symlink-form home path must be accepted: ' + home + '/cloud/dev');
 
 // Real path form: must also pass when realHome differs from home
 const r2 = validateMountPath(realHome + '/dev', { readWrite: true });
