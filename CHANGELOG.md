@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.2] — 2026-09-30
+
 ### Fixed
 
 - The release job's APT and DNF smoke tests accept the percent-encoded tag in the Worker's redirect. [#898](https://github.com/aaddrick/claude-desktop-debian/pull/898) made the Worker emit `v3.3.1%2Bclaude…`, but both copies of the ordered-chain check still expected a literal `+`, so the v3.3.1 tag build failed after the APT repo had already published and never ran the DNF update. The daily heartbeat only matches up to `releases/download/`, which is why it stayed green. Both patterns now accept `+` or `%2B`. ([#900](https://github.com/aaddrick/claude-desktop-debian/issues/900))
