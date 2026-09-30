@@ -924,6 +924,27 @@ heal_autostart_entry() {
 # removes its own file, never a user-authored one.
 readonly PORTAL_ENTRY_MARKER='X-Claude-Desktop-Debian-Portal-Alias=true'
 
+# The official app writes its own copy of <id>.desktop to the user data
+# dir (marked X-Claude-Generated=true, TryExec = the official Exec), but
+# only while the official system entry exists. That copy outlives the
+# official package: once TryExec stops resolving, GLib rejects the
+# entry and the portal refuses the app id again. Such a copy is
+# app-owned and dead, so ensure_portal_app_id_entry may replace it.
+# Returns 0 for a stale copy, 1 otherwise.
+_portal_entry_is_stale_generated() {
+	local entry="$1" try_exec
+	grep -qxF 'X-Claude-Generated=true' "$entry" 2>/dev/null \
+		|| return 1
+	try_exec=$(grep -m1 '^TryExec=' "$entry" 2>/dev/null) || return 1
+	try_exec="${try_exec#TryExec=}"
+	[[ -n $try_exec ]] || return 1
+	if [[ $try_exec == /* ]]; then
+		[[ ! -x $try_exec ]]
+	else
+		! command -v -- "$try_exec" > /dev/null 2>&1
+	fi
+}
+
 # #805: xdg-desktop-portal >= 1.20 identifies a host (non-Flatpak) app
 # by the id it passes to org.freedesktop.host.portal.Registry.Register,
 # and refuses any id without an installed <id>.desktop ("Could not
@@ -939,7 +960,9 @@ readonly PORTAL_ENTRY_MARKER='X-Claude-Desktop-Debian-Portal-Alias=true'
 # write a hidden (NoDisplay) user-level entry under that id when no
 # system one exists. Once one does (the official package got
 # installed), remove ours so it stops shadowing the official menu
-# entry. Entries without PORTAL_ENTRY_MARKER are never touched.
+# entry. An entry without PORTAL_ENTRY_MARKER is left in place (and
+# logged), except the official app's own stale copy -- see
+# _portal_entry_is_stale_generated.
 #
 # $1 = absolute launcher path for Exec (/usr/bin/<package> or
 #      "$APPIMAGE"; empty -> no-op, like heal_autostart_entry)
@@ -950,14 +973,19 @@ ensure_portal_app_id_entry() {
 	local icon="${2:-}"
 	local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 	local entry="$data_home/applications/$WM_CLASS.desktop"
-	local ours=false dir tmp
+	local ours=false stale=false dir tmp
 	local -a data_dirs
 
 	# Unsubstituted build-time placeholder: no real id to register.
 	[[ $WM_CLASS == *@@* ]] && return 0
 
-	[[ -f $entry ]] && grep -qxF "$PORTAL_ENTRY_MARKER" "$entry" \
-		&& ours=true
+	if [[ -f $entry ]]; then
+		if grep -qxF "$PORTAL_ENTRY_MARKER" "$entry"; then
+			ours=true
+		elif _portal_entry_is_stale_generated "$entry"; then
+			stale=true
+		fi
+	fi
 
 	IFS=: read -r -a data_dirs \
 		<<< "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
@@ -975,8 +1003,13 @@ ensure_portal_app_id_entry() {
 	[[ $is_wayland == true && $use_x11_on_wayland == false ]] \
 		|| return 0
 	[[ -n $launcher ]] || return 0
-	# A user-authored entry already satisfies the portal.
-	[[ -f $entry && $ours == false ]] && return 0
+	# Any other entry is not ours to replace. Log it: if it is invalid,
+	# the portal keeps refusing the app id and nothing else says why.
+	if [[ -f $entry && $ours == false && $stale == false ]]; then
+		log_message "Left portal app-id entry $entry in place" \
+			'(not written by the launcher)'
+		return 0
+	fi
 
 	mkdir -p "${entry%/*}" 2>/dev/null || return 0
 	tmp="$entry.tmp.$$"
@@ -995,6 +1028,8 @@ ensure_portal_app_id_entry() {
 		return 0
 	fi
 	mv -f "$tmp" "$entry" 2>/dev/null || { rm -f "$tmp"; return 0; }
+	[[ $stale == true ]] && log_message \
+		'Replacing stale app-generated entry (TryExec not found)'
 	log_message "Wrote portal app-id entry $entry (#805)"
 	return 0
 }

@@ -74,7 +74,7 @@ Why a launcher-written user file and not a packaged one: the official package ow
 
 - writes the entry (`NoDisplay=true`, no `StartupWMClass` or `MimeType`, marker `X-Claude-Desktop-Debian-Portal-Alias=true`) only on native Wayland and only when no `com.anthropic.Claude.desktop` exists in `XDG_DATA_DIRS`;
 - deletes its own marked entry as soon as a system one appears, so it stops shadowing the official menu entry (a user-data-dir file wins over a system one with the same id);
-- never touches an entry without the marker.
+- leaves any other entry in place and logs `Left portal app-id entry … in place`, with one exception. The official app writes its own copy of the entry to the same path (`X-Claude-Generated=true`, `TryExec` = the official `Exec`), but only while the official system entry exists. That copy outlives the official package, and once its `TryExec` stops resolving, GLib rejects it and the portal again answers `App info not found`. So an `X-Claude-Generated=true` entry whose `TryExec` does not resolve is treated as dead and replaced (`_portal_entry_is_stale_generated`; found by @sabiut in review on the real portal). The two writers never fight: the app skips a user file without its own marker, and it only writes while a system entry exists, which is exactly when the launcher hands the path back.
 
 The one gap: right after the official package is installed, our entry still shadows its menu entry until our launcher runs once more. Nix is unaffected — the derivation ships the official tree, `com.anthropic.Claude.desktop` included.
 

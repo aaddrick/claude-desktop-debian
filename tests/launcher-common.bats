@@ -1985,6 +1985,89 @@ _write_system_entry() {
 	[[ $(cat "$portal_entry") == "$before" ]]
 }
 
+# The official app's own copy of the entry, as its desktop-entry writer
+# emits it: the system entry's keys plus TryExec (the Exec command) and
+# X-Claude-Generated=true. $1 = TryExec value.
+_write_app_generated_entry() {
+	mkdir -p "${portal_entry%/*}"
+	{
+		echo '[Desktop Entry]'
+		echo 'Name=Claude'
+		echo 'Exec=claude-desktop %U'
+		echo 'Type=Application'
+		echo "TryExec=$1"
+		echo 'Actions=NewChat;'
+		echo 'X-Claude-Generated=true'
+	} > "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: replaces the app's stale copy (TryExec gone)" {
+	_portal_setup
+	_write_app_generated_entry "$TEST_TMP/gone/claude-desktop"
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	grep -qxF "$PORTAL_ENTRY_MARKER" "$portal_entry"
+	! grep -q '^X-Claude-Generated=' "$portal_entry"
+	! grep -q '^TryExec=' "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: replaces a stale copy whose TryExec is a bare name" {
+	_portal_setup
+	# A PATH with only the tools the helper runs, so a host that has
+	# a real claude-desktop on PATH cannot make the name resolve.
+	local tool
+	mkdir -p "$TEST_TMP/min-path"
+	for tool in grep cmp mv rm mkdir; do
+		ln -s "$(command -v "$tool")" "$TEST_TMP/min-path/$tool"
+	done
+	_write_app_generated_entry 'claude-desktop'
+	PATH="$TEST_TMP/min-path" ensure_portal_app_id_entry \
+		'/usr/bin/claude-desktop-unofficial'
+	grep -qxF "$PORTAL_ENTRY_MARKER" "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: never replaces a user entry with a dead TryExec" {
+	# Only the app's own copy is replaceable; a dead TryExec alone
+	# does not make someone else's file ours.
+	_portal_setup
+	mkdir -p "${portal_entry%/*}"
+	printf '[Desktop Entry]\nName=Mine\nExec=/opt/mine\nTryExec=%s\n' \
+		"$TEST_TMP/gone/mine" > "$portal_entry"
+	local before
+	before=$(cat "$portal_entry")
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(cat "$portal_entry") == "$before" ]]
+}
+
+@test "ensure_portal_app_id_entry: keeps the app's copy while TryExec resolves" {
+	_portal_setup
+	mkdir -p "$TEST_TMP/bin"
+	printf '#!/bin/sh\n' > "$TEST_TMP/bin/claude-desktop"
+	chmod +x "$TEST_TMP/bin/claude-desktop"
+	_write_app_generated_entry "$TEST_TMP/bin/claude-desktop"
+	local before
+	before=$(cat "$portal_entry")
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(cat "$portal_entry") == "$before" ]]
+}
+
+@test "ensure_portal_app_id_entry: logs when it leaves a foreign entry in place" {
+	_portal_setup
+	setup_logging
+	mkdir -p "${portal_entry%/*}"
+	printf '[Desktop Entry]\nName=Mine\nExec=/opt/mine\n' > "$portal_entry"
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	grep -qF "Left portal app-id entry $portal_entry in place" "$log_file"
+}
+
+@test "ensure_portal_app_id_entry: logs when it replaces a stale app copy" {
+	_portal_setup
+	setup_logging
+	_write_app_generated_entry "$TEST_TMP/gone/claude-desktop"
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	grep -qF 'Replacing stale app-generated entry' "$log_file"
+	grep -qF 'Wrote portal app-id entry' "$log_file"
+}
+
 @test "ensure_portal_app_id_entry: repoints its own entry at a moved AppImage" {
 	_portal_setup
 	ensure_portal_app_id_entry "$HOME/Old/Claude.AppImage"
