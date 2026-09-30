@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.1] — 2026-09-30
+
 ### Fixed
 
 - The bwrap fallback's `coworkBwrapMounts` validator no longer accepts a path that bwrap resolves somewhere else. `validateMountPath` removed `..` lexically before resolving symlinks, and kept the lexical form for a path that did not exist yet, but bwrap gets the raw string and the kernel applies `..` after each symlink: with `~/etclink -> /etc`, `~/etclink/../etc` passed the "under $HOME" check as a read-write mount and bound `/etc`, and `~/rootlink/../proc` passed the forbidden-path check. A path with a `..` segment is now rejected, a path that does not exist yet is resolved through its longest existing parent, so `~/outlink/not-yet` is checked against where it will land, and a dangling symlink is followed to its target, so `~/dangle -> /data/outside/newdir` is rejected as a read-write mount before the target exists. Only reachable with `COWORK_VM_BACKEND=bwrap`. ([#895](https://github.com/aaddrick/claude-desktop-debian/issues/895))
