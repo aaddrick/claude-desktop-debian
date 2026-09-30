@@ -1895,6 +1895,112 @@ _autostart_exec() {
 }
 
 # =============================================================================
+# ensure_portal_app_id_entry (#805): hidden <WM_CLASS>.desktop so the
+# xdg-desktop-portal Registry.Register call for the app id succeeds
+# =============================================================================
+
+# Isolate both XDG data locations: the host's /usr/share/applications
+# may well hold the official com.anthropic.Claude.desktop, and the
+# host's data home must never be written by a test.
+_portal_setup() {
+	export XDG_DATA_HOME="$TEST_TMP/data-home"
+	export XDG_DATA_DIRS="$TEST_TMP/sys-a:$TEST_TMP/sys-b"
+	portal_entry="$XDG_DATA_HOME/applications/$WM_CLASS.desktop"
+	# Native Wayland, as detect_display_backend leaves it for =1.
+	is_wayland=true
+	use_x11_on_wayland=false
+}
+
+_write_system_entry() {
+	mkdir -p "$TEST_TMP/sys-b/applications"
+	printf '[Desktop Entry]\nName=Claude\n' \
+		> "$TEST_TMP/sys-b/applications/$WM_CLASS.desktop"
+}
+
+@test "ensure_portal_app_id_entry: writes the hidden entry on native Wayland" {
+	_portal_setup
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial' \
+		'claude-desktop-unofficial'
+	[[ -f $portal_entry ]]
+	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial"' "$portal_entry"
+	grep -qxF 'Icon=claude-desktop-unofficial' "$portal_entry"
+	grep -qxF 'NoDisplay=true' "$portal_entry"
+	grep -qxF "$PORTAL_ENTRY_MARKER" "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: no-op under XWayland" {
+	_portal_setup
+	use_x11_on_wayland=true
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ ! -e $portal_entry ]]
+}
+
+@test "ensure_portal_app_id_entry: no-op on X11" {
+	_portal_setup
+	is_wayland=false
+	use_x11_on_wayland=true
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ ! -e $portal_entry ]]
+}
+
+@test "ensure_portal_app_id_entry: no-op when the launcher path is empty" {
+	_portal_setup
+	run ensure_portal_app_id_entry ''
+	[[ $status -eq 0 ]]
+	[[ ! -e $portal_entry ]]
+}
+
+@test "ensure_portal_app_id_entry: skips when a system entry exists" {
+	_portal_setup
+	_write_system_entry
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ ! -e $portal_entry ]]
+}
+
+@test "ensure_portal_app_id_entry: removes its own entry once a system entry exists" {
+	_portal_setup
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ -f $portal_entry ]]
+	_write_system_entry
+	# Removal must not depend on the backend: a later XWayland launch
+	# still stops the stale entry shadowing the official menu entry.
+	use_x11_on_wayland=true
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ ! -e $portal_entry ]]
+}
+
+@test "ensure_portal_app_id_entry: never touches a user-authored entry" {
+	_portal_setup
+	mkdir -p "${portal_entry%/*}"
+	printf '[Desktop Entry]\nName=Mine\nExec=/opt/mine\n' > "$portal_entry"
+	local before
+	before=$(cat "$portal_entry")
+
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(cat "$portal_entry") == "$before" ]]
+
+	# Not even when a system entry would make ours redundant.
+	_write_system_entry
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(cat "$portal_entry") == "$before" ]]
+}
+
+@test "ensure_portal_app_id_entry: repoints its own entry at a moved AppImage" {
+	_portal_setup
+	ensure_portal_app_id_entry "$HOME/Old/Claude.AppImage"
+	ensure_portal_app_id_entry "$HOME/Apps/Claude.AppImage"
+	grep -qxF "Exec=\"$HOME/Apps/Claude.AppImage\"" "$portal_entry"
+	[[ $(grep -c '^Exec=' "$portal_entry") -eq 1 ]]
+}
+
+@test "ensure_portal_app_id_entry: logs the write when logging is set up" {
+	_portal_setup
+	setup_logging
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	grep -q 'Wrote portal app-id entry' "$log_file"
+}
+
+# =============================================================================
 # log_message
 # =============================================================================
 

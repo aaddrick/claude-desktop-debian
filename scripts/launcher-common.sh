@@ -126,10 +126,10 @@ detect_display_backend() {
 	# XWayland global key grabs (#404), and native Wayland would route
 	# Quick Entry's globalShortcut through the XDG GlobalShortcuts portal
 	# instead -- but flipping the default session off mature XWayland is
-	# a rendering / IME / HiDPI risk, and on GNOME 50 the portal path is
-	# a no-op anyway (electron/electron#51875). GNOME users who want the
-	# portal route opt in with CLAUDE_USE_WAYLAND=1 (works on GNOME <=49
-	# after the one-time portal permission dialog).
+	# a rendering / IME / HiDPI risk. GNOME users who want the portal
+	# route opt in with CLAUDE_USE_WAYLAND=1 (works after the one-time
+	# portal permission dialog; GNOME 50 / portal >= 1.20 also needs the
+	# app-id entry ensure_portal_app_id_entry writes, #805).
 	#
 	# Sway and Hyprland keep working XWayland grabs and their wlroots
 	# portal has no GlobalShortcuts backend, so they also stay on the
@@ -839,6 +839,19 @@ backup_user_config() {
 	done
 }
 
+# Print $1 as a double-quoted desktop-entry Exec token, mirroring the
+# escaping upstream applies to its own execPath: backslash-escape
+# \ " ` $, then % -> %%.
+_desktop_exec_quote() {
+	local escaped="$1"
+	escaped=${escaped//\\/\\\\}
+	escaped=${escaped//\"/\\\"}
+	escaped=${escaped//\`/\\\`}
+	escaped=${escaped//\$/\\\$}
+	escaped=${escaped//%/%%}
+	printf '"%s"' "$escaped"
+}
+
 # AUTO-1: when "Run on startup" is enabled, the official app writes
 # its own XDG autostart entry with Exec=<process.execPath> --startup —
 # the raw Electron ELF (or, under AppImage, the ephemeral
@@ -885,15 +898,8 @@ heal_autostart_entry() {
 		*) return 0 ;;
 	esac
 
-	# Desktop-entry escaping, mirroring what upstream applies to its
-	# own execPath: backslash-escape \ " ` $, then % -> %%.
-	escaped="$launcher"
-	escaped=${escaped//\\/\\\\}
-	escaped=${escaped//\"/\\\"}
-	escaped=${escaped//\`/\\\`}
-	escaped=${escaped//\$/\\\$}
-	escaped=${escaped//%/%%}
-	new_line="Exec=\"$escaped\"$args"
+	escaped=$(_desktop_exec_quote "$launcher")
+	new_line="Exec=$escaped$args"
 
 	# Rewrite only the first Exec line; keep everything else verbatim.
 	tmp="$entry.tmp.$$"
@@ -911,6 +917,86 @@ heal_autostart_entry() {
 		log_message \
 			"Healed autostart Exec: $current -> $launcher (AUTO-1)"
 	fi
+	return 0
+}
+
+# Marker line identifying the hidden entry written by
+# ensure_portal_app_id_entry, so the launcher only ever rewrites or
+# removes its own file, never a user-authored one.
+readonly PORTAL_ENTRY_MARKER='X-Claude-Desktop-Debian-Portal-Alias=true'
+
+# #805: xdg-desktop-portal >= 1.20 identifies a host (non-Flatpak) app
+# by the id it passes to org.freedesktop.host.portal.Registry.Register,
+# and refuses any id without an installed <id>.desktop ("Could not
+# register app ID: App info not found"). GlobalShortcuts CreateSession
+# then fails with "An app id is required", so Quick Entry's hotkey is
+# never bound. Chromium (Electron >= 44) registers the asar desktopName
+# minus ".desktop" -- $WM_CLASS -- but our packages install
+# <package>.desktop: the official package owns
+# /usr/share/applications/$WM_CLASS.desktop and we install side-by-side
+# with it (D-002), so shipping that path would be a file conflict.
+#
+# So on native Wayland, the only backend that talks to the portal,
+# write a hidden (NoDisplay) user-level entry under that id when no
+# system one exists. Once one does (the official package got
+# installed), remove ours so it stops shadowing the official menu
+# entry. Entries without PORTAL_ENTRY_MARKER are never touched.
+#
+# $1 = absolute launcher path for Exec (/usr/bin/<package> or
+#      "$APPIMAGE"; empty -> no-op, like heal_autostart_entry)
+# $2 = icon name
+# Requires: is_wayland, use_x11_on_wayland (detect_display_backend)
+ensure_portal_app_id_entry() {
+	local launcher="$1"
+	local icon="${2:-}"
+	local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+	local entry="$data_home/applications/$WM_CLASS.desktop"
+	local ours=false dir tmp
+	local -a data_dirs
+
+	# Unsubstituted build-time placeholder: no real id to register.
+	[[ $WM_CLASS == *@@* ]] && return 0
+
+	[[ -f $entry ]] && grep -qxF "$PORTAL_ENTRY_MARKER" "$entry" \
+		&& ours=true
+
+	IFS=: read -r -a data_dirs \
+		<<< "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	for dir in "${data_dirs[@]}"; do
+		[[ -n $dir && -f $dir/applications/$WM_CLASS.desktop ]] \
+			|| continue
+		# A system entry already satisfies the portal.
+		if [[ $ours == true ]] && rm -f "$entry"; then
+			log_message "Removed portal app-id entry $entry" \
+				"(system entry $dir/applications/$WM_CLASS.desktop)"
+		fi
+		return 0
+	done
+
+	[[ $is_wayland == true && $use_x11_on_wayland == false ]] \
+		|| return 0
+	[[ -n $launcher ]] || return 0
+	# A user-authored entry already satisfies the portal.
+	[[ -f $entry && $ours == false ]] && return 0
+
+	mkdir -p "${entry%/*}" 2>/dev/null || return 0
+	tmp="$entry.tmp.$$"
+	{
+		echo '[Desktop Entry]'
+		echo 'Type=Application'
+		echo 'Name=Claude'
+		echo "Exec=$(_desktop_exec_quote "$launcher")"
+		[[ -n $icon ]] && echo "Icon=$icon"
+		echo 'NoDisplay=true'
+		echo "$PORTAL_ENTRY_MARKER"
+	} > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+
+	if [[ $ours == true ]] && cmp -s "$tmp" "$entry"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	mv -f "$tmp" "$entry" 2>/dev/null || { rm -f "$tmp"; return 0; }
+	log_message "Wrote portal app-id entry $entry (#805)"
 	return 0
 }
 
