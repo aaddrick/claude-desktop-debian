@@ -139,6 +139,7 @@ detect_display_backend
 if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
+ensure_portal_app_id_entry "/usr/bin/$package_name" "$package_name"
 
 if [[ ! -x \$app_exec ]]; then
 	log_message "Error: Claude Desktop binary not found at \$app_exec"

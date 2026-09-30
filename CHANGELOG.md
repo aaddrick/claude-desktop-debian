@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- Quick Entry's hotkey now works while another app has focus on GNOME 50 with `CLAUDE_USE_WAYLAND=1`. xdg-desktop-portal 1.20 and later refuse `Registry.Register` for an app id with no installed `<id>.desktop` file. Chromium registers `com.anthropic.Claude`, but our packages install `claude-desktop-unofficial.desktop`, so `CreateSession` failed with "An app id is required" and the shortcut was never bound. The official package owns `/usr/share/applications/com.anthropic.Claude.desktop`, so shipping that path would conflict with it. Instead, on native Wayland the launcher writes a hidden `~/.local/share/applications/com.anthropic.Claude.desktop` when no system copy exists, and removes it once one does. It also replaces the official app's own copy of that entry once the official package is gone and the copy's `TryExec` no longer resolves. It never replaces anyone else's file, and it logs when it leaves one in place. Verified on GNOME Shell 50.1 with xdg-desktop-portal 1.21.1. The troubleshooting page no longer tells GNOME users to leave native Wayland to get the hotkey back. ([#805](https://github.com/aaddrick/claude-desktop-debian/issues/805))
+
 ## [v3.3.2] — 2026-09-30
 
 ### Fixed

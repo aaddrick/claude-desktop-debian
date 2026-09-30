@@ -94,6 +94,8 @@ backup_user_config
 
 # Detect display backend
 detect_display_backend
+ensure_portal_app_id_entry "${APPIMAGE:-}" \
+	'io.github.aaddrick.claude-desktop-debian'
 
 # Log startup info
 log_message '--- Claude Desktop AppImage Start ---'

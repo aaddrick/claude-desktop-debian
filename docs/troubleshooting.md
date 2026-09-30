@@ -116,17 +116,21 @@ mode is in effect (preset, Cinnamon auto-detect, or upstream default),
 so include its output when reporting tray icon issues. Interim fix
 pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
 
-### Global Hotkey Not Working (Wayland)
+### Quick Entry only opens when Claude has focus (GNOME Wayland)
 
-If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in native Wayland mode:
+On GNOME Wayland, the default XWayland mode registers the hotkey (Ctrl+Alt+Space) as an X11 key grab. mutter ignores such grabs unless Claude already has focus. Route the hotkey through the XDG GlobalShortcuts portal instead:
 
-1. Check your logs at `~/.cache/claude-desktop-debian/launcher.log`
-2. Look for "Using X11 backend via XWayland" - this means hotkeys should work
-3. If you see "Using native Wayland backend", unset `CLAUDE_USE_WAYLAND` or ensure it's not set to `1`
+1. Set `CLAUDE_USE_WAYLAND=1` in `~/.config/claude-desktop-debian/environment`, then quit Claude fully and relaunch it.
+2. Accept the GNOME dialog that asks to allow Claude's global shortcut.
+3. Check that GNOME recorded the binding:
+   ```bash
+   gsettings get org.gnome.settings-daemon.global-shortcuts applications
+   ```
+   The output should list `'com.anthropic.Claude'`.
 
-**Note:** Native Wayland mode routes the shortcut through the XDG GlobalShortcuts portal, which only works on some compositors (GNOME ≤ 49, KDE) due to Electron/Chromium limitations.
+On xdg-desktop-portal 1.20 and later (GNOME 50), the portal refuses an app id that has no installed `<id>.desktop` file. Chromium registers `com.anthropic.Claude`, while our packages install `claude-desktop-unofficial.desktop`. So on native Wayland the launcher writes a hidden `~/.local/share/applications/com.anthropic.Claude.desktop` when no system copy exists, and removes it once the official package provides one ([#805](https://github.com/aaddrick/claude-desktop-debian/issues/805)). If the dialog never appears, check `launcher.log` for `Wrote portal app-id entry`. `Left portal app-id entry … in place` means a `com.anthropic.Claude.desktop` the launcher did not write is already in `~/.local/share/applications`. The launcher replaces a dead copy that the official app left behind, but it never replaces anyone else's file, so check that one by hand.
 
-See [configuration.md](configuration.md#wayland-support) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
+wlroots compositors (Sway, Hyprland, Niri) and COSMIC ship no GlobalShortcuts portal backend, so the portal route does nothing there. See [configuration.md](configuration.md#wayland-support) for the `CLAUDE_USE_WAYLAND` values.
 
 ### Keyboard Input Doesn't Work (IBus / GTK Input Method)
 

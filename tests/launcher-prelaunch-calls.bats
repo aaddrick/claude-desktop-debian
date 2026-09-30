@@ -54,7 +54,9 @@ readonly PACKAGING_SCRIPTS=(
 # the static pin is its only coverage), and #856 landed
 # `cleanup_stale_vm_bundle_images` in all three launchers after the
 # issue was written. #888 removed `cleanup_stale_cowork_socket`: it
-# cleaned the 2.x socket name, which nothing in 3.x binds.
+# cleaned the 2.x socket name, which nothing in 3.x binds. #805 added
+# `ensure_portal_app_id_entry`, which must also follow
+# `detect_display_backend` (see its own ordering test below).
 readonly PRELAUNCH_CALLS=(
 	cleanup_replaced_desktop_ui
 	cleanup_orphaned_cowork_daemon
@@ -63,6 +65,7 @@ readonly PRELAUNCH_CALLS=(
 	cleanup_stale_vm_bundle_images
 	heal_autostart_entry
 	backup_user_config
+	ensure_portal_app_id_entry
 )
 
 # The launcher heredoc body of packaging script <1>, as `<lineno>:<text>`
@@ -258,6 +261,32 @@ heal_call() {
 
 	[[ -z "$offenders" ]] || {
 		printf 'pre-launch call outside the launch window:\n%s' \
+			"$offenders" >&2
+		false
+	}
+}
+
+@test "ensure_portal_app_id_entry runs after detect_display_backend" {
+	# It reads is_wayland/use_x11_on_wayland to decide whether the
+	# native-Wayland portal path is live (#805). Called before the
+	# detection, both are unset and the entry is never written, so the
+	# portal keeps refusing the app id and nothing else goes red.
+	local script body detect call offenders=''
+	for script in "${PACKAGING_SCRIPTS[@]}"; do
+		body=$(launcher_heredoc "$script")
+		detect=$(call_lines detect_display_backend <<<"$body" \
+			| head -1)
+		call=$(call_lines ensure_portal_app_id_entry <<<"$body" \
+			| head -1)
+		[[ -n "$detect" && -n "$call" && "$call" -gt "$detect" ]] \
+			&& continue
+		offenders+="${script}: detect_display_backend at"
+		offenders+=" '${detect}', ensure_portal_app_id_entry at"
+		offenders+=" '${call}'"$'\n'
+	done
+
+	[[ -z "$offenders" ]] || {
+		printf 'portal entry helper before backend detection:\n%s' \
 			"$offenders" >&2
 		false
 	}
