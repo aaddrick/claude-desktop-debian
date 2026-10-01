@@ -455,8 +455,8 @@ _proc_state() {
 #
 # Two fingerprints, because the answer gates the reapers: a "no" lets
 # them kill helpers. Our own UI carries --class=$WM_CLASS
-# (_claude_desktop_ui_pids). Anthropic's official build, which D-002
-# lets users install side by side, runs its main process without
+# (_claude_desktop_own_ui_is_alive). Anthropic's official build, which
+# D-002 lets users install side by side, runs its main process without
 # --class, so on the --class check alone our launcher saw "no UI" and
 # reaped the official app's renderers (#903). Any Claude Desktop main
 # process therefore also counts; this only makes the reapers skip more.
