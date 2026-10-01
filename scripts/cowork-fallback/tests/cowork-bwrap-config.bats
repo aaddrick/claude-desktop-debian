@@ -135,6 +135,51 @@ assertDeepEqual(result, { valid: true }, 'rw under home');
 	[[ "$status" -eq 0 ]]
 }
 
+@test "validateMountPath: accepts RW paths under real HOME on immutable distros (Silverblue/Bazzite)" {
+	# On Fedora Silverblue/Bazzite, /home is a symlink to /var/home.
+	# os.homedir() returns /home/<user> but fs.realpathSync resolves it to
+	# /var/home/<user>. Without resolving $HOME before comparing, both the
+	# symlink form (/home/user/dir) and the real form (/var/home/user/dir)
+	# were rejected with "Read-write mounts must be under $HOME".
+	#
+	# This test builds the layout in TEST_TMP so it exercises the fix on
+	# every host (CI runs on Ubuntu, where /home is not a symlink and the
+	# un-pinned test passes even without the fix).
+
+	local fake_home fake_varhome
+	fake_home="${TEST_TMP}/fake-home"
+	fake_varhome="${TEST_TMP}/fake-varhome"
+	mkdir -p "${fake_home}" "${fake_varhome}/cloud/dev"
+	ln -s "${fake_varhome}" "${fake_home}/home_link"
+
+	# Set HOME to the symlink form so os.homedir() returns the unresolved
+	# path.  validateMountPath then sees the same situation as on
+	# Silverblue/Bazzite: os.homedir() = "/home/<user>", but
+	# realpathSync() = "/var/home/<user>".  Both forms must pass.
+	local home_path
+	home_path="${fake_home}/home_link"
+	export HOME="${home_path}"
+	run node -e "${NODE_PREAMBLE}
+
+const home = require('os').homedir();
+let realHome = home;
+try { realHome = require('fs').realpathSync(home); } catch (_) {}
+
+// Symlink form: must pass regardless of whether realpath differs
+const r1 = validateMountPath(home + '/cloud/dev', { readWrite: true });
+assert(r1.valid, 'symlink-form home path must be accepted: ' + home + '/cloud/dev');
+
+// Real path form: must also pass when realHome differs from home
+const r2 = validateMountPath(realHome + '/dev', { readWrite: true });
+assert(r2.valid, 'realpath-form home path must be accepted: ' + realHome + '/dev');
+
+// Non-home path must still be rejected
+const r3 = validateMountPath('/opt/tools', { readWrite: true });
+assert(!r3.valid, '/opt/tools must still be rejected');
+"
+	[[ "$status" -eq 0 ]]
+}
+
 @test "validateMountPath: accepts RO paths anywhere (not forbidden)" {
 	run node -e "${NODE_PREAMBLE}
 const r1 = validateMountPath('/opt/my-tools');
@@ -537,8 +582,8 @@ const result = mergeBwrapArgs(defaults, {
     disabledDefaultBinds: []
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
-    '--ro-bind', '/opt/tools', '/opt/tools',
-    '--ro-bind', '/nix/store', '/nix/store'];
+    '--dir', '/opt', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', '/nix', '--ro-bind', '/nix/store', '/nix/store'];
 assertDeepEqual(result, expected, 'ro appended');
 "
 	[[ "$status" -eq 0 ]]
@@ -554,7 +599,7 @@ const result = mergeBwrapArgs(defaults, {
     disabledDefaultBinds: []
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
-    '--bind', home + '/data', home + '/data'];
+    '--dir', home, '--bind', home + '/data', home + '/data'];
 assertDeepEqual(result, expected, 'rw appended');
 "
 	[[ "$status" -eq 0 ]]
@@ -572,9 +617,74 @@ const result = mergeBwrapArgs(defaults, {
 });
 const expected = ['--tmpfs', '/', '--ro-bind', '/usr', '/usr',
     '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--tmpfs', '/run',
-    '--ro-bind', '/opt/tools', '/opt/tools',
-    '--bind', home + '/shared', home + '/shared'];
+    '--dir', '/opt', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', home, '--bind', home + '/shared', home + '/shared'];
 assertDeepEqual(result, expected, 'combined');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: pre-creates parent dir for immutable-distro home paths" {
+	# On Fedora Silverblue/Bazzite, os.homedir() returns /var/home/<user>.
+	# bwrap auto-creates missing bind-destination parents itself, so the
+	# preceding --dir is path-creation hardening, not a fix for a dropped
+	# mount (#702's real cause is the /home vs /var/home symlink mismatch;
+	# see docs/configuration.md). The --dir must target the parent, never
+	# the destination itself, or file binds break (next two tests).
+	run node -e "${NODE_PREAMBLE}
+const varHome = '/var/home/cloud';
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [],
+    additionalBinds: [varHome + '/dev'],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--dir', varHome, '--bind', varHome + '/dev', varHome + '/dev'
+], 'immutable-distro dir bind');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: file bind targets --dir at parent, not the file dst" {
+	# additionalBinds may name a single file (e.g. ~/.gitconfig).
+	# Emitting --dir on the file dst itself would pre-create it as a
+	# directory and bwrap would die with 'Can't create file at ...: Is a
+	# directory'. Only the parent may be pre-created.
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const defaults = ['--tmpfs', '/'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [],
+    additionalBinds: [home + '/.gitconfig'],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/',
+    '--dir', home, '--bind', home + '/.gitconfig', home + '/.gitconfig'
+], 'file bind');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "mergeBwrapArgs: file overlay onto RO parent emits --dir on existing parent only" {
+	# Overlaying a file onto a default RO mount (e.g. a custom /etc/hosts
+	# over the default /etc ro-bind) works today. --dir /etc/hosts would
+	# die with 'Can't mkdir /etc/hosts: Not a directory'; --dir /etc is a
+	# no-op on the already-mounted parent.
+	run node -e "${NODE_PREAMBLE}
+const home = os.homedir();
+const defaults = ['--tmpfs', '/', '--ro-bind', '/etc', '/etc'];
+const result = mergeBwrapArgs(defaults, {
+    additionalROBinds: [{ src: home + '/hosts', dst: '/etc/hosts' }],
+    additionalBinds: [],
+    disabledDefaultBinds: []
+});
+assertDeepEqual(result, [
+    '--tmpfs', '/', '--ro-bind', '/etc', '/etc',
+    '--dir', '/etc', '--ro-bind', home + '/hosts', '/etc/hosts'
+], 'file overlay onto RO parent');
 "
 	[[ "$status" -eq 0 ]]
 }
@@ -879,7 +989,7 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--ro-bind', '/opt/tools', '/sandbox/tools'
+    '--dir', '/sandbox', '--ro-bind', '/opt/tools', '/sandbox/tools'
 ], 'ro object form');
 "
 	[[ "$status" -eq 0 ]]
@@ -896,7 +1006,7 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--bind', home + '/persistent', '/tmp'
+    '--dir', '/', '--bind', home + '/persistent', '/tmp'
 ], 'rw object form');
 "
 	[[ "$status" -eq 0 ]]
@@ -919,10 +1029,10 @@ const result = mergeBwrapArgs(defaults, {
 });
 assertDeepEqual(result, [
     '--tmpfs', '/',
-    '--ro-bind', '/opt/tools', '/opt/tools',
-    '--ro-bind', '/nix/store', '/sandbox/nix',
-    '--bind', home + '/data', home + '/data',
-    '--bind', home + '/cache', '/tmp'
+    '--dir', '/opt', '--ro-bind', '/opt/tools', '/opt/tools',
+    '--dir', '/sandbox', '--ro-bind', '/nix/store', '/sandbox/nix',
+    '--dir', home, '--bind', home + '/data', home + '/data',
+    '--dir', '/', '--bind', home + '/cache', '/tmp'
 ], 'mixed forms');
 "
 	[[ "$status" -eq 0 ]]
