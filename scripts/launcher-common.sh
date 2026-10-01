@@ -455,12 +455,20 @@ _proc_state() {
 #
 # Two fingerprints, because the answer gates the reapers: a "no" lets
 # them kill helpers. Our own UI carries --class=$WM_CLASS
-# (_claude_desktop_ui_pids). Anthropic's official build, which D-002
-# lets users install side by side, runs its main process without
+# (_claude_desktop_own_ui_is_alive). Anthropic's official build, which
+# D-002 lets users install side by side, runs its main process without
 # --class, so on the --class check alone our launcher saw "no UI" and
 # reaped the official app's renderers (#903). Any Claude Desktop main
 # process therefore also counts; this only makes the reapers skip more.
 _claude_desktop_ui_is_alive() {
+	_claude_desktop_own_ui_is_alive || _claude_desktop_any_main_is_alive
+}
+
+# Is OUR launcher's UI (--class=$WM_CLASS) up and runnable? Only it can
+# be the parent of the bwrap fallback daemon, which the official build
+# never spawns, so the doctor asks this rather than the reapers' gate
+# (#907).
+_claude_desktop_own_ui_is_alive() {
 	local pid state
 	for pid in $(_claude_desktop_ui_pids); do
 		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
@@ -469,7 +477,7 @@ _claude_desktop_ui_is_alive() {
 		# Found a genuine live Electron UI.
 		return 0
 	done
-	_claude_desktop_any_main_is_alive
+	return 1
 }
 
 # Is any runnable Claude Desktop Electron main process up for this user,

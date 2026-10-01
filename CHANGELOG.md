@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- `--doctor` no longer reports an orphaned Cowork bwrap daemon as `running (parent alive)` while Anthropic's official Claude Desktop is open. Since #904 the reapers' live-UI gate also counts the official app's main process, and the doctor used that same gate as its parent check, but the official build never spawns `cowork-vm-service.js`. The check now asks only whether our own UI (`--class=$WM_CLASS`) is up, reports the daemon as orphaned otherwise, and when the official app is what holds the reapers off, tells the user to quit it rather than to restart Claude Desktop, which can't start while the official app owns the profile. ([#907](https://github.com/aaddrick/claude-desktop-debian/issues/907))
 - The launcher's helper reaper no longer kills a process that merely names `cowork-vm-service.js`, such as `less`, an editor or `tail -f` on the bwrap fallback daemon's script. `cleanup_stale_desktop_helpers` matched that name anywhere in a command line, and it runs before launch and after Electron exits whenever no Claude UI is up. It now identifies the daemon by the same argv shape the cowork daemon reaper has used since #887 (argv[1] ends in `/cowork-vm-service.js`, argv[2] is `-socket`). Both reapers share one predicate, `_is_cowork_fallback_daemon`. ([#905](https://github.com/aaddrick/claude-desktop-debian/issues/905))
 
 ## [v3.3.3] — 2026-10-01
