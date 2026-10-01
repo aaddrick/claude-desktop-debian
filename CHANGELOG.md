@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.3] — 2026-10-01
+
 ### Fixed
 
 - The launcher's helper reaper now also catches a lingering `chrome_crashpad_handler`. Crashpad carries no `--type=` switch, so the in-tree helper arm never matched it; after a quit it can outlive the Electron main by tens of seconds, and on an AppImage it holds the `/tmp/.mount_claude*` mount while it does. The reaper runs on quit and before the next launch, so a quick relaunch no longer leaves the previous run's handler behind (verified on GNOME 48 Wayland against the v3.3.2 AppImage). The binary-identifying arms now test argv[0] instead of the whole command line, so a bystander that only names one of our binaries as an argument (`gdb …/chrome_crashpad_handler core`, an editor, `less`) is no longer a kill candidate. ([#828](https://github.com/aaddrick/claude-desktop-debian/pull/828))
