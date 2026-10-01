@@ -452,6 +452,14 @@ _proc_state() {
 }
 
 # Is a live (runnable) Claude Desktop UI running for this user?
+#
+# Two fingerprints, because the answer gates the reapers: a "no" lets
+# them kill helpers. Our own UI carries --class=$WM_CLASS
+# (_claude_desktop_ui_pids). Anthropic's official build, which D-002
+# lets users install side by side, runs its main process without
+# --class, so on the --class check alone our launcher saw "no UI" and
+# reaped the official app's renderers (#903). Any Claude Desktop main
+# process therefore also counts; this only makes the reapers skip more.
 _claude_desktop_ui_is_alive() {
 	local pid state
 	for pid in $(_claude_desktop_ui_pids); do
@@ -459,6 +467,36 @@ _claude_desktop_ui_is_alive() {
 		state=$(_proc_state "$pid") || continue
 		[[ $state == T || $state == t || $state == Z ]] && continue
 		# Found a genuine live Electron UI.
+		return 0
+	done
+	_claude_desktop_any_main_is_alive
+}
+
+# Is any runnable Claude Desktop Electron main process up for this user,
+# whoever launched it (#903)? Every build ships the Electron ELF as
+# `claude-desktop` (official deb, ours, the AppImage mount, Nix), and
+# Chromium's helpers are the same binary with --type=, so: exe basename
+# `claude-desktop` (" (deleted)" stripped, for an upgraded binary) and
+# no --type= and not run as Node (ELECTRON_RUN_AS_NODE=1). A launcher
+# script is excluded by its exe (bash).
+_claude_desktop_any_main_is_alive() {
+	local pid exe cmdline state
+	for pid in $(pgrep -u "$(id -u)" -x claude-desktop 2>/dev/null); do
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
+		exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || continue
+		exe=${exe% (deleted)}
+		[[ ${exe##*/} == claude-desktop ]] || continue
+		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
+			|| continue
+		[[ $cmdline == *--type=* ]] && continue
+		# Electron run as Node (a fork or MCP server): same exe, no
+		# --type=, but not a main. Counting it would let an orphan
+		# hold the gate open and shield itself from the reapers.
+		# An unreadable environ falls through to "alive" (safe side).
+		tr '\0' '\n' 2>/dev/null < "/proc/$pid/environ" \
+			| grep -qx 'ELECTRON_RUN_AS_NODE=1' && continue
+		state=$(_proc_state "$pid") || continue
+		[[ $state == T || $state == t || $state == Z ]] && continue
 		return 0
 	done
 	return 1

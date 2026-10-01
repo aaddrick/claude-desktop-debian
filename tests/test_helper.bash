@@ -158,9 +158,49 @@ _await_exe() {
 _kill_stand_ins() {
 	local pid
 	for pid in "${claude_pid:-}" "${plain_pid:-}" \
-		"${cowork_pids[@]}" "${bystander_pids[@]}"; do
+		"${cowork_pids[@]}" "${bystander_pids[@]}" \
+		"${main_stand_in_pids[@]}"; do
 		[[ -n $pid ]] || continue
 		kill -KILL "$pid" 2>/dev/null || true
 	done
-	unset claude_pid plain_pid cowork_pid cowork_pids bystander_pids
+	unset claude_pid plain_pid cowork_pid cowork_pids bystander_pids \
+		main_stand_in_pids
+}
+
+# Spawn a REAL process standing in for a Claude Desktop Electron main or
+# helper launched by someone else, e.g. Anthropic's official build (#903):
+# its exe is a copy of bash named `claude-desktop`, and it carries no
+# --class. Extra args land in its argv ($@), so `--type=renderer` makes
+# it a Chromium helper. Blocks on a fifo until reaped. Appends to
+# main_stand_in_pids and sets stand_in_pid.
+_spawn_claude_main_stand_in() {
+	local dir="$TEST_TMP/official-$RANDOM" fifo
+	mkdir -p "$dir" || return 1
+	cp /bin/bash "$dir/claude-desktop" || return 1
+	fifo="$dir/block"
+	mkfifo "$fifo" || return 1
+	"$dir/claude-desktop" -c 'read -r _ < "$1"' main "$fifo" "$@" 3>&- &
+	stand_in_pid=$!
+	main_stand_in_pids+=("$stand_in_pid")
+	_await_exe "$stand_in_pid" "$dir/claude-desktop"
+}
+
+# Scope pgrep to the PIDs in main_stand_in_pids (and helper_pid), so a
+# real Claude Desktop running on the host can neither satisfy nor be
+# reaped by the code under test.
+_scope_pgrep_to_main_stand_ins() {
+	# shellcheck disable=SC2329  # called by the code under test
+	pgrep() {
+		# Exit like pgrep: 0 only when something was printed, since
+		# callers branch on it (pids=$(...) || return 0).
+		local pid ours found=1
+		while read -r pid; do
+			for ours in "${main_stand_in_pids[@]}" "${helper_pid:-}"; do
+				[[ $pid == "$ours" ]] || continue
+				printf '%s\n' "$pid"
+				found=0
+			done
+		done < <(command pgrep "$@")
+		return "$found"
+	}
 }
