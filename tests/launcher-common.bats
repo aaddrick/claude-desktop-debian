@@ -1168,9 +1168,12 @@ _run_predicate_as_daemon() {
 		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=${config_dir}Dev "
 	[[ $status -ne 0 ]]
 
+	# No cowork-vm-service.js substring arm (#905): the fallback daemon
+	# is matched by argv shape in the reaper, so a pager on the script
+	# is not a helper.
 	run _desktop_helper_cmdline_matches \
-		"/usr/lib/claude-desktop/resources/app.asar.unpacked/cowork-vm-service.js"
-	[[ $status -eq 0 ]]
+		"less /usr/lib/claude-desktop/resources/cowork-vm-service.js "
+	[[ $status -ne 0 ]]
 
 	# Official Rust Cowork helper (spawned via process.resourcesPath).
 	run _desktop_helper_cmdline_matches \
@@ -1251,6 +1254,42 @@ _run_predicate_as_daemon() {
 	run _desktop_helper_cmdline_matches \
 		"/usr/lib/claude-desktop-unofficial/resources/chrome-native-host chrome-extension://fcoeoabgfenejglbffodgkkbkcdhcgfn/"
 	[[ $status -ne 0 ]]
+}
+
+@test "cleanup_stale_desktop_helpers: reaps the fallback daemon, spares processes naming the script (#905)" {
+	# The #882 case again, through the helper reaper: on a fresh launch
+	# no UI is alive, and every stand-in below is inside the scoped
+	# pgrep, so a cowork-vm-service.js substring arm would reap the
+	# bystanders along with the daemon. The daemon is spawned last so
+	# its PID is the last one pgrep prints: the scoped stub must exit
+	# like pgrep, or the reaper's `pids=$(...) || return 0` bails.
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_bystander_stand_in editor
+	_spawn_cowork_bystander_stand_in relative
+	_spawn_cowork_bystander_stand_in packed
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+
+	setup_logging
+	# `run` for the errexit reason given in the cowork daemon tests.
+	run cleanup_stale_desktop_helpers
+
+	local _i=0
+	while kill -0 "$cowork_pid" 2>/dev/null; do
+		((_i >= 30)) && break
+		sleep 0.1
+		_i=$((_i + 1))
+	done
+	run kill -0 "$cowork_pid"
+	[[ $status -ne 0 ]]
+	local pid
+	for pid in "${bystander_pids[@]}"; do
+		kill -0 "$pid" || return 1
+	done
+	# The log names the daemon, and only the daemon.
+	grep -qx \
+		"Killed stale Claude Desktop helpers (PIDs: $cowork_pid)" \
+		"$log_file"
 }
 
 @test "_claude_desktop_ui_cmdline_matches: keys on the --class fingerprint" {

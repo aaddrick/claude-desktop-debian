@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The launcher's helper reaper no longer kills a process that merely names `cowork-vm-service.js`, such as `less`, an editor or `tail -f` on the bwrap fallback daemon's script. `cleanup_stale_desktop_helpers` matched that name anywhere in a command line, and it runs before launch and after Electron exits whenever no Claude UI is up. It now identifies the daemon by the same argv shape the cowork daemon reaper has used since #887 (argv[1] ends in `/cowork-vm-service.js`, argv[2] is `-socket`). Both reapers share one predicate, `_is_cowork_fallback_daemon`. ([#905](https://github.com/aaddrick/claude-desktop-debian/issues/905))
+
 ## [v3.3.3] — 2026-10-01
 
 ### Fixed
