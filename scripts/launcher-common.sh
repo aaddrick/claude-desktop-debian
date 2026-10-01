@@ -477,7 +477,8 @@ _claude_desktop_ui_is_alive() {
 # `claude-desktop` (official deb, ours, the AppImage mount, Nix), and
 # Chromium's helpers are the same binary with --type=, so: exe basename
 # `claude-desktop` (" (deleted)" stripped, for an upgraded binary) and
-# no --type=. A launcher script is excluded by its exe (bash).
+# no --type= and not run as Node (ELECTRON_RUN_AS_NODE=1). A launcher
+# script is excluded by its exe (bash).
 _claude_desktop_any_main_is_alive() {
 	local pid exe cmdline state
 	for pid in $(pgrep -u "$(id -u)" -x claude-desktop 2>/dev/null); do
@@ -488,6 +489,12 @@ _claude_desktop_any_main_is_alive() {
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
 		[[ $cmdline == *--type=* ]] && continue
+		# Electron run as Node (a fork or MCP server): same exe, no
+		# --type=, but not a main. Counting it would let an orphan
+		# hold the gate open and shield itself from the reapers.
+		# An unreadable environ falls through to "alive" (safe side).
+		tr '\0' '\n' 2>/dev/null < "/proc/$pid/environ" \
+			| grep -qx 'ELECTRON_RUN_AS_NODE=1' && continue
 		state=$(_proc_state "$pid") || continue
 		[[ $state == T || $state == t || $state == Z ]] && continue
 		return 0

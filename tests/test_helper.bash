@@ -191,11 +191,16 @@ _spawn_claude_main_stand_in() {
 _scope_pgrep_to_main_stand_ins() {
 	# shellcheck disable=SC2329  # called by the code under test
 	pgrep() {
-		local pid ours
-		command pgrep "$@" | while read -r pid; do
+		# Exit like pgrep: 0 only when something was printed, since
+		# callers branch on it (pids=$(...) || return 0).
+		local pid ours found=1
+		while read -r pid; do
 			for ours in "${main_stand_in_pids[@]}" "${helper_pid:-}"; do
-				[[ $pid == "$ours" ]] && printf '%s\n' "$pid"
+				[[ $pid == "$ours" ]] || continue
+				printf '%s\n' "$pid"
+				found=0
 			done
-		done
+		done < <(command pgrep "$@")
+		return "$found"
 	}
 }

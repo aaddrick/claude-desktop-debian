@@ -1252,6 +1252,33 @@ _run_predicate_as_daemon() {
 	[[ $status -ne 0 ]]
 }
 
+@test "_claude_desktop_ui_is_alive: the binary run as Node is not a UI (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	ELECTRON_RUN_AS_NODE=1 _spawn_claude_main_stand_in
+	tr '\0' '\n' < "/proc/$stand_in_pid/environ" \
+		| grep -qx 'ELECTRON_RUN_AS_NODE=1'
+	run _claude_desktop_ui_is_alive
+	[[ $status -ne 0 ]]
+}
+
+@test "cleanup_stale_desktop_helpers: an orphaned Node-mode extension can't shield itself (#903)" {
+	_scope_pgrep_to_main_stand_ins
+	local ext
+	ext="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/Claude Extensions/ext"
+	ELECTRON_RUN_AS_NODE=1 \
+		_spawn_claude_main_stand_in "$ext/server/index.js"
+	setup_logging
+	run cleanup_stale_desktop_helpers
+	local i
+	for ((i = 0; i < 30; i++)); do
+		kill -0 "$stand_in_pid" 2>/dev/null || break
+		sleep 0.1
+	done
+	run kill -0 "$stand_in_pid"
+	[[ $status -ne 0 ]]
+	grep -q 'Killed stale Claude Desktop helpers' "$log_file"
+}
+
 @test "_claude_desktop_ui_is_alive: a stopped official-style main is not a UI (#903)" {
 	_scope_pgrep_to_main_stand_ins
 	_spawn_claude_main_stand_in
