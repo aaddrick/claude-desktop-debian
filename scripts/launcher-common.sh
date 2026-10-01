@@ -568,31 +568,37 @@ cleanup_replaced_desktop_ui() {
 		"${pids[@]}"
 }
 
-# PIDs of this user's bwrap-fallback cowork daemon, one per line.
+# Is PID the bwrap-fallback cowork daemon?
 #
 # Fingerprinted by argv shape, not by a `cowork-vm-service.js`
 # substring: the substring also matches an editor, `tail -f` or a
-# shell that merely names the file, and the reaper below SIGKILLs
-# whatever this returns (#882, the #534 host-wide pgrep -f class).
+# shell that merely names the file, and both reapers SIGKILL what
+# this accepts (#882 and #905, the #534 host-wide pgrep -f class).
 # cowork-bwrap.sh spawn swap B starts the daemon as exactly
 #   <node> <resourcesPath>/cowork-vm-service.js -socket <sock>
 # so argv[1] ends in /cowork-vm-service.js and argv[2] is -socket.
 # The official Rust helper (cowork-linux-helper) never matches.
 #
-# pgrep only narrows the candidates; the argv check decides. Scoped
-# to this user and skipping our own launcher bash and its parent,
-# like _claude_desktop_ui_pids. cmdline is read NUL-split into an
-# array because `tr '\0' ' '` would lose the argument boundaries.
+# cmdline is read NUL-split into an array because `tr '\0' ' '`
+# would lose the argument boundaries.
+_is_cowork_fallback_daemon() {
+	local -a argv
+	mapfile -d '' argv 2>/dev/null < "/proc/$1/cmdline" || return 1
+	[[ ${argv[1]:-} == */cowork-vm-service.js ]] || return 1
+	[[ ${argv[2]:-} == -socket ]]
+}
+
+# PIDs of this user's bwrap-fallback cowork daemon, one per line.
+#
+# pgrep only narrows the candidates; _is_cowork_fallback_daemon
+# decides. Scoped to this user and skipping our own launcher bash and
+# its parent, like _claude_desktop_ui_pids.
 _cowork_fallback_daemon_pids() {
 	local pid
-	local -a argv
 	for pid in \
 		$(pgrep -u "$(id -u)" -f 'cowork-vm-service\.js' 2>/dev/null); do
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
-		mapfile -d '' argv 2>/dev/null < "/proc/$pid/cmdline" \
-			|| continue
-		[[ ${argv[1]:-} == */cowork-vm-service.js ]] || continue
-		[[ ${argv[2]:-} == -socket ]] || continue
+		_is_cowork_fallback_daemon "$pid" || continue
 		printf '%s\n' "$pid"
 	done
 }
@@ -627,14 +633,15 @@ cleanup_orphaned_cowork_daemon() {
 		"${pids[@]}"
 }
 
+# No cowork-vm-service.js arm: a substring here would also match an
+# editor or `tail -f` on the script (#905). The fallback daemon is
+# matched by argv shape (_is_cowork_fallback_daemon) in
+# cleanup_stale_desktop_helpers instead.
 _desktop_helper_cmdline_matches() {
 	local cmdline="$1"
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
 
 	case "$cmdline" in
-		*cowork-vm-service.js*)
-			return 0
-			;;
 		*cowork-linux-helper*)
 			# Official Rust Cowork helper, spawned via
 			# process.resourcesPath (relocation-safe, so no fixed path).
@@ -679,6 +686,10 @@ cleanup_stale_desktop_helpers() {
 	for pid in $pids; do
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		[[ ${_electron_child_pid:-} == "$pid" ]] && continue
+		if _is_cowork_fallback_daemon "$pid"; then
+			matched+=("$pid")
+			continue
+		fi
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
 		_desktop_helper_cmdline_matches "$cmdline" || continue
