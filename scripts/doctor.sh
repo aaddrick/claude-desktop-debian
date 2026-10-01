@@ -798,13 +798,16 @@ _doctor_check_singleton_lock() {
 # start. When the UI is alive the daemon is healthy (expected on the
 # flagged path).
 #
-# Detection is the reaper's own predicate,
-# _cowork_fallback_daemon_pids, and live-UI detection is
-# _claude_desktop_ui_is_alive, both in launcher-common.sh: the doctor
-# reports exactly what cleanup_orphaned_cowork_daemon would kill, and
-# a process that only names the script is neither (#882). Guarded like
-# _doctor_check_tray_icon: a standalone `source doctor.sh` has no
-# launcher-common.sh in scope and stays silent.
+# Detection is the reaper's own predicate, _cowork_fallback_daemon_pids,
+# so a process that only names the script is never reported (#882).
+# The parent check is narrower than the reaper's gate: only our own UI
+# (_claude_desktop_own_ui_is_alive) can have spawned the daemon. The
+# official build, which never spawns it, also holds the reaper off,
+# because our UI can't start while it owns the profile; the daemon is
+# then still orphaned, and is reaped at our next launch after the
+# official app quits (#907). Guarded like _doctor_check_tray_icon: a
+# standalone `source doctor.sh` has no launcher-common.sh in scope and
+# stays silent.
 _doctor_check_cowork_daemon() {
 	declare -F _cowork_fallback_daemon_pids > /dev/null || return 0
 
@@ -812,11 +815,16 @@ _doctor_check_cowork_daemon() {
 	mapfile -t pids < <(_cowork_fallback_daemon_pids)
 	[[ ${#pids[@]} -gt 0 ]] || return 0
 
-	if _claude_desktop_ui_is_alive; then
+	if _claude_desktop_own_ui_is_alive; then
 		_pass 'Cowork bwrap daemon: running (parent alive)'
 		return 0
 	fi
 	_warn 'Cowork bwrap daemon: orphaned' "(PIDs: ${pids[*]})"
+	if _claude_desktop_any_main_is_alive; then
+		_info 'Fix: Quit the official Claude Desktop' \
+			'(the next claude-desktop-unofficial launch cleans it up)'
+		return 0
+	fi
 	_info 'Fix: Restart Claude Desktop' \
 		'(daemon will be cleaned up automatically)'
 }

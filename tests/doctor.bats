@@ -856,9 +856,10 @@ _source_launcher_common() {
 #
 # Detection is the reaper's own _cowork_fallback_daemon_pids, so these
 # source the real launcher-common.sh (see _source_launcher_common) and
-# use real stand-ins with pgrep scoped to them. Only the live-UI
-# predicate is stubbed, to decouple from a Claude Desktop running on
-# the host.
+# use real stand-ins with pgrep scoped to them. The UI is a real process
+# too: stubbing the live-UI predicate hid #907, where the official
+# app's main (no --class) counted as the daemon's parent. Scoping keeps
+# a Claude Desktop running on the host out of every case.
 # =============================================================================
 
 @test "_doctor_check_cowork_daemon: silent when launcher-common is not in scope" {
@@ -869,7 +870,6 @@ _source_launcher_common() {
 
 @test "_doctor_check_cowork_daemon: orphaned daemons warn with their PIDs space-separated" {
 	_source_launcher_common
-	_claude_desktop_ui_is_alive() { return 1; }
 	_spawn_cowork_daemon_stand_in
 	_spawn_cowork_daemon_stand_in
 	_scope_pgrep_to_stand_ins
@@ -881,21 +881,47 @@ _source_launcher_common() {
 	[[ $output == *"(PIDs: $a $b)"* || $output == *"(PIDs: $b $a)"* ]]
 }
 
-@test "_doctor_check_cowork_daemon: daemon with a live UI passes" {
+@test "_doctor_check_cowork_daemon: daemon with our live UI passes" {
 	_source_launcher_common
-	_claude_desktop_ui_is_alive() { return 0; }
+	_spawn_claude_main_stand_in "--class=$WM_CLASS"
 	_spawn_cowork_daemon_stand_in
 	_scope_pgrep_to_stand_ins
 	run _doctor_check_cowork_daemon
-	[[ $output == *'[PASS]'*'Cowork bwrap daemon: running'* ]]
+	[[ $output == *'[PASS]'*'Cowork bwrap daemon: running (parent alive)'* ]]
 	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_cowork_daemon: the official app is not the daemon's parent (#907)" {
+	# Its main has no --class and it never spawns the fallback daemon.
+	# It still holds the reapers off, so the advice is to quit it.
+	_source_launcher_common
+	_spawn_claude_main_stand_in
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $output == *'[WARN]'*"Cowork bwrap daemon: orphaned (PIDs: $cowork_pid)"* ]]
+	[[ $output == *'Fix: Quit the official Claude Desktop'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'Restart Claude Desktop'* ]]
+}
+
+@test "_doctor_check_cowork_daemon: a stopped UI of ours is not a parent (#907)" {
+	_source_launcher_common
+	_spawn_claude_main_stand_in "--class=$WM_CLASS"
+	kill -STOP "$stand_in_pid"
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	kill -CONT "$stand_in_pid"
+	[[ $output == *'[WARN]'*'Cowork bwrap daemon: orphaned'* ]]
+	[[ $output == *'Fix: Restart Claude Desktop'* ]]
+	[[ $output != *'[PASS]'* ]]
 }
 
 @test "_doctor_check_cowork_daemon: a process naming the script is not reported (#882)" {
 	# The doctor must report what the reaper would kill, and the reaper
 	# spares this: no orphan WARN pointing users at a phantom daemon.
 	_source_launcher_common
-	_claude_desktop_ui_is_alive() { return 1; }
 	_spawn_cowork_bystander_stand_in editor
 	_scope_pgrep_to_stand_ins
 	run _doctor_check_cowork_daemon

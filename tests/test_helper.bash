@@ -120,7 +120,8 @@ _await_argv0() {
 	return 1
 }
 
-# Restrict pgrep's results to the cowork stand-ins this test spawned.
+# Restrict pgrep's results to the cowork stand-ins this test spawned,
+# plus any _spawn_claude_main_stand_in UIs/mains it started (#907).
 # The real pgrep still runs with the caller's own flags (so -u and the
 # pattern are exercised); only PIDs outside the test are dropped. The
 # reaper's candidates are host-wide, so leaving it unscoped would
@@ -135,7 +136,8 @@ _scope_pgrep_to_stand_ins() {
 		# callers branch on it (pids=$(...) || return 0).
 		local pid ours found=1
 		while read -r pid; do
-			for ours in "${cowork_pids[@]}" "${bystander_pids[@]}"; do
+			for ours in "${cowork_pids[@]}" "${bystander_pids[@]}" \
+				"${main_stand_in_pids[@]}"; do
 				[[ $pid == "$ours" ]] || continue
 				printf '%s\n' "$pid"
 				found=0
