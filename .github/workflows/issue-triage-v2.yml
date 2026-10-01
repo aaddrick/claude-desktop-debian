@@ -17,9 +17,10 @@ run-name: |
 #
 # Triggers: fires automatically on `issues: [opened]`; also accepts
 # `workflow_dispatch` for re-runs, dry-run testing, and manual
-# triage on backfilled issues. v1 (issue-triage.yml) is kept as a
-# workflow_dispatch-only fallback — its `issues` trigger was
-# disabled when v2 took over production routing.
+# triage on backfilled issues. This is the only triage workflow —
+# the v1 fallback was deleted in #868 rather than backported to the
+# posture below, because an unexercised fallback that differed from
+# it was the larger liability (#867).
 # See docs/issue-triage/README.md.
 
 on:
@@ -202,8 +203,25 @@ jobs:
           title=$(jq -r '.title' /tmp/triage/issue.json)
           body=$(jq -r '.body // ""' /tmp/triage/issue.json)
 
+          # The repo's live label vocabulary, cached two steps earlier.
+          # Interpolated rather than hardcoded in classify.txt: a
+          # hand-maintained list drifts on the first rename, and the
+          # only symptom is a Stage 9 "not in repo label set" notice on
+          # a run nobody re-reads (#867). Trusted input, so it goes in
+          # ahead of the untrusted issue wrappers.
+          label_lines=$(jq -r '.[] | "- `" + . + "`"' \
+            /tmp/triage/repo-labels.json)
+          if [[ -z "${label_lines}" ]]; then
+            echo "::error::repo label set empty — refusing to classify"
+            exit 1
+          fi
+
           {
             cat .claude/scripts/prompts/classify.txt
+            echo ""
+            echo "<repo_labels source=\"gh label list, trusted\">"
+            printf '%s\n' "${label_lines}"
+            echo "</repo_labels>"
             echo ""
             echo "<issue_title source=\"reporter, untrusted\">${title}</issue_title>"
             echo ""

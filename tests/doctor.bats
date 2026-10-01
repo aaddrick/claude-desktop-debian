@@ -6,6 +6,8 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 
+load 'test_helper'
+
 setup() {
 	TEST_TMP=$(mktemp -d)
 	export TEST_TMP
@@ -44,6 +46,7 @@ setup() {
 }
 
 teardown() {
+	_kill_stand_ins
 	if [[ -n "$TEST_TMP" && -d "$TEST_TMP" ]]; then
 		rm -rf "$TEST_TMP"
 	fi
@@ -115,6 +118,14 @@ _skip_gtk_query() {
 	run _doctor_check_im_modules debian
 	[[ $output == *'XWayland'* ]]
 	[[ $output == *'CLAUDE_USE_WAYLAND=1'* ]]
+}
+
+@test "_doctor_check_im_modules: XWayland note's tip does not claim native Wayland loses hotkeys" {
+	XDG_SESSION_TYPE='wayland'
+	unset CLAUDE_USE_WAYLAND
+	run _doctor_check_im_modules debian
+	[[ $output == *'global hotkey via portal on GNOME/KDE'* ]]
+	[[ $output != *'loses global hotkeys'* ]]
 }
 
 @test "_doctor_check_im_modules: no XWayland note when CLAUDE_USE_WAYLAND=1" {
@@ -191,6 +202,19 @@ _skip_gtk_query() {
 	[[ $output == *'Display server: Wayland'* ]]
 	[[ $output == *'Desktop: GNOME'* ]]
 	[[ $output == *'XWayland'* ]]
+}
+
+@test "_doctor_check_display_server: native-Wayland tip names the portal, not a hotkey loss" {
+	# Since #690 native Wayland keeps the global hotkey on GNOME/KDE via
+	# the GlobalShortcuts portal; the old tip said it "disables global
+	# hotkeys", steering GNOME users away from the fix (#862).
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_CURRENT_DESKTOP='GNOME'
+	run _doctor_check_display_server
+	[[ $output == *'GlobalShortcuts portal on GNOME/KDE'* ]]
+	[[ $output == *'lost on wlroots'* ]]
+	[[ $output != *'disables global hotkeys'* ]]
+	[[ $output != *'for global hotkey support'* ]]
 }
 
 @test "_doctor_check_display_server: Wayland + CLAUDE_USE_WAYLAND=1 — native mode" {
@@ -304,18 +328,36 @@ _skip_gtk_query() {
 # =============================================================================
 
 # Install a coredumpctl shim. $1 is the coredumpctl-list-style
-# multi-line output to emit (header + entry rows). The shim ignores
-# its arguments — tests don't exercise the filter syntax.
+# multi-line output to emit (header + entry rows). The shim records
+# its argv in $TEST_TMP/coredumpctl.args so a test can pin the COMM
+# match word: a bare non-path match is a COMM filter, and matching
+# the wrong name silences the probe entirely (#861).
 _install_coredumpctl_shim() {
 	mkdir -p "$TEST_TMP/bin"
 	cat > "$TEST_TMP/bin/coredumpctl" <<SHIM
 #!/usr/bin/env bash
+printf '%s\\n' "\$@" > "$TEST_TMP/coredumpctl.args"
 cat <<'OUT'
 $1
 OUT
 SHIM
 	chmod +x "$TEST_TMP/bin/coredumpctl"
 	export PATH="$TEST_TMP/bin:$PATH"
+}
+
+@test "_doctor_check_recent_crashes: matches COMM claude-desktop, not electron" {
+	# The official ELF shipped since v3.0.0 is named claude-desktop, so
+	# that is the comm systemd-coredump records. `list electron` (the
+	# 2.x binary name) matched nothing on any 3.x install.
+	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE'
+	run _doctor_check_recent_crashes \
+		'/usr/lib/claude-desktop-unofficial/claude-desktop'
+	[[ $status -eq 0 ]]
+	local -a argv
+	mapfile -t argv < "$TEST_TMP/coredumpctl.args"
+	[[ ${argv[0]} == 'list' ]]
+	[[ ${argv[1]} == 'claude-desktop' ]]
+	[[ ${argv[*]} != *electron* ]]
 }
 
 @test "_doctor_check_recent_crashes: no coredumpctl on PATH — silent" {
@@ -345,7 +387,7 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 	run _doctor_check_recent_crashes \
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
-	[[ $output == *'Recent Electron crashes: 1'* ]]
+	[[ $output == *'Recent Claude Desktop crashes: 1'* ]]
 	[[ $output != *'[WARN]'* ]]
 }
 
@@ -358,25 +400,26 @@ Sun 2026-05-03 14:34:10 EDT 567221 1000 1000 SIGTRAP present /usr/lib/claude-des
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
-	[[ $output == *'Recent Electron crashes: 3'* ]]
+	[[ $output == *'Recent Claude Desktop crashes: 3'* ]]
 	[[ $output == *'CLAUDE_DISABLE_GPU=1'* ]]
 	[[ $output == *'/issues/583'* ]]
 }
 
 @test "_doctor_check_recent_crashes: path mismatch falls back with footnote" {
-	# Three crashes from a DIFFERENT electron binary (e.g., Slack).
-	# Caller passes claude-desktop's electron path, which doesn't
-	# match — helper falls back to total count and adds the footnote
-	# so the user knows the count may be cross-app.
+	# Three crashes from a DIFFERENT claude-desktop binary: Anthropic's
+	# official package installed side by side shares the comm. Caller
+	# passes our path, which doesn't match — helper falls back to the
+	# total count and adds the footnote so the user knows the count
+	# may belong to the other install.
 	_install_coredumpctl_shim 'TIME PID UID GID SIG COREFILE EXE SIZE
-Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
-Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M
-Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/slack/electron 30M'
+Wed 2026-05-06 09:00:00 EDT 200001 1000 1000 SIGSEGV present /usr/lib/claude-desktop/claude-desktop 30M
+Wed 2026-05-05 09:00:00 EDT 200002 1000 1000 SIGSEGV present /usr/lib/claude-desktop/claude-desktop 30M
+Wed 2026-05-04 09:00:00 EDT 200003 1000 1000 SIGSEGV present /usr/lib/claude-desktop/claude-desktop 30M'
 	run _doctor_check_recent_crashes \
 		'/usr/lib/claude-desktop-unofficial/claude-desktop'
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
-	[[ $output == *'may be from other Electron apps'* ]]
+	[[ $output == *'may be from another Claude Desktop install'* ]]
 }
 
 @test "_doctor_check_recent_crashes: empty electron_path falls back" {
@@ -386,8 +429,8 @@ Wed 2026-05-06 08:00:21 EDT 130375 1000 1000 SIGTRAP present /usr/lib/claude-des
 	# emits the info line based on the unfiltered total.
 	run _doctor_check_recent_crashes ''
 	[[ $status -eq 0 ]]
-	[[ $output == *'Recent Electron crashes: 1'* ]]
-	[[ $output == *'may be from other Electron apps'* ]]
+	[[ $output == *'Recent Claude Desktop crashes: 1'* ]]
+	[[ $output == *'may be from another Claude Desktop install'* ]]
 }
 
 # =============================================================================
@@ -737,14 +780,48 @@ SHIM
 	[[ $output == *'no lock file'* ]]
 }
 
-@test "_doctor_check_singleton_lock: symlink to a live PID — PASS" {
+# Pull the real launcher-common.sh into this test shell.
+#
+# The lock check delegates to _pid_is_claude_desktop, which lives in
+# launcher-common.sh beside the other /proc/PID/exe readers. At runtime
+# it is always in scope (launcher-common.sh sources doctor.sh), but
+# this file sources doctor.sh standalone, so the SingletonLock tests
+# source the real launcher-common.sh instead: a local stub would only
+# mirror the prod call, and a `declare -F` fallback in doctor.sh would
+# make these tests decoration.
+_source_launcher_common() {
+	# shellcheck source=scripts/launcher-common.sh
+	source "$SCRIPT_DIR/../scripts/launcher-common.sh"
+}
+
+@test "_doctor_check_singleton_lock: symlink to a live Claude Desktop PID — PASS" {
 	mkdir -p "$XDG_CONFIG_HOME/Claude"
-	# $$ is this test process: guaranteed alive for the kill -0 probe.
-	ln -s "myhost-$$" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	_source_launcher_common
+	_spawn_claude_desktop_stand_in
+	ln -s "myhost-$claude_pid" "$XDG_CONFIG_HOME/Claude/SingletonLock"
 	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
 	[[ $status -eq 0 ]]
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *'running process'* ]]
+}
+
+@test "_doctor_check_singleton_lock: symlink to a live PID that is not Claude Desktop — WARN, not PASS" {
+	# #784: kill -0 alone false-PASSes a stale lock whose PID has
+	# since been recycled by any other process of the same user.
+	mkdir -p "$XDG_CONFIG_HOME/Claude"
+	_source_launcher_common
+	_spawn_plain_sleep
+	ln -s "myhost-$plain_pid" "$XDG_CONFIG_HOME/Claude/SingletonLock"
+	# Precondition: the PID really is signalable, so this test can
+	# only pass via the executable check.
+	kill -0 "$plain_pid"
+	run _doctor_check_singleton_lock "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output == *'stale lock'* ]]
+	[[ $output == *"PID $plain_pid is not a Claude Desktop process"* ]]
+	[[ $output == *"Fix: rm '$XDG_CONFIG_HOME/Claude/SingletonLock'"* ]]
 }
 
 @test "_doctor_check_singleton_lock: symlink to a dead PID — WARN, not PASS" {
@@ -772,6 +849,58 @@ SHIM
 	[[ $output != *'[PASS]'* ]]
 	[[ $output != *'no lock file'* ]]
 	[[ $output == *'not a symlink'* ]]
+}
+
+# =============================================================================
+# _doctor_check_cowork_daemon: orphaned fallback daemon (#882)
+#
+# Detection is the reaper's own _cowork_fallback_daemon_pids, so these
+# source the real launcher-common.sh (see _source_launcher_common) and
+# use real stand-ins with pgrep scoped to them. Only the live-UI
+# predicate is stubbed, to decouple from a Claude Desktop running on
+# the host.
+# =============================================================================
+
+@test "_doctor_check_cowork_daemon: silent when launcher-common is not in scope" {
+	run _doctor_check_cowork_daemon
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_doctor_check_cowork_daemon: orphaned daemons warn with their PIDs space-separated" {
+	_source_launcher_common
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_daemon_stand_in
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $output == *'[WARN]'*'Cowork bwrap daemon: orphaned'* ]]
+	# Either order: pgrep lists by PID, which only matches spawn order
+	# until PIDs wrap.
+	local a="${cowork_pids[0]}" b="${cowork_pids[1]}"
+	[[ $output == *"(PIDs: $a $b)"* || $output == *"(PIDs: $b $a)"* ]]
+}
+
+@test "_doctor_check_cowork_daemon: daemon with a live UI passes" {
+	_source_launcher_common
+	_claude_desktop_ui_is_alive() { return 0; }
+	_spawn_cowork_daemon_stand_in
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $output == *'[PASS]'*'Cowork bwrap daemon: running'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_cowork_daemon: a process naming the script is not reported (#882)" {
+	# The doctor must report what the reaper would kill, and the reaper
+	# spares this: no orphan WARN pointing users at a phantom daemon.
+	_source_launcher_common
+	_claude_desktop_ui_is_alive() { return 1; }
+	_spawn_cowork_bystander_stand_in editor
+	_scope_pgrep_to_stand_ins
+	run _doctor_check_cowork_daemon
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
 }
 
 # =============================================================================
@@ -1699,19 +1828,19 @@ _stub_stat() {
 	[[ $output == *'not found'* ]]
 }
 
-@test "_doctor_check_chrome_sandbox: deb path wins when both sandboxes exist (single report)" {
-	# Pins probe precedence and the loop's break: with both the deb path
-	# and an electron-adjacent sandbox present, the deb path is judged
-	# and exactly ONE result line prints. Deleting the break (double
-	# report) or reordering the probe array fails this.
+@test "_doctor_check_chrome_sandbox: electron-adjacent sandbox wins when both exist (single report)" {
+	# FLIPPED from #745's deb-path-wins expectation: this fix judges
+	# ONLY the running binary's sandbox when an electron path is given,
+	# so with both files present the electron-adjacent one is reported.
+	# Still pins the single-report contract.
 	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
 	: > "$TEST_TMP/deb-sandbox"
 	mkdir -p "$TEST_TMP/app"
 	: > "$TEST_TMP/app/chrome-sandbox"
 	_stub_stat '4755' 'root'
 	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
-	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
-	[[ $output != *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $output == *"$TEST_TMP/app/chrome-sandbox"* ]]
+	[[ $output != *"$TEST_TMP/deb-sandbox"* ]]
 	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
 }
 
@@ -1722,4 +1851,84 @@ _stub_stat() {
 	run _doctor_check_chrome_sandbox ''
 	[[ $output == *'[PASS]'* ]]
 	[[ $output == *"$TEST_TMP/deb-sandbox"* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: ignores a stale deb sandbox when an electron path is given" {
+	# Regression guard (#714-class false green): a valid deb sandbox
+	# exists, but the running binary (electron_path) has none. The old
+	# code validated the deb path and reported PASS for a sandbox that
+	# is not in use. The deb path must be ignored entirely -> WARN,
+	# never PASS.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	# No chrome-sandbox next to electron.
+	_stub_stat '4755' 'root'
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *"$TEST_TMP/deb-sandbox"* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: judges the electron-path sandbox, not the deb one, when both exist" {
+	# Regression guard: the running binary's sandbox has the wrong perms
+	# (0755) while a stale deb sandbox is fine (4755 root). The old code
+	# checked the deb path first and PASSed; the electron-path sandbox
+	# is the one that must be judged -> FAIL.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/deb-sandbox"
+	: > "$TEST_TMP/deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	# Path-aware stub: electron's sandbox is bad, everything else good.
+	stat() {
+		if [[ $3 == "$TEST_TMP/app/chrome-sandbox" ]]; then
+			if [[ $2 == '%a' ]]; then echo '0755'; else echo 'root'; fi
+		else
+			if [[ $2 == '%a' ]]; then echo '4755'; else echo 'root'; fi
+		fi
+	}
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron"
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'perms=0755'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "_doctor_check_chrome_sandbox: appimage package type — INFO, no stat, no FAIL" {
+	# #785: the AppImage stages chrome-sandbox but its permission
+	# normalization drops the setuid bit and the mount/extract dir is
+	# owned by the running user, so the perms check always FAILed with
+	# an unactionable `sudo chown root:root /tmp/.mount_.../` hint --
+	# and it is moot anyway (--no-sandbox is unconditional there).
+	# A 0644 adjacent sandbox, the worst case, must still produce a
+	# single _info line and no stat call at all.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
+	# Tripwire: any stat call would print this and break the
+	# assertions below, so the "no stat" half is enforced, not
+	# decoration.
+	stat() { echo 'STAT-WAS-CALLED'; }
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron" 'appimage'
+	[[ $status -eq 0 ]]
+	[[ $output != *'STAT-WAS-CALLED'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'sudo chown'* ]]
+	[[ $output == *'not used'* ]]
+	[[ $output == *'--no-sandbox'* ]]
+	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
+}
+
+@test "_doctor_check_chrome_sandbox: deb type still judges perms (#785 gate is appimage-only)" {
+	# Guards the gate's blast radius: the same bad 0644 sandbox must
+	# still FAIL when the package type is deb.
+	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
+	mkdir -p "$TEST_TMP/app"
+	: > "$TEST_TMP/app/chrome-sandbox"
+	chmod 0644 "$TEST_TMP/app/chrome-sandbox"
+	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron" 'deb'
+	[[ $output == *'[FAIL]'* ]]
+	[[ $output == *'perms=644'* ]]
 }

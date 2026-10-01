@@ -12,13 +12,16 @@ PATCH_SH="${SCRIPT_DIR}/../../patches/cowork-bwrap.sh"
 
 # Minimal fixture reproducing the exact anchor shapes the patch targets.
 # The spawn site is wrapped in a callable so the injected expression can
-# be evaluated with stub IE/A/Vie bindings.
+# be evaluated with stub IE/A/Vie bindings. C1 resolves on the
+# `[downloadVM] Download already in progress` log literal in the
+# function body (since 1.46388.2 dropped the destructure it used to end
+# on), so both fixtures log it from the download branch.
 fixture() {
 	cat <<'JS'
 function Ben(){return process.platform,Cen()}
 function Cen(){return{status:"unsupported"}}
 function ygi(A){return IE.spawn(A,["-socket",Vie()],{stdio:["pipe","pipe","pipe"]})}
-async function OzA(A,e){const{yukonSilver:t}=sM();return(t==null?void 0:t.status)!=="supported"?!1:doDownload()}
+async function OzA(A,e){const{yukonSilver:t}=sM();return(t==null?void 0:t.status)!=="supported"?!1:(log("[downloadVM] Download already in progress, waiting..."),doDownload())}
 async function Vdo(A,e,t){if(!e){log("[warm] Warm download disabled");return}return warmPrefetch()}
 JS
 }
@@ -33,7 +36,7 @@ fixture_1268320() {
 function Ben(){return process.platform,Cen()}
 function Cen(){return{status:`unsupported`}}
 function ygi(A){return (0,ye.spawn)(A,[`-socket`,Vie()],{stdio:[`pipe`,`pipe`,`pipe`]})}
-async function OzA(A,e){let{yukonSilver:t}=p.n();return t?.status===`supported`?doDownload():!1}
+async function OzA(A,e){let{yukonSilver:t}=p.n();return t?.status===`supported`?(log(`[downloadVM] Download already in progress, waiting...`),doDownload()):!1}
 async function Vdo(A,e,t){if(!e){log(`[warm] Warm download disabled`);return}return warmPrefetch()}
 JS
 }
@@ -194,7 +197,7 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	fixture_1268320 > "$(target)"
 	patch_cowork_bwrap
 	grep -qF 'async function OzA(A,e){/*cowork-bwrap-dl*/if(' "$(target)"
-	grep -qF 'return!1;let{yukonSilver:t}=p.n();return t?.status===`supported`' \
+	grep -qF '{return!1}let{yukonSilver:t}=p.n();return t?.status===`supported`' \
 		"$(target)"
 }
 

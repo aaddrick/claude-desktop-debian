@@ -7,10 +7,10 @@ The launcher reads a small set of opt-in `CLAUDE_*` environment variables; every
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLAUDE_USE_WAYLAND` | unset (auto) | Force the display backend on Wayland: `1` = native Wayland, `0` = XWayland. Unset auto-detects per compositor (only Niri defaults to native Wayland). See [Wayland Support](#wayland-support). |
-| `CLAUDE_DISABLE_GPU` | unset (auto) | `1` = disable hardware acceleration (`--disable-gpu --disable-software-rasterizer`). `0` = suppress the sticky auto-recovery after a GPU-process crash. Unset = auto-apply the flags when the previous launch died with the GPU FATAL signature. See [GPU](#gpu-claude_disable_gpu). |
+| `CLAUDE_DISABLE_GPU` | unset (auto) | `1` = disable hardware acceleration (`--disable-gpu`). `0` = suppress the sticky auto-recovery after a GPU-process crash. Unset = auto-apply the flag when the previous launch died with the GPU FATAL signature. See [GPU](#gpu-claude_disable_gpu). |
 | `CLAUDE_PASSWORD_STORE` | unset | Explicit escape hatch: when set, the value is passed verbatim as Chromium's `--password-store=`. When unset, the official build's `os_crypt` autodetection owns the decision. See [Password store](#password-store-claude_password_store). |
 | `CLAUDE_GTK_IM_MODULE` | unset | Propagated to `GTK_IM_MODULE` for Electron at startup; opt-in override for broken IBus/GTK input-method integration. See [Input method](#input-method-claude_gtk_im_module). |
-| `CLAUDE_TRAY_USE_DARK_ICON` | unset (auto on Cinnamon) | `1` = use upstream's light `TrayIconLinux-Dark.png` (for dark panels); `0` = force the dark `TrayIconLinux.png`. Unset lets the launcher auto-detect Cinnamon dark-panel themes ([#604](https://github.com/aaddrick/claude-desktop-debian/issues/604)). See [Tray icon](#tray-icon-claude_tray_use_dark_icon). |
+| `CLAUDE_TRAY_USE_DARK_ICON` | unset (auto on Cinnamon) | `1` = use upstream's light `TrayIconLinux-Dark.png` (for dark panels); `0` = force the dark `TrayIconLinux.png` (not honored on a post-failure tray rebuild, [#876](https://github.com/aaddrick/claude-desktop-debian/issues/876)). Unset lets the launcher auto-detect Cinnamon dark-panel themes ([#604](https://github.com/aaddrick/claude-desktop-debian/issues/604)). See [Tray icon](#tray-icon-claude_tray_use_dark_icon). |
 
 Since the v3.0.0 rebase onto the official Linux build, launcher policy is opt-in only: no default flag shadows an official code path. Several 2.x variables are therefore gone — see [Removed in v3.0.0](#removed-in-v300).
 
@@ -37,7 +37,7 @@ On Wayland sessions the launcher picks a display backend per compositor:
 
 By default only Niri is auto-selected for native Wayland. GNOME Wayland stays on XWayland by default even though mutter no longer honours XWayland global key grabs ([#404](https://github.com/aaddrick/claude-desktop-debian/issues/404)) — flipping the default GNOME session off XWayland is a rendering/IME/HiDPI risk, so it's left opt-in for now.
 
-To route Quick Entry's global shortcut (`Ctrl+Alt+Space`) through the XDG GlobalShortcuts portal on GNOME, opt into native Wayland with `CLAUDE_USE_WAYLAND=1`. On **GNOME ≤ 49** this works after a one-time portal permission dialog (accept it to bind the shortcut). On **GNOME 50 / xdg-desktop-portal ≥ 1.20 it does not work yet**: the newer portal requires apps to declare identity via `org.freedesktop.host.portal.Registry.Register`, which Electron/Chromium doesn't do, so `globalShortcut.register()` fails and the shortcut stays focus-bound. Tracked upstream at [electron/electron#51875](https://github.com/electron/electron/issues/51875).
+To route Quick Entry's global shortcut (`Ctrl+Alt+Space`) through the XDG GlobalShortcuts portal on GNOME, opt into native Wayland with `CLAUDE_USE_WAYLAND=1`. It works after a one-time portal permission dialog (accept it to bind the shortcut), verified on GNOME 50.1 with xdg-desktop-portal 1.21.1. xdg-desktop-portal ≥ 1.20 requires apps to declare identity via `org.freedesktop.host.portal.Registry.Register` and refuses an id with no installed `<id>.desktop`. Electron ≥ 44 makes the call ([electron/electron#51875](https://github.com/electron/electron/issues/51875)) with the id `com.anthropic.Claude`, so on native Wayland the launcher writes a hidden `~/.local/share/applications/com.anthropic.Claude.desktop` whenever no system copy exists ([#805](https://github.com/aaddrick/claude-desktop-debian/issues/805)).
 
 Override the auto-detection with `CLAUDE_USE_WAYLAND`:
 
@@ -57,7 +57,7 @@ export CLAUDE_USE_WAYLAND=1
 
 ## GPU (CLAUDE_DISABLE_GPU)
 
-`CLAUDE_DISABLE_GPU=1` makes the launcher pass `--disable-gpu --disable-software-rasterizer` to the official binary — the same workaround as the in-app Settings hardware-acceleration toggle, persisted via the environment instead. When the variable is **unset** and the previous launch died with Chromium's GPU-process FATAL signature ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)), the launcher auto-applies the same flags and keeps them applied on subsequent launches (sticky recovery). Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback when retesting hardware acceleration after a driver fix. The flags are also applied automatically inside XRDP sessions. See [troubleshooting.md](troubleshooting.md#repeated-electron-crashes--gpu-process-fatal-583) for the full workflow.
+`CLAUDE_DISABLE_GPU=1` makes the launcher pass `--disable-gpu` to the official binary — the same workaround as the in-app Settings hardware-acceleration toggle, persisted via the environment instead. When the variable is **unset** and the previous launch died with Chromium's GPU-process FATAL signature ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)), the launcher auto-applies the same flag and keeps it applied on subsequent launches (sticky recovery). Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback when retesting hardware acceleration after a driver fix. The flag is also applied automatically inside XRDP sessions. See [troubleshooting.md](troubleshooting.md#repeated-electron-crashes--gpu-process-fatal-583) for the full workflow.
 
 ## Password store (CLAUDE_PASSWORD_STORE)
 
@@ -75,7 +75,7 @@ The doctor reports which mode is in effect (`Password store: upstream os_crypt a
 
 ## Tray icon (CLAUDE_TRAY_USE_DARK_ICON)
 
-Upstream ships two Linux tray PNGs and normally picks from GTK dark-mode state plus a GNOME check. On Cinnamon, a dark panel can coexist with a light GTK colour scheme, so the wrong (black) icon is selected. When unset, the launcher probes `org.cinnamon.theme` on Cinnamon sessions and sets `CLAUDE_TRAY_USE_DARK_ICON=1` when the theme name looks like a dark panel style (e.g. Mint-Y-Dark-Aqua). Set `1` or `0` yourself to force the light or dark glyph — `0` overrides upstream's own selection too, so it pins the black glyph even on GNOME or under a dark GTK scheme. Any other non-empty value is ignored by the app but still disables the launcher's auto-detect (the launcher logs this and `--doctor` warns about it). Requires a build that includes the `patch_tray_icon_env_override` asar patch; `--doctor` reports which mode is in effect. Interim fix pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
+Upstream ships two Linux tray PNGs and normally picks from GTK dark-mode state plus a GNOME check. On Cinnamon, a dark panel can coexist with a light GTK colour scheme, so the wrong (black) icon is selected. When unset, the launcher probes `org.cinnamon.theme` on Cinnamon sessions and sets `CLAUDE_TRAY_USE_DARK_ICON=1` when the theme name looks like a dark panel style (e.g. Mint-Y-Dark-Aqua). Set `1` or `0` yourself to force the light or dark glyph — `0` overrides upstream's own selection too, so it pins the black glyph even on GNOME or under a dark GTK scheme — with one exception: if the app has to rebuild the tray after a failed tray creation, upstream's retry forces `TrayIconLinux-Dark.png` — the dark-panel glyph `1` selects — and `0` is ignored until the next launch ([#876](https://github.com/aaddrick/claude-desktop-debian/issues/876)). Any other non-empty value is ignored by the app but still disables the launcher's auto-detect (the launcher logs this and `--doctor` warns about it). Requires a build that includes the `patch_tray_icon_env_override` asar patch; `--doctor` reports which mode is in effect. Interim fix pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
 
 ## Cowork
 
@@ -108,7 +108,7 @@ To make it persistent — including for launches from the desktop/app menu, whic
 COWORK_VM_BACKEND=bwrap
 ```
 
-The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU`, `CLAUDE_TRAY_USE_DARK_ICON` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell. `--doctor` reads it too, so diagnostics always match what a launch would see.
+The launcher reads `KEY=value` lines from `${XDG_CONFIG_HOME:-~/.config}/claude-desktop-debian/environment` at startup. Only a fixed allowlist of launcher variables is honored — `COWORK_VM_BACKEND`, `COWORK_NODE_PATH`, `CLAUDE_USE_WAYLAND`, `CLAUDE_PASSWORD_STORE`, `CLAUDE_GTK_IM_MODULE`, `CLAUDE_DISABLE_GPU`, `CLAUDE_FORCE_SANDBOX`, `CLAUDE_TRAY_USE_DARK_ICON` — and only when the variable isn't already set, so an explicit `VAR=… claude-desktop-unofficial` on the command line still wins. The file is never executed as shell. `--doctor` reads it too, so diagnostics always match what a launch would see.
 
 How it works: an asar patch (`patch_cowork_bwrap`) short-circuits the KVM support gate and swaps the native VM helper for a bundled Node daemon (`resources/cowork-vm-service.js`) that speaks the same socket protocol as the official helper but backs it with `bwrap` instead of QEMU. Every branch of the patch is gated on this exact flag, so on an unflagged launch every branch evaluates false and the official KVM path runs unchanged — nothing changes for the KVM majority.
 
@@ -120,6 +120,16 @@ Requirements when flagged:
 | bubblewrap | `bwrap` installed, with unprivileged user namespaces allowed (Ubuntu 24.04+ blocks them via AppArmor — see [troubleshooting.md](troubleshooting.md)) | `_doctor_check_bwrap_fallback` |
 
 Run `claude-desktop-unofficial --doctor` with the flag set to see the bwrap-path diagnostics. Isolation is namespace-level, not a VM — weaker than the KVM default, which is the trade for running where KVM can't. Any `COWORK_VM_BACKEND` value other than `bwrap` is a 2.x knob the official client ignores.
+
+Extra host paths can be exposed to the sandbox via `coworkBwrapMounts` (`additionalBinds` / `additionalROBinds`) in `~/.config/Claude/claude_desktop_linux_config.json`.
+
+> **Note for immutable distros (Fedora Silverblue, Bazzite):** on these
+> systems `/home` is a symlink to `/var/home` on the *host*, but the sandbox
+> has no such symlink — `$HOME` inside the sandbox is the literal
+> `/home/<user>` form. Use the same form in your config
+> (for example `"/home/cloud/dev"`, not `"/var/home/cloud/dev"`) so the
+> mount is accessible under `~/` inside the sandbox. Both forms are accepted
+> by the validator; only the `/home/...` form will appear under `$HOME`.
 
 ## Removed in v3.0.0
 

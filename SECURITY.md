@@ -28,7 +28,7 @@ This project repackages an upstream Electron app. The boundary matters:
 
 ## Response
 
-GitHub Advisories notify @aaddrick. Acknowledgement is usually within a few days. Fix turnaround depends on the surface — packaging-layer bugs are usually fast; patches against minified upstream JS may need to wait for a tractable anchor in a future upstream release.
+GitHub Advisories notify @aaddrick — creating and managing advisories on a personal-account repository is owner-only, so that routing can't move. @sabiut is looped in on triage and fixes. Acknowledgement is usually within a few days. Fix turnaround depends on the surface — packaging-layer bugs are usually fast; patches against minified upstream JS may need to wait for a tractable anchor in a future upstream release.
 
 ## Disclosure history
 

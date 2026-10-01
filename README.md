@@ -12,6 +12,18 @@ The official `.deb` covers one packaging target. What it leaves out is a long ta
 
 ---
 
+## Maintainership
+
+As of September 2026, [@sabiut](https://github.com/sabiut) leads this project. I ([@aaddrick](https://github.com/aaddrick)) am stepping back to focus on other things. @sabiut has been the most consistent contributor here and has final say on direction, releases, and what lands.
+
+The repo stays where it is — `aaddrick/claude-desktop-debian`, at @sabiut's request. No transfer, no new URLs: existing APT/DNF sources, issue links, and clone remotes all keep working. I still hold the signing keys and the Cloudflare Worker credentials, so publishing surfaces list both of us in [CODEOWNERS](.github/CODEOWNERS).
+
+A repository owned by a personal account has only two access levels — owner and collaborator — so a few things can't be handed over without moving the repo: settings, branch protection, Actions secrets, and security advisories. Those still land on me. Ping me and I'll press the button. Releases themselves are automatic, and the version variables are settable by any collaborator through `gh variable set`, so day-to-day work doesn't route through me.
+
+I'll still be around for questions and the occasional PR — reachable on [GitHub](https://github.com/aaddrick) or [LinkedIn](https://www.linkedin.com/in/aaddrick/).
+
+---
+
 ## Features
 
 - **Official app, extra formats**: repackages Anthropic's official Linux `.deb` into `.rpm`, AppImage, and AUR builds.

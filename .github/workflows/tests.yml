@@ -14,12 +14,26 @@ on:
       - "tests/**"
       - "scripts/**"
       - ".github/workflows/tests.yml"
+      # ci-release-job.bats asserts on the release job's structure,
+      # workflow-node-floor.bats on the Node floor of both, and
+      # triage-workflow-hardening.bats on the triage posture.
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/issue-triage-v2.yml"
+      # triage-classify-vocabulary.bats asserts on the classifier's
+      # prompt and schema alongside the workflow that feeds them.
+      - ".claude/scripts/prompts/**"
+      - ".claude/scripts/schemas/**"
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  # triage-classify-vocabulary.bats intersects the label names the
+  # triage pipeline still hardcodes against the repo's live label set,
+  # so a rename reds here instead of silently degrading a prompt
+  # (#867). Read-only, and the only API call the suite makes.
+  issues: read
 
 concurrency:
   group: bats-${{ github.ref }}
@@ -40,6 +54,12 @@ jobs:
           sudo apt-get install -y bats nodejs
 
       - name: Run BATS test suite
+        env:
+          # Scoped to this step: `gh label list` is the whole use, and
+          # the suite runs fork-authored code on pull_request. The test
+          # names the canonical repo itself (a fork's label set is not
+          # the vocabulary), so no GH_REPO here.
+          GH_TOKEN: ${{ github.token }}
         # Cowork tests load scripts/cowork-fallback/cowork-vm-service.js
         # via `node` — the `nodejs` install above is what they need.
         # The cowork-fallback suites cover the bwrap fallback daemon and

@@ -52,6 +52,31 @@ Runtime logs are available at:
 ~/.cache/claude-desktop-debian/launcher.log
 ```
 
+The file holds the launcher's own lines plus everything the app writes
+to stdout/stderr for the session. It rotates at 5 MiB on the next
+launch (`.1`, `.2` kept), and within a session the app's output is
+bounded: runs of an identical line collapse to one copy plus
+`[launcher] last line repeated N more times`, and after 20 MiB of
+output a `[launcher] output cap ... reached` line is written and the
+rest of the session's app output is dropped. Both markers in a bug
+report mean the app was looping on that message.
+
+### `launcher.log` is gigabytes in size
+
+Builds before the [#864](https://github.com/aaddrick/claude-desktop-debian/issues/864)
+fix had no in-session bound, so an app message stuck in a loop (a GPU
+error, an IPC handler failure) could write tens of gigabytes before the
+next launch rotated the file. Close Claude Desktop and delete the files;
+nothing depends on them:
+
+```bash
+rm ~/.cache/claude-desktop-debian/launcher.log*
+```
+
+Then upgrade. If a current build still shows the `output cap` marker,
+the message just above it is what was looping — worth an issue with
+that line.
+
 ## Common Issues
 
 ### Window Scaling Issues
@@ -91,17 +116,21 @@ mode is in effect (preset, Cinnamon auto-detect, or upstream default),
 so include its output when reporting tray icon issues. Interim fix
 pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
 
-### Global Hotkey Not Working (Wayland)
+### Quick Entry only opens when Claude has focus (GNOME Wayland)
 
-If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in native Wayland mode:
+On GNOME Wayland, the default XWayland mode registers the hotkey (Ctrl+Alt+Space) as an X11 key grab. mutter ignores such grabs unless Claude already has focus. Route the hotkey through the XDG GlobalShortcuts portal instead:
 
-1. Check your logs at `~/.cache/claude-desktop-debian/launcher.log`
-2. Look for "Using X11 backend via XWayland" - this means hotkeys should work
-3. If you see "Using native Wayland backend", unset `CLAUDE_USE_WAYLAND` or ensure it's not set to `1`
+1. Set `CLAUDE_USE_WAYLAND=1` in `~/.config/claude-desktop-debian/environment`, then quit Claude fully and relaunch it.
+2. Accept the GNOME dialog that asks to allow Claude's global shortcut.
+3. Check that GNOME recorded the binding:
+   ```bash
+   gsettings get org.gnome.settings-daemon.global-shortcuts applications
+   ```
+   The output should list `'com.anthropic.Claude'`.
 
-**Note:** Native Wayland mode routes the shortcut through the XDG GlobalShortcuts portal, which only works on some compositors (GNOME ≤ 49, KDE) due to Electron/Chromium limitations.
+On xdg-desktop-portal 1.20 and later (GNOME 50), the portal refuses an app id that has no installed `<id>.desktop` file. Chromium registers `com.anthropic.Claude`, while our packages install `claude-desktop-unofficial.desktop`. So on native Wayland the launcher writes a hidden `~/.local/share/applications/com.anthropic.Claude.desktop` when no system copy exists, and removes it once the official package provides one ([#805](https://github.com/aaddrick/claude-desktop-debian/issues/805)). If the dialog never appears, check `launcher.log` for `Wrote portal app-id entry`. `Left portal app-id entry … in place` means a `com.anthropic.Claude.desktop` the launcher did not write is already in `~/.local/share/applications`. The launcher replaces a dead copy that the official app left behind, but it never replaces anyone else's file, so check that one by hand.
 
-See [configuration.md](configuration.md#wayland-support) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
+wlroots compositors (Sway, Hyprland, Niri) and COSMIC ship no GlobalShortcuts portal backend, so the portal route does nothing there. See [configuration.md](configuration.md#wayland-support) for the `CLAUDE_USE_WAYLAND` values.
 
 ### Keyboard Input Doesn't Work (IBus / GTK Input Method)
 
@@ -176,18 +205,18 @@ echo 'export CLAUDE_DISABLE_GPU=1' >> ~/.profile
 ```
 
 When `CLAUDE_DISABLE_GPU=1` is set, the launcher passes
-`--disable-gpu --disable-software-rasterizer` to the official binary
-(see `scripts/launcher-common.sh`). This is the same pair of flags
+`--disable-gpu` to the official binary
+(see `scripts/launcher-common.sh`). This is the same flag
 applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
 
 If the previous launch already died with the GPU-process FATAL
 signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
-auto-applies the same flags and keeps them applied on subsequent
+auto-applies the same flag and keeps it applied on subsequent
 launches. Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback
 when retesting hardware acceleration after a driver fix — any
-explicitly set value suppresses it; only `1` forces the flags on.
+explicitly set value suppresses it; only `1` forces the flag on.
 
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for
@@ -197,6 +226,41 @@ Settings, when running in environments with no GPU available
 behavior to persist across reinstalls and config resets.
 
 Tracking issue: [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583).
+
+### `/var/log/syslog` grows to hundreds of GB on Ubuntu ([#582](https://github.com/aaddrick/claude-desktop-debian/issues/582))
+
+On Ubuntu, every process crash is piped to apport, which writes a
+multi-megabyte report under `/var/crash/`; `update-notifier-crash` then
+emits journal lines that rsyslog forwards to `/var/log/syslog`. When an
+Electron process crash-loops (the underlying crash is
+[#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)),
+that feedback loop drives syslog to hundreds of gigabytes — one reporter
+measured 190 GB. The crashing process shows up as `update-notifier-crash`
+in the journal, not `claude-desktop`, which is why it is easy to miss.
+
+The `.deb` package ships an apport blacklist
+(`/etc/apport/blacklist.d/claude-desktop-unofficial`) that breaks the
+loop for the Electron ELF and the crashpad handler, without disabling
+apport for anything else. Nothing to configure on a current install.
+
+On an **older build that predates this fix**, stop the growth by
+blacklisting the binary yourself, then reclaim the space:
+
+```bash
+echo /usr/lib/claude-desktop-unofficial/claude-desktop \
+  | sudo tee /etc/apport/blacklist.d/claude-desktop-unofficial
+sudo rm -f /var/crash/_usr_lib_claude-desktop*.crash
+sudo truncate -s 0 /var/log/syslog
+```
+
+apport reads the blacklist on every crash, so no service restart is
+needed; deleting the reports already under `/var/crash/` stops
+`update-notifier-crash` re-processing them.
+
+The trade-off is that apport's "send a crash report" dialog no longer
+fires for Claude Desktop. Those reports go to errors.ubuntu.com, not to
+this project, so nothing is lost. Fedora (abrt) and the AppImage are
+unaffected — apport is Debian/Ubuntu-only.
 
 ### Black screen on Fedora KDE with Intel Iris Xe ([#706](https://github.com/aaddrick/claude-desktop-debian/issues/706))
 
@@ -423,9 +487,15 @@ run with `--no-sandbox`, see
 ["AppImage Sandbox Warning"](#appimage-sandbox-warning) — so there's
 nothing AppImage-specific to add there either.)
 
-No package ships a bwrap profile as of v3.0.0+; the deb's `postrm` still
-removes the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap` leftover (and a
-`claude-desktop-unofficial-bwrap` sibling, if one exists) on purge.
+No package ships a bwrap profile as of v3.0.0+. The deb's `postrm` removes
+the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap` leftover (and a
+`claude-desktop-unofficial-bwrap` sibling, if one exists) on purge, and
+since [#825](https://github.com/aaddrick/claude-desktop-debian/pull/825)
+`postinst` also clears it on upgrade — `postrm` alone never fired on that
+path, so the leftover used to survive indefinitely. See
+["Blank icons / unloggable GDM greeter after upgrading to Ubuntu
+26.04"](#blank-icons--unloggable-gdm-greeter-after-upgrading-to-ubuntu-2604)
+if you are already in that state.
 
 **Credit:** [@hfyeh](https://github.com/hfyeh)
 ([#351](https://github.com/aaddrick/claude-desktop-debian/issues/351)) for
@@ -434,6 +504,56 @@ the original profile workaround;
 over-scope and the opam/Apptainer precedent, in
 [PR #434](https://github.com/aaddrick/claude-desktop-debian/pull/434#issuecomment-4352273336)
 (tracked in [#542](https://github.com/aaddrick/claude-desktop-debian/issues/542)).
+
+### Blank icons / unloggable GDM greeter after upgrading to Ubuntu 26.04
+
+Tracked in
+[#542](https://github.com/aaddrick/claude-desktop-debian/issues/542).
+
+**Symptoms, all at once, immediately after an Ubuntu release upgrade:**
+
+- the GDM greeter shows text and buttons but **no user list, no
+  background, and no icons**, so there is no way to log in graphically;
+- `gnome-terminal` does not open — `gnome-terminal-server` aborts with a
+  GTK assertion at `gtkiconhelper.c` while loading `image-missing.png`;
+- icons are blank across the shell and in GTK apps;
+- gnome-keyring never shows its password prompt, so passphrase-protected
+  ssh keys stop working (`agent refused operation`).
+
+**Cause.** A 2.x-era install of this package left
+`/etc/apparmor.d/claude-desktop-bwrap` behind, which attaches a profile to
+the shared `/usr/bin/bwrap`. Ubuntu's own `bwrap-userns-restrict` claims
+the same path, so AppArmor resolves neither and bwrap falls through to
+`unprivileged_userns`. GNOME 47+ decodes every image through glycin inside
+a bwrap sandbox, so nothing that is an image can load. The profile is inert
+on Ubuntu 24.04 (no glycin), which is why it only breaks at upgrade time
+and why nothing points at Claude Desktop.
+
+**Confirm it** from a TTY (`Ctrl+Alt+F3`):
+
+```bash
+journalctl -b | grep -c 'conflicting profile attachments'   # non-zero
+ls /etc/apparmor.d/claude-desktop-bwrap                     # exists
+```
+
+**Fix:**
+
+```bash
+sudo apparmor_parser -R /etc/apparmor.d/claude-desktop-bwrap
+sudo rm /etc/apparmor.d/claude-desktop-bwrap
+sudo systemctl restart gdm
+```
+
+`apparmor_parser -R` is required in addition to the delete. Removing the
+file alone leaves the profile loaded in the kernel, so the conflict —
+and the broken desktop — survives until the next reboot.
+
+Upgrading the package fixes this going forward: `postinst` clears the
+leftover as of
+[#825](https://github.com/aaddrick/claude-desktop-debian/pull/825). Keep
+`/etc/apparmor.d/claude-desktop` (and
+`/etc/apparmor.d/claude-desktop-unofficial`) — those attach to this
+application's own binary and are correct.
 
 ### Cowork: ENAMETOOLONG on encrypted home (eCryptfs)
 

@@ -11,10 +11,12 @@
 # then parses every emitted file.
 #
 # Asserts, in order:
-#   1. the patch stage exits 0
+#   1. the patch stage exits 0 — which includes the orchestrator's
+#      retirement tripwire: every active patch changed the pristine bundle
 #   2. every JS file in the repacked asar parses (node --check)
 #   3. each injected marker survives the repack
-#   4. a second pass is a no-op and leaves the asar byte-identical
+#   4. a second pass is a no-op per patch and leaves the asar
+#      byte-identical
 #
 # (4) is not decoration: through 1.24012.11 the patches resolved a single
 # main file handed to them, and the move to per-anchor resolution (#820)
@@ -91,9 +93,13 @@ main() {
 	# Globals the patch stage reads.
 	work_dir="$tmp/work"
 	app_staging_dir="$tmp/staging"
-	asar_exec=$(command -v asar || command -v npx)
-	export work_dir app_staging_dir project_root asar_exec
 	mkdir -p "$work_dir" "$app_staging_dir/resources"
+	# @electron/asar@3 (not @4): this harness reads and repacks an
+	# asar, which every major does identically, and 3 is the last one
+	# that runs on the Node 20 stable distros ship — so a pre-ship
+	# patch check still runs on the host where #839 was reported.
+	_resolve_asar "$work_dir" 3 || exit 1
+	export work_dir app_staging_dir project_root asar_exec
 
 	if [[ -n $src ]]; then
 		cp "$src/app.asar" "$app_staging_dir/resources/" || exit 1
@@ -154,7 +160,11 @@ main() {
 	echo '=== pass 2: idempotency ==='
 	local before after
 	before=$(sha256sum "$app_staging_dir/resources/app.asar" | cut -d' ' -f1)
-	( patch_app_asar ) > "$tmp/pass2.log" 2>&1
+	# PATCH_STAGE_RERUN flips the orchestrator's per-patch effect check:
+	# pass 1 already required every patch to change the pristine bundle,
+	# and here each one must leave the patched bundle alone, so a guard
+	# that misses its own output is named rather than just a hash diff.
+	( PATCH_STAGE_RERUN=1 patch_app_asar ) > "$tmp/pass2.log" 2>&1
 	local rc2=$?
 	sed 's/^/  | /' "$tmp/pass2.log"
 	after=$(sha256sum "$app_staging_dir/resources/app.asar" | cut -d' ' -f1)

@@ -16,7 +16,8 @@ A few minutes here saves a round-trip later. Match your task to the right channe
   declined by default — see [What we accept](#what-we-accept).
 - **Security concern?** Don't file a public issue. Use
   [SECURITY.md](SECURITY.md) — GitHub Security Advisories route to
-  @aaddrick privately.
+  @aaddrick privately (owner-only on a personal-account repo); @sabiut
+  is looped in.
 
 ## Where to find what
 
@@ -86,10 +87,23 @@ Priority rule: a broken-patch upstream release beats feature work.
 
 CODEOWNERS auto-requests reviews; this list is for human discoverability.
 
-- **@aaddrick**: default. Build, non-Cowork patches, desktop, packaging, docs.
-- **@sabiut**: `tests/`, `scripts/doctor.sh`, test workflows.
-- **@RayCharlizard**: Cowork (`scripts/patches/cowork.sh`,
-  `scripts/cowork-vm-service.js`, `tests/cowork-*.bats`).
+- **@sabiut**: project lead and default owner. Build, patches, desktop,
+  packaging, docs, `tests/`, `scripts/doctor.sh`. Final say on
+  direction and releases.
+- **@aaddrick**: repository owner, so the owner-only surfaces stay here
+  — repo settings, branch protection, Actions secrets, and security
+  advisories —
+  along with the release credentials (APT/DNF signing, the Cloudflare
+  Worker). Co-owner on `.github/workflows/`, `worker/`, `RELEASING.md`,
+  and `SECURITY.md`. Otherwise stepped back — still around for
+  questions and for pressing the buttons only an owner can press.
+  `REPO_VERSION` and `CLAUDE_DESKTOP_VERSION` are Actions *variables*,
+  not secrets: any collaborator can bump them with `gh variable set`
+  even though the Settings UI page is owner-only. Upstream-triggered
+  releases need no one at all — `check-claude-version.yml` sets the
+  version and pushes the tag itself.
+- **@RayCharlizard**: Cowork (`scripts/patches/cowork-bwrap.sh`,
+  `scripts/cowork-fallback/`, `tests/cowork-*.bats`).
 - **@typedrat**: Nix (`flake.nix`, `flake.lock`, `/nix/`).
 
 ## Before submitting a PR

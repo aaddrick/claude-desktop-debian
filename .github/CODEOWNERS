@@ -2,73 +2,61 @@
 #
 # Rules match top-to-bottom; the LAST matching rule wins.
 # Layout:
-#   1. Default owner
-#   2. Explicit @aaddrick assignments grouped by logical role
-#      (listed even where redundant, so the intent is visible to
-#      future collaborators scanning the file)
+#   1. Default owner (@sabiut — project lead since 2026-09)
+#   2. Explicit assignments grouped by logical role (listed even
+#      where redundant, so the intent is visible to future
+#      collaborators scanning the file)
 #   3. Cowork and Nix overrides at the bottom so they stick
 #
 # Each listed user must be a repo collaborator (Settings →
 # Collaborators) with at least read access, or GitHub silently
 # ignores them.
+#
+# @aaddrick remains the repository owner (a personal-account repo has
+# no admin role to grant) and holds the release/distribution
+# credentials — APT and DNF signing keys, the Cloudflare Worker — so
+# the publishing surfaces below carry both names.
 
-# ---- Default: aaddrick owns anything not explicitly claimed ----
-*                                       @aaddrick
+# ---- Default: @sabiut owns anything not explicitly claimed ----
+*                                       @sabiut
 
 # ---- Build orchestration ----
 # The top-level dispatcher and shared shell utilities.
-/build.sh                               @aaddrick
-/scripts/_common.sh                     @aaddrick
+/build.sh                               @sabiut
+/scripts/_common.sh                     @sabiut
 
 # ---- Setup (host detection, dependencies, upstream download) ----
-/scripts/setup/                         @aaddrick
+/scripts/setup/                         @sabiut
 
 # ---- Electron patches / minified JS ----
-# The regex-driven patches applied to the unpacked app.asar, plus
-# the frame-fix wrapper and native-binding stubs that ride along.
-/scripts/patches/_common.sh             @aaddrick
-/scripts/patches/app-asar.sh            @aaddrick
-/scripts/patches/titlebar.sh            @aaddrick
-/scripts/patches/claude-code.sh         @aaddrick
-/scripts/frame-fix-wrapper.js           @aaddrick
-/scripts/claude-native-stub.js          @aaddrick
-
-# ---- Linux desktop integration ----
-# Tray, menu bar, and quick-window behavior on Wayland/X11.
-/scripts/patches/tray.sh                @aaddrick
-/scripts/patches/quick-window.sh        @aaddrick
-
-# ---- Staging (non-cowork) ----
-# Electron copy-out, icon processing, locales, SSH helpers.
-/scripts/staging/electron.sh            @aaddrick
-/scripts/staging/icons.sh               @aaddrick
-/scripts/staging/locales.sh             @aaddrick
-/scripts/staging/ssh-helpers.sh         @aaddrick
+# The regex-driven patches applied to the unpacked app.asar.
+/scripts/patches/                       @sabiut
 
 # ---- Packaging formats (deb, rpm, AppImage) + runtime launcher ----
-/scripts/packaging/                     @aaddrick
-/scripts/launcher-common.sh             @aaddrick
+/scripts/packaging/                     @sabiut
+/scripts/launcher-common.sh             @sabiut
 
 # ---- Distribution & signing ----
-# APT/DNF repo publishing, GPG signing, release automation.
+# APT/DNF repo publishing, GPG signing, release automation, and the
+# Cloudflare Worker that fronts the binaries. Credentials live with
+# @aaddrick, so both maintainers are on these.
 # Most of this lives in workflows — gh-pages branch content isn't
 # reachable via CODEOWNERS.
-/.github/workflows/                     @aaddrick
-/scripts/resolve-download-url.py        @aaddrick
+/.github/workflows/                     @sabiut @aaddrick
+/worker/                                @sabiut @aaddrick
 
 # ---- CI / other GitHub metadata ----
-/.github/                               @aaddrick
+/.github/                               @sabiut
 
 # ---- Docs & style ----
-/README.md                              @aaddrick
-/CLAUDE.md                              @aaddrick
-/AGENTS.md                              @aaddrick
-/CONTRIBUTING.md                        @aaddrick
-/CHANGELOG.md                           @aaddrick
-/RELEASING.md                           @aaddrick
-/SECURITY.md                            @aaddrick
-/docs/styleguides/                      @aaddrick
-/docs/                                  @aaddrick
+/README.md                              @sabiut
+/CLAUDE.md                              @sabiut
+/AGENTS.md                              @sabiut
+/CONTRIBUTING.md                        @sabiut
+/CHANGELOG.md                           @sabiut
+/RELEASING.md                           @sabiut @aaddrick
+/SECURITY.md                            @sabiut @aaddrick
+/docs/                                  @sabiut
 
 # ---- Testing & release quality ----
 # Integration test suite, artifact validation, flag-parsing tests,
@@ -76,15 +64,6 @@
 # @RayCharlizard via the override below.
 /tests/                                 @sabiut
 /scripts/doctor.sh                      @sabiut
-/.github/workflows/test-artifacts.yml   @sabiut
-/.github/workflows/test-flags.yml       @sabiut
-/.github/workflows/tests.yml            @sabiut
-
-# Shared review — either owner can approve.
-# troubleshooting.md is mostly the --doctor user-facing guide; lint
-# touches everything, so either maintainer can sign off.
-/docs/troubleshooting.md                @aaddrick @sabiut
-/.github/workflows/shellcheck.yml       @aaddrick @sabiut
 
 #===============================================================================
 # Overrides — listed last so their assignments stick against the
@@ -92,12 +71,11 @@
 #===============================================================================
 
 # ---- Cowork ----
-# Electron-side patching, staging, daemon, and integration tests.
-/scripts/patches/cowork.sh              @RayCharlizard
-/scripts/staging/cowork-resources.sh    @RayCharlizard
-/scripts/cowork-vm-service.js           @RayCharlizard
+# The bwrap fallback patch, its runtime helpers, and its tests/docs.
+/scripts/patches/cowork-bwrap.sh        @RayCharlizard
+/scripts/cowork-fallback/               @RayCharlizard
 /tests/cowork-*.bats                    @RayCharlizard
-/docs/cowork-*.md                       @RayCharlizard
+/docs/learnings/cowork-*.md             @RayCharlizard
 
 # ---- Nix ----
 /flake.nix                              @typedrat

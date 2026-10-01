@@ -54,8 +54,8 @@
 _CB_Q='[`"'"'"']'
 
 # C1's anchor shape. Read it as: the function head, then our own marker
-# if a previous run left one, then up to 80 brace-free bytes of upstream
-# prelude, then the yukonSilver destructure and its `return`.
+# if a previous run left one, then a brace-fenced stretch of upstream
+# body, then the `[downloadVM]` log literal that names the function.
 #
 # The node stage's `dlRe` spells the same shape a second time — it is a
 # heredoc, so it cannot read these. The two must stay in step or the
@@ -63,17 +63,30 @@ _CB_Q='[`"'"'"']'
 # cowork C1 tests in tests/patch-anchors.bats drive both through one
 # call and are what actually pins them together.
 #
-# The prelude allowance is what 1.37937.1 needed — upstream inserted an
-# `await X();` between the opening brace and the destructure, and the
-# old anchor required them to be adjacent. `[^{}]` is deliberately
+# The literal terminus is what 1.46388.2 needed. Through 1.40609.1 the
+# anchor ended on the yukonSilver destructure and its `return`; 1.46388.2
+# folded the destructure into a helper (`EB().status`) and the anchor
+# went to zero matches — the second time this one function took the
+# whole build red (the first was 1.37937.1's `await X();` prelude). The
+# log literal held across both reshapes with only its delimiter moving,
+# so it is the terminus now and the head→literal stretch is fenced
+# rather than pinned to a statement shape. `[^{}]` is deliberately
 # brace-fenced rather than `.`: it cannot cross a nested block or leave
-# the function body, so the 80-byte budget buys a couple of simple
-# statements and nothing structural. It also absorbs `;` inside a
-# template literal, which a statement-counting `(?:[^{};]*;){0,2}` would
-# split on.
-_CB_C1_MARKER='(?:/\*cowork-bwrap-dl\*/[^;]*;)?'
-_CB_C1_PRELUDE='[^{}]{0,80}'
-_CB_C1_TAIL='(?:const|let)\{yukonSilver:[\w$]+\}=[\w$]+(?:\.[\w$]+)*\(\);return'
+# the function body, so the byte budget buys the function's own prelude
+# and nothing structural. The one brace pair it admits is the
+# destructure itself, so the 1.26832.0–1.40609.1 shapes still bind.
+#
+# The marker is braced (`if(...){return!1}`) rather than a bare
+# `return!1;` statement, and that is load-bearing for the resolver, not
+# style: the body fence would absorb a brace-free gate on a re-run, so
+# the marker allowance would sit redundant until the gate plus a longer
+# upstream prelude overran the budget — at which point the second pass
+# fails at resolution, before the idempotency guard can fire. Braces in
+# the gate make the allowance the only way past it, so dropping it goes
+# red in the idempotency test instead of in a future build.
+_CB_C1_MARKER='(?:/\*cowork-bwrap-dl\*/if\([^{}]*\)\{return!1\})?'
+_CB_C1_BODY='(?:[^{}]|\{yukonSilver:[\w$]+\}){0,240}?'
+_CB_C1_TAIL='\[downloadVM\] Download already in progress'
 
 patch_cowork_bwrap() {
 	echo 'Patching Cowork bwrap fallback (opt-in COWORK_VM_BACKEND=bwrap)...'
@@ -89,7 +102,7 @@ patch_cowork_bwrap() {
 	b_js=$(_resolve_anchor_file 'cowork B (helper socket argv)' \
 		"${_CB_Q}-socket${_CB_Q}") || return 1
 	c1_js=$(_resolve_anchor_file 'cowork C1 (foreground download)' \
-		"async function\s+[\w\$]+\([\w\$]+,[\w\$]+\)\{${_CB_C1_MARKER}${_CB_C1_PRELUDE}${_CB_C1_TAIL}") \
+		"async function\s+[\w\$]+\([\w\$]+,[\w\$]+\)\{${_CB_C1_MARKER}${_CB_C1_BODY}${_CB_C1_TAIL}") \
 		|| return 1
 
 	# C2 is best-effort and its anchor is absent from 1.26832.0, so an
@@ -251,30 +264,37 @@ if (codeB.includes('/*cowork-bwrap-spawn*/')) {
 //   1.26832.0:  async function ut(e,n){let{yukonSilver:r}=p.n();
 //               return r?.status===`supported`?(...)
 //   1.37937.1:  async function QH(e,t){await nB();let{yukonSilver:r}=iB();
-//               return r?.status===`supported`&&(...)
+//               return r?.status===`supported`&&(...HH?(J.info(`[downloadVM]
+//               Download already in progress, waiting...`),HH):...
+//   1.46388.2:  async function YU(e,t){return await wB(),EB().status===
+//               "supported"&&(...IU?(J.info("[downloadVM] Download
+//               already in progress, waiting..."),IU):...
 //
-// 1.37937.1 inserted a statement between the opening brace and the
-// destructure, which the old adjacency requirement rejected outright —
-// the whole build went red on that one anchor for four upstream bumps.
-// The prelude allowance is spelled once more in `_CB_C1_PRELUDE` on the
-// shell side, for the file resolver; keep the two in step. See that
-// comment for why it is brace-fenced rather than `.`-based.
+// Two reshapes have taken this anchor to zero matches. 1.37937.1 put a
+// statement between the opening brace and the destructure, which the
+// old adjacency requirement rejected (red for four upstream bumps).
+// 1.46388.2 then removed the destructure altogether — the status now
+// comes off a helper call — so an anchor ending on `{yukonSilver:` had
+// nothing left to end on. The `[downloadVM]` log literal is the one
+// token that survived both, with only its delimiter moving, so the
+// anchor now runs from the function head to that literal across a
+// brace-fenced body. The same shape is spelled once more in
+// `_CB_C1_BODY`/`_CB_C1_TAIL` on the shell side, for the file resolver;
+// keep the two in step. See that comment for why the fence is `[^{}]`
+// rather than `.`-based, and why it admits exactly one brace pair (the
+// destructure the older shapes still carry).
 //
-// The status guard INVERTED between those releases (a !== early-false
-// became a === proceed), so the anchor deliberately stops at the
-// `return` and never spans the comparison. Matching only the function
-// head plus the destructure keeps the injection polarity-agnostic: the
-// gate is inserted before upstream's check runs, so it short-circuits
-// either shape. Widening this regex to cover both comparisons would be
-// the dangerous fix — a pattern loose enough to match both could bind
-// the wrong one and install the gate backwards.
-// The destructure initialiser is a plain call (`=sM()`) on 1.24012.11
-// and a module-binding call (`=p.n()`) on 1.26832.0, so the callee
-// tolerates a property chain.
+// The status guard INVERTED between 1.24012.11 and 1.26832.0 (a !==
+// early-false became a === proceed). The injection point is still the
+// opening brace, ahead of any comparison, so the gate short-circuits
+// either polarity; the body between is captured and re-emitted
+// verbatim, never interpreted. A pattern that keyed on the comparison
+// itself could bind the wrong function and install the gate backwards
+// — the literal is the binding, not the guard.
 const dlSrc =
     String.raw`(async function\s+[\w$]+\([\w$]+,[\w$]+\)\{)` +
-    String.raw`([^{}]{0,80}(?:const|let)\{yukonSilver:[\w$]+\}=` +
-    String.raw`[\w$]+(?:\.[\w$]+)*\(\);return)`;
+    String.raw`((?:[^{}]|\{yukonSilver:[\w$]+\}){0,240}?` +
+    String.raw`\[downloadVM\] Download already in progress)`;
 const dlRe = new RegExp(dlSrc);
 let codeC1 = load(c1Js);
 // The prelude allowance widened this pattern, so assert it still binds
@@ -288,8 +308,10 @@ if (codeC1.includes('/*cowork-bwrap-dl*/')) {
     console.log('  C1: WARNING — foreground download anchor matched ' +
         dlAll.length + ' sites; refusing to guess. Re-derive the anchor.');
 } else if (dlAll.length === 1) {
+    // Braced on purpose: the resolver's body fence must not be able to
+    // swallow this on a re-run (see _CB_C1_MARKER on the shell side).
     save(c1Js, codeC1.replace(dlRe,
-        '$1/*cowork-bwrap-dl*/if(' + GATE + ')return!1;$2'));
+        '$1/*cowork-bwrap-dl*/if(' + GATE + '){return!1}$2'));
     console.log('  C1: blocked foreground VM download when flagged');
 } else {
     console.log('  C1: WARNING — foreground download anchor not found; ' +

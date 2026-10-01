@@ -22,11 +22,11 @@ OFFICIAL_APT_BASE='https://downloads.claude.ai/claude-desktop/apt/stable'
 
 # Pinned artifact per architecture, seeded from the Packages indexes on
 # 2026-07-04. Bumped by check-claude-version after the rebase lands.
-OFFICIAL_DEB_VERSION='1.40609.1'
-OFFICIAL_DEB_POOL_AMD64='pool/main/c/claude-desktop/claude-desktop_1.40609.1_amd64.deb'
-OFFICIAL_DEB_SHA256_AMD64='80182e8511c6bbee6de26c7ee225fbd2a9aba2274ef1405a1d89cd8fe7a380dc'
-OFFICIAL_DEB_POOL_ARM64='pool/main/c/claude-desktop/claude-desktop_1.40609.1_arm64.deb'
-OFFICIAL_DEB_SHA256_ARM64='493ccc06030c5dbb225add135823385d8cfb400a5922704de377ea8f55b39c40'
+OFFICIAL_DEB_VERSION='2.9939.4'
+OFFICIAL_DEB_POOL_AMD64='pool/main/c/claude-desktop/claude-desktop_2.9939.4_amd64.deb'
+OFFICIAL_DEB_SHA256_AMD64='3cfddb23bf2911e05e27b4ed3856b8e795df94643b2c35b59deb317cf995bca0'
+OFFICIAL_DEB_POOL_ARM64='pool/main/c/claude-desktop/claude-desktop_2.9939.4_arm64.deb'
+OFFICIAL_DEB_SHA256_ARM64='108ed79ea164b08c4fa0bb4387deef4779957b3f0f9b2d9898e359f363ebf1bc'
 
 # Set official_deb_url/sha256/filename from the pinned block for the
 # current (or given) architecture.
@@ -51,6 +51,49 @@ official_deb_pin() {
 
 	official_deb_url="$OFFICIAL_APT_BASE/$pool_path"
 	official_deb_filename="${pool_path##*/}"
+}
+
+# Is a pool file actually fetchable, not merely listed? The official
+# Packages index can run ahead of the CDN serving the pool: the
+# 2.2553.0 arm64 entry was indexed (so the cross-arch gate passed and
+# the tag was cut) while the .deb itself still answered 404, and the
+# tag build died on it (#859). A HEAD probe, no body. Used by
+# check-claude-version before it tags; never by the pinned build.
+# Usage: official_deb_pool_ready POOL_PATH
+official_deb_pool_ready() {
+	local pool_path="$1"
+
+	[[ -n $pool_path ]] || return 1
+	curl -fsSI --max-time 30 -o /dev/null "$OFFICIAL_APT_BASE/$pool_path"
+}
+
+# Download URL to DEST, retrying on failure with a doubling delay. One
+# attempt is the wrong shape against the pool lag above: the file
+# usually turns up minutes after its index entry. Attempts and the
+# first delay are env-tunable so tests don't sleep. A failed attempt's
+# partial file is removed so the caller never sees a truncated .deb.
+# Usage: _download_official_deb URL DEST
+_download_official_deb() {
+	local url="$1" dest="$2"
+	local attempts="${OFFICIAL_DEB_DL_ATTEMPTS:-5}"
+	local delay="${OFFICIAL_DEB_DL_DELAY:-15}"
+	local try
+
+	for (( try = 1; try <= attempts; try++ )); do
+		if wget -q --show-progress -O "$dest" "$url"; then
+			return 0
+		fi
+		rm -f "$dest"
+		if (( try < attempts )); then
+			echo "Download attempt $try/$attempts failed;" \
+				"retrying in ${delay}s..." >&2
+			sleep "$delay"
+			delay=$(( delay * 2 ))
+		fi
+	done
+
+	echo "Failed to download $url after $attempts attempts" >&2
+	return 1
 }
 
 # Query the official Packages index for the newest claude-desktop entry.
@@ -153,11 +196,8 @@ fetch_official_deb() {
 	else
 		echo "Downloading official Claude Desktop $OFFICIAL_DEB_VERSION" \
 			"for $architecture..."
-		if ! wget -q --show-progress -O "$claude_deb_path" \
-			"$official_deb_url"; then
-			echo "Failed to download $official_deb_url" >&2
-			exit 1
-		fi
+		_download_official_deb "$official_deb_url" "$claude_deb_path" \
+			|| exit 1
 		echo "Download complete: $official_deb_filename"
 
 		if ! verify_sha256 "$claude_deb_path" "$official_deb_sha256" \

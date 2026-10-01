@@ -112,10 +112,11 @@ fi
 setup_logging || exit 1
 setup_electron_env
 
+cleanup_replaced_desktop_ui
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
-cleanup_stale_cowork_socket
+cleanup_stale_vm_bundle_images
 heal_autostart_entry "/usr/bin/$package_name"
 backup_user_config
 
@@ -138,6 +139,7 @@ detect_display_backend
 if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
+ensure_portal_app_id_entry "/usr/bin/$package_name" "$package_name"
 
 if [[ ! -x \$app_exec ]]; then
 	log_message "Error: Claude Desktop binary not found at \$app_exec"

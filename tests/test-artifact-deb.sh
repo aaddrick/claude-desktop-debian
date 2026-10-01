@@ -62,6 +62,56 @@ else
 	fail 'Control lacks Replaces: claude-desktop (<< 1.16000)'
 fi
 
+# --- Control scripts: legacy bwrap profile cleanup (#542) ---
+# 2.x installs shipped an AppArmor profile attached to the shared
+# /usr/bin/bwrap. Nothing removed it on upgrade: dpkg runs the *old*
+# package's postrm with 'upgrade', and that cleanup arm only matches
+# remove|purge|abort-install. postinst therefore has to clear it, or the
+# stale profile keeps colliding with the distro's bwrap-userns-restrict
+# and breaks glycin image decoding on Ubuntu 26.04 (unloggable greeter).
+# Presence and syntax are asserted on every build; the behavioural test
+# can't run here, since the 24.04 runner blocks the user namespace bwrap
+# needs.
+control_dir=$(mktemp -d)
+if dpkg-deb -e "$deb_file" "$control_dir" 2>/dev/null; then
+	pass 'Control archive extracted with dpkg-deb -e'
+
+	if grep -q 'claude-desktop-bwrap' "$control_dir/postinst"; then
+		pass 'postinst clears the legacy bwrap profile (#542)'
+	else
+		fail 'postinst lacks the legacy bwrap cleanup (#542)'
+	fi
+
+	# The unload matters as much as the delete: removing the file
+	# alone leaves the profile loaded in the kernel, so the conflict
+	# survives until the next reboot.
+	if grep -q 'apparmor_parser -R' "$control_dir/postinst"; then
+		pass 'postinst unloads the legacy profile, not just deletes it'
+	else
+		fail 'postinst never runs apparmor_parser -R on the legacy profile'
+	fi
+
+	if sh -n "$control_dir/postinst" 2>/dev/null; then
+		pass 'postinst passes sh -n'
+	else
+		fail 'postinst fails sh -n'
+	fi
+
+	# The apport blacklist must be a registered conffile (#582), or an
+	# admin edit is clobbered on upgrade. dpkg-deb --build only honours
+	# an explicit DEBIAN/conffiles, so this proves the entry shipped.
+	if [[ -f "$control_dir/conffiles" ]] && grep -qx \
+			'/etc/apport/blacklist.d/claude-desktop-unofficial' \
+			"$control_dir/conffiles"; then
+		pass 'apport blacklist is a registered conffile (#582)'
+	else
+		fail 'apport blacklist missing from DEBIAN/conffiles (#582)'
+	fi
+else
+	fail 'dpkg-deb -e could not extract the control archive'
+fi
+rm -rf "$control_dir"
+
 # --- Install the package ---
 # Use --force-depends since we only care about file placement
 if sudo dpkg -i --force-depends "$deb_file"; then
@@ -101,6 +151,17 @@ assert_file_exists '/usr/lib/claude-desktop-unofficial/launcher-common.sh'
 electron_path='/usr/lib/claude-desktop-unofficial/claude-desktop'
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
+
+# apport crash blacklist (#582). The installed file must list both the
+# Electron ELF and the crashpad handler by their absolute installed
+# paths, or apport still captures multi-megabyte cores into the journal.
+apport_blacklist='/etc/apport/blacklist.d/claude-desktop-unofficial'
+assert_file_exists "$apport_blacklist"
+assert_contains "$apport_blacklist" "$electron_path" \
+	'apport blacklist lists the Electron ELF (#582)'
+assert_contains "$apport_blacklist" \
+	'/usr/lib/claude-desktop-unofficial/chrome_crashpad_handler' \
+	'apport blacklist lists the crashpad handler (#582)'
 
 # chrome-sandbox
 assert_file_exists \
@@ -186,6 +247,12 @@ run_version_flag_test 'deb launcher' \
 # ubuntu-latest runs as a non-root user, so no privilege drop needed.
 run_launch_smoke_test 'deb package' '/usr/lib/claude-desktop-unofficial' \
 	'' /usr/bin/claude-desktop-unofficial
+
+# --- Replaced-UI cleanup through the installed launcher ---
+# A running instance whose binary dpkg replaced underneath it must be
+# killed on the next launch; an intact one must be left alone.
+run_replaced_ui_cleanup_test 'deb launcher' '' \
+	/usr/lib/claude-desktop-unofficial /usr/bin/claude-desktop-unofficial
 
 # --- Transitional dummy package (amd64 leg only) ---
 # The amd64 build also emits claude-desktop_1.16000.0-1_all.deb: an

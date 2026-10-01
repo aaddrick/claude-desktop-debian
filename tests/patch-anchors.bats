@@ -222,59 +222,65 @@ VFSD_NEW='kT=[`/usr/libexec/virtiofsd`,`/usr/bin/virtiofsd`];async function AT()
 # =============================================================================
 # cowork-bwrap (C1 — foreground VM download)
 #
-# C1 is the anchor that took the whole build red from 1.37937.1 through
-# 1.40609.1: upstream inserted an `await X();` between the function head
-# and the yukonSilver destructure, and both the file resolver and the
-# patch regex required those two to be adjacent. The fixtures below pin
-# the prelude allowance that fixed it, from both sides — the shapes it
-# must now match, and the near-misses it must still refuse.
+# C1 is the anchor that has taken the whole build red twice. 1.37937.1
+# inserted an `await X();` between the function head and the yukonSilver
+# destructure the anchor spanned (red through 1.40609.1); 1.46388.2 then
+# removed the destructure altogether, so an anchor ending on it had
+# nothing left to end on. It now runs from the function head to the
+# `[downloadVM]` log literal across a brace-fenced body. The fixtures
+# pin that from both sides — the two shipped shapes it must match, and
+# the near-misses it must still refuse.
 #
 # A and B resolve fatally before C1 runs, so every fixture carries all
-# three anchors in one chunk (which is also how 1.40609.1 ships them).
+# three anchors in one chunk (which is also how both releases ship them).
 # =============================================================================
 
-# 1.40609.1 shipped bytes (A: qon/Kon, B: (0,t.spawn)/mIt, C1: QH with the
-# `await nB();` prelude that broke the old anchor).
-CB_NEW='function qon(){return process.platform,Kon()}
-(0,t.spawn)(e,[`-socket`,mIt()],{stdio:[`pipe`,`pipe`,`pipe`]})
-async function QH(e,t){await nB();let{yukonSilver:r}=iB();return r?.status===`supported`&&(GH(Kb.Downloading),BH)}'
+# 1.46388.2 shipped bytes (A: zxn/Rxn, B: (0,t.spawn)/RGt, C1: YU — no
+# destructure, the status comes off a helper call, double-quoted).
+CB_NEW='function zxn(){return process.platform,Rxn()}
+(0,t.spawn)(e,["-socket",RGt()],{stdio:["pipe","pipe","pipe"]})
+async function YU(e,t){return await wB(),EB().status==="supported"&&(Ir((0,n.join)(XU(),pIn),eB.sha).catch((()=>void 0)),IU?(J.info("[downloadVM] Download already in progress, waiting..."),IU):QU()?(HU(Jb.Ready),!1):(HU(Jb.Downloading),IU=IIn(e,t).then((e=>(HU(Jb.Ready),e))).catch((e=>{throw HU(Jb.NotDownloaded),new fIn(e)})).finally((()=>{IU=null})),IU))}'
 
-# 1.26832.0 C1 shape — no prelude, ternary rather than `&&`. Transcribed
-# from the shape recorded in scripts/patches/cowork-bwrap.sh's own header
-# (that bundle is no longer pinned, so these bytes are not re-extracted).
-# Kept as a fixture because the prelude allowance must stay a superset:
-# widening for 1.40609.1 must not drop the shape it already handled.
-CB_OLD='function qon(){return process.platform,Kon()}
-(0,t.spawn)(e,[`-socket`,mIt()],{stdio:[`pipe`,`pipe`,`pipe`]})
-async function ut(e,n){let{yukonSilver:r}=p.n();return r?.status===`supported`?(x(),y):!1}'
+# 1.37937.3 shipped bytes (A: y3t/v3t, B: (0,t.spawn)/Jj, C1: _on — the
+# `await rB();` prelude, the destructure, backticked). Kept because the
+# fence must stay a superset of what it already handled: the one brace
+# pair it admits is this destructure, and dropping that allowance goes
+# red here, not above.
+CB_OLD='function y3t(){return process.platform,v3t()}
+(0,t.spawn)(e,[`-socket`,Jj()],{stdio:[`pipe`,`pipe`,`pipe`]})
+async function _on(e,t){await rB();let{yukonSilver:r}=aB();return r?.status===`supported`&&(ti((0,n.join)(eU(),ton),bz.sha).catch((()=>void 0)),HH?(J.info(`[downloadVM] Download already in progress, waiting...`),HH):tU()?(qH(tx.Ready),!1):(qH(tx.Downloading),HH=gon(e,t).then((e=>(qH(tx.Ready),e))).catch((e=>{throw qH(tx.NotDownloaded),new eon(e)})).finally((()=>{HH=null})),HH))}'
 
-@test "cowork C1: applies to the 1.40609.1 await-prelude shape" {
-	# The regression: the prelude took this anchor to zero matches and
-	# _resolve_anchor_file failed the build for four upstream bumps.
+@test "cowork C1: applies to the 1.46388.2 helper-call shape" {
+	# The regression: the destructure the old anchor ended on is gone,
+	# so the anchor went to zero matches and _resolve_anchor_file failed
+	# the build.
 	_chunk 'index.chunk-test.js' "$CB_NEW"
 	run patch_cowork_bwrap
 	[[ $status -eq 0 ]]
 	[[ $output == *'C1: blocked foreground VM download when flagged'* ]]
-	# The gate lands ahead of the prelude, so upstream's status check
-	# never runs on a flagged launch — polarity-agnostic by position.
-	grep -qF 'async function QH(e,t){/*cowork-bwrap-dl*/if(process.platform==="linux"&&process.env.COWORK_VM_BACKEND==="bwrap")return!1;await nB();let{yukonSilver:r}=iB();' \
+	# The gate lands at the opening brace, ahead of upstream's status
+	# check — polarity-agnostic by position.
+	grep -qF 'async function YU(e,t){/*cowork-bwrap-dl*/if(process.platform==="linux"&&process.env.COWORK_VM_BACKEND==="bwrap"){return!1}return await wB(),EB().status==="supported"&&(' \
 		"$BUILD/index.chunk-test.js"
 }
 
-@test "cowork C1: still applies to the 1.26832.0 no-prelude shape" {
+@test "cowork C1: still applies to the 1.37937.3 destructure shape" {
 	_chunk 'index.chunk-test.js' "$CB_OLD"
 	run patch_cowork_bwrap
 	[[ $status -eq 0 ]]
 	[[ $output == *'C1: blocked foreground VM download when flagged'* ]]
-	grep -qF 'async function ut(e,n){/*cowork-bwrap-dl*/if(process.platform==="linux"&&process.env.COWORK_VM_BACKEND==="bwrap")return!1;let{yukonSilver:r}=p.n();' \
+	grep -qF 'async function _on(e,t){/*cowork-bwrap-dl*/if(process.platform==="linux"&&process.env.COWORK_VM_BACKEND==="bwrap"){return!1}await rB();let{yukonSilver:r}=aB();' \
 		"$BUILD/index.chunk-test.js"
 }
 
 @test "cowork C1: idempotent and byte-identical on re-run" {
 	# The resolution anchor has to survive its own patch: it tolerates
-	# the injected /*cowork-bwrap-dl*/ marker AND the prelude behind it,
-	# or the second pass fails at resolution before the idempotency
-	# guards can fire (docs/learnings/patching-minified-js.md).
+	# the injected /*cowork-bwrap-dl*/ gate between the function head
+	# and the body it fences, or the second pass fails at resolution
+	# before the idempotency guards can fire
+	# (docs/learnings/patching-minified-js.md). The gate is braced so
+	# the fence cannot absorb it by accident — drop the allowance and
+	# this is the test that goes red.
 	_chunk 'index.chunk-test.js' "$CB_NEW"
 	patch_cowork_bwrap
 	local first; first="$(cat "$BUILD/index.chunk-test.js")"
@@ -284,23 +290,13 @@ async function ut(e,n){let{yukonSilver:r}=p.n();return r?.status===`supported`?(
 	[[ "$(cat "$BUILD/index.chunk-test.js")" == "$first" ]]
 }
 
-@test "cowork C1: does not bind startVM's destructure (near-miss)" {
-	# startVM reads the same destructure but continues into `if(`, not
-	# `return`. Dropping the `\(\);return` tail from the anchor makes
-	# this fixture match and the gate installs on the wrong function.
-	local start_vm='async function aU(e,t){await nB();let{yukonSilver:r}=iB();if(r?.status!==`supported`){J.warn(`[startVM] no`);return}}'
-	_chunk 'index.chunk-test.js' "${CB_NEW%$'\n'*}
-$start_vm"
-	run patch_cowork_bwrap
-	[[ $status -ne 0 ]]
-	[[ $output == *'matched no file'* ]]
-}
-
-@test "cowork C1: prelude budget does not cross a nested block" {
-	# `[^{}]{0,80}` is brace-fenced on purpose. A `.`-based prelude of
-	# the same budget would reach past this inner block and gate a
-	# function whose head is 80 bytes away from an unrelated destructure.
-	local fenced='async function QH(e,t){if(e){t()}let{yukonSilver:r}=iB();return r}'
+@test "cowork C1: body fence does not cross a nested block" {
+	# `[^{}]` is brace-fenced on purpose, and the one pair it admits is
+	# spelled out as the yukonSilver destructure. A `.`-based body, or a
+	# fence that admitted any `{...}` pair, would reach past this inner
+	# block — or out of the function entirely, across its closing `}` —
+	# and gate whatever head happens to sit within budget of the literal.
+	local fenced='async function XU(e,t){if(e){t()}return J.info("[downloadVM] Download already in progress, waiting...")}'
 	_chunk 'index.chunk-test.js' "${CB_NEW%$'\n'*}
 $fenced"
 	run patch_cowork_bwrap
@@ -309,10 +305,10 @@ $fenced"
 }
 
 @test "cowork C1: two same-shaped sites warn instead of guessing" {
-	# Widening the regex made a second binding possible, so the exactly-1
-	# assertion is the compensating control: replace() would silently
-	# take the first match.
-	local dup='async function XH(e,t){await nB();let{yukonSilver:r}=iB();return r?.status===`supported`&&(z(),1)}'
+	# The literal is unique in every bundle so far, but the exactly-1
+	# assertion is what turns a future second logger of it into a named
+	# warning: replace() would silently take the first match.
+	local dup='async function XH(e,t){return await wB(),EB().status==="supported"&&(z(),J.info("[downloadVM] Download already in progress, waiting..."))}'
 	_chunk 'index.chunk-test.js' "$CB_NEW
 $dup"
 	run patch_cowork_bwrap
@@ -321,4 +317,26 @@ $dup"
 	[[ $output == *'matched 2 sites'* ]]
 	run grep -qF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
 	[[ $status -ne 0 ]]
+}
+
+@test "cowork C1: binds downloadVM when startVM shares the chunk" {
+	# 1.40609.1+ ships downloadVM and startVM in the same chunk, and the
+	# two open identically: same async head, same helper-call status
+	# check. The only token that tells them apart is the
+	# `[downloadVM] Download already in progress` log literal dlSrc ends
+	# on. The shell-side resolver pins that literal via _CB_C1_TAIL, but
+	# nothing above exercises the node-side dlRe against a same-headed
+	# neighbour: drop the literal terminus from dlSrc and dlRe binds
+	# both, the exactly-1 guard warns and skips, and the build stays
+	# green with no gate installed.
+	local start_vm='async function aU(e,t){return await wB(),EB().status==="supported"&&(J.warn("[startVM] no"),!1)}'
+	_chunk 'index.chunk-test.js' "$CB_NEW
+$start_vm"
+	run patch_cowork_bwrap
+	[[ $status -eq 0 ]]
+	[[ $output != *'C1: WARNING'* ]]
+	grep -qF 'async function YU(e,t){/*cowork-bwrap-dl*/' \
+		"$BUILD/index.chunk-test.js"
+	run grep -cF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
+	[[ $output == '1' ]]
 }

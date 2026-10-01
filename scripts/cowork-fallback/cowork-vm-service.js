@@ -18,7 +18,9 @@
  *   3. host  — fallback, no isolation
  *
  * Protocol:
- *   Transport: Unix domain socket at $XDG_RUNTIME_DIR/cowork-vm-service.sock
+ *   Transport: Unix domain socket at the path the client passes as
+ *              `-socket <path>` ($XDG_RUNTIME_DIR/claude-cowork-vm.sock);
+ *              $XDG_RUNTIME_DIR/cowork-vm-service.sock without the flag
  *   Framing:   4-byte big-endian length prefix + JSON payload
  *   Request:   { method: "methodName", params: {...} }
  *   Response:  { success: true, result: {...} } or { success: false, error: "..." }
@@ -705,6 +707,31 @@ function findVirtiofsd() {
 
 const FORBIDDEN_MOUNT_PATHS = new Set(['/', '/proc', '/dev', '/sys']);
 
+// Resolve symlinks the way the kernel will when bwrap opens the path. A
+// path that does not exist yet resolves through its longest existing
+// prefix, so a symlinked parent can't hide where the path lands once it
+// is created (#895).
+function resolveExistingPrefix(p, depth = 0) {
+    try {
+        return fs.realpathSync(p);
+    } catch (_) {
+        // A dangling symlink exists but realpath can't follow it; the
+        // kernel will, once its target appears, so follow the link text.
+        // 40 is the kernel's own hop limit, so a loop still terminates.
+        if (depth < 40) {
+            try {
+                const target = fs.readlinkSync(p);
+                return resolveExistingPrefix(
+                    path.resolve(path.dirname(p), target), depth + 1);
+            } catch (_) { /* not a symlink */ }
+        }
+        const parent = path.dirname(p);
+        if (parent === p) return p;
+        return path.join(resolveExistingPrefix(parent, depth),
+            path.basename(p));
+    }
+}
+
 function validateMountPath(mountPath, opts) {
     opts = opts || {};
     if (!mountPath || !path.isAbsolute(mountPath)) {
@@ -712,16 +739,6 @@ function validateMountPath(mountPath, opts) {
     }
 
     const normalized = path.resolve(mountPath);
-
-    // Resolve symlinks when the path exists on disk (defense-in-depth).
-    // This is a TOCTOU situation, but bwrap is the real security boundary;
-    // this just catches honest configuration mistakes.
-    let resolved = normalized;
-    try {
-        resolved = fs.realpathSync(normalized);
-    } catch (_) {
-        // Path doesn't exist yet — use the unresolved form
-    }
 
     function checkForbidden(p) {
         if (FORBIDDEN_MOUNT_PATHS.has(p)) {
@@ -740,6 +757,18 @@ function validateMountPath(mountPath, opts) {
         return { valid: false, reason: normalizedErr };
     }
 
+    // path.resolve() drops '..' before any symlink is resolved, but bwrap
+    // gets the raw string and the kernel applies '..' after the symlink:
+    // ~/etclink/../etc validates as ~/etc and binds /etc (#895).
+    if (mountPath.split('/').includes('..')) {
+        return { valid: false, reason: 'Path must not contain ".." segments' };
+    }
+
+    // Resolve symlinks (defense-in-depth). This is a TOCTOU situation, but
+    // bwrap is the real security boundary; this just catches honest
+    // configuration mistakes.
+    const resolved = resolveExistingPrefix(normalized);
+
     if (resolved !== normalized) {
         const resolvedErr = checkForbidden(resolved);
         if (resolvedErr) {
@@ -748,9 +777,17 @@ function validateMountPath(mountPath, opts) {
     }
 
     if (opts.readWrite) {
+        // Compare against both the configured $HOME and its fully-resolved
+        // form. On immutable distros (Fedora Silverblue/Bazzite) /home is a
+        // symlink to /var/home: os.homedir() returns /home/<user> while
+        // realpathSync() on the candidate path returns /var/home/<user>/...,
+        // so a single-form comparison rejects every path under home.
         const home = os.homedir();
+        let realHome = home;
+        try { realHome = fs.realpathSync(home); } catch (_) {}
         const check = resolved !== normalized ? resolved : normalized;
-        if (check !== home && !check.startsWith(home + '/')) {
+        const underHome = (h) => check === h || check.startsWith(h + '/');
+        if (!underHome(home) && !underHome(realHome)) {
             return { valid: false, reason: 'Read-write mounts must be under $HOME' };
         }
     }
@@ -886,19 +923,20 @@ function mergeBwrapArgs(defaultArgs, config) {
         }
     }
 
+    // Pre-create each destination's parent inside the empty tmpfs root.
+    // --dir on the parent (not the destination itself) creates all missing
+    // intermediate directories without colliding with single-file binds.
     for (const m of config.additionalROBinds) {
-        if (typeof m === 'string') {
-            result.push('--ro-bind', m, m);
-        } else {
-            result.push('--ro-bind', m.src, m.dst);
-        }
+        const src = typeof m === 'string' ? m : m.src;
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', path.dirname(dst));
+        result.push('--ro-bind', src, dst);
     }
     for (const m of config.additionalBinds) {
-        if (typeof m === 'string') {
-            result.push('--bind', m, m);
-        } else {
-            result.push('--bind', m.src, m.dst);
-        }
+        const src = typeof m === 'string' ? m : m.src;
+        const dst = typeof m === 'string' ? m : m.dst;
+        result.push('--dir', path.dirname(dst));
+        result.push('--bind', src, dst);
     }
 
     return result;

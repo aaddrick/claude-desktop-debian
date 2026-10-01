@@ -347,17 +347,74 @@ function resolveInstall(): AppPaths {
 	);
 }
 
-// Mirrors the pre-launch cleanup in launcher-common.sh (cleanup_orphaned_
-// cowork_daemon + cleanup_stale_lock + cleanup_stale_cowork_socket).
+// True when `argv` is the bwrap fallback daemon's exact shape, as
+// spawn swap B in scripts/patches/cowork-bwrap.sh builds it:
+//   <node> <resourcesPath>/cowork-vm-service.js -socket <sock>
+// An editor, `less` or `tail -f` open on the script names it too, but
+// never with `-socket` as the next argument.
+export function isCoworkFallbackDaemonArgv(argv: readonly string[]): boolean {
+	return (
+		(argv[1] ?? '').endsWith('/cowork-vm-service.js') &&
+		argv[2] === '-socket'
+	);
+}
+
+// TypeScript port of _cowork_fallback_daemon_pids in launcher-common.sh
+// (#882, #890). A substring `pgrep -f` only nominates candidates; a PID
+// counts only if it belongs to the current uid, is not this process or
+// its parent, and its NUL-split /proc/PID/cmdline passes
+// isCoworkFallbackDaemonArgv. Any pgrep failure yields no PIDs, so an
+// error can never widen what callers signal.
+export async function coworkFallbackDaemonPids(): Promise<number[]> {
+	const uid = process.getuid?.();
+	if (uid === undefined) return [];
+	let stdout: string;
+	try {
+		({ stdout } = await exec('pgrep', [
+			'-u',
+			String(uid),
+			'-f',
+			'cowork-vm-service\\.js',
+		]));
+	} catch {
+		// pgrep exits 1 when nothing matches.
+		return [];
+	}
+	const self = new Set([process.pid, process.ppid]);
+	const pids: number[] = [];
+	for (const line of stdout.split('\n')) {
+		const pid = Number(line.trim());
+		if (!Number.isInteger(pid) || pid <= 0 || self.has(pid)) continue;
+		let argv: string[];
+		try {
+			argv = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0');
+		} catch {
+			// Exited between pgrep and the read.
+			continue;
+		}
+		if (isCoworkFallbackDaemonArgv(argv)) pids.push(pid);
+	}
+	return pids;
+}
+
+// Pre-launch cleanup modelled on launcher-common.sh
+// (cleanup_orphaned_cowork_daemon + cleanup_stale_lock). The daemon
+// reap shares the launcher's argv fingerprint
+// (coworkFallbackDaemonPids), so a bystander that merely names
+// cowork-vm-service.js survives. Unlike the launcher it skips the
+// live-UI gate and the SIGKILL escalation: it sends one SIGTERM to
+// each fingerprinted daemon.
 //
 // When `configDir` is provided (isolated test mode), the SingletonLock
 // path is relative to that dir rather than ~/.config/Claude — the host
 // config is left untouched.
 export async function cleanupPreLaunch(configDir?: string): Promise<void> {
-	try {
-		await exec('pkill', ['-f', 'cowork-vm-service\\.js']);
-	} catch {
-		// pkill returns non-zero when no matches; that's fine.
+	for (const pid of await coworkFallbackDaemonPids()) {
+		try {
+			process.kill(pid, 'SIGTERM');
+		} catch {
+			// Exited since the scan, or not ours to signal.
+		}
 	}
 
 	const lockPath = configDir
@@ -371,18 +428,6 @@ export async function cleanupPreLaunch(configDir?: string): Promise<void> {
 		}
 	} catch {
 		// Lock doesn't exist or isn't a symlink — both fine.
-	}
-
-	const sockPath = join(
-		process.env.XDG_RUNTIME_DIR ?? '/tmp',
-		'cowork-vm-service.sock',
-	);
-	if (existsSync(sockPath)) {
-		try {
-			rmSync(sockPath, { force: true });
-		} catch {
-			// Stale socket may already be gone.
-		}
 	}
 }
 
