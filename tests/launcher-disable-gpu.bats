@@ -4,9 +4,9 @@
 # Tests for the CLAUDE_DISABLE_GPU env var handling in
 # build_electron_args (scripts/launcher-common.sh). The var is an
 # opt-in workaround for the Chromium GPU process FATAL exhaustion
-# tracked in #583. CLAUDE_DISABLE_GPU=1 adds --disable-gpu and
-# --disable-software-rasterizer; co-occurrence with XRDP must not
-# stack duplicate flags.
+# tracked in #583. CLAUDE_DISABLE_GPU=1 adds --disable-gpu while
+# leaving Chromium's software rasterizer available; co-occurrence
+# with XRDP must not stack duplicate flags.
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
@@ -70,13 +70,14 @@ args_count() {
 # CLAUDE_DISABLE_GPU=1 — flags must be added
 # =============================================================================
 
-@test "disable-gpu: CLAUDE_DISABLE_GPU=1 adds flags + logs message" {
+@test "disable-gpu: CLAUDE_DISABLE_GPU=1 adds flag + logs message" {
 	export CLAUDE_DISABLE_GPU=1
 
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'CLAUDE_DISABLE_GPU=1' "$log_file"
 }
 
@@ -93,7 +94,7 @@ args_count() {
 	build_electron_args deb
 
 	[[ "$(args_count '--disable-gpu')" -eq 1 ]]
-	[[ "$(args_count '--disable-software-rasterizer')" -eq 1 ]]
+	[[ "$(args_count '--disable-software-rasterizer')" -eq 0 ]]
 	# Both signals should still log (independent diagnostic value),
 	# but only one set of flags should reach electron_args.
 	grep -q 'XRDP session detected' "$log_file"
@@ -154,7 +155,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
 }
 
@@ -176,7 +178,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 }
 
 @test "disable-gpu: NixOS launcher header sections are detected" {
@@ -193,7 +196,8 @@ LOG
 	build_electron_args deb
 
 	args_contain '--disable-gpu'
-	args_contain '--disable-software-rasterizer'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
 	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
 }
 
@@ -209,5 +213,72 @@ LOG
 	build_electron_args deb
 
 	run args_contain '--disable-gpu'
+	[[ "$status" -ne 0 ]]
+}
+
+# =============================================================================
+# Bounded scan on a large launcher.log (#747)
+# =============================================================================
+
+@test "disable-gpu: large single-section log scans without O(n^2) hang" {
+	# One ~12 MB section with no header markers at all. The O(n^2)
+	# string-accumulating awk took minutes-to-hours on input this size;
+	# the single-pass rewrite completes in well under the 5s ceiling.
+	{
+		echo '--- Claude Desktop Launcher Start ---'
+		awk 'BEGIN {
+			for (i = 0; i < 300000; i++)
+				print "chromium gpu spam " i
+		}'
+		echo '--- Claude Desktop Launcher Start ---'
+	} > "$log_file"
+
+	run timeout 5 bash -c \
+		"log_file='$log_file'; source '$LAUNCHER_COMMON'; \
+		_previous_launch_hit_gpu_fatal"
+
+	# 124 = timeout killed it (the O(n^2) hang); anything else means
+	# the scan returned in time.
+	[[ "$status" -ne 124 ]]
+}
+
+@test "disable-gpu: large penultimate section keeps sticky recovery marker" {
+	# The sticky marker is written near the TOP of a section by
+	# build_electron_args. A tail-bounded scan would drop it and
+	# silently re-enable GPU (crash/work/crash oscillation), so this
+	# locks in that the rewrite reads the whole section instead.
+	{
+		echo '--- Claude Desktop Launcher Start ---'
+		echo 'Previous launch hit GPU process FATAL - disabling GPU'
+		awk 'BEGIN {
+			for (i = 0; i < 150000; i++)
+				print "electron debug noise " i
+		}'
+		echo '--- Claude Desktop Launcher Start ---'
+	} > "$log_file"
+
+	build_electron_args deb
+
+	args_contain '--disable-gpu'
+	run args_contain '--disable-software-rasterizer'
+	[[ "$status" -ne 0 ]]
+}
+
+@test "disable-gpu: crash signature deep in a large penultimate section is still detected" {
+	{
+		echo '--- Claude Desktop Launcher Start ---'
+		awk 'BEGIN {
+			for (i = 0; i < 150000; i++)
+				print "electron debug noise " i
+		}'
+		echo 'GPU process launch failed: error_code=1002'
+		echo "GPU process isn't usable. Goodbye."
+		echo '--- Claude Desktop Launcher Start ---'
+	} > "$log_file"
+
+	build_electron_args deb
+
+	args_contain '--disable-gpu'
+	run args_contain '--disable-software-rasterizer'
 	[[ "$status" -ne 0 ]]
 }

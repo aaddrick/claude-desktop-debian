@@ -14,6 +14,35 @@
 > 2.x lifecycle mechanics that still apply to the daemon internals;
 > the client-side wiring is now the patch, not the old Patch 6.
 
+## Issue #855 — Stale `rootfs.vhdx` Left Behind by the win32→unix Manifest Switch
+
+Before Anthropic's manifest had a native `unix` platform key, this
+project's pre-3.0 Linux support repurposed the **win32** manifest's
+VHDX entries and converted `rootfs.vhdx` → `rootfs.qcow2` on first use
+(the KVM backend in the old `scripts/cowork-vm-service.js`, now under
+`scripts/cowork-fallback/`). The manifest has since grown a real
+`unix.{arch}` entry serving `rootfs.img` directly
+(`publishedAt: 2026-08-13` in one observed copy), which the official
+`coworkd` uses natively — no `rootfs.qcow2` is ever produced from it.
+The bwrap fallback doesn't use a rootfs image at all, so it's
+unaffected either way. The 2.x KVM backend in `cowork-vm-service.js`
+(~L1571) is the only code that ever read `rootfs.vhdx` (it converted
+it to `rootfs.qcow2` on first use and never reads `rootfs.img`). That
+code still exists but is unreachable in 3.x: the daemon only spawns
+behind the asar gate `COWORK_VM_BACKEND=bwrap`
+(`scripts/patches/cowork-bwrap.sh`, `GATE`), and that same value
+selects the bwrap backend inside the daemon, so `KvmBackend` is never
+constructed. Any other `COWORK_VM_BACKEND` value is a 2.x knob the
+official client ignores (see `docs/configuration.md`).
+
+Nothing deletes the old VHDX pair when a bundle created before that
+switch picks up `rootfs.img`: a bundle from before ~2026-08 can carry
+`rootfs.vhdx` + `rootfs.vhdx.zst` (~11 GB combined) forever alongside
+a fully working `rootfs.img`. `cleanup_stale_vm_bundle_images` in
+`scripts/launcher-common.sh` treats `rootfs.img` present as proof the
+coworkd migration completed and removes the leftover files; a bundle
+still on the old format alone is left untouched.
+
 ## Architecture Overview
 
 Cowork mode on Linux uses a custom Node.js daemon

@@ -84,7 +84,7 @@ echo 'Desktop entry created'
 
 # --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
 echo 'Installing AppStream metainfo...'
-metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+metainfo_name='io.github.aaddrick.claude-desktop-unofficial.metainfo.xml'
 install -Dm 644 "$script_dir/$metainfo_name" \
 	"$install_dir/share/metainfo/$metainfo_name" || exit 1
 echo 'AppStream metainfo installed'
@@ -103,7 +103,7 @@ app_exec="/usr/lib/$package_name/claude-desktop"
 
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	run_doctor "\$app_exec"
+	run_doctor "\$app_exec" 'deb'
 	exit \$?
 fi
 
@@ -118,10 +118,11 @@ fi
 setup_logging || exit 1
 setup_electron_env
 
+cleanup_replaced_desktop_ui
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
-cleanup_stale_cowork_socket
+cleanup_stale_vm_bundle_images
 heal_autostart_entry "/usr/bin/$package_name"
 backup_user_config
 
@@ -144,6 +145,7 @@ detect_display_backend
 if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
+ensure_portal_app_id_entry "/usr/bin/$package_name" "$package_name"
 
 if [[ ! -x \$app_exec ]]; then
 	log_message "Error: Claude Desktop binary not found at \$app_exec"
@@ -233,6 +235,31 @@ if [ -n "\$SANDBOX_PATH" ] && [ -f "\$SANDBOX_PATH" ]; then
 else
     echo "Warning: chrome-sandbox binary not found in local package at \$LOCAL_SANDBOX_PATH. Sandbox may not function correctly."
 fi
+
+# --- Remove legacy bwrap-attached AppArmor profiles (#542) ---
+# 2.x installs shipped a profile attached to the shared /usr/bin/bwrap. It is
+# no longer installed, but an upgrade never removes it: dpkg runs the *old*
+# package's postrm with "upgrade", and that cleanup arm only matches
+# remove|purge|abort-install. The stale file then collides with the distro's
+# own profile (Ubuntu ships bwrap-userns-restrict, also attached to
+# /usr/bin/bwrap); AppArmor resolves neither, bwrap falls through to
+# unprivileged_userns, and glycin's sandboxed image decoding dies -- unusable
+# GDM greeter, GTK apps aborting on icon loads, gnome-keyring unable to
+# prompt. Same marker-header rule as below: files without it were written by
+# the admin (or another package) and are preserved. apparmor_parser -R is
+# needed as well as rm -- deleting the file leaves the profile loaded in the
+# kernel, so the conflict survives until the next reboot.
+for _legacy_profile in "/etc/apparmor.d/claude-desktop-bwrap" \
+    "/etc/apparmor.d/${package_name}-bwrap"; do
+    if [ -e "\$_legacy_profile" ] \
+        && grep -q "managed by the claude-desktop" "\$_legacy_profile" 2>/dev/null; then
+        if command -v apparmor_parser >/dev/null 2>&1; then
+            apparmor_parser -R "\$_legacy_profile" >/dev/null 2>&1 || true
+        fi
+        rm -f "\$_legacy_profile" 2>/dev/null || true
+        echo "Removed legacy AppArmor profile \$_legacy_profile"
+    fi
+done
 
 # --- AppArmor profile for Chromium's user-namespace sandbox ---
 # Ubuntu 24.04+ sets kernel.apparmor_restrict_unprivileged_userns=1, which
@@ -354,6 +381,36 @@ exit 0
 EOF
 chmod +x "$package_root/DEBIAN/postrm" || exit 1
 echo 'Postrm script created'
+
+# --- apport crash blacklist (#582) ---
+# On Ubuntu, core_pattern pipes every crash to apport, which drops a
+# multi-megabyte report under /var/crash/; update-notifier-crash then
+# emits journal lines that rsyslog forwards to /var/log/syslog. An
+# Electron process that crash-loops (see #583) drives that to hundreds
+# of gigabytes — a reporter measured 190 GB. Blacklisting our binaries
+# in apport's own drop-in directory breaks the feedback loop without
+# disabling apport for anything else. The paths track $package_name so a
+# future rename can't silently unpin them. The main ELF's children
+# (zygote, renderer, gpu) are re-execs of the same path, so one line
+# covers the whole Chromium tree; chrome_crashpad_handler is a separate
+# binary that can crash on its own. deb-only: apport is Debian/Ubuntu,
+# Fedora uses abrt, and an AppImage has no package hooks.
+echo 'Creating apport crash blacklist...'
+install -Dm 644 /dev/stdin \
+	"$package_root/etc/apport/blacklist.d/$package_name" << EOF
+/usr/lib/$package_name/claude-desktop
+/usr/lib/$package_name/chrome_crashpad_handler
+EOF
+echo 'apport blacklist created'
+
+# Register the blacklist as a conffile. The package is built with raw
+# dpkg-deb --build, which — unlike debhelper — does NOT auto-register
+# /etc files as conffiles, so without this the file is a plain package
+# file and an admin edit is clobbered on upgrade.
+echo 'Creating conffiles...'
+echo "/etc/apport/blacklist.d/$package_name" \
+	> "$package_root/DEBIAN/conffiles"
+echo 'Conffiles created'
 
 # --- Build .deb Package ---
 echo 'Building .deb package...'

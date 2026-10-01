@@ -117,8 +117,10 @@ _pkg_installed() {
 # keyboard input in the chat (#550). Surfaces:
 #   - CLAUDE_GTK_IM_MODULE override visibility (informational)
 #   - XWayland-with-IBus routing note: on a Wayland session Electron
-#     defaults to XWayland (preserves global hotkeys), which forces
-#     the IBus path through XIM — a known weak link for some IMEs.
+#     defaults to XWayland (the conservative rendering path), which
+#     forces the IBus path through XIM — a known weak link for some
+#     IMEs. Native Wayland keeps the global hotkey on GNOME/KDE via
+#     the GlobalShortcuts portal (#690); only wlroots loses it.
 #   - ibus-gtk3 package missing when GTK_IM_MODULE=ibus
 #   - GTK immodules cache stale: active module not listed by
 #     gtk-query-immodules-3.0 (--update-cache fixes it)
@@ -140,7 +142,7 @@ _doctor_check_im_modules() {
 			'IBus path goes through XIM (lossy for some IMEs).'
 		_info \
 			'Tip: CLAUDE_USE_WAYLAND=1 enables native Wayland IME' \
-			'(loses global hotkeys).'
+			'(global hotkey via portal on GNOME/KDE; lost on wlroots).'
 	fi
 
 	# Nothing further to check without an active IM module.
@@ -487,36 +489,39 @@ _doctor_check_filename_limit() {
 	fi
 }
 
-# Surface a warning when systemd-coredump shows N+ recent Electron
-# crashes. The most common cause on Linux is the GPU process FATAL
-# exhaustion tracked in #583 — workaround for affected users is the
-# upstream Settings → disable hardware acceleration toggle, or
+# Surface a warning when systemd-coredump shows N+ recent Claude
+# Desktop crashes. The most common cause on Linux is the GPU process
+# FATAL exhaustion tracked in #583 — workaround for affected users is
+# the upstream Settings → disable hardware acceleration toggle, or
 # CLAUDE_DISABLE_GPU=1 in the environment for headless persistence.
 #
 # Arguments: $1 = electron path (e.g.,
 #   /usr/lib/claude-desktop-unofficial/claude-desktop)
-#   Used to filter results to claude-desktop's electron when possible;
-#   falls back to all-electron crashes when the path doesn't match
-#   (e.g., AppImage mount paths are transient).
+#   Used to narrow the count to this package's binary when possible;
+#   falls back to every claude-desktop-named crash when the path
+#   doesn't match (e.g., AppImage mount paths are transient).
 _doctor_check_recent_crashes() {
 	local electron_path="${1:-}"
 	command -v coredumpctl &>/dev/null || return 0
 
-	# `coredumpctl list electron` filters by COMM=electron. If the
-	# exact electron_path matches any entry's EXE column, prefer that
-	# tighter count; otherwise fall back to all-electron entries.
+	# A bare non-path match is a COMM match. The official ELF we ship
+	# since v3.0.0 is named claude-desktop, so that is the comm of the
+	# main process and of every GPU/renderer child (they re-exec the
+	# same binary). 2.x shipped a binary named `electron`, and this
+	# probe matched that until #861: on every 3.x install it was
+	# silent, whatever the crash count.
 	local listing total_count path_count
-	listing=$(coredumpctl list electron \
+	listing=$(coredumpctl list claude-desktop \
 		--since='7 days ago' --no-pager 2>/dev/null) || return 0
 	[[ -n $listing ]] || return 0
 
 	# Drop the header line; count remaining entries.
-	# Assumes `coredumpctl list electron`'s COMM=electron filter
-	# excludes `-- Reboot --` separator rows from the listing (true
-	# on systemd as of writing). The path-matched branch below uses
-	# index($0, p) so it's unaffected even if that ever changes;
-	# revisit this total-count branch if a future systemd version
-	# starts leaking reboot markers into per-COMM listings.
+	# Assumes the per-COMM filter excludes `-- Reboot --` separator
+	# rows from the listing (true on systemd as of writing). The
+	# path-matched branch below uses index($0, p) so it's unaffected
+	# even if that ever changes; revisit this total-count branch if a
+	# future systemd version starts leaking reboot markers into
+	# per-COMM listings.
 	total_count=$(awk 'NR>1 && NF>0' <<< "$listing" | wc -l)
 	((total_count == 0)) && return 0
 
@@ -528,21 +533,21 @@ _doctor_check_recent_crashes() {
 	fi
 
 	# Use the path-matched count when available; else the unfiltered
-	# count with a footnote so the user knows it may include other
-	# Electron apps (Slack, VSCode, etc.).
+	# count with a footnote so the user knows it may include the
+	# official claude-desktop package or another install of ours.
 	local count footnote=''
 	if ((path_count > 0)); then
 		count=$path_count
 	else
 		count=$total_count
-		footnote=' (some entries may be from other Electron apps)'
+		footnote=' (some entries may be from another Claude Desktop install)'
 	fi
 
 	# Threshold tuned against the #583 repro (~10 crashes over 7 days
 	# on the affected laptop); a noisy session typically clears 3 in a
 	# week, so 3 is the floor for "worth surfacing the workaround".
 	if ((count >= 3)); then
-		_warn "Recent Electron crashes: $count in last 7 days$footnote"
+		_warn "Recent Claude Desktop crashes: $count in last 7 days$footnote"
 		_info \
 			'Most common cause: Chromium GPU process FATAL (#583).' \
 			'Try one of:'
@@ -552,7 +557,7 @@ _doctor_check_recent_crashes() {
 			'Tracking:' \
 			'https://github.com/aaddrick/claude-desktop-debian/issues/583'
 	elif ((count > 0)); then
-		_info "Recent Electron crashes: $count in last 7 days$footnote"
+		_info "Recent Claude Desktop crashes: $count in last 7 days$footnote"
 	fi
 }
 
@@ -569,6 +574,35 @@ _doctor_check_password_store() {
 			'(overrides upstream autodetection)'
 	else
 		_info 'Password store: upstream os_crypt autodetect (default)'
+	fi
+}
+
+# Report which Linux tray PNG selection mode a launch would use (#604).
+# Informational only — no PASS/FAIL. Runs the launcher's own
+# setup_tray_icon_env for the auto-detect verdict so doctor and launch
+# can't drift (same predicate-parity rule as the #781 poll fix).
+# Guarded like load_launcher_config: a standalone `source doctor.sh`
+# (doctor.bats) has no launcher-common.sh in scope.
+_doctor_check_tray_icon() {
+	if [[ -n ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]; then
+		if [[ $CLAUDE_TRAY_USE_DARK_ICON == 0 \
+			|| $CLAUDE_TRAY_USE_DARK_ICON == 1 ]]; then
+			_info "Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON" \
+				'(preset; overrides Cinnamon auto-detect)'
+		else
+			_warn "Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON" \
+				'is not 0/1 — the app ignores it, and it suppresses' \
+				'Cinnamon auto-detect'
+		fi
+		return 0
+	fi
+	declare -F setup_tray_icon_env > /dev/null || return 0
+	setup_tray_icon_env
+	if [[ -n ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]; then
+		_info 'Tray icon: Cinnamon dark panel auto-detected' \
+			'(CLAUDE_TRAY_USE_DARK_ICON=1, TrayIconLinux-Dark.png)'
+	else
+		_info 'Tray icon: upstream selection (no override)'
 	fi
 }
 
@@ -702,6 +736,91 @@ _doctor_check_disk_space() {
 	fi
 }
 
+# Check the Chromium single-instance SingletonLock under the Claude
+# config dir. Electron writes it as a 'hostname-PID' symlink; a stale
+# one (dead PID, or a PID since recycled by an unrelated process) is
+# self-healed — Chromium unlinks the orphan and continues. The case
+# that actually blocks startup is a non-symlink regular file
+# (possible after an unclean update): ReadLink returns empty, the
+# lock parse fails, and the symlink() retry hits EEXIST, so the app
+# quits on the next cold launch. That case must not be
+# reported as "no lock file", which was a silent false PASS.
+#
+# Usage: _doctor_check_singleton_lock [config_dir]
+_doctor_check_singleton_lock() {
+	local config_dir="${1:-${XDG_CONFIG_HOME:-$HOME/.config}/Claude}"
+	local lock_file="$config_dir/SingletonLock"
+	if [[ -L $lock_file ]]; then
+		local lock_target lock_pid
+		lock_target="$(readlink "$lock_file" 2>/dev/null)" || true
+		lock_pid="${lock_target##*-}"
+		if [[ $lock_pid =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
+			# Signalable is not enough (#784): a recycled PID held
+			# by any other same-user process made a stale lock PASS.
+			# _pid_is_claude_desktop lives in launcher-common.sh
+			# beside the other /proc/PID/exe readers. Guarded like
+			# load_launcher_config: a standalone `source doctor.sh`
+			# has no launcher-common.sh in scope and keeps the old
+			# verdict; doctor.bats sources the real file for these
+			# cases, so the guard never hides the branch from tests.
+			if ! declare -F _pid_is_claude_desktop > /dev/null \
+				|| _pid_is_claude_desktop "$lock_pid"; then
+				_pass "SingletonLock: held by running process" \
+					"(PID $lock_pid)"
+			else
+				_warn "SingletonLock: stale lock found" \
+					"(PID $lock_pid is not a Claude" \
+					'Desktop process)'
+				_info "Fix: rm '$lock_file'"
+			fi
+		else
+			_warn "SingletonLock: stale lock found" \
+				"(PID $lock_pid is not running)"
+			_info "Fix: rm '$lock_file'"
+		fi
+	elif [[ -e $lock_file ]]; then
+		# WARN, not _fail, for consistency with the stale-symlink
+		# precedent above — even though this case provably blocks the
+		# next cold launch.
+		_warn 'SingletonLock: present but not a symlink (unexpected)'
+		_info "Fix: rm '$lock_file'"
+	else
+		_pass 'SingletonLock: no lock file (OK)'
+	fi
+}
+
+# Report an orphaned cowork-vm-service daemon.
+#
+# cowork-vm-service.js is the bwrap fallback daemon (opt-in
+# COWORK_VM_BACKEND=bwrap, patch_cowork_bwrap); it was also OUR 2.x
+# VM daemon. Either way, a daemon whose parent UI is gone is orphaned
+# (holding a stale socket), and the launcher reaps it on the next
+# start. When the UI is alive the daemon is healthy (expected on the
+# flagged path).
+#
+# Detection is the reaper's own predicate,
+# _cowork_fallback_daemon_pids, and live-UI detection is
+# _claude_desktop_ui_is_alive, both in launcher-common.sh: the doctor
+# reports exactly what cleanup_orphaned_cowork_daemon would kill, and
+# a process that only names the script is neither (#882). Guarded like
+# _doctor_check_tray_icon: a standalone `source doctor.sh` has no
+# launcher-common.sh in scope and stays silent.
+_doctor_check_cowork_daemon() {
+	declare -F _cowork_fallback_daemon_pids > /dev/null || return 0
+
+	local -a pids
+	mapfile -t pids < <(_cowork_fallback_daemon_pids)
+	[[ ${#pids[@]} -gt 0 ]] || return 0
+
+	if _claude_desktop_ui_is_alive; then
+		_pass 'Cowork bwrap daemon: running (parent alive)'
+		return 0
+	fi
+	_warn 'Cowork bwrap daemon: orphaned' "(PIDs: ${pids[*]})"
+	_info 'Fix: Restart Claude Desktop' \
+		'(daemon will be cleaned up automatically)'
+}
+
 # Report the installed claude-desktop version from the package manager
 # that actually owns the install (#711). On dual-DB hosts (e.g. a
 # Fedora box with dpkg installed for deb work) a stale dpkg record
@@ -748,10 +867,18 @@ _doctor_check_pkg_version() {
 	# Our deb is claude-desktop-unofficial since the Phase 3 rename;
 	# plain claude-desktop is Anthropic's official package on dpkg
 	# hosts and is not ours to report here.
+	# Gate on install status, not just version: dpkg-query still
+	# prints a version for a removed-but-not-purged package (rc /
+	# config-files state), so trusting the version alone PASSes for
+	# software no longer installed — the #711 false-PASS.
 	if command -v dpkg-query &>/dev/null; then
-		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop-unofficial 2>/dev/null) || pkg_version=''
-		if [[ -n $pkg_version ]]; then
+		local dpkg_status
+		dpkg_status=$(dpkg-query -W \
+			-f='${db:Status-Status} ${Version}' \
+			claude-desktop-unofficial 2>/dev/null) \
+			|| dpkg_status=''
+		if [[ $dpkg_status == 'installed '* ]]; then
+			pkg_version="${dpkg_status#installed }"
 			_installed_pkg_version="$pkg_version"
 			_pass "Installed version: $pkg_version"
 			return 0
@@ -866,6 +993,16 @@ _check_name_collision() {
 	fi
 
 	# (b) Is a package named claude-desktop installed, and whose is it?
+	# Gate on install status first: dpkg-query still answers
+	# ${Maintainer}/${Version} for a removed-but-not-purged record
+	# (config-files / rc state), which the transitional claude-desktop
+	# dummy makes common post-rename — classifying that as an install
+	# would warn/info about software no longer present (#711 family).
+	local dpkg_status
+	dpkg_status=$(dpkg-query -W -f='${db:Status-Status}' \
+		claude-desktop 2>/dev/null) || dpkg_status=''
+	[[ $dpkg_status == 'installed' ]] || return 0
+
 	local maintainer version
 	maintainer=$(dpkg-query -W -f='${Maintainer}' claude-desktop \
 		2>/dev/null) || maintainer=''
@@ -1091,6 +1228,42 @@ _check_cowork_stack() {
 	_check_cowork_virtiofsd "$distro" "$resources_dir"
 }
 
+# Cowork cloud tasks need a hardware-backed device key so the
+# remote-tools bridge can attest this machine; @ant/claude-native has
+# no Linux implementation of that key yet (upstream gap, #780), so
+# ant-device-registry.json can only ever hold a "none:<ts>" row on
+# Linux — never the "pk1:<fp>:<rowpk>" row that marks a registered
+# device. This is diagnostic only: it explains why new cloud tasks
+# show "Not linked to a computer" and is INFO-only, since it is
+# upstream-owned and pre-existing HostLoop/on-device sessions are
+# unaffected. It must never _warn/_fail or flip _cowork_incomplete.
+#
+# The registry path is overridable via _DOCTOR_DEVICE_REGISTRY for
+# tests (same internal-hook convention as _DOCTOR_KVM_DEV). A missing
+# file means Cowork was never used on this profile, so stay silent.
+#
+# Usage: _check_device_registry <config_dir>
+_check_device_registry() {
+	local config_dir="$1"
+	local registry
+	registry="${_DOCTOR_DEVICE_REGISTRY:-$config_dir/ant-device-registry.json}"
+
+	[[ -f $registry ]] || return 0
+
+	if grep -q '"pk1:' "$registry" 2>/dev/null; then
+		_info 'Device registry: registered (hardware-backed key present)'
+		return 0
+	fi
+
+	if grep -q '"none:' "$registry" 2>/dev/null; then
+		_info 'Device registry: not registered — Linux has no' \
+			'hardware-backed device key yet (upstream gap, #780)'
+		_info '  New Cowork cloud tasks show "Not linked to a' \
+			'computer"; pre-existing HostLoop/on-device sessions' \
+			'are unaffected.'
+	fi
+}
+
 # True when the given node binary provides fs.statfsSync — the
 # capability the bwrap daemon requires (getSessionsDiskInfo reports real
 # session-disk space). It landed in Node 18.15 / 16.19, so probe the
@@ -1199,151 +1372,45 @@ _doctor_check_bwrap_fallback() {
 	_doctor_check_bwrap_mounts
 }
 
-# Run all diagnostic checks and print results
-# Arguments: $1 = electron path (optional, for package-specific checks)
-run_doctor() {
-	local electron_path="${1:-}"
-	local _doctor_failures=0
-	# Recorded by _doctor_check_pkg_version, consumed by
-	# _check_official_drift (dynamic scope makes the helper's assignment
-	# land on this local).
-	local _installed_pkg_version=''
-	# Flipped true by any Cowork stack check that isn't green, so the
-	# section summary can report readiness without recomputing.
-	local _cowork_incomplete=false
-
-	# Doctor must see the same environment a launch would: the per-user
-	# config file can carry the launcher vars this run inspects
-	# (COWORK_VM_BACKEND=bwrap is the exact #772 persona). Guarded — a
-	# standalone `source doctor.sh` (doctor.bats) has no
-	# launcher-common.sh in scope. log_message no-ops here because the
-	# doctor path never runs setup_logging.
-	declare -F load_launcher_config > /dev/null && load_launcher_config
-	_doctor_colors
-
-	# Distro ID is shared between the IM-module check (#550) and the
-	# Cowork Mode section further down. Resolve once.
-	local _distro_id
-	_distro_id=$(_cowork_distro_id)
-
-	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
-	echo '================================'
-	echo
-
-	# -- Installed package version --
-	_doctor_check_pkg_version "$electron_path"
-
-	# -- Version drift vs. the official pool (best-effort, network) --
-	_check_official_drift
-
-	# -- Package-name collision with Anthropic's APT repo --
-	_check_name_collision
-
-	# -- Display server --
-	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
-		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
-		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
-		_info "Desktop: $desktop"
-		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
-			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
-		else
-			_info 'Mode: X11 via XWayland (default, for global hotkey support)'
-			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
-			_info '     (disables global hotkeys)'
-		fi
-	elif [[ -n "${DISPLAY:-}" ]]; then
-		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
-	else
-		_fail "No display server detected" \
-			"(DISPLAY and WAYLAND_DISPLAY are unset)"
-		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
-	fi
-
-	# -- Input method (IBus / GTK) --
-	_doctor_check_im_modules "$_distro_id"
-
-	# -- Legacy 2.x env knobs (no longer honored post-rebase) --
-	_check_legacy_env
-
-	# -- Electron binary --
-	# Version is read from the file next to the binary rather than
-	# launching Electron, which can hang (see #371).
-	if [[ -n $electron_path && -x $electron_path ]]; then
-		local ver
-		ver=$(_electron_version "$electron_path")
-		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
-			_pass "Electron: v${ver#v} ($electron_path)"
-		else
-			_pass "Electron: found at $electron_path"
-		fi
-	elif [[ -n $electron_path ]]; then
-		_fail "Electron binary not found at $electron_path"
-		_info 'Fix: Reinstall the claude-desktop-unofficial package'
-	elif command -v electron &>/dev/null; then
-		local ver
-		ver=$(_electron_version "$(command -v electron)")
-		_pass "Electron: ${ver:+v${ver#v} }(system)"
-	else
-		_fail 'Electron binary not found'
-		_info 'Fix: Reinstall the claude-desktop-unofficial package'
-	fi
-
-	# -- Chrome sandbox permissions --
-	# Official layout: chrome-sandbox sits at the package root beside the
-	# ELF (no node_modules/electron/dist tree anymore).
-	local sandbox_paths=(
-		'/usr/lib/claude-desktop-unofficial/chrome-sandbox'
-	)
-	# Also check relative to the provided electron path
-	if [[ -n $electron_path ]]; then
-		local electron_dir
-		electron_dir=$(dirname "$electron_path")
-		sandbox_paths+=("$electron_dir/chrome-sandbox")
-	fi
-	local sandbox_checked=false
-	for sandbox_path in "${sandbox_paths[@]}"; do
-		if [[ -f $sandbox_path ]]; then
-			sandbox_checked=true
-			local sandbox_perms sandbox_owner
-			sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
-			sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
-			if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
-				_pass "Chrome sandbox: permissions OK ($sandbox_path)"
-			else
-				_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
- owner=${sandbox_owner:-?}"
-				_info "Fix: sudo chown root:root $sandbox_path"
-				_info "     sudo chmod 4755 $sandbox_path"
-			fi
-			break
-		fi
-	done
-	if [[ $sandbox_checked == false ]]; then
-		_warn 'Chrome sandbox not found (expected for AppImage)'
-	fi
-
-	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
-	# Ubuntu 24.04+ sets apparmor_restrict_unprivileged_userns=1, which
-	# blocks the user namespaces Chromium's sandbox needs and crashes the
-	# app on launch (credentials.cc FATAL, exit 133). A scoped AppArmor
-	# profile permits them for Claude only. Only report when the
-	# restriction is actually in force — on other distros the knob is
-	# absent and this check stays silent.
-	local _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
+# User-namespace sandbox check (Ubuntu 24.04+ AppArmor). Ubuntu 24.04+
+# sets apparmor_restrict_unprivileged_userns=1, which blocks the user
+# namespaces Chromium's sandbox needs and crashes the app on launch
+# (credentials.cc FATAL, exit 133). A scoped AppArmor profile permits
+# them for Claude only. Only reports when the restriction is actually
+# in force — on other distros the knob is absent and this stays silent.
+#
+# Path hooks (test-only; defaults are the real system locations, so
+# production behavior is unchanged):
+#   _DOCTOR_USERNS_PATH   the apparmor_restrict_unprivileged_userns knob
+#   _DOCTOR_DEB_ELECTRON  the deb-installed Electron the profile pins
+#   _DOCTOR_AA_PROFILE    the on-disk profile path
+#   _DOCTOR_AA_LOADED     the kernel's loaded-profile set
+#
+# Usage: _doctor_check_userns_apparmor
+_doctor_check_userns_apparmor() {
+	local _userns_path="${_DOCTOR_USERNS_PATH:-}"
+	[[ -n $_userns_path ]] \
+		|| _userns_path='/proc/sys/kernel/apparmor_restrict_unprivileged_userns'
 	local _userns_val=''
 	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
 	# Gate on the deb's installed Electron, not $electron_path (the
 	# invoking build's binary): the profile pins this exact path, so only
 	# a deb install is confined by it. AppImage always runs --no-sandbox
 	# and Nix binaries live in the store — neither can hit the crash.
-	local _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
+	local _deb_electron="${_DOCTOR_DEB_ELECTRON:-}"
+	[[ -n $_deb_electron ]] \
+		|| _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
 	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
 		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
 		# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since
 		# the Phase 3 rename; plain claude-desktop is the official
 		# package's profile, registered by Anthropic's own postinst).
-		local _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
-		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
+		local _aa_profile="${_DOCTOR_AA_PROFILE:-}"
+		[[ -n $_aa_profile ]] \
+			|| _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
+		local _aa_loaded="${_DOCTOR_AA_LOADED:-}"
+		[[ -n $_aa_loaded ]] \
+			|| _aa_loaded='/sys/kernel/security/apparmor/profiles'
 		# securityfs marks this file world-readable (0444), but the kernel
 		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
 		# passes for non-root yet the read returns nothing. Attempt the read
@@ -1391,28 +1458,267 @@ run_doctor() {
 			_info '  immediately on launch" for the profile to install.'
 		fi
 	fi
+}
+
+# Report the Electron binary and its version. The version is read from
+# the file next to the binary rather than launching Electron, which can
+# hang (see #371). Falls back to a system `electron` on PATH; fails when
+# a provided path is missing or no binary is found at all.
+#
+# Usage: _doctor_check_electron_binary [electron_path]
+_doctor_check_electron_binary() {
+	local electron_path="${1:-}"
+	if [[ -n $electron_path && -x $electron_path ]]; then
+		local ver
+		ver=$(_electron_version "$electron_path")
+		if [[ $ver =~ ^v?[0-9]+\.[0-9]+ ]]; then
+			_pass "Electron: v${ver#v} ($electron_path)"
+		else
+			_pass "Electron: found at $electron_path"
+		fi
+	elif [[ -n $electron_path ]]; then
+		_fail "Electron binary not found at $electron_path"
+		_info 'Fix: Reinstall the claude-desktop-unofficial package'
+	elif command -v electron &>/dev/null; then
+		local ver
+		ver=$(_electron_version "$(command -v electron)")
+		_pass "Electron: ${ver:+v${ver#v} }(system)"
+	else
+		_fail 'Electron binary not found'
+		_info 'Fix: Reinstall the claude-desktop-unofficial package'
+	fi
+}
+
+# Check the chrome-sandbox helper's setuid permissions (must be 4755,
+# owned by root). Official layout: chrome-sandbox sits at the package
+# root beside the ELF (no node_modules/electron/dist tree anymore).
+# When an electron path is provided, ONLY the chrome-sandbox beside it
+# is judged — that is the binary actually running; falling back to the
+# deb path would validate the wrong binary when an AppImage/Nix run
+# coexists with a stale deb tree. Without an electron path, the deb
+# install location is the best guess. Warns when the relevant file is
+# missing — meaningful for deb/rpm/nix, where the helper is supposed to
+# be installed.
+#
+# AppImage is exempt (#785): the staged tree carries chrome-sandbox but
+# the AppImage's permission normalization drops the setuid bit, and the
+# mount/extract dir is owned by the running user, so the perms check
+# always failed with a `sudo chown root:root /tmp/.mount_.../` hint that
+# is both unactionable (transient, read-only) and moot —
+# build_electron_args passes --no-sandbox unconditionally for appimage,
+# so the helper is never invoked. Report that once and stop, matching
+# _doctor_check_effective_sandbox's appimage short-circuit.
+#
+# _DOCTOR_DEB_SANDBOX overrides the hardcoded deb path (test hook; the
+# default is the real install location, so production is unaffected).
+#
+# Usage: _doctor_check_chrome_sandbox [electron_path] [package_type]
+_doctor_check_chrome_sandbox() {
+	local electron_path="${1:-}"
+	local package_type="${2:-}"
+	local sandbox_path
+	if [[ $package_type == 'appimage' ]]; then
+		_info 'Chrome sandbox: not used' \
+			'(AppImage runs with --no-sandbox)'
+		return 0
+	fi
+	if [[ -n $electron_path ]]; then
+		# A specific binary is running: only its own chrome-sandbox is
+		# relevant.
+		sandbox_path="$(dirname "$electron_path")/chrome-sandbox"
+	else
+		# No binary path known: fall back to the deb install location.
+		sandbox_path="${_DOCTOR_DEB_SANDBOX:-}"
+		[[ -n $sandbox_path ]] \
+			|| sandbox_path='/usr/lib/claude-desktop-unofficial/chrome-sandbox'
+	fi
+	if [[ -f $sandbox_path ]]; then
+		local sandbox_perms sandbox_owner
+		sandbox_perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null) || true
+		sandbox_owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null) || true
+		if [[ $sandbox_perms == '4755' && $sandbox_owner == 'root' ]]; then
+			_pass "Chrome sandbox: permissions OK ($sandbox_path)"
+		else
+			_fail "Chrome sandbox: perms=${sandbox_perms:-?},\
+ owner=${sandbox_owner:-?}"
+			_info "Fix: sudo chown root:root $sandbox_path"
+			_info "     sudo chmod 4755 $sandbox_path"
+		fi
+	else
+		_warn "Chrome sandbox not found at $sandbox_path"
+	fi
+}
+
+# Report whether the sandbox is actually *disabled at runtime*, not just
+# whether the setuid helper's file permissions look correct. #804: on
+# Wayland, deb/nix launches pass --no-sandbox unconditionally (unless
+# CLAUDE_FORCE_SANDBOX=1), so _doctor_check_chrome_sandbox above can PASS
+# on file permissions while the sandbox is disabled the moment Electron
+# actually launches -- this check reports on that gap directly, by
+# building the real argv the launcher would use rather than
+# re-deriving the same rule a second time (see the "single source of
+# truth" note on build_electron_args -- this project has been burned by
+# switch-list drift before, hence tools/chromium-switch-smoke.sh).
+#
+# Requires: build_electron_args to be in scope (sourced from
+#           launcher-common.sh, which sources this file -- see the file
+#           header), and is_wayland/use_x11_on_wayland already set by a
+#           prior detect_display_backend call -- same precondition
+#           build_electron_args itself documents, deliberately not
+#           re-detected here so callers (and tests) stay in control of
+#           the scenario the same way every build_electron_args test
+#           already does. Guarded below, same as load_launcher_config
+#           above: a standalone `source doctor.sh` (doctor.bats) has
+#           neither in scope.
+#
+# Usage: _doctor_check_effective_sandbox <package_type>
+_doctor_check_effective_sandbox() {
+	local package_type="${1:-deb}"
+	# rpm packages reuse the deb argv-building path verbatim (see
+	# rpm.sh), so normalize here too -- otherwise a future call site
+	# passing the literal 'rpm' would skip build_electron_args's
+	# deb/nix-only --no-sandbox branch and wrongly report the sandbox
+	# as enabled.
+	[[ $package_type == 'rpm' ]] && package_type='deb'
+	[[ $package_type == 'appimage' ]] && return 0 # already unconditional, covered above
+	declare -F build_electron_args > /dev/null || return 0
+
+	local electron_args
+	build_electron_args "$package_type"
+
+	local arg has_no_sandbox=false
+	for arg in "${electron_args[@]}"; do
+		[[ $arg == '--no-sandbox' ]] && has_no_sandbox=true
+	done
+
+	if [[ $has_no_sandbox == true ]]; then
+		_warn 'Chrome sandbox: disabled at runtime (--no-sandbox on Wayland)'
+		_info 'Regardless of the file-permission result above, the sandbox is'
+		_info 'not actually engaged for this session -- see #804.'
+		_info 'Fix: set CLAUDE_FORCE_SANDBOX=1 if your system does not need'
+		_info '     this workaround (Ubuntu-family systems: it is very'
+		_info '     likely safe, see the userns/AppArmor check below).'
+	else
+		_pass 'Chrome sandbox: enabled at runtime'
+	fi
+}
+
+# Report the active display server (Wayland/X11) and, on Wayland, the
+# desktop and whether Electron runs natively (CLAUDE_USE_WAYLAND=1) or
+# via XWayland (the default: mature rendering/IME/HiDPI path). Since
+# #690 native Wayland routes Quick Entry's global hotkey through the
+# XDG GlobalShortcuts portal, so it works on GNOME and KDE (after the
+# one-time permission dialog) and is lost only on wlroots compositors,
+# whose portal has no GlobalShortcuts backend. Before #690 the tip
+# here said native Wayland "disables global hotkeys" — inverted
+# (#862). Fails when neither DISPLAY nor WAYLAND_DISPLAY is set (TTY /
+# broken session).
+#
+# Usage: _doctor_check_display_server
+_doctor_check_display_server() {
+	if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
+		local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
+		_info "Desktop: $desktop"
+		if [[ "${CLAUDE_USE_WAYLAND:-}" == '1' ]]; then
+			_info 'Mode: native Wayland (CLAUDE_USE_WAYLAND=1)'
+		else
+			_info 'Mode: X11 via XWayland (default)'
+			_info 'Tip: Set CLAUDE_USE_WAYLAND=1 for native Wayland'
+			_info '     (global hotkey via the GlobalShortcuts portal on' \
+				'GNOME/KDE; lost on wlroots compositors)'
+		fi
+	elif [[ -n "${DISPLAY:-}" ]]; then
+		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
+	else
+		_fail "No display server detected" \
+			"(DISPLAY and WAYLAND_DISPLAY are unset)"
+		_info 'Fix: Run from within an X11 or Wayland session, not a TTY'
+	fi
+}
+
+# Run all diagnostic checks and print results
+# Arguments: $1 = electron path (optional, for package-specific checks)
+#            $2 = package type: deb|rpm|nix|appimage (optional, default
+#                 'deb' -- matches every call site except appimage.sh;
+#                 read by _doctor_check_effective_sandbox's #804 check
+#                 and by _doctor_check_chrome_sandbox's appimage
+#                 exemption (#785))
+run_doctor() {
+	local electron_path="${1:-}"
+	local package_type="${2:-deb}"
+	local _doctor_failures=0
+	# Recorded by _doctor_check_pkg_version, consumed by
+	# _check_official_drift (dynamic scope makes the helper's assignment
+	# land on this local).
+	local _installed_pkg_version=''
+	# Flipped true by any Cowork stack check that isn't green, so the
+	# section summary can report readiness without recomputing.
+	local _cowork_incomplete=false
+
+	# Doctor must see the same environment a launch would: the per-user
+	# config file can carry the launcher vars this run inspects
+	# (COWORK_VM_BACKEND=bwrap is the exact #772 persona). Guarded — a
+	# standalone `source doctor.sh` (doctor.bats) has no
+	# launcher-common.sh in scope. log_message no-ops here because the
+	# doctor path never runs setup_logging.
+	declare -F load_launcher_config > /dev/null && load_launcher_config
+	_doctor_colors
+
+	# Distro ID is shared between the IM-module check (#550) and the
+	# Cowork Mode section further down. Resolve once.
+	local _distro_id
+	_distro_id=$(_cowork_distro_id)
+
+	echo -e "${_bold}Claude Desktop Diagnostics${_reset}"
+	echo '================================'
+	echo
+
+	# -- Installed package version --
+	_doctor_check_pkg_version "$electron_path"
+
+	# -- Version drift vs. the official pool (best-effort, network) --
+	_check_official_drift
+
+	# -- Package-name collision with Anthropic's APT repo --
+	_check_name_collision
+
+	# -- Display server --
+	_doctor_check_display_server
+
+	# -- Input method (IBus / GTK) --
+	_doctor_check_im_modules "$_distro_id"
+
+	# -- Legacy 2.x env knobs (no longer honored post-rebase) --
+	_check_legacy_env
+
+	# -- Electron binary --
+	_doctor_check_electron_binary "$electron_path"
+
+	# -- Chrome sandbox permissions --
+	_doctor_check_chrome_sandbox "$electron_path" "$package_type"
+
+	# -- Chrome sandbox effective runtime state (#804) --
+	# detect_display_backend sets is_wayland/use_x11_on_wayland, which
+	# _doctor_check_effective_sandbox's build_electron_args call needs;
+	# guarded the same way load_launcher_config is above -- doctor.bats
+	# sources doctor.sh standalone, with neither function in scope.
+	declare -F detect_display_backend > /dev/null && detect_display_backend
+	_doctor_check_effective_sandbox "$package_type"
+
+	# -- User-namespace sandbox (Ubuntu 24.04+ AppArmor) --
+	_doctor_check_userns_apparmor
 
 	# -- SingletonLock --
 	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
-	local lock_file="$config_dir/SingletonLock"
-	if [[ -L $lock_file ]]; then
-		local lock_target lock_pid
-		lock_target="$(readlink "$lock_file" 2>/dev/null)" || true
-		lock_pid="${lock_target##*-}"
-		if [[ $lock_pid =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
-			_pass "SingletonLock: held by running process (PID $lock_pid)"
-		else
-			_warn "SingletonLock: stale lock found" \
-				"(PID $lock_pid is not running)"
-			_info "Fix: rm '$lock_file'"
-		fi
-	else
-		_pass 'SingletonLock: no lock file (OK)'
-	fi
+	_doctor_check_singleton_lock "$config_dir"
 
 	# -- Password store --
 	_doctor_check_password_store
 	_doctor_check_keyring_persistence
+
+	# -- Tray icon (#604) --
+	_doctor_check_tray_icon
 
 	# -- MCP config --
 	local mcp_config="$config_dir/claude_desktop_config.json"
@@ -1511,6 +1817,10 @@ print(len(servers))
 		_info 'Cowork isolation: KVM (official)'
 	fi
 
+	# Device registration (upstream gap, #780) — diagnostic only, never
+	# feeds _cowork_incomplete.
+	_check_device_registry "$config_dir"
+
 	# Bwrap fallback (opt-in, patch_cowork_bwrap). Set
 	# COWORK_VM_BACKEND=bwrap to route Cowork through the bundled Node
 	# daemon + bubblewrap instead of the KVM microVM — for hosts that
@@ -1536,28 +1846,7 @@ print(len(servers))
 	_doctor_check_filename_limit
 
 	# -- Orphaned cowork-vm-service daemon --
-	# cowork-vm-service.js is the bwrap fallback daemon (opt-in
-	# COWORK_VM_BACKEND=bwrap, patch_cowork_bwrap); it was also OUR 2.x
-	# VM daemon. Either way, a daemon whose parent UI is gone is
-	# orphaned — holding a stale socket — so we reap it. When the UI is
-	# alive the daemon is healthy (expected on the flagged path). Live-UI
-	# detection matches cleanup_orphaned_cowork_daemon:
-	# _claude_desktop_ui_is_alive in launcher-common.sh fingerprints the
-	# --class=$WM_CLASS flag (since #700 the launchers no longer pass
-	# app.asar in argv), excluding Chromium helpers (--type=...), cowork
-	# helpers, our own launcher bash, and stopped/zombie processes.
-	local _cowork_pids
-	_cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) || true
-	if [[ -n $_cowork_pids ]]; then
-		if ! _claude_desktop_ui_is_alive; then
-			_warn "Cowork bwrap daemon: orphaned" \
-				"(PIDs: $_cowork_pids)"
-			_info 'Fix: Restart Claude Desktop' \
-				'(daemon will be cleaned up automatically)'
-		else
-			_pass 'Cowork bwrap daemon: running (parent alive)'
-		fi
-	fi
+	_doctor_check_cowork_daemon
 
 	# -- Recent crashes --
 	# Surfaces the GPU process FATAL pattern (#583) before users

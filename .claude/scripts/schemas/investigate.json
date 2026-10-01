@@ -36,6 +36,25 @@
           "enclosing_construct": {
             "type": ["string", "null"],
             "description": "Required for claim_type='identifier'. Name or short description of the enum/switch/object-literal containing the identifier, for closed-world extraction in Stage 5."
+          },
+          "refutation_check": {
+            "type": ["object", "null"],
+            "description": "Required (non-null) for any finding that asserts a mechanism rather than a direct citation. The one read/search that would have refuted the claim, actually run. Null only for direct-citation findings where the evidence quote is the check.",
+            "properties": {
+              "check": {
+                "type": "string",
+                "description": "The specific read/search run and what refutation would have looked like."
+              },
+              "result": {
+                "type": "string",
+                "description": "What was observed and why the claim survived; 'not-runnable' when the check needs tools/platforms unavailable here (caps confidence at low)."
+              }
+            },
+            "required": ["check", "result"]
+          },
+          "novelty": {
+            "enum": ["net-new", "confirms-reporter"],
+            "description": "net-new: the issue body does not already contain this site/mechanism. confirms-reporter: the issue body states it and the investigation verified it. Drives delta-only drafting in Stage 8a."
           }
         },
         "required": [
@@ -45,7 +64,9 @@
           "line_start",
           "line_end",
           "evidence_quote",
-          "confidence"
+          "confidence",
+          "refutation_check",
+          "novelty"
         ]
       }
     },

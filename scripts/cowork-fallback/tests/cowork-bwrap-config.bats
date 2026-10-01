@@ -229,6 +229,83 @@ assertDeepEqual(result, { valid: true }, 'symlink to /opt should be accepted');
 	[[ "$status" -eq 0 ]]
 }
 
+@test "validateMountPath: rejects a dot-dot segment after a symlink (#895)" {
+	# path.resolve() drops '..' lexically, but bwrap gets the raw string
+	# and the kernel applies '..' after the symlink: ~/etclink/../etc
+	# validated as ~/etc and bound /etc.
+	mkdir -p "$TEST_TMP/home/a..b"
+	ln -s /etc "$TEST_TMP/home/etclink"
+	ln -s / "$TEST_TMP/home/rootlink"
+	export HOME="$TEST_TMP/home"
+	run node -e "${NODE_PREAMBLE}
+const h = os.homedir();
+const r1 = validateMountPath(h + '/etclink/../etc', { readWrite: true });
+assert(!r1.valid && r1.reason.includes('segments'),
+    'rw bind of /etc through ~/etclink/..: ' + r1.reason);
+const r2 = validateMountPath(h + '/rootlink/../proc');
+assert(!r2.valid && r2.reason.includes('segments'),
+    'ro bind of /proc through ~/rootlink/..: ' + r2.reason);
+// Near miss: '..' inside a name is not a '..' segment.
+const r3 = validateMountPath(h + '/a..b', { readWrite: true });
+assertDeepEqual(r3, { valid: true }, 'name containing ..');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "validateMountPath: resolves a not-yet-created path through its existing parent (#895)" {
+	# realpathSync() fails on a path that doesn't exist, and the old
+	# fallback kept the lexical form, so ~/outlink/not-yet passed the
+	# \$HOME check and would bind outside HOME once created.
+	mkdir -p "$TEST_TMP/home" "$TEST_TMP/outside"
+	ln -s "$TEST_TMP/outside" "$TEST_TMP/home/outlink"
+	export HOME="$TEST_TMP/home"
+	run node -e "${NODE_PREAMBLE}
+const h = os.homedir();
+const rw = (p) => validateMountPath(p, { readWrite: true }).valid;
+assert(!rw(h + '/outlink/not-yet'), 'missing leaf under symlink out of HOME');
+assert(!rw(h + '/outlink/not-yet/deeper'), 'missing chain under symlink out of HOME');
+assert(rw(h + '/not-yet/deeper'), 'missing chain under HOME');
+// The missing tail must be kept: resolving only the existing prefix
+// would turn this into '/', which is forbidden.
+assert(validateMountPath('/cowork-bats-895-not-yet').valid,
+    'missing top-level RO path');
+"
+	[[ "$status" -eq 0 ]]
+}
+
+@test "validateMountPath: follows a dangling symlink to where it will land (#895)" {
+	# realpathSync() also fails on a symlink whose target doesn't exist
+	# yet, and the parent fallback then kept the link's own name, so
+	# ~/dangle -> outside/newdir passed the \$HOME check and would bind
+	# outside HOME once the target is created.
+	mkdir -p "$TEST_TMP/home" "$TEST_TMP/outside"
+	ln -s "$TEST_TMP/outside/newdir" "$TEST_TMP/home/dangle"
+	ln -s "$TEST_TMP/outside/newdir" "$TEST_TMP/home/dangledir"
+	ln -s "$TEST_TMP/home/inside-new" "$TEST_TMP/home/dangle-in-abs"
+	ln -s inside-new "$TEST_TMP/home/dangle-in-rel"
+	ln -s loop-b "$TEST_TMP/home/loop-a"
+	ln -s loop-a "$TEST_TMP/home/loop-b"
+	export HOME="$TEST_TMP/home"
+	run node -e "${NODE_PREAMBLE}
+const h = os.homedir();
+const rw = (p) => validateMountPath(p, { readWrite: true }).valid;
+assert(!rw(h + '/dangle'), 'dangling link out of HOME');
+assert(!rw(h + '/dangledir/sub'), 'missing path under dangling link out of HOME');
+assert(rw(h + '/dangle-in-abs'), 'dangling absolute link inside HOME');
+assert(rw(h + '/dangle-in-rel'), 'dangling relative link inside HOME');
+// A symlink loop must stop at the kernel's 40-hop limit. Counting the
+// reads is the only way to see it: an unbounded walk ends in a stack
+// overflow that the fallback's own catch swallows, so it still returns.
+const readlinkSync = fs.readlinkSync;
+let reads = 0;
+fs.readlinkSync = (...a) => { reads++; return readlinkSync(...a); };
+validateMountPath(h + '/loop-a', { readWrite: true });
+fs.readlinkSync = readlinkSync;
+assert(reads > 0 && reads <= 41, 'loop followed ' + reads + ' links');
+"
+	[[ "$status" -eq 0 ]]
+}
+
 # =============================================================================
 # loadBwrapMountsConfig
 # =============================================================================
@@ -1218,4 +1295,34 @@ assertEqual(result[bindIdx + 2], '/tmp', 'bind dst');
 	[[ "$body" == *'/usr/libexec/virtiofsd'* ]]
 	[[ "$body" == *'/usr/lib/qemu/virtiofsd'* ]]
 	[[ "$body" == *'/usr/lib/virtiofsd'* ]]
+}
+
+# =============================================================================
+# Session teardown flags (#369)
+#
+# The fallback daemon must take its sessions down with it on quit. Two
+# things guarantee that; this file's live tests cover the mount-arg
+# merge, but nothing pinned the isolation flags on the actual session
+# spawn. BwrapBackend.spawn is not exported and execs bwrap, so this is
+# a structural pin on the spawn call's argv: the session must be
+# unshared into its own PID namespace AND carry --die-with-parent, which
+# is what makes bwrap SIGKILL the whole sandbox when the daemon dies —
+# covering even the launcher reaper's SIGTERM-timeout SIGKILL of a stuck
+# daemon (a plain SIGKILL runs no graceful stopVM). Drop the flag and a
+# quit that SIGKILLs the daemon orphans the sandbox; this reds.
+# =============================================================================
+
+@test "BwrapBackend session spawn carries PID-namespace + die-with-parent" {
+	local svc="${SCRIPT_DIR}/../cowork-vm-service.js"
+	# The four tokens must appear in this order in a single push() on the
+	# session command, unshare-pid immediately guarding die-with-parent
+	# and new-session, then the -- command separator.
+	run perl -0ne 'exit(!(
+		/bwrapArgs\.push\(\s*
+		 .--unshare-pid.,\s*
+		 .--die-with-parent.,\s*
+		 .--new-session.,\s*
+		 .--.,/sx
+	))' "$svc"
+	[[ "$status" -eq 0 ]]
 }

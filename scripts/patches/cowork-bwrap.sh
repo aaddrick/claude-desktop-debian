@@ -38,23 +38,111 @@
 # only wires all this up when the user sets COWORK_VM_BACKEND=bwrap.
 #
 # Sourced by: build.sh
-# Sourced globals: (none — identifiers are captured from index.js)
+# Sourced globals: (none — each sub-patch resolves its own file via
+#   _resolve_anchor_file, defined in app-asar.sh)
 # Modifies globals: (none)
+#
+# All four sub-patches shared one file through 1.24012.11. 1.26832.0 put
+# each in a different one: A in an index2.chunk-*, B and C1 in two
+# separate index.chunk-*, and C2's anchor is gone from the bundle
+# entirely (#820). They are resolved independently and may or may not
+# coincide, so the node stage below reads and writes per file.
 #===============================================================================
+
+# Quote class: 1.26832.0 re-emitted nearly every string literal as a
+# backtick template (#820).
+_CB_Q='[`"'"'"']'
+
+# C1's anchor shape. Read it as: the function head, then our own marker
+# if a previous run left one, then a brace-fenced stretch of upstream
+# body, then the `[downloadVM]` log literal that names the function.
+#
+# The node stage's `dlRe` spells the same shape a second time — it is a
+# heredoc, so it cannot read these. The two must stay in step or the
+# resolver picks a file the patch regex then declines to match; the
+# cowork C1 tests in tests/patch-anchors.bats drive both through one
+# call and are what actually pins them together.
+#
+# The literal terminus is what 1.46388.2 needed. Through 1.40609.1 the
+# anchor ended on the yukonSilver destructure and its `return`; 1.46388.2
+# folded the destructure into a helper (`EB().status`) and the anchor
+# went to zero matches — the second time this one function took the
+# whole build red (the first was 1.37937.1's `await X();` prelude). The
+# log literal held across both reshapes with only its delimiter moving,
+# so it is the terminus now and the head→literal stretch is fenced
+# rather than pinned to a statement shape. `[^{}]` is deliberately
+# brace-fenced rather than `.`: it cannot cross a nested block or leave
+# the function body, so the byte budget buys the function's own prelude
+# and nothing structural. The one brace pair it admits is the
+# destructure itself, so the 1.26832.0–1.40609.1 shapes still bind.
+#
+# The marker is braced (`if(...){return!1}`) rather than a bare
+# `return!1;` statement, and that is load-bearing for the resolver, not
+# style: the body fence would absorb a brace-free gate on a re-run, so
+# the marker allowance would sit redundant until the gate plus a longer
+# upstream prelude overran the budget — at which point the second pass
+# fails at resolution, before the idempotency guard can fire. Braces in
+# the gate make the allowance the only way past it, so dropping it goes
+# red in the idempotency test instead of in a future build.
+_CB_C1_MARKER='(?:/\*cowork-bwrap-dl\*/if\([^{}]*\)\{return!1\})?'
+_CB_C1_BODY='(?:[^{}]|\{yukonSilver:[\w$]+\}){0,240}?'
+_CB_C1_TAIL='\[downloadVM\] Download already in progress'
 
 patch_cowork_bwrap() {
 	echo 'Patching Cowork bwrap fallback (opt-in COWORK_VM_BACKEND=bwrap)...'
-	local index_js='app.asar.contents/.vite/build/index.js'
 
-	if INDEX_JS="$index_js" node << 'COWORK_BWRAP_PATCH'
+	local a_js b_js c1_js c2_js
+	# Each resolution anchor below is deliberately chosen to survive its
+	# own patch: patch A rewrites the function head, patch B rewrites the
+	# spawn arguments, patch C1 injects after the opening brace. Anchoring
+	# on the rewritten text would make the second run fail to resolve the
+	# file at all, before the idempotency guards could fire.
+	a_js=$(_resolve_anchor_file 'cowork A (platform dispatch)' \
+		'return process\.platform,[\w$]+\(\)\}') || return 1
+	b_js=$(_resolve_anchor_file 'cowork B (helper socket argv)' \
+		"${_CB_Q}-socket${_CB_Q}") || return 1
+	c1_js=$(_resolve_anchor_file 'cowork C1 (foreground download)' \
+		"async function\s+[\w\$]+\([\w\$]+,[\w\$]+\)\{${_CB_C1_MARKER}${_CB_C1_BODY}${_CB_C1_TAIL}") \
+		|| return 1
+
+	# C2 is best-effort and its anchor is absent from 1.26832.0, so an
+	# unresolved warm file is a warning rather than a build failure. Not
+	# routed through _resolve_anchor_file: that helper fails loud by
+	# design, which is the wrong contract for an optional sub-patch.
+	c2_js=$(grep -rlF --include='*.js' '[warm] Warm download disabled' \
+		'app.asar.contents/.vite/build' 2>/dev/null | head -1)
+
+	if A_JS="$a_js" B_JS="$b_js" C1_JS="$c1_js" C2_JS="$c2_js" \
+		node << 'COWORK_BWRAP_PATCH'
 const fs = require('fs');
-const indexJs = process.env.INDEX_JS;
-let code = fs.readFileSync(indexJs, 'utf8');
+
+// Sub-patches may share a file or not, depending on release. Route every
+// read and write through one cache so a shared file is not read twice
+// (which would drop the earlier sub-patch's edit) and each file is
+// written exactly once at the end.
+const files = new Map();
+const load = p => {
+    if (!files.has(p)) files.set(p, fs.readFileSync(p, 'utf8'));
+    return files.get(p);
+};
+const save = (p, c) => files.set(p, c);
+
+const aJs = process.env.A_JS;
+const bJs = process.env.B_JS;
+const c1Js = process.env.C1_JS;
+const c2Js = process.env.C2_JS;
 
 // The runtime gate shared by every injected branch. Unflagged launches
-// never enter any of them, so the official path ships unchanged.
+// never enter any of them, so the official path ships unchanged. Our own
+// injected JS keeps double quotes: it is valid under either upstream
+// emission style.
 const GATE =
     'process.platform==="linux"&&process.env.COWORK_VM_BACKEND==="bwrap"';
+
+// q(): match an upstream literal under any delimiter. 1.26832.0 swapped
+// the minifier and re-emitted nearly every string as a backtick template
+// (#820).
+const q = s => '[`"\']' + s + '[`"\']';
 
 let loadBearingFailed = false;
 
@@ -70,13 +158,14 @@ let loadBearingFailed = false;
 // ---------------------------------------------------------------------
 const evalRe =
     /function\s+([\w$]+)\(\)\{return process\.platform,([\w$]+)\(\)\}/;
+let codeA = load(aJs);
 if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
-        .test(code)) {
+        .test(codeA)) {
     console.log('  A: evaluator already gated (supported when flagged)');
 } else {
     // Fail loud if upstream ever grows a second platform-dispatch of
     // this exact shape — a blind first-match swap would be wrong.
-    const evalAll = [...code.matchAll(new RegExp(evalRe, 'g'))];
+    const evalAll = [...codeA.matchAll(new RegExp(evalRe, 'g'))];
     const m = evalAll.length === 1 ? evalAll[0] : null;
     if (evalAll.length > 1) {
         console.log('  A: FATAL — yukonSilver platform-dispatch anchor ' +
@@ -91,7 +180,7 @@ if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
         // inside a captured name as substitution patterns — silently
         // corrupting the bundle (the $ trap in
         // docs/learnings/patching-minified-js.md, replacement side).
-        code = code.replace(evalRe, () => replacement);
+        save(aJs, codeA.replace(evalRe, () => replacement));
         console.log('  A: gated yukonSilver evaluator -> supported ' +
             'when flagged (' + m[1] + '/' + m[2] + ')');
     } else {
@@ -114,21 +203,31 @@ if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
 // through the swap too. Identifiers (IE, A, Vie) are captured, not
 // hardcoded.
 // ---------------------------------------------------------------------
-if (code.includes('/*cowork-bwrap-spawn*/')) {
+let codeB = load(bJs);
+if (codeB.includes('/*cowork-bwrap-spawn*/')) {
     console.log('  B: helper spawn swap already applied');
 } else {
-    const spawnRe =
-        /([\w$]+)\.spawn\(([\w$]+),\[\s*"-socket"\s*,\s*([\w$]+)\(\)\s*\]\s*,\s*\{\s*stdio:\s*\[\s*"pipe"\s*,\s*"pipe"\s*,\s*"pipe"\s*\]\s*\}\)/;
+    // The callee is captured whole rather than as an object plus a
+    // literal `.spawn`: 1.24012.11 emitted `IE.spawn(`, 1.26832.0 emits
+    // the bundler's indirect-call form `(0,ye.spawn)(`. Both are valid
+    // call expressions, so re-emitting the captured text verbatim works
+    // for either.
+    const callee = String.raw`((?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+\.spawn))`;
+    const spawnRe = new RegExp(
+        callee + String.raw`\(([\w$]+),\[\s*` + q('-socket') +
+        String.raw`\s*,\s*([\w$]+)\(\)\s*\]\s*,\s*\{\s*stdio:\s*\[\s*` +
+        q('pipe') + '\\s*,\\s*' + q('pipe') + '\\s*,\\s*' + q('pipe') +
+        String.raw`\s*\]\s*\}\)`);
     // Assert the helper-spawn shape is unique before swapping — a blind
     // first-match replace would half-patch if upstream duplicates it.
-    const spawnAll = [...code.matchAll(new RegExp(spawnRe, 'g'))];
+    const spawnAll = [...codeB.matchAll(new RegExp(spawnRe, 'g'))];
     const m = spawnAll.length === 1 ? spawnAll[0] : null;
     if (spawnAll.length > 1) {
         console.log('  B: FATAL — helper spawn anchor matched ' +
             spawnAll.length + ' sites, expected exactly 1');
         loadBearingFailed = true;
     } else if (m) {
-        const spawnObj = m[1], helperPath = m[2], sockFn = m[3];
+        const spawnCall = m[1], helperPath = m[2], sockFn = m[3];
         const flagged = '(' + GATE + ')';
         const daemon =
             'require("path").join(process.resourcesPath,' +
@@ -138,16 +237,16 @@ if (code.includes('/*cowork-bwrap-spawn*/')) {
         const args = flagged +
             '?[' + daemon + ',"-socket",' + sockFn + '()]' +
             ':["-socket",' + sockFn + '()]';
-        const replacement = '/*cowork-bwrap-spawn*/' + spawnObj +
-            '.spawn(' + cmd + ',' + args +
+        const replacement = '/*cowork-bwrap-spawn*/' + spawnCall +
+            '(' + cmd + ',' + args +
             ',{stdio:["pipe","pipe","pipe"]})';
         // () => replacement: same $-in-identifier trap as Patch A.
-        code = code.replace(spawnRe, () => replacement);
+        save(bJs, codeB.replace(spawnRe, () => replacement));
         console.log('  B: swapped helper spawn -> node daemon when ' +
-            'flagged (' + spawnObj + '/' + helperPath + '/' + sockFn + ')');
+            'flagged (' + spawnCall + '/' + helperPath + '/' + sockFn + ')');
     } else {
         console.log('  B: FATAL — helper spawn anchor ' +
-            '(X.spawn(P,["-socket",S()],{stdio:[...]}))  not found');
+            '(X.spawn(P,[`-socket`,S()],{stdio:[...]}))  not found');
         loadBearingFailed = true;
     }
 }
@@ -159,14 +258,60 @@ if (code.includes('/*cowork-bwrap-spawn*/')) {
 // each at its function head. A miss here only wastes bandwidth/disk, so
 // warn rather than fail.
 // ---------------------------------------------------------------------
-// Foreground: async function OzA(A,e){const{yukonSilver:t}=sM();return...
-const dlRe =
-    /(async function\s+[\w$]+\([\w$]+,[\w$]+\)\{)(const\{yukonSilver:[\w$]+\}=[\w$]+\(\);return\([\w$]+==null\?void 0:[\w$]+\.status\)!=="supported"\?!1:)/;
-if (code.includes('/*cowork-bwrap-dl*/')) {
+// Foreground:
+//   1.24012.11: async function OzA(A,e){const{yukonSilver:t}=sM();
+//               return(A==null?void 0:A.status)!=="supported"?!1:...
+//   1.26832.0:  async function ut(e,n){let{yukonSilver:r}=p.n();
+//               return r?.status===`supported`?(...)
+//   1.37937.1:  async function QH(e,t){await nB();let{yukonSilver:r}=iB();
+//               return r?.status===`supported`&&(...HH?(J.info(`[downloadVM]
+//               Download already in progress, waiting...`),HH):...
+//   1.46388.2:  async function YU(e,t){return await wB(),EB().status===
+//               "supported"&&(...IU?(J.info("[downloadVM] Download
+//               already in progress, waiting..."),IU):...
+//
+// Two reshapes have taken this anchor to zero matches. 1.37937.1 put a
+// statement between the opening brace and the destructure, which the
+// old adjacency requirement rejected (red for four upstream bumps).
+// 1.46388.2 then removed the destructure altogether — the status now
+// comes off a helper call — so an anchor ending on `{yukonSilver:` had
+// nothing left to end on. The `[downloadVM]` log literal is the one
+// token that survived both, with only its delimiter moving, so the
+// anchor now runs from the function head to that literal across a
+// brace-fenced body. The same shape is spelled once more in
+// `_CB_C1_BODY`/`_CB_C1_TAIL` on the shell side, for the file resolver;
+// keep the two in step. See that comment for why the fence is `[^{}]`
+// rather than `.`-based, and why it admits exactly one brace pair (the
+// destructure the older shapes still carry).
+//
+// The status guard INVERTED between 1.24012.11 and 1.26832.0 (a !==
+// early-false became a === proceed). The injection point is still the
+// opening brace, ahead of any comparison, so the gate short-circuits
+// either polarity; the body between is captured and re-emitted
+// verbatim, never interpreted. A pattern that keyed on the comparison
+// itself could bind the wrong function and install the gate backwards
+// — the literal is the binding, not the guard.
+const dlSrc =
+    String.raw`(async function\s+[\w$]+\([\w$]+,[\w$]+\)\{)` +
+    String.raw`((?:[^{}]|\{yukonSilver:[\w$]+\}){0,240}?` +
+    String.raw`\[downloadVM\] Download already in progress)`;
+const dlRe = new RegExp(dlSrc);
+let codeC1 = load(c1Js);
+// The prelude allowance widened this pattern, so assert it still binds
+// exactly one function rather than trusting `replace()`'s first match.
+// A second same-shaped call site is upstream growing a consumer we have
+// not reasoned about, which is a warn-and-skip, not a coin flip.
+const dlAll = [...codeC1.matchAll(new RegExp(dlSrc, 'g'))];
+if (codeC1.includes('/*cowork-bwrap-dl*/')) {
     console.log('  C1: foreground download block already applied');
-} else if (dlRe.test(code)) {
-    code = code.replace(dlRe,
-        '$1/*cowork-bwrap-dl*/if(' + GATE + ')return!1;$2');
+} else if (dlAll.length > 1) {
+    console.log('  C1: WARNING — foreground download anchor matched ' +
+        dlAll.length + ' sites; refusing to guess. Re-derive the anchor.');
+} else if (dlAll.length === 1) {
+    // Braced on purpose: the resolver's body fence must not be able to
+    // swallow this on a re-run (see _CB_C1_MARKER on the shell side).
+    save(c1Js, codeC1.replace(dlRe,
+        '$1/*cowork-bwrap-dl*/if(' + GATE + '){return!1}$2'));
     console.log('  C1: blocked foreground VM download when flagged');
 } else {
     console.log('  C1: WARNING — foreground download anchor not found; ' +
@@ -174,17 +319,28 @@ if (code.includes('/*cowork-bwrap-dl*/')) {
 }
 
 // Warm prefetch: async function Vdo(A,e,t){if(!e){..."[warm] Warm download
+// Absent from 1.26832.0: that release dropped the log line this anchors
+// on, and with it VM_BUNDLE_SPEC and every warm-file identifier, so the
+// prefetch subsystem looks restructured rather than merely re-minified.
+// No replacement anchor is asserted here on purpose — inventing one
+// risks gating unrelated code. C2 only saves bandwidth, so it warns.
 const warmRe =
     /(async function\s+[\w$]+\([\w$]+,[\w$]+,[\w$]+\)\{)(if\(![\w$]+\)\{[\s\S]{0,120}?\[warm\] Warm download disabled)/;
-if (code.includes('/*cowork-bwrap-warm*/')) {
-    console.log('  C2: warm download block already applied');
-} else if (warmRe.test(code)) {
-    code = code.replace(warmRe,
-        '$1/*cowork-bwrap-warm*/if(' + GATE + ')return;$2');
-    console.log('  C2: blocked warm VM prefetch when flagged');
+if (!c2Js) {
+    console.log('  C2: WARNING — warm download anchor not present in this ' +
+        'bundle; flagged runs may prefetch an unused VM image');
 } else {
-    console.log('  C2: WARNING — warm download anchor not found; flagged ' +
-        'runs may prefetch an unused VM image');
+    const codeC2 = load(c2Js);
+    if (codeC2.includes('/*cowork-bwrap-warm*/')) {
+        console.log('  C2: warm download block already applied');
+    } else if (warmRe.test(codeC2)) {
+        save(c2Js, codeC2.replace(warmRe,
+            '$1/*cowork-bwrap-warm*/if(' + GATE + ')return;$2'));
+        console.log('  C2: blocked warm VM prefetch when flagged');
+    } else {
+        console.log('  C2: WARNING — warm download anchor not found; ' +
+            'flagged runs may prefetch an unused VM image');
+    }
 }
 
 if (loadBearingFailed) {
@@ -193,7 +349,7 @@ if (loadBearingFailed) {
     process.exit(1);
 }
 
-fs.writeFileSync(indexJs, code);
+for (const [path, contents] of files) fs.writeFileSync(path, contents);
 COWORK_BWRAP_PATCH
 	then
 		echo 'Cowork bwrap fallback patch applied'

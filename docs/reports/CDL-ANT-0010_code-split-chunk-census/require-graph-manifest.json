@@ -1,0 +1,474 @@
+[
+ {
+  "file": "index.chunk-5ms3G7cx.js",
+  "bytes": 3452,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-5ms3G7cx.js",
+  "requires": [
+   "index.chunk-BBdaXF74.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-8hARSK4E.js",
+  "bytes": 64356,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-8hARSK4E.js",
+  "requires": [
+   "index.chunk-BeyKyjh2.js"
+  ],
+  "requiredBy": [
+   "index.chunk-BgxihPuA.js",
+   "index.chunk-CDs06AOQ.js",
+   "MAIN",
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-DmcY3fXx.js"
+  ]
+ },
+ {
+  "file": "index.chunk-B43foloX.js",
+  "bytes": 2529,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-B43foloX.js",
+  "requires": [
+   "index.chunk-DSARmh3w.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-BBdaXF74.js",
+  "bytes": 2503,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BBdaXF74.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-5ms3G7cx.js",
+   "index.chunk-CttfaNvQ.js"
+  ]
+ },
+ {
+  "file": "index.chunk-BG2Aybw_.js",
+  "bytes": 251940,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BG2Aybw_.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-BNkiwKJJ.js",
+  "bytes": 4726,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BNkiwKJJ.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-BSeLkQD3.js",
+  "bytes": 5158,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BSeLkQD3.js",
+  "requires": [
+   "index.chunk-CVKCxtdY.js"
+  ],
+  "requiredBy": []
+ },
+ {
+  "file": "index.chunk-BYTSEZgv.js",
+  "bytes": 19430,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BYTSEZgv.js",
+  "requires": [
+   "index.chunk-DLO6Ax9W.js"
+  ],
+  "requiredBy": [
+   "index.chunk-Bv2T366m.js",
+   "index.chunk-CVKCxtdY.js"
+  ]
+ },
+ {
+  "file": "index.chunk-BeyKyjh2.js",
+  "bytes": 10601,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BeyKyjh2.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-8hARSK4E.js",
+   "MAIN",
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-DmcY3fXx.js"
+  ]
+ },
+ {
+  "file": "index.chunk-BfcG_552.js",
+  "bytes": 427456,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BfcG_552.js",
+  "requires": [
+   "index.chunk-DLO6Ax9W.js"
+  ],
+  "requiredBy": [
+   "index.chunk-BhLwdw68.js",
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-Cc0Cjw5X.js",
+   "index.chunk-DmcY3fXx.js"
+  ]
+ },
+ {
+  "file": "index.chunk-Bft8Ec9w.js",
+  "bytes": 2019,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Bft8Ec9w.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-BgxihPuA.js",
+  "bytes": 3754,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BgxihPuA.js",
+  "requires": [
+   "index.chunk-8hARSK4E.js",
+   "index.chunk-BsymZHkE.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-BhLwdw68.js",
+  "bytes": 21492,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BhLwdw68.js",
+  "requires": [
+   "index.chunk-BfcG_552.js"
+  ],
+  "requiredBy": [
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-DmcY3fXx.js"
+  ]
+ },
+ {
+  "file": "index.chunk-Brn8atpb.js",
+  "bytes": 4316,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Brn8atpb.js",
+  "requires": [
+   "index.chunk-z2KVH7ws.js"
+  ],
+  "requiredBy": [
+   "MAIN",
+   "index.chunk-Cy4jOZYe.js"
+  ]
+ },
+ {
+  "file": "index.chunk-BsymZHkE.js",
+  "bytes": 838,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-BsymZHkE.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-BgxihPuA.js",
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-DDPvNCKb.js"
+  ]
+ },
+ {
+  "file": "index.chunk-Bv2T366m.js",
+  "bytes": 3642,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Bv2T366m.js",
+  "requires": [
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-BYTSEZgv.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-CDs06AOQ.js",
+  "bytes": 9727,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-CDs06AOQ.js",
+  "requires": [
+   "index.chunk-8hARSK4E.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-CVKCxtdY.js",
+  "bytes": 374111,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-CVKCxtdY.js",
+  "requires": [
+   "index.chunk-BeyKyjh2.js",
+   "index.chunk-D3JJQa7m.js",
+   "index.chunk-BhLwdw68.js",
+   "index.chunk-8hARSK4E.js",
+   "index.chunk-Ds_EujvB.js",
+   "index.chunk-BsymZHkE.js",
+   "index.chunk-BfcG_552.js",
+   "index.chunk-DLO6Ax9W.js",
+   "index.chunk-iS43ruUD.js",
+   "index.chunk-BYTSEZgv.js",
+   "index.chunk-r07KBe07.js"
+  ],
+  "requiredBy": [
+   "index.chunk-BSeLkQD3.js",
+   "index.chunk-Bv2T366m.js",
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-Cc0Cjw5X.js",
+  "bytes": 1021,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Cc0Cjw5X.js",
+  "requires": [
+   "index.chunk-BfcG_552.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-Ch2QrYhw.js",
+  "bytes": 7409,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Ch2QrYhw.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-CttfaNvQ.js",
+  "bytes": 4189,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-CttfaNvQ.js",
+  "requires": [
+   "index.chunk-BBdaXF74.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-Cy4jOZYe.js",
+  "bytes": 5362,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Cy4jOZYe.js",
+  "requires": [
+   "index.chunk-Brn8atpb.js",
+   "index.chunk-PJQ5N4g6.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-D3JJQa7m.js",
+  "bytes": 15050,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-D3JJQa7m.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN",
+   "index.chunk-CVKCxtdY.js"
+  ]
+ },
+ {
+  "file": "index.chunk-DDPvNCKb.js",
+  "bytes": 8267,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DDPvNCKb.js",
+  "requires": [
+   "index.chunk-Ds_EujvB.js",
+   "index.chunk-BsymZHkE.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DIyoLvd8.js",
+  "bytes": 4765,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DIyoLvd8.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DLO6Ax9W.js",
+  "bytes": 686,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DLO6Ax9W.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-BYTSEZgv.js",
+   "index.chunk-BfcG_552.js",
+   "index.chunk-CVKCxtdY.js"
+  ]
+ },
+ {
+  "file": "index.chunk-DMU53tq3.js",
+  "bytes": 6866,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DMU53tq3.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DNqqgruO.js",
+  "bytes": 5692,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DNqqgruO.js",
+  "requires": [
+   "index.chunk-Gd8OsLOY.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DPIWTp-Y.js",
+  "bytes": 7754,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DPIWTp-Y.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DPyL7Qop.js",
+  "bytes": 1411,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DPyL7Qop.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-DmcY3fXx.js"
+  ]
+ },
+ {
+  "file": "index.chunk-DSARmh3w.js",
+  "bytes": 137696,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DSARmh3w.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-B43foloX.js"
+  ]
+ },
+ {
+  "file": "index.chunk-DVe-Qi89.js",
+  "bytes": 3763,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DVe-Qi89.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DmcY3fXx.js",
+  "bytes": 45983,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DmcY3fXx.js",
+  "requires": [
+   "index.chunk-BhLwdw68.js",
+   "index.chunk-BeyKyjh2.js",
+   "index.chunk-8hARSK4E.js",
+   "index.chunk-BfcG_552.js",
+   "index.chunk-DPyL7Qop.js"
+  ],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-Ds_EujvB.js",
+  "bytes": 1391,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Ds_EujvB.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-CVKCxtdY.js",
+   "index.chunk-DDPvNCKb.js"
+  ]
+ },
+ {
+  "file": "index.chunk-DuBC1uXg.js",
+  "bytes": 18598,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DuBC1uXg.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-DuRzChhd.js",
+  "bytes": 614,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-DuRzChhd.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-Dy7ODfSE.js",
+  "bytes": 15404,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Dy7ODfSE.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-Gd8OsLOY.js",
+  "bytes": 4128,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-Gd8OsLOY.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-DNqqgruO.js"
+  ]
+ },
+ {
+  "file": "index.chunk-K1Q8_qz3.js",
+  "bytes": 1926,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-K1Q8_qz3.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-PJQ5N4g6.js",
+  "bytes": 2210,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-PJQ5N4g6.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-Cy4jOZYe.js"
+  ]
+ },
+ {
+  "file": "index.chunk-iS43ruUD.js",
+  "bytes": 3197,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-iS43ruUD.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN",
+   "index.chunk-CVKCxtdY.js"
+  ]
+ },
+ {
+  "file": "index.chunk-oBJ0NwSq.js",
+  "bytes": 3373,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-oBJ0NwSq.js",
+  "requires": [],
+  "requiredBy": [
+   "MAIN"
+  ]
+ },
+ {
+  "file": "index.chunk-r07KBe07.js",
+  "bytes": 5338,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-r07KBe07.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-CVKCxtdY.js"
+  ]
+ },
+ {
+  "file": "index.chunk-z2KVH7ws.js",
+  "bytes": 430534,
+  "beautified": "/tmp/claude-1000/-home-aaddrick-source-claude-desktop-debian/dada9193-9f82-489b-b054-ccf174dee120/scratchpad/beautified/index.chunk-z2KVH7ws.js",
+  "requires": [],
+  "requiredBy": [
+   "index.chunk-Brn8atpb.js",
+   "MAIN"
+  ]
+ }
+]

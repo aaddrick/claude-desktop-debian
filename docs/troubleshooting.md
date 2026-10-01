@@ -52,6 +52,31 @@ Runtime logs are available at:
 ~/.cache/claude-desktop-debian/launcher.log
 ```
 
+The file holds the launcher's own lines plus everything the app writes
+to stdout/stderr for the session. It rotates at 5 MiB on the next
+launch (`.1`, `.2` kept), and within a session the app's output is
+bounded: runs of an identical line collapse to one copy plus
+`[launcher] last line repeated N more times`, and after 20 MiB of
+output a `[launcher] output cap ... reached` line is written and the
+rest of the session's app output is dropped. Both markers in a bug
+report mean the app was looping on that message.
+
+### `launcher.log` is gigabytes in size
+
+Builds before the [#864](https://github.com/aaddrick/claude-desktop-debian/issues/864)
+fix had no in-session bound, so an app message stuck in a loop (a GPU
+error, an IPC handler failure) could write tens of gigabytes before the
+next launch rotated the file. Close Claude Desktop and delete the files;
+nothing depends on them:
+
+```bash
+rm ~/.cache/claude-desktop-debian/launcher.log*
+```
+
+Then upgrade. If a current build still shows the `output cap` marker,
+the message just above it is what was looping — worth an issue with
+that line.
+
 ## Common Issues
 
 ### Window Scaling Issues
@@ -63,17 +88,49 @@ If the window doesn't scale correctly on first launch:
 
 This allows the application to save display settings properly.
 
-### Global Hotkey Not Working (Wayland)
+### Tray icon invisible on a dark panel (Linux Mint Cinnamon, etc.)
 
-If the global hotkey (Ctrl+Alt+Space) doesn't work, ensure you're not running in native Wayland mode:
+Upstream ships two Linux tray PNGs: `TrayIconLinux.png` (dark glyph for
+light panels) and `TrayIconLinux-Dark.png` (light glyph for dark
+panels). It picks between them from `nativeTheme.shouldUseDarkColors`
+and a GNOME desktop check. Cinnamon often uses a **dark panel** while
+GTK still reports a **light colour scheme**, so the black icon lands on
+a dark gray tray ([#604](https://github.com/aaddrick/claude-desktop-debian/issues/604)).
 
-1. Check your logs at `~/.cache/claude-desktop-debian/launcher.log`
-2. Look for "Using X11 backend via XWayland" - this means hotkeys should work
-3. If you see "Using native Wayland backend", unset `CLAUDE_USE_WAYLAND` or ensure it's not set to `1`
+Our launcher auto-detects Cinnamon themes whose panel styling is dark
+(via `org.cinnamon.theme`) and sets `CLAUDE_TRAY_USE_DARK_ICON=1`; a
+small asar patch threads that flag into upstream's existing selector.
+Override manually if needed:
 
-**Note:** Native Wayland mode routes the shortcut through the XDG GlobalShortcuts portal, which only works on some compositors (GNOME ≤ 49, KDE) due to Electron/Chromium limitations.
+```bash
+# force the light-on-dark icon (white glyph)
+CLAUDE_TRAY_USE_DARK_ICON=1 claude-desktop-unofficial
 
-See [configuration.md](configuration.md#wayland-support) for more details on the `CLAUDE_USE_WAYLAND` environment variable.
+# force the dark-on-light icon (black glyph)
+CLAUDE_TRAY_USE_DARK_ICON=0 claude-desktop-unofficial
+```
+
+Persist either value in
+`~/.config/claude-desktop-debian/environment`. `--doctor` reports which
+mode is in effect (preset, Cinnamon auto-detect, or upstream default),
+so include its output when reporting tray icon issues. Interim fix
+pending [upstream #77170](https://github.com/anthropics/claude-code/issues/77170).
+
+### Quick Entry only opens when Claude has focus (GNOME Wayland)
+
+On GNOME Wayland, the default XWayland mode registers the hotkey (Ctrl+Alt+Space) as an X11 key grab. mutter ignores such grabs unless Claude already has focus. Route the hotkey through the XDG GlobalShortcuts portal instead:
+
+1. Set `CLAUDE_USE_WAYLAND=1` in `~/.config/claude-desktop-debian/environment`, then quit Claude fully and relaunch it.
+2. Accept the GNOME dialog that asks to allow Claude's global shortcut.
+3. Check that GNOME recorded the binding:
+   ```bash
+   gsettings get org.gnome.settings-daemon.global-shortcuts applications
+   ```
+   The output should list `'com.anthropic.Claude'`.
+
+On xdg-desktop-portal 1.20 and later (GNOME 50), the portal refuses an app id that has no installed `<id>.desktop` file. Chromium registers `com.anthropic.Claude`, while our packages install `claude-desktop-unofficial.desktop`. So on native Wayland the launcher writes a hidden `~/.local/share/applications/com.anthropic.Claude.desktop` when no system copy exists, and removes it once the official package provides one ([#805](https://github.com/aaddrick/claude-desktop-debian/issues/805)). If the dialog never appears, check `launcher.log` for `Wrote portal app-id entry`. `Left portal app-id entry … in place` means a `com.anthropic.Claude.desktop` the launcher did not write is already in `~/.local/share/applications`. The launcher replaces a dead copy that the official app left behind, but it never replaces anyone else's file, so check that one by hand.
+
+wlroots compositors (Sway, Hyprland, Niri) and COSMIC ship no GlobalShortcuts portal backend, so the portal route does nothing there. See [configuration.md](configuration.md#wayland-support) for the `CLAUDE_USE_WAYLAND` values.
 
 ### Keyboard Input Doesn't Work (IBus / GTK Input Method)
 
@@ -148,18 +205,18 @@ echo 'export CLAUDE_DISABLE_GPU=1' >> ~/.profile
 ```
 
 When `CLAUDE_DISABLE_GPU=1` is set, the launcher passes
-`--disable-gpu --disable-software-rasterizer` to the official binary
-(see `scripts/launcher-common.sh`). This is the same pair of flags
+`--disable-gpu` to the official binary
+(see `scripts/launcher-common.sh`). This is the same flag
 applied automatically inside XRDP sessions, where software
 rendering is required regardless. Either signal is sufficient —
 the launcher won't stack duplicate flags.
 
 If the previous launch already died with the GPU-process FATAL
 signature and `CLAUDE_DISABLE_GPU` is unset, the next launch
-auto-applies the same flags and keeps them applied on subsequent
+auto-applies the same flag and keeps it applied on subsequent
 launches. Set `CLAUDE_DISABLE_GPU=0` to suppress the auto-fallback
 when retesting hardware acceleration after a driver fix — any
-explicitly set value suppresses it; only `1` forces the flags on.
+explicitly set value suppresses it; only `1` forces the flag on.
 
 **When to prefer which:** the in-app toggle is friendlier if you
 can reach Settings without the app crashing. Reach for
@@ -169,6 +226,41 @@ Settings, when running in environments with no GPU available
 behavior to persist across reinstalls and config resets.
 
 Tracking issue: [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583).
+
+### `/var/log/syslog` grows to hundreds of GB on Ubuntu ([#582](https://github.com/aaddrick/claude-desktop-debian/issues/582))
+
+On Ubuntu, every process crash is piped to apport, which writes a
+multi-megabyte report under `/var/crash/`; `update-notifier-crash` then
+emits journal lines that rsyslog forwards to `/var/log/syslog`. When an
+Electron process crash-loops (the underlying crash is
+[#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)),
+that feedback loop drives syslog to hundreds of gigabytes — one reporter
+measured 190 GB. The crashing process shows up as `update-notifier-crash`
+in the journal, not `claude-desktop`, which is why it is easy to miss.
+
+The `.deb` package ships an apport blacklist
+(`/etc/apport/blacklist.d/claude-desktop-unofficial`) that breaks the
+loop for the Electron ELF and the crashpad handler, without disabling
+apport for anything else. Nothing to configure on a current install.
+
+On an **older build that predates this fix**, stop the growth by
+blacklisting the binary yourself, then reclaim the space:
+
+```bash
+echo /usr/lib/claude-desktop-unofficial/claude-desktop \
+  | sudo tee /etc/apport/blacklist.d/claude-desktop-unofficial
+sudo rm -f /var/crash/_usr_lib_claude-desktop*.crash
+sudo truncate -s 0 /var/log/syslog
+```
+
+apport reads the blacklist on every crash, so no service restart is
+needed; deleting the reports already under `/var/crash/` stops
+`update-notifier-crash` re-processing them.
+
+The trade-off is that apport's "send a crash report" dialog no longer
+fires for Claude Desktop. Those reports go to errors.ubuntu.com, not to
+this project, so nothing is lost. Fedora (abrt) and the AppImage are
+unaffected — apport is Debian/Ubuntu-only.
 
 ### Black screen on Fedora KDE with Intel Iris Xe ([#706](https://github.com/aaddrick/claude-desktop-debian/issues/706))
 
@@ -333,14 +425,19 @@ Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` fil
 
 ### Cowork on Ubuntu 24.04+: bwrap fallback probe fails (parked diagnostics only)
 
-This applies **only** to the parked bubblewrap fallback diagnostics
-(`COWORK_VM_BACKEND=bwrap` with the unshipped `scripts/cowork-fallback/`
-path). The shipped Cowork backend is KVM and is not affected by the
-user-namespace restriction. Ubuntu 24.04+ sets
-`apparmor_restrict_unprivileged_userns=1`, which blocks the user namespaces
-bwrap needs, so the doctor's `bubblewrap: sandbox probe failed` warning is
-expected there. If you are experimenting with the parked fallback, grant
-`userns` to bwrap with a hand-made profile:
+This applies **only** to the opt-in bubblewrap fallback
+(`COWORK_VM_BACKEND=bwrap`, `scripts/cowork-fallback/`). The default Cowork
+backend is KVM and is not affected by the user-namespace restriction below.
+Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`, which blocks
+the user namespaces bwrap needs, so the doctor's `bubblewrap: sandbox probe
+failed` warning is expected there whether or not you ever set
+`COWORK_VM_BACKEND=bwrap`.
+
+**No package installs a bwrap AppArmor profile.** The only workaround we
+can document attaches the profile to the **shared** `/usr/bin/bwrap`
+binary, which grants `userns` to *every* program on the host that runs
+bwrap through that same path — Flatpak, Steam, your own scripts — not just
+Claude:
 
 ```bash
 sudo tee /etc/apparmor.d/bwrap <<'EOF'
@@ -357,12 +454,106 @@ EOF
 sudo apparmor_parser -r /etc/apparmor.d/bwrap
 ```
 
-The v3.0.0 packages no longer install a bwrap profile themselves; the deb's
-`postrm` still removes the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap`
-leftover (and a `claude-desktop-unofficial-bwrap` sibling, if one exists)
-on purge.
+Review that blast radius against your threat model before applying it.
 
-**Credit:** [@hfyeh](https://github.com/hfyeh), [#351](https://github.com/aaddrick/claude-desktop-debian/issues/351).
+**Why this can't be scoped to Claude in documentation alone:** the
+per-application AppArmor pattern that opam and Apptainer use (see
+[opam's profile](https://gitlab.com/apparmor/apparmor/-/blob/master/profiles/apparmor.d/opam)
+and [Apptainer#2262](https://github.com/apptainer/apptainer/pull/2262))
+attaches `flags=(unconfined)` to a binary *they own* that creates the
+namespace — opam's `bwrap` copy, Apptainer's `starter-suid`. Claude has no
+equivalent owned binary in this path: the namespace is created by the
+system's shared `/usr/bin/bwrap`, and the scoped
+`/etc/apparmor.d/claude-desktop-unofficial` profile installed above covers
+only the Electron binary — a separate `bwrap` child process is not covered
+by it (see `scripts/packaging/deb.sh`). Narrowing this for real needs a
+Claude-owned wrapper binary at a stable path for a profile to attach to;
+that's tracked as follow-up work on
+[#542](https://github.com/aaddrick/claude-desktop-debian/issues/542) and is
+not implemented yet.
+
+This only affects launches that opt into `COWORK_VM_BACKEND=bwrap` on
+Ubuntu 24.04+ — the default KVM backend never spawns bwrap and is
+unaffected either way.
+
+**AppImage:** the mount path changes every run
+(`/tmp/.mount_claudeXXXXXX/…`), so an AppImage build can't ship or pin a
+profile keyed to its own binary path. That doesn't matter for bwrap
+specifically, though: `/usr/bin/bwrap` is a fixed host path regardless of
+where the AppImage mounts, so the same system-wide recipe and warning above
+apply unchanged to an AppImage-launched bwrap fallback. (The Electron
+launch-crash profile above never applies to AppImage builds — they always
+run with `--no-sandbox`, see
+["AppImage Sandbox Warning"](#appimage-sandbox-warning) — so there's
+nothing AppImage-specific to add there either.)
+
+No package ships a bwrap profile as of v3.0.0+. The deb's `postrm` removes
+the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap` leftover (and a
+`claude-desktop-unofficial-bwrap` sibling, if one exists) on purge, and
+since [#825](https://github.com/aaddrick/claude-desktop-debian/pull/825)
+`postinst` also clears it on upgrade — `postrm` alone never fired on that
+path, so the leftover used to survive indefinitely. See
+["Blank icons / unloggable GDM greeter after upgrading to Ubuntu
+26.04"](#blank-icons--unloggable-gdm-greeter-after-upgrading-to-ubuntu-2604)
+if you are already in that state.
+
+**Credit:** [@hfyeh](https://github.com/hfyeh)
+([#351](https://github.com/aaddrick/claude-desktop-debian/issues/351)) for
+the original profile workaround;
+[@slovdahl](https://github.com/slovdahl) for flagging the system-wide
+over-scope and the opam/Apptainer precedent, in
+[PR #434](https://github.com/aaddrick/claude-desktop-debian/pull/434#issuecomment-4352273336)
+(tracked in [#542](https://github.com/aaddrick/claude-desktop-debian/issues/542)).
+
+### Blank icons / unloggable GDM greeter after upgrading to Ubuntu 26.04
+
+Tracked in
+[#542](https://github.com/aaddrick/claude-desktop-debian/issues/542).
+
+**Symptoms, all at once, immediately after an Ubuntu release upgrade:**
+
+- the GDM greeter shows text and buttons but **no user list, no
+  background, and no icons**, so there is no way to log in graphically;
+- `gnome-terminal` does not open — `gnome-terminal-server` aborts with a
+  GTK assertion at `gtkiconhelper.c` while loading `image-missing.png`;
+- icons are blank across the shell and in GTK apps;
+- gnome-keyring never shows its password prompt, so passphrase-protected
+  ssh keys stop working (`agent refused operation`).
+
+**Cause.** A 2.x-era install of this package left
+`/etc/apparmor.d/claude-desktop-bwrap` behind, which attaches a profile to
+the shared `/usr/bin/bwrap`. Ubuntu's own `bwrap-userns-restrict` claims
+the same path, so AppArmor resolves neither and bwrap falls through to
+`unprivileged_userns`. GNOME 47+ decodes every image through glycin inside
+a bwrap sandbox, so nothing that is an image can load. The profile is inert
+on Ubuntu 24.04 (no glycin), which is why it only breaks at upgrade time
+and why nothing points at Claude Desktop.
+
+**Confirm it** from a TTY (`Ctrl+Alt+F3`):
+
+```bash
+journalctl -b | grep -c 'conflicting profile attachments'   # non-zero
+ls /etc/apparmor.d/claude-desktop-bwrap                     # exists
+```
+
+**Fix:**
+
+```bash
+sudo apparmor_parser -R /etc/apparmor.d/claude-desktop-bwrap
+sudo rm /etc/apparmor.d/claude-desktop-bwrap
+sudo systemctl restart gdm
+```
+
+`apparmor_parser -R` is required in addition to the delete. Removing the
+file alone leaves the profile loaded in the kernel, so the conflict —
+and the broken desktop — survives until the next reboot.
+
+Upgrading the package fixes this going forward: `postinst` clears the
+leftover as of
+[#825](https://github.com/aaddrick/claude-desktop-debian/pull/825). Keep
+`/etc/apparmor.d/claude-desktop` (and
+`/etc/apparmor.d/claude-desktop-unofficial`) — those attach to this
+application's own binary and are correct.
 
 ### Cowork: ENAMETOOLONG on encrypted home (eCryptfs)
 
@@ -518,6 +709,45 @@ To fix manually (credit: [MrEdwards007](https://github.com/MrEdwards007)):
 5. Log in again when prompted
 
 A scripted solution is also available at the bottom of [this comment](https://github.com/aaddrick/claude-desktop-debian/issues/156#issuecomment-2682547498).
+
+### trying to overwrite '/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml', which is also in package claude-desktop ([#769](https://github.com/aaddrick/claude-desktop-debian/issues/769))
+
+`apt install` / `dpkg -i` fails with that `trying to overwrite`
+message, or `dnf install` / `rpm -i` fails with `file
+/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml
+... conflicts between attempted installs`.
+
+The other package is a **pre-rename build of this project itself** —
+never Anthropic's official `claude-desktop` package, which ships no
+AppStream metainfo file at all and can never own that path. Before
+this fix, releases at Claude ≥ `1.16000` (for example
+`v2.0.22+claude1.18286.0`) hardcoded the installed metainfo filename
+to the frozen AppStream ID instead of deriving it from the package
+name, so it did not follow the `claude-desktop` →
+`claude-desktop-unofficial` rename and stayed byte-shared between the
+old and new package names.
+
+A version at or above `1.16000` does **not** prove the conflicting
+`claude-desktop` package is Anthropic's official build in this
+specific case — that version-number heuristic does not apply here.
+Instead, check which package actually owns the metainfo file:
+
+```bash
+dpkg -L claude-desktop | grep metainfo   # rpm -ql claude-desktop on Fedora
+```
+
+If that lists
+`.../io.github.aaddrick.claude-desktop-debian.metainfo.xml`, the
+installed `claude-desktop` is this project's own pre-rename build and
+is safe to remove:
+
+```bash
+sudo apt remove claude-desktop   # sudo dnf remove claude-desktop
+```
+
+Then install `claude-desktop-unofficial` as usual. Releases built
+after this fix ships no longer share this path with either package,
+so the conflict cannot recur.
 
 ## Uninstallation
 

@@ -38,6 +38,19 @@ Every `claim` field uses hypothesis voice: "Looks like", "Likely",
 cannot hold, and for enhancements they drift into defect framing
 that 8c explicitly avoids.
 
+## Schema fields shared with the bug variant
+
+The schema requires `refutation_check` and `novelty` on every
+finding. For enhancement-variant findings:
+
+- `refutation_check`: null in the common case — existing-surface
+  citations are direct citations, and the evidence quote is the
+  check. Non-null only if you assert a mechanism (e.g. "this handler
+  is the only quit path"), in which case run the search that would
+  refute it (grep for other quit callers) and record it.
+- `novelty`: `confirms-reporter` when the issue body already names
+  the surface; `net-new` when you located it independently.
+
 ## Findings
 
 Each `finding` asserts one specific, mechanically-verifiable claim

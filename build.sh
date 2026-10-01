@@ -36,8 +36,15 @@ official_deb_recommends=''
 # claude-desktop package; the ELF inside the install tree keeps the
 # upstream basename 'claude-desktop'.
 readonly PACKAGE_NAME='claude-desktop-unofficial'
-readonly WM_CLASS='Claude'
-export WM_CLASS
+# WM_CLASS is the .desktop StartupWMClass match key. Chromium derives
+# the runtime X11 WM_CLASS / Wayland app_id from the asar package.json
+# desktopName field (it ignores --class, productName, and the ELF
+# basename), and upstream renames that field across releases
+# (claude-desktop.desktop in 1.18286.0, com.anthropic.Claude.desktop
+# in 1.19367.0), so hardcoding any value re-opens #779 on the next
+# rename. patch_app_asar derives and exports it from the staged
+# app.asar (scripts/patches/app-asar.sh) before packaging runs.
+WM_CLASS=''
 readonly MAINTAINER='Claude Desktop Linux Maintainers'
 readonly DESCRIPTION='Claude Desktop for Linux'
 
@@ -62,6 +69,8 @@ source "$script_dir/scripts/patches/virtiofsd-probe.sh"
 source "$script_dir/scripts/patches/cowork-bwrap.sh"
 # shellcheck source=scripts/patches/config.sh
 source "$script_dir/scripts/patches/config.sh"
+# shellcheck source=scripts/patches/tray-icon-selection.sh
+source "$script_dir/scripts/patches/tray-icon-selection.sh"
 
 #===============================================================================
 # Packaging Functions
@@ -74,6 +83,15 @@ run_packaging() {
 		echo 'Nix build mode - skipping packaging (Nix derivation handles installation)'
 		section_footer 'Call Packaging Script'
 		return 0
+	fi
+
+	# Every generator below interpolates WM_CLASS into a .desktop file
+	# and launcher-common.sh; an empty value would ship a broken
+	# StartupWMClass, so refuse to package without the derivation.
+	if [[ -z $WM_CLASS ]]; then
+		echo 'Error: WM_CLASS is empty — patch_app_asar did not derive' \
+			'it from the staged app.asar (see scripts/patches/app-asar.sh)' >&2
+		exit 1
 	fi
 
 	local output_path=''

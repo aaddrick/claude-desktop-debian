@@ -1,0 +1,189 @@
+[< Back to docs index](../index.md)
+
+# Test methodology and coverage
+
+How the automated test suite is written so a green run actually means something. This is the accumulated methodology from [@sabiut](https://github.com/sabiut)'s test/CI/doctor PRs (the tests/doctor subsystem owner — see [`.github/CODEOWNERS`](../../.github/CODEOWNERS)), both in his own test suites and in what he demands when reviewing others' fixes. The through-line is one claim: **a passing test proves nothing until you prove it fails when the code it guards is broken.** Most of the traps below are tests that shipped green while pinning nothing.
+
+**Source files:**
+- [`tests/doctor.bats`](../../tests/doctor.bats) — 88 unit tests for `scripts/doctor.sh` helpers; the `setup()` sandbox is the canonical host-isolation template
+- [`tests/launcher-common.bats`](../../tests/launcher-common.bats) — 97 unit tests for `scripts/launcher-common.sh`
+- [`tests/launcher-xrdp-detection.bats`](../../tests/launcher-xrdp-detection.bats) — the PATH-shim mocking pattern for command-substitution calls
+- [`tests/test-artifact-common.sh`](../../tests/test-artifact-common.sh) — `run_launch_smoke_test` / `_launch_smoke_cleanup`, the shared headless launch harness
+- [`tests/test-artifact-{deb,rpm,appimage}.sh`](../../tests/) — per-format structural + launch smoke tests
+- [`.github/workflows/tests.yml`](../../.github/workflows/tests.yml) — runs `bats tests/*.bats` on push/PR
+- [`.github/workflows/test-artifacts.yml`](../../.github/workflows/test-artifacts.yml) — the arch × format artifact-test matrix that gates the release job
+
+## Overview
+
+There are three test surfaces:
+
+| Surface | Runs | Covers |
+|---|---|---|
+| **BATS unit tests** (`tests/*.bats`) | seconds, on every push/PR via `tests.yml` | pure shell helpers in `launcher-common.sh` and `doctor.sh` |
+| **Workflow structural tests** ([`tests/ci-release-job.bats`](../../tests/ci-release-job.bats)) | with the unit suite | invariants of the release job in `ci.yml` that only bite on a tag push |
+| **Artifact smoke tests** (`tests/test-artifact-*.sh`) | per built package, `test-artifacts.yml` matrix | deb/rpm/AppImage structure, `--doctor` dispatch, headless launch-to-ready |
+| **Manual test plan** ([`docs/testing/`](../testing/README.md)) | human sweeps across the VM fleet | GUI behavior BATS can't reach (tray, WCO, IME) |
+
+The unit suite is fast and standalone on purpose ([#520](https://github.com/aaddrick/claude-desktop-debian/pull/520)): a red "BATS Tests" check means *your code broke a test*, not *the build fell over before tests ran*. The artifact matrix gates the release job, so a launch regression can't ship.
+
+The rest of this page is the methodology that keeps those green checks honest. The [half-pinned-test failure class](#the-half-pinned-test-failure-class) is the most important section — read it before adding or reviewing any shell test.
+
+## The half-pinned-test failure class
+
+Every trap here produced a **green test that did not pin the behavior it claimed.** The fix is always the same discipline — the [mutation check](#the-mutation-check): break the code by hand and confirm a test goes red. If nothing does, the test is decoration.
+
+### `run helper` subshells away every variable mutation
+
+This is the single most repeated bug in the suite ([#774](https://github.com/aaddrick/claude-desktop-debian/pull/774), [#744](https://github.com/aaddrick/claude-desktop-debian/pull/744), [#781](https://github.com/aaddrick/claude-desktop-debian/pull/781)). BATS' `run` executes its argument in a **subshell**, so any counter or flag the helper mutates is thrown away — the assertion after `run` only sees `$status` and `$output`. A doctor check's whole contribution to the exit code is `_doctor_failures=$((_doctor_failures + 1))` ([`doctor.sh`](../../scripts/doctor.sh)), and `run_doctor` ends with `return "$_doctor_failures"`. Assert on `$output` alone and you never pin whether the FAIL branch actually counted.
+
+```bash
+# WRONG — the increment happens in a subshell and vanishes; a mutation
+# that stops the check from failing still passes this test.
+run _doctor_check_display_server
+[[ $output == *'[FAIL]'* ]]
+
+# RIGHT — call it directly, redirect output to a file, assert BOTH the
+# counter and the emitted line.
+_doctor_failures=0
+_doctor_check_display_server > "$TEST_TMP/out"
+[[ $_doctor_failures -eq 1 ]]
+grep -q '\[FAIL\]' "$TEST_TMP/out"
+```
+
+> [!WARNING]
+> Use `run` only when you genuinely need `$status`/`$output` isolation (e.g. a helper whose internal `((_wait++))` would trip BATS' errexit — see [SC2314](#negative-assertions-that-dont-fail-sc2314) below). Any test asserting a side effect on `_doctor_failures`, `_cowork_incomplete`, or similar must call the helper directly.
+
+### Anchor tests need a near-miss fixture
+
+A `grep` anchor is only pinned if a fixture sits one character away from matching. In [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782), `_doctor_check_userns_apparmor` matched `^claude-desktop-unofficial ` against the loaded AppArmor profile set, and the test passed — but so did *every* weakening of it (dropping `-unofficial`, dropping the `^`, dropping the trailing space), because the WARN fixture's loaded set was just `firefox (enforce)`. The real state the anchor disambiguates — the **official** `claude-desktop` profile present while **ours** is absent, the exact co-install collision — was never in a fixture. Adding one near-miss line (`claude-desktop (unconfined)`) turned a permissive weakening from "survives all 7 tests" into "fails 3."
+
+**Rule:** an anchor/regex test needs a fixture line one character short of matching, or the anchor isn't pinned. Prove it by loosening the anchor and watching a test go red.
+
+### A stub that mirrors the production call can't catch a change to that call
+
+In [#745](https://github.com/aaddrick/claude-desktop-debian/pull/745) the `stat` stub keyed on `$2 == '%a'`. A production typo like `stat -c '%a'` → `stat -f '%a'` (where GNU `-f` reinterprets `%a` as free-block count) still passed all 90 tests, because the stub answered `%a` regardless of the flags around it. The fix runs **one** FAIL-branch test against real `stat` on a real `0644` file — no stub, so the actual flags and parse are exercised — while keeping the stub only for the un-fakeable `4755`+root PASS case. If a stub imitates the production invocation, at least one branch must run the real tool.
+
+### `[PASS]` must mean "read and verified," never "failed to read"
+
+A recurring false-green class ([#692](https://github.com/aaddrick/claude-desktop-debian/pull/692), [#740](https://github.com/aaddrick/claude-desktop-debian/pull/740)): a check emits `[PASS]` over a value it never actually parsed.
+
+- **Blank presented as success** — `_doctor_check_password_store` did `_pass "Password store: $store"` even when detection returned empty → `[PASS] Password store: `. Fixed to `_warn` + early-return on empty.
+- **Non-numeric falls through to PASS** — the disk check guarded only for *empty* `df` output (`[[ -n ]]`), so `avail="N/A"` cleared the guard, the `(( avail < 100 ))` arithmetic errored, and execution reached the PASS branch → `[PASS] Disk space: N/AMB free`. Fixed with `[[ $avail =~ ^[0-9]+$ ]] || return 0`.
+- **Octal death, same landing** — `avail="0099"` passes that regex but `(( ))` dies with "value too great for base." Closed with `avail=$((10#$avail))`.
+- **Unhandled file type** — `_doctor_check_singleton_lock` only handled the symlink case, so a regular-file `SingletonLock` (left by an unclean update, which still hard-blocks Electron's single-instance lock) fell through to `[PASS] SingletonLock: no lock file (OK)`. Fixed with an explicit `elif [[ -e $lock_file ]]` → WARN.
+
+The maxim from those threads: **better no line than a green PASS on data we couldn't read.**
+
+### A poll predicate must be *identical* to the production predicate
+
+[#781](https://github.com/aaddrick/claude-desktop-debian/pull/781) added a flake-fix poll that grepped the child's cmdline for `--class=Claude` *without* a trailing space, while the reaper's own [`_claude_desktop_ui_cmdline_matches`](../../scripts/launcher-common.sh) requires `--class=Claude ` *with* the space. In the pre-`exec -a` bash window, `/proc/$pid/cmdline` reads `bash -c exec -a "--class=Claude" sleep 300` — the loose poll matches inside the quotes, the strict reaper does not. So the poll could green-light the reaper while the reaper still couldn't see the child, reproducing the exact starvation the poll existed to kill (5/5 by freezing the child in that state). The fix calls the reaper's own predicate — `_claude_desktop_ui_cmdline_matches "$(tr '\0' ' ' < /proc/$ui_pid/cmdline)"` — so drift is impossible by construction, plus a loud named failure after the ceiling (a silent fall-through would reproduce the very flake signature).
+
+### Negative assertions that don't fail (SC2314)
+
+A bare `! grep …` that isn't the **last** command in a BATS test does not fail the test — the negation is silently a no-op mid-body ([#693](https://github.com/aaddrick/claude-desktop-debian/pull/693); the same trap bites `[[ "$status" -eq 0 ]]` on bash 3.2, the macOS default). Write negative assertions so their exit status is what BATS checks:
+
+```bash
+# "no SIGKILL was sent" — the honest form
+run grep -qF -- '-KILL' "$TEST_TMP/kills"
+[[ $status -ne 0 ]]
+```
+
+## Host-state isolation
+
+Unit tests must read *their* fixtures, never the developer's live machine. The [`setup()` in `doctor.bats`](../../tests/doctor.bats) is the template: redirect `HOME`/`XDG_CACHE_HOME`/`XDG_CONFIG_HOME` to a `mktemp -d`, then `unset` every ambient var the production code might consult.
+
+- **Sandboxing `HOME` alone is not enough.** `_doctor_check_bwrap_mounts` resolves config via `${XDG_CONFIG_HOME:-$HOME/.config}/Claude`. GitHub runners export `XDG_CONFIG_HOME` ambient, so a test that sandboxed only `HOME` read the runner's *real* config dir and asserted against empty output — a latent failure that surfaced the instant [#520](https://github.com/aaddrick/claude-desktop-debian/pull/520) first ran BATS in CI. Unset every `XDG_*` and `_DOCTOR_*` override that has a `$HOME`- or system-path fallback ([#520](https://github.com/aaddrick/claude-desktop-debian/pull/520), [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782)).
+
+### Stub vs. shim — pick by where the call runs
+
+Two ways to intercept an external command, and the choice is not stylistic:
+
+| Technique | Use when | Why |
+|---|---|---|
+| **Function stub** (`pgrep() { return 1; }`) | the call runs **in the test shell** | bash function lookup beats `PATH`; `export -f` is a no-op here since it's the same shell |
+| **PATH shim** (a script in `$TEST_TMP/bin`, prepended to `PATH`) | the call runs in a **subshell / command substitution** | `$(loginctl …)` forks a child where an un-exported function never reaches |
+
+[#534](https://github.com/aaddrick/claude-desktop-debian/pull/534) fixed a test that used real `pgrep`: on any box running Claude Desktop, `cleanup_stale_cowork_socket` (deleted since, in [#888](https://github.com/aaddrick/claude-desktop-debian/issues/888)) saw the developer's live `cowork-vm-service.js`, took its correct early-return, and skipped the `rm -f` the test expected — so it failed on maintainers' machines and passed in CI. The fix was a function stub. Contrast [`launcher-xrdp-detection.bats`](../../tests/launcher-xrdp-detection.bats), which needs a PATH shim because `loginctl` is called via `$(…)`.
+
+### `pkill` sweeps must match the real exec path — and only in CI
+
+The AppImage launch-smoke `pkill` sweep ([#691](https://github.com/aaddrick/claude-desktop-debian/pull/691)) was handed the `.AppImage` artifact path, which matched only the already-reaped top-level launcher — real strays exec from `/tmp/.mount_claude*`. It was fixed to match `mount_claude`, then guarded behind `[[ -n ${CI:-} ]]`: a bare `pkill -KILL -f mount_claude` on a developer's Ctrl-C would also kill their live local AppImage. Local runs fall back to the process-group kill alone.
+
+## Artifact launch-smoke methodology
+
+Structural asserts ("the files exist") are not enough — [#666](https://github.com/aaddrick/claude-desktop-debian/issues/666) shipped a Fedora `SyntaxError` from a bad patch anchor that killed the app on launch while the rpm test stayed green. `run_launch_smoke_test` in [`test-artifact-common.sh`](../../tests/test-artifact-common.sh) actually boots the artifact and waits for it to reach ready:
+
+- **Reap the whole process group.** Boot via `setsid dbus-run-session -- …` in a fresh process group, then reap with `kill -- -PGID`. `setsid` is load-bearing: only a fresh group reaps the entire tree (dbus, AppRun, electron, zygotes) ([#592](https://github.com/aaddrick/claude-desktop-debian/pull/592), [#671](https://github.com/aaddrick/claude-desktop-debian/pull/671)). The X server is the one thing deliberately *outside* that group (see below), so it gets its own explicit kill on both the normal path and the trap path — this was `xvfb-run`'s job before, and its EXIT trap famously leaked Xvfb when killed by signal, which is exactly the failure mode to not re-introduce by hand.
+- **Own the X server, don't rent it from `xvfb-run`.** `xvfb-run -a` allocates a display and exports `DISPLAY` only into the process it wraps, so the test shell cannot address that server at all — any `xdotool` run from the harness fails with "Can't open display" rather than reporting "no window found". The harness therefore starts `Xvfb` itself and hands `DISPLAY=:N` to the app explicitly ([#616](https://github.com/aaddrick/claude-desktop-debian/issues/616)). Taking over the launch means taking over the allocation `-a` was doing: use **`-displayfd`**, which pushes the choice back into the server (it binds the first free number and writes it back on that fd), so parallel jobs on one host cannot collide. Any scan-for-a-free-number-then-bind loop — including `xvfb-run -a`'s — has a window between "looks free" and "bound". Read the number back with `read` rather than `cat`: `read` succeeds only once the terminating newline has landed, so a half-written `10` can't be mistaken for display `1`. Pass `-nolisten tcp` always, and `-ac` on the privilege-drop path so the rpm leg's throwaway user attaches deterministically instead of relying on the host-based fallback. Be honest about what that is not: dropping `xvfb-run` also drops the MIT-MAGIC-COOKIE it used to write, so the display carries no authorization records with or without `-ac` and any local client can attach for the life of the test. Acceptable for a throwaway display in a CI job, but say so rather than describing the flag as hardening.
+- **Assert a mapped window, not just a live process.** After the grace window, poll `xdotool search --onlyvisible --class "^<class>$"` for a window carrying the WM_CLASS the artifact baked in ([#616](https://github.com/aaddrick/claude-desktop-debian/issues/616)). That catches the class of failure the alive-only probe passes: main process up, no UI (BrowserWindow constructor throw, `loadURL` rejection, renderer crash at startup). Three `xdotool` traps are worth knowing: the pattern is **one positional argument** and `--name`/`--class` are flags choosing what it is matched against (`--name X --class Y` parses `Y` as a *command* and dies); the regex is compiled with `REG_ICASE`, which is load-bearing because Chromium capitalizes `res_class` while `res_name` stays lower; and `getwindowclassname` does not exist in the `1:3.20160805.1` build Ubuntu ships, so a failure dump can print window *names* only. The class itself is read off the artifact under test — the `--class=` token on the launcher's own `Executing: ` line — never hardcoded; `validate_app_contents` pins `WM_CLASS == StartupWMClass == desktopName` from the other direction. Note the distinction the [#779](https://github.com/aaddrick/claude-desktop-debian/issues/779) comment in `launcher-common.sh` draws: the `--class=` *cmdline* fingerprint is not the window class Chromium sets (that comes from `desktopName`), so probe X11, not `/proc`. Finally, the probe has two ways to lose and they need different messages: the deadline expiring with the app still up is a mapping problem, but the app *dying* mid-probe is a post-grace crash — reporting "no window found" for that sends the reader after the wrong bug, and both paths have to dump the launcher log or the failure arrives with no evidence at all. A new gate also has to be wired into the escape hatches the old one already had: the sandbox-denied downgrade used to sit only on the pre-marker branch, but the readiness marker is written *before* the launcher execs Electron, so a container that denies the namespace sandbox can abort a second the wrong side of the grace window and reach the probe instead.
+- **Isolate the host state a new assertion depends on.** Redirecting `XDG_CACHE_HOME` was enough while the assertion was process liveness. The moment the verdict is "a window appeared", `~/.config/Claude` — where hide-to-tray and window state persist — is load-bearing input, so `XDG_CONFIG_HOME` gets redirected into the throwaway tree too (the launcher honours it everywhere, so this also stops the test writing into a real `~/.config/autostart`). Same reflex for the session: `WAYLAND_DISPLAY`/`CLAUDE_USE_WAYLAND` are unset for the launch, or on a maintainer's Wayland box `detect_display_backend` puts the app on the real compositor and the probe fails a healthy artifact while watching an empty Xvfb. The general rule is the one in the host-state table above — every input the new assertion reads has to come from the test, not from whoever is running it.
+- **Poll a readiness marker, not a flat sleep.** The original `sleep 10` was the worst of both worlds — 10s wasted on healthy runs, still flaky on slow ones. Replaced ([#646](https://github.com/aaddrick/claude-desktop-debian/pull/646)) with a 30s-ceiling / 0.5s-tick poll of `launcher.log` for a literal marker (currently `Executing: `, the launcher's pre-exec line; it was `[Frame Fix] Patches built successfully` until the frame-fix wrapper was deleted in the patch-zero rebase). Each tick checks the marker *first*, then liveness via `kill -0`, so a marker written just before exit still passes. Failure output distinguishes "did not reach ready state within Ns" (alive, no marker) from "exited before reaching ready state (exit: N)" (died early).
+- **Drop privileges for rpm.** Electron hard-aborts as root without `--no-sandbox`, so the Fedora container drops to a throwaway unprivileged user — which also exercises the real setuid `chrome-sandbox` path ([#671](https://github.com/aaddrick/claude-desktop-debian/pull/671)).
+- **Test the real arch on a native runner.** The arm64 leg runs on `ubuntu-*-arm` so the launch smoke executes the actual arm64 binary instead of dying on foreign-arch exec; the artifact-name contract (`package-{arch}-{format}`) is asserted exactly, and the release gate waits on both arches ([#691](https://github.com/aaddrick/claude-desktop-debian/pull/691)).
+- **One shared cleanup trap, not one per block.** Bash keeps a single handler per signal, so a trap set *inside* the smoke block silently overrides a script-scope one and leaks whatever it forgot (a ~190MB `squashfs-root` in [#592](https://github.com/aaddrick/claude-desktop-debian/pull/592)). Use one script-scope `_cleanup`, each branch defensively guarded (`[[ -n ${var:-} ]] && …`) so it's safe however far the script got.
+
+> [!NOTE]
+> Known residual gaps are flagged, not hidden: rpm launch stays SKIP-not-PASS where the container denies the sandbox; GPU/renderer [#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)-class crashes leave the main process alive and pass under Xvfb's SwiftShader fallback. The window probe narrows the gap without closing it — a `BrowserWindow` is mapped *before* `loadURL` resolves, so a network error behind a blank window still passes, and a crash after the window maps is invisible to a probe that runs once. That premise was checked against the pinned bundle rather than assumed, because the whole gate depends on it: if the main window were the usual `show: false` + `ready-to-show` shape, "a window mapped" would silently become "claude.ai answered", and a slow or restricted CI egress would red a healthy artifact. In 2.2553.1 it is not — the main window carries `show: i && !u` with `u` hard-coded false and `opacity: +!!earlyWindowShow`, so it maps at construction and the `ready-to-show` handlers on it only emit telemetry. Re-check this if a future bundle rearranges window creation; `grep -c 'ready-to-show'` and the `show:` literal in the main chunk are the two-minute version. Silent truncation of coverage reads as "we tested everything" when we didn't — say what was skipped.
+
+## Workflow structural tests
+
+The release job in [`ci.yml`](../../.github/workflows/ci.yml) only runs on a tag push, so a defect in it is discovered by the release it breaks. [`tests/ci-release-job.bats`](../../tests/ci-release-job.bats) moves the cheap half of that risk into the unit suite by asserting on the job's structure.
+
+The trap it was born from is worth stating on its own, because it is not a test trap and no amount of shell coverage would have caught it:
+
+> **`continue-on-error: true` renders a failed step as a green check, but its `outcome` is still `failure`.** Any step gated on `steps.<id>.outcome == 'success'` silently skips, and the run summary shows a ✓ next to the step that actually broke.
+
+The 2026-07-25 release is the worked example. `claude-desktop-versions` went private the day before; its `continue-on-error` checkout showed ✓ while its `outcome` skipped four gated setup steps — one of which installed `asar` for the reference-source step, which has nothing to do with the versions repo. That step exited 127, failed the job, and because `mirror-official-deb`, `update-apt-repo`, `update-dnf-repo` and `update-aur-repo` all carry `needs: [release]`, the build published to no channel at all. Diagnosis cost was mostly spent trusting the green checkmarks.
+
+Two rules came out of it, and both are pinned by the suite:
+
+- **A step's tooling is installed by a step gated on the same things that step is gated on — nothing more.** Convenience tooling shared across unrelated concerns is how one subsystem's outage reaches another.
+- **A step whose output is a nice-to-have must not be able to fail a job that gates publishing.** The reference-source step already had two `::warning::` + `exit 0` bail-outs; it just had an unguarded hard dependency above them. The test asserts every bail-out is a warning and that the guard precedes the call it guards.
+
+Two methodology notes specific to this surface:
+
+- **Parse, don't grep — and make the parser self-report.** `awk` splits the job on its step boundaries rather than pulling in a YAML library, which keeps the suite on the toolchain the rest of `tests/` uses. The risk is a parser that silently matches nothing and passes everything, so the first test asserts the parse's own shape (step count, a known step present, the region *not* bleeding into the next job) and every later test asserts its step block was found before reading a field out of it. Deleting the guarded step reds five tests; renaming the job reds eight.
+- **The comment-as-code near-miss.** A collapsed `run:` body still contains its `#` comments, so `command -v asar` in a comment satisfies a naive grep. Comment lines are stripped before assertion, and ordering (`guard before call`) is asserted rather than mere presence — replacing the guard with a comment that mentions it reds two tests.
+- **The same near-miss bites in reverse, from the workflow side.** `uncommented` is applied per *step block*, but the region-level greps in "node is set up before asar is installed" and "asar is installed by exactly one step" read the raw region — so writing `@electron/asar` into a YAML comment above the setup step reds two tests — the comment counts as a second step that installs asar, and as an asar reference preceding the Node setup. Name `@anthropic-ai/claude-code` in the same comment and a third goes with it ("asar is not co-installed with release-notes-only tooling"), which is the shape the original annotation had. That is the invariant working (one install step, and it comes after Node), not a parser bug, so the fix belongs in the comment: spell shared tooling bare (`asar`, `the claude-code CLI`) in this region and leave the npm specifiers to the `run:` lines that actually install them. The `ci.yml` comment says so inline, since the next person to annotate that block will hit it.
+
+## The doctor-check testability refactor
+
+The pattern behind [#740](https://github.com/aaddrick/claude-desktop-debian/pull/740)/[#744](https://github.com/aaddrick/claude-desktop-debian/pull/744)/[#745](https://github.com/aaddrick/claude-desktop-debian/pull/745)/[#782](https://github.com/aaddrick/claude-desktop-debian/pull/782): lift an inline block out of `run_doctor` into a named `_doctor_check_*` helper so it's independently unit-testable, prove the move is byte-identical, and add path-injection hooks (`_DOCTOR_*`) that default to the real system paths. The review discipline attached to each is the reusable part:
+
+1. **Diff the extracted helper against the inline original** and assert byte-identical behavior before trusting any new test.
+2. **Mutation-test every new test** — "swap the Wayland/X11 precedence," "`4755`→`0755` breaks exactly 3 tests," "delete the `break` and the double-report test fails."
+3. **Demand FAIL-branch coverage and counter/flag asserts**, not just the PASS path (this is where the `run`-subshell trap keeps reappearing).
+4. **Unset each new `_DOCTOR_*` hook in `setup()`** so an exported value from the invoking shell can't leak in.
+
+A refactor framed for testability earns the test work: "since testability is this PR's stated purpose, worth doing here." Coordination note — the three extractions insert at the same anchor (after `_doctor_check_bwrap_fallback()`), so they conflict in `doctor.sh` while the BATS side auto-merges; land them in sequence with trivial keep-both rebases.
+
+## Review heuristics
+
+What to demand when reviewing a fix, distilled from [@sabiut](https://github.com/sabiut)'s reviews on others' PRs.
+
+- **The mutation check is mandatory.** Revert or weaken the fix by hand; if the suite still passes, the test guards nothing. *"Dropping the gate fails the new test, so a revert can't sneak past CI"* ([#713](https://github.com/aaddrick/claude-desktop-debian/pull/713)). A green suite over a *known* defect proves the coverage hole, not correctness ([#752](https://github.com/aaddrick/claude-desktop-debian/pull/752), [#776](https://github.com/aaddrick/claude-desktop-debian/pull/776)).
+- **Claimed verification must ship as a committed test.** Methodology cited in the PR body but absent from the diff is CHANGES_REQUESTED; a manual `dash -n` / `shellcheck` run gets codified into the suite so the next edit can't regress it ([#776](https://github.com/aaddrick/claude-desktop-debian/pull/776), [#694](https://github.com/aaddrick/claude-desktop-debian/pull/694)).
+- **Watch for hollow assertions.** A test that checks the fixture against itself (the sed never touches the branch the grep inspects) can't fail from a regression in the actual fix, and a test *name* that doesn't match what it validates hides an uncovered edge case ([#752](https://github.com/aaddrick/claude-desktop-debian/pull/752), [#732](https://github.com/aaddrick/claude-desktop-debian/pull/732)).
+- **Name the verification level honestly.** State what was run live vs. read; treat "static-verified-only" as an open gap and add the cheap live/artifact assert that removes the qualifier (*"so the deb/rpm legs stop being static-verified-only"* — [#775](https://github.com/aaddrick/claude-desktop-debian/pull/775)). Leave external live confirmation (real-hardware GUI, eCryptfs box) as an explicit unchecked item rather than implying it's done — hedge untested paths ("should" / "static analysis says") instead of claiming coverage you don't have.
+- **Doctor-vs-launch parity.** `--doctor` must observe the exact environment the launch will — same config load, same env, same runtime floor. A user with `COWORK_VM_BACKEND=bwrap` only in the config gets zero diagnostics because `--doctor` never reads the config file: that divergence is a real bug class ([#776](https://github.com/aaddrick/claude-desktop-debian/pull/776)).
+- **Shared surfaces stay distro-agnostic; magic numbers get justified or overridable.** `doctor.sh` ships in every format, so ".deb auto-installs… reinstall the .deb" advice is wrong for AppImage/Nix/rpm users; a hard-coded crash threshold of 3 needs either a rationale comment or a `CLAUDE_DOCTOR_CRASH_THRESHOLD` override so the number isn't orphaned ([#694](https://github.com/aaddrick/claude-desktop-debian/pull/694), [#585](https://github.com/aaddrick/claude-desktop-debian/pull/585)).
+
+## The mutation check
+
+Before calling any shell test "merge-ready," neuter the code it guards and confirm a test goes red. If nothing does, the test is decoration regardless of how green CI is. Concretely, for a new or reviewed test ask:
+
+1. Does it assert on a **side effect** (a counter, a flag)? Then it must call the helper directly, not via `run`.
+2. Is there a fixture **one character** away from the anchor it claims to pin?
+3. Does at least one branch run the **real** external tool, not only the stub?
+4. Does `[PASS]` only fire on data the check actually **read and parsed**?
+5. Does the negative assertion's exit status reach **BATS** (last command, or via `run` + `$status`)?
+6. If you **revert the fix**, does a test fail?
+
+Question 6 is the one that matters. The rest are the specific ways the answer to 6 comes out "no" while CI stays green.
+
+## References
+
+- Test-infra PRs: [#310](https://github.com/aaddrick/claude-desktop-debian/pull/310) (SHA-256 verify), [#338](https://github.com/aaddrick/claude-desktop-debian/pull/338) (artifact structure), [#520](https://github.com/aaddrick/claude-desktop-debian/pull/520) (wire BATS into CI), [#592](https://github.com/aaddrick/claude-desktop-debian/pull/592)/[#646](https://github.com/aaddrick/claude-desktop-debian/pull/646)/[#671](https://github.com/aaddrick/claude-desktop-debian/pull/671)/[#691](https://github.com/aaddrick/claude-desktop-debian/pull/691) (launch-smoke evolution), [#606](https://github.com/aaddrick/claude-desktop-debian/pull/606) (CI concurrency)
+- Half-pinned-test fixes: [#534](https://github.com/aaddrick/claude-desktop-debian/pull/534), [#692](https://github.com/aaddrick/claude-desktop-debian/pull/692), [#693](https://github.com/aaddrick/claude-desktop-debian/pull/693), [#774](https://github.com/aaddrick/claude-desktop-debian/pull/774), [#740](https://github.com/aaddrick/claude-desktop-debian/pull/740), [#744](https://github.com/aaddrick/claude-desktop-debian/pull/744), [#745](https://github.com/aaddrick/claude-desktop-debian/pull/745), [#781](https://github.com/aaddrick/claude-desktop-debian/pull/781), [#782](https://github.com/aaddrick/claude-desktop-debian/pull/782)
+- Review-heuristic threads: [#713](https://github.com/aaddrick/claude-desktop-debian/pull/713), [#752](https://github.com/aaddrick/claude-desktop-debian/pull/752), [#775](https://github.com/aaddrick/claude-desktop-debian/pull/775), [#776](https://github.com/aaddrick/claude-desktop-debian/pull/776)
+- Related learnings: [`patching-minified-js.md`](patching-minified-js.md) (the same anchor/mutation discipline for patch scripts — exactly-1 assertions, idempotent re-runs, verify against real bytes), [`cross-build-host-vs-target.md`](cross-build-host-vs-target.md) (why the arch matrix runs on native runners), [`docs/testing/`](../testing/README.md) (the manual GUI test plan BATS can't reach)

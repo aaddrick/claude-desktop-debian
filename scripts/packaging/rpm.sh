@@ -77,7 +77,7 @@ StartupWMClass=$WM_CLASS
 EOF
 
 # --- Stage AppStream metainfo (installed via %files block below) ---
-metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+metainfo_name='io.github.aaddrick.claude-desktop-unofficial.metainfo.xml'
 cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
 
 # --- Create Launcher Script ---
@@ -94,7 +94,10 @@ app_exec="/usr/lib/$package_name/claude-desktop"
 
 # Handle --doctor flag before anything else
 if [[ "\${1:-}" == '--doctor' ]]; then
-	run_doctor "\$app_exec"
+	# 'rpm' is normalized to 'deb' inside the doctor's effective-sandbox
+	# check, so either literal reports accurately here; kept as 'deb'
+	# to match the build_electron_args call below.
+	run_doctor "\$app_exec" 'deb'
 	exit \$?
 fi
 
@@ -109,10 +112,11 @@ fi
 setup_logging || exit 1
 setup_electron_env
 
+cleanup_replaced_desktop_ui
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
-cleanup_stale_cowork_socket
+cleanup_stale_vm_bundle_images
 heal_autostart_entry "/usr/bin/$package_name"
 backup_user_config
 
@@ -135,6 +139,7 @@ detect_display_backend
 if [[ \$is_wayland == true ]]; then
 	log_message 'Wayland detected'
 fi
+ensure_portal_app_id_entry "/usr/bin/$package_name" "$package_name"
 
 if [[ ! -x \$app_exec ]]; then
 	log_message "Error: Claude Desktop binary not found at \$app_exec"

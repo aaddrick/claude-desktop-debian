@@ -32,10 +32,14 @@
         "required": ["text", "citation"]
       }
     },
+    "scope_note": {
+      "type": ["string", "null"],
+      "description": "One or two sentences, hypothesis voice, set ONLY when the ask appears to fall in a class the repo's settled policy declines (patch-zero D-002: the official app.asar ships byte-identical; scope policy: net-new features not present upstream are default-declined). Names the policy so the maintainer's likely answer isn't a surprise. Null when policy doesn't obviously apply — a wrong policy note is worse than none."
+    },
     "design_question_ids": {
       "type": "array",
-      "description": "Keys into taxonomies/enhancement-design-questions.json. The renderer looks up the human-readable question text; an invalid ID cannot be emitted because the enum is schema-enforced. Pick one to three questions that the request actually raises — don't pad.",
-      "minItems": 1,
+      "description": "Keys into taxonomies/enhancement-design-questions.json. The renderer looks up the human-readable question text; an invalid ID cannot be emitted because the enum is schema-enforced. Pick up to three questions that the request actually raises — don't pad, and emit an empty array when none genuinely apply (non-app-code surfaces like CI scripts or repo ops, or a scope_note that already answers the ask).",
+      "minItems": 0,
       "maxItems": 3,
       "items": {
         "enum": [
@@ -49,5 +53,5 @@
       }
     }
   },
-  "required": ["acknowledgment_line", "existing_surfaces", "design_question_ids"]
+  "required": ["acknowledgment_line", "existing_surfaces", "design_question_ids", "scope_note"]
 }

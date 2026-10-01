@@ -67,7 +67,7 @@ app_exec="$appdir/usr/lib/claude-desktop/claude-desktop"
 
 # Handle --doctor flag before anything else
 if [[ "${1:-}" == '--doctor' ]]; then
-	run_doctor "$app_exec"
+	run_doctor "$app_exec" 'appimage'
 	exit $?
 fi
 
@@ -82,10 +82,11 @@ fi
 setup_logging || exit 1
 setup_electron_env
 
+cleanup_replaced_desktop_ui
 cleanup_orphaned_cowork_daemon
 cleanup_stale_desktop_helpers
 cleanup_stale_lock
-cleanup_stale_cowork_socket
+cleanup_stale_vm_bundle_images
 # APPIMAGE is set by the AppImage runtime to the persistent image path;
 # an extracted/direct run leaves it unset and the heal no-ops.
 heal_autostart_entry "${APPIMAGE:-}"
@@ -93,6 +94,8 @@ backup_user_config
 
 # Detect display backend
 detect_display_backend
+ensure_portal_app_id_entry "${APPIMAGE:-}" \
+	'io.github.aaddrick.claude-desktop-debian'
 
 # Log startup info
 log_message '--- Claude Desktop AppImage Start ---'

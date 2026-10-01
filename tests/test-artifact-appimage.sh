@@ -107,7 +107,8 @@ assert_contains "$appdir/AppRun" 'build_electron_args' \
 
 # --- App contents (asar) ---
 resources_dir="$appdir/usr/lib/claude-desktop/resources"
-validate_app_contents "$resources_dir"
+validate_app_contents "$resources_dir" \
+	"$appdir/usr/share/applications/${component_id}.desktop"
 
 # --- Doctor smoke test ---
 # Some --doctor checks fail in CI (no display, etc.); we only care that
@@ -119,6 +120,18 @@ if [[ $doctor_exit -lt 127 ]]; then
 else
 	fail "--doctor crashed (exit: $doctor_exit)"
 fi
+
+# --- Launcher --version fast-path (#775) ---
+# The baked version comes from the artifact filename
+# (claude-desktop-unofficial-<version>-<arch>.AppImage): strip the
+# package-name prefix, then the -<arch>.AppImage suffix. Needs FUSE to
+# mount, but no display — the fast-path exits inside AppRun.
+appimage_version="$(basename "$appimage_file")"
+appimage_version="${appimage_version#claude-desktop-unofficial-}"
+appimage_version="${appimage_version%.AppImage}"
+appimage_version="${appimage_version%-*}"
+run_version_flag_test 'AppImage' \
+	"claude-desktop-unofficial $appimage_version" "$appimage_file"
 
 # --- Headless launch smoke test ---
 # The AppImage runs as the (non-root) CI user, so no privilege drop.

@@ -35,13 +35,16 @@ The [`docs/learnings/`](docs/learnings/) directory contains hard-won technical k
 - [`packaging-permissions.md`](docs/learnings/packaging-permissions.md) — restrictive-umask permission traps across deb/rpm/AppImage: `app.asar.unpacked` traversability, `dpkg-deb --root-owner-group`, the rpm `%defattr` file-mode trap
 - [`nix.md`](docs/learnings/nix.md) — the official-deb Nix derivation: design contract, the live SRI auto-bump sed anchors, the sandbox SUID extraction trap, why the old Electron resource-path hack must not return, and testing without NixOS
 - [`apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) — APT/DNF binary distribution via Cloudflare Worker + GitHub Releases, redirect chain, credential ownership, heartbeat runbook
-- [`wayland-global-shortcuts-portal.md`](docs/learnings/wayland-global-shortcuts-portal.md) — why Quick Entry's hotkey is focus-bound on GNOME Wayland (mutter dropped XWayland global key grabs), the native-Wayland + `GlobalShortcutsPortal` launcher change (opt-in via `CLAUDE_USE_WAYLAND=1`; fixes GNOME ≤49, default GNOME stays on XWayland), the "only the last `--enable-features` switch wins → merge into one flag" trap, the tri-state `CLAUDE_USE_WAYLAND` escape hatch, and the proof that GNOME 50 / xdg-desktop-portal ≥1.20 is still blocked upstream because Electron/Chromium never calls the host `Registry.Register` app-id handshake ([electron#51875](https://github.com/electron/electron/issues/51875)); wlroots (Niri/Sway/Hyprland) lack a portal GlobalShortcuts backend entirely
+- [`wayland-global-shortcuts-portal.md`](docs/learnings/wayland-global-shortcuts-portal.md) — why Quick Entry's hotkey is focus-bound on GNOME Wayland (mutter dropped XWayland global key grabs), the native-Wayland + `GlobalShortcutsPortal` launcher change (opt-in via `CLAUDE_USE_WAYLAND=1`; fixes GNOME ≤49, default GNOME stays on XWayland), the "only the last `--enable-features` switch wins → merge into one flag" trap, the tri-state `CLAUDE_USE_WAYLAND` escape hatch, and the proof that GNOME 50 / xdg-desktop-portal ≥1.20 was blocked through Electron 43 because Electron/Chromium never called the host `Registry.Register` app-id handshake ([electron#51875](https://github.com/electron/electron/issues/51875), fixed in Electron 44 / Chromium 152, which the official build ships since 2.2553.x — GNOME 50 retest pending); wlroots (Niri/Sway/Hyprland) lack a portal GlobalShortcuts backend entirely
 - [`mcp-double-spawn.md`](docs/learnings/mcp-double-spawn.md) — Stdio MCPs spawn 2× when chat and Code/Agent panels are both active, root cause in upstream session managers, MCP-author workaround; now first-party-reproducible → upstream report drafted
 - [`plugin-install.md`](docs/learnings/plugin-install.md) — Anthropic & Partners plugin install flow, gate logic, backend endpoints, and DevTools recipes
 - [`tray-rebuild-race.md`](docs/learnings/tray-rebuild-race.md) — the KDE Plasma SNI re-registration race and the in-place `setImage` + `setContextMenu` fast-path; validated — the official build converged on the same fix, our tray patch is deleted
 - [`cowork-vm-daemon.md`](docs/learnings/cowork-vm-daemon.md) — the 2.x bwrap Cowork daemon lifecycle; superseded on KVM hosts by the official coworkd, kept as reference for the 3.1 fallback investigation
 - [`test-harness-electron-hooks.md`](docs/learnings/test-harness-electron-hooks.md) — why constructor-level `BrowserWindow` wraps were silently bypassed by the (now-deleted) frame-fix Proxy, and the prototype-method hook pattern that remains correct for harness code
 - [`test-harness-ax-tree-walker.md`](docs/learnings/test-harness-ax-tree-walker.md) — five non-obvious traps in the v7 fingerprint walker after the AX-tree migration: AX-enable async lag, navigateTo-to-same-URL no-op, claude.ai's flat `dialog>button[]` lists, the `more options for X` per-row shape, and sidebar virtualization vs the lookup-failure threshold
+- [`config-wipe-guard.md`](docs/learnings/config-wipe-guard.md) — the poisoned-cache config wipe (silent `{}` loader fallback + whole-file serialize on every settings write) that stubs out `claude_desktop_config.json`; where the renderer's grouping state actually lives (IndexedDB `pin-state` → `persisted.*` localStorage → `epitaxyPrefs` mirror); the **launcher-side backup rotation** (`backup_user_config`) that is the patch-zero-clean primary fix; and why the in-band asar guard (`config.sh`, R1/R2/R3 restore rules, lazy-clone non-stickiness, the CF-1 no-resurrect constraint) is kept hardened but **parked** after a contrarian review, with `local-stores.sh` deleted outright
+- [`quit-cleanup-scope-fence.md`](docs/learnings/quit-cleanup-scope-fence.md) — the two systemd-scope namespaces behind the #709 quit-cleanup slice: KDE/GNOME's KProcessRunner **desktop-id** scope (`app-claude-desktop-<pid>.scope`, GUI-launch-only, renamed by v3.0.0 to `-unofficial`) vs Electron's own `StartTransientUnit` **app-id** self-scope (`app-com.anthropic.Claude-<pid>.scope`, all launch paths, but the app-id is versioned so derive it — was `io.github.aaddrick...`); why the self-scope still can't fence the zygote-descended helpers on a terminal launch (they stay in the caller's shell scope, next to a user's own MCP server → the unsolved gate-3 bystander-kill risk); the finding that **nothing orphans on clean quit *or* SIGKILL** (Chromium reaps its tree cgroup-agnostically) so the slice has no survivor to catch; and the test traps (`pgrep -f` self-match → use `/proc/PID/exe`, `setsid`+`disown` to dodge the exit-144 startup signal, scope-existence ≠ liveness)
+- [`test-methodology-and-coverage.md`](docs/learnings/test-methodology-and-coverage.md) — how a green test run is kept honest, distilled from @sabiut's test/doctor PRs and reviews: the **half-pinned-test failure class** (`run`-subshell discards `_doctor_failures` mutations → assert directly not via `run`; near-miss anchor fixtures; stubs that mirror the prod call can't catch a change to it; `[PASS]` on unread data; poll predicate must equal the reaper's own predicate; SC2314 negative-assertion no-ops), host-state isolation (stub in-shell vs PATH-shim subshell calls, unset every `XDG_*`/`_DOCTOR_*` fallback), the `setsid`+`kill -- -PGID` launch-smoke reaper with a readiness marker, and the **mutation-check** review discipline (revert the fix; if nothing goes red the test is decoration)
 
 Archived (still useful as diagnosis records): [`docs/archive/linux-topbar-shim.md`](docs/archive/linux-topbar-shim.md) — the four topbar gates and the WCO/implicit-drag-region investigation (shim deleted; official builds render the topbar on Linux, and Bugs A/B/C moved to [`docs/upstream-reports/`](docs/upstream-reports/)); [`docs/archive/cowork-linux-handover.md`](docs/archive/cowork-linux-handover.md) — the 2.x patch-based Cowork stack handover.
 
@@ -157,11 +160,13 @@ Co-Authored-By: Claude <claude@anthropic.com>
 
 Contributors are listed in chronological order: inspirational projects first (k3d3, emsi, leobuskin), then contributors ordered by when their contribution was merged or implemented.
 
+**A returning contributor gets one entry, not a second one.** If the name already appears, add a sub-bullet under the existing entry at its original chronological position — converting a single-line `- **[name](url)** for ...` entry into a `- **[name](url)**` header plus sub-bullets if needed — rather than appending a new entry lower in the file.
+
 ## Working with Minified JavaScript
 
 ### Important Guidelines
 
-1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh` and `org-plugins.sh`; `config.sh` is kept unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Variable and function names are minified and **change between releases**; full anchor-craft lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
+1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh`, `org-plugins.sh`, `virtiofsd-probe.sh`, and `cowork-bwrap.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Since upstream 1.19367.0 the main process is **code-split**: `.vite/build/index.js` is a stub that `require()`s a content-hashed `index.chunk-<hash>.js` main chunk, so patches operate on `$main_js` (resolved by `_resolve_main_js` in `app-asar.sh`), not on `index.js` directly — one patch can even span chunks (see `cowork-bwrap.sh`'s warm chunk). Variable and function names are minified and **change between releases**; full anchor-craft and code-split lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
 
 2. **The beautified code in `build-reference/` has different spacing** than the actual minified code in the app. Patterns must handle both:
    - Minified: `oe.nativeTheme.on("updated",()=>{`
@@ -169,11 +174,11 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 3. **Use `-E` flag with sed** for extended regex support when patterns need grouping or alternation.
 
-4. **Extract variable names dynamically** rather than hardcoding them. Example (from `scripts/patches/quick-window.sh`):
+4. **Extract variable names dynamically** rather than hardcoding them. Example (from `scripts/patches/quick-window.sh`), where `$index_js` is `${main_js:-…/index.js}` — the resolved main chunk:
    ```bash
    # The minified Quick Entry window var, anchored on a stable literal
    quick_var=$(grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))' \
-       app.asar.contents/.vite/build/index.js)
+       "$index_js")
    ```
 
 5. **Handle optional whitespace** in regex patterns:
@@ -197,6 +202,8 @@ Contributors are listed in chronological order: inspirational projects first (k3
 - **`active_patches` array** — the only place a patch gets wired in. Empty array ⇒ no extract, no repack, official `app.asar` ships byte-identical.
 - **productName guard** — the build fails if upstream's `productName` stops matching `WM_CLASS` (breaks `StartupWMClass` in every `.desktop` file).
 - **Upstream tripwires (AU-1/MB-1)** — the build fails if the official bundle stops shipping `apt_channel_pending` (autoupdater still pending, see [D-001](docs/decisions.md)) or `menuBarEnabled:!0` (menu-bar default). These replace the per-patch WARNINGs that left with the v3.0.0 deletions.
+- **Retirement tripwire** — every active patch must change the pristine bundle's bytes, or the build fails naming it: upstream fixed the bug (retire the patch) or the anchor moved (re-derive it). Each patch needs a `patch_retirement` row (`bytes` / `behavior` / `never`) saying how it retires. See [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md#retirement-a-patch-must-change-the-pristine-bundle).
+- **Config-wipe recovery is launcher-side, not an asar patch** — `backup_user_config` in `launcher-common.sh` rotates backups of `claude_desktop_config.json` and the Cowork stores before each launch (patch-zero-clean). The in-band `config.sh` guard is parked; if ever re-armed, its CFG-1 anchor-miss returns non-zero. See [`docs/learnings/config-wipe-guard.md`](docs/learnings/config-wipe-guard.md).
 - **Repack invariant** — the unpacked-file set is derived from the shipped `app.asar.unpacked` tree and must match after repack, so upstream native helpers can't silently inline.
 
 The 2.x frame-fix wrapper (`frame-fix-wrapper.js` `require('electron')` interception) is **gone** — the official build owns its window behavior. Any proposal to intercept Electron APIs again must clear the patch-zero bar in [D-002](docs/decisions.md).
@@ -263,12 +270,16 @@ asar extract app.asar app-extracted
 The extracted JS files are minified. Use prettier to make them readable:
 
 ```bash
-# Beautify all JS files in the build directory
+# Beautify all JS files in the build directory. Since 1.19367.0 the main
+# process is code-split, so index.js is a tiny stub and the real main
+# code lives in index.chunk-<hash>.js — the glob covers every chunk.
 npx prettier --write "app-extracted/.vite/build/*.js"
 
-# Or beautify specific files
-npx prettier --write app-extracted/.vite/build/index.js
-npx prettier --write app-extracted/.vite/build/mainWindow.js
+# The main-process chunk is the biggest .vite/build/*.js (index.js just
+# require()s it). Resolve it from the stub if you want to beautify only it:
+main_chunk=$(grep -oP 'require\("\./\Kindex\.chunk-[^"]+\.js(?="\))' \
+    app-extracted/.vite/build/index.js)
+npx prettier --write "app-extracted/.vite/build/$main_chunk"
 ```
 
 ### Step 5: Clean Up (Optional)
@@ -286,9 +297,10 @@ build-reference/
 ├── app-extracted/
 │   ├── .vite/
 │   │   ├── build/
-│   │   │   ├── index.js          # Main process (beautified)
-│   │   │   ├── mainWindow.js     # Main window preload
-│   │   │   ├── mainView.js       # Main view preload
+│   │   │   ├── index.js                 # Main-process entry stub
+│   │   │   ├── index.chunk-<hash>.js     # Main process (code-split, 1.19367.0+)
+│   │   │   ├── mainWindow.js             # Main window preload
+│   │   │   ├── mainView.js               # Main view preload
 │   │   │   └── ...
 │   │   └── renderer/
 │   │       └── ...
@@ -418,8 +430,10 @@ mount | grep claude
 # co-located layout: ELF + chrome-sandbox + resources/ side by side)
 npx asar extract /tmp/.mount_claudeXXXXXX/usr/lib/claude-desktop/resources/app.asar /tmp/claude-inspect
 
-# Search for patterns in the extracted code
-grep -n "pattern" /tmp/claude-inspect/.vite/build/index.js
+# Search for patterns in the extracted code. Since 1.19367.0 the main
+# process is code-split, so grep across all chunks (index.js is a stub);
+# main-process anchors live in index.chunk-<hash>.js.
+grep -rn "pattern" /tmp/claude-inspect/.vite/build/
 ```
 
 ### Checking DBus/Tray Status

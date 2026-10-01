@@ -2,9 +2,36 @@
 # Common launcher functions for Claude Desktop (AppImage and deb)
 # This file is sourced by both launchers to avoid code duplication
 
-# WM_CLASS / StartupWMClass — must match upstream productName.
-# @@WM_CLASS@@ is replaced at build time; see build.sh.
+# WM_CLASS / StartupWMClass — must match the runtime window class,
+# which Chromium derives from the asar package.json desktopName (not
+# productName, not --class, not the ELF basename). @@WM_CLASS@@ is
+# replaced at package time with the value patch_app_asar derives from
+# the staged app.asar; see scripts/patches/app-asar.sh (#779).
 readonly WM_CLASS='@@WM_CLASS@@'
+
+# Rotate launcher.log when it exceeds a size cap, keeping a couple of
+# old copies. Runs at the start of each launch, before the session
+# header is written, so _previous_launch_hit_gpu_fatal always scans a
+# bounded file and the log can't grow without bound across sessions
+# (#747). Every branch returns 0 -- rotation must never block launch.
+# $log_file must already be set (setup_logging runs before this).
+rotate_log_file() {
+	[[ -n ${log_file:-} && -f $log_file ]] || return 0
+
+	# 5 MiB aligns with doctor.sh's existing launcher.log size warning.
+	local max_bytes=$((5 * 1024 * 1024))
+	local keep=2 size i
+
+	size=$(stat -c '%s' "$log_file" 2>/dev/null) || return 0
+	[[ $size =~ ^[0-9]+$ ]] || return 0
+	((size > max_bytes)) || return 0
+
+	for (( i = keep - 1; i >= 1; i-- )); do
+		[[ -f "$log_file.$i" ]] && \
+			mv -f "$log_file.$i" "$log_file.$((i + 1))" 2>/dev/null
+	done
+	mv -f "$log_file" "$log_file.1" 2>/dev/null || return 0
+}
 
 # Setup logging directory and file
 # Sets: log_dir, log_file
@@ -12,6 +39,8 @@ setup_logging() {
 	log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian"
 	mkdir -p "$log_dir" || return 1
 	log_file="$log_dir/launcher.log"
+	rotate_log_file
+	return 0
 }
 
 # Log a message to the log file
@@ -64,7 +93,8 @@ log_session_env() {
 		CLAUDE_USE_WAYLAND \
 		CLAUDE_PASSWORD_STORE \
 		CLAUDE_GTK_IM_MODULE \
-		CLAUDE_DISABLE_GPU
+		CLAUDE_DISABLE_GPU \
+		CLAUDE_TRAY_USE_DARK_ICON
 	do
 		log_message "  $key=${!key:-}"
 	done
@@ -96,10 +126,10 @@ detect_display_backend() {
 	# XWayland global key grabs (#404), and native Wayland would route
 	# Quick Entry's globalShortcut through the XDG GlobalShortcuts portal
 	# instead -- but flipping the default session off mature XWayland is
-	# a rendering / IME / HiDPI risk, and on GNOME 50 the portal path is
-	# a no-op anyway (electron/electron#51875). GNOME users who want the
-	# portal route opt in with CLAUDE_USE_WAYLAND=1 (works on GNOME <=49
-	# after the one-time portal permission dialog).
+	# a rendering / IME / HiDPI risk. GNOME users who want the portal
+	# route opt in with CLAUDE_USE_WAYLAND=1 (works after the one-time
+	# portal permission dialog; GNOME 50 / portal >= 1.20 also needs the
+	# app-id entry ensure_portal_app_id_entry writes, #805).
 	#
 	# Sway and Hyprland keep working XWayland grabs and their wlroots
 	# portal has no GlobalShortcuts backend, so they also stay on the
@@ -143,31 +173,59 @@ check_display() {
 # Section headers vary by package format: deb/rpm write "Launcher
 # Start", AppImage writes "AppImage Start", and Nix writes "Launcher
 # Start (NixOS)" (nix/claude-desktop.nix).
+#
+# Single-pass, constant-memory scan (#747): no section text is ever
+# accumulated. Three crash-signature booleans are tracked for the
+# section currently being read (cur_*); on each header line the
+# just-finished section's flags shift into prev_*, so at EOF prev_*
+# always holds the *penultimate* section's flags -- the same target
+# the old string-accumulating version selected via section-1. This
+# fixes the O(n^2) cost of growing an awk string per line: the cost
+# was dominated by the largest single section, not the number of
+# sections -- a GPU-crash-looping session can spew megabytes into one
+# section, and that giant section was re-scanned on every subsequent
+# launch, hanging the launcher before Electron ever started.
 _previous_launch_hit_gpu_fatal() {
 	[[ -f ${log_file:-} ]] || return 1
 
 	awk '
 		/^--- Claude Desktop (Launcher|AppImage) Start( \(NixOS\))? ---$/ {
 			section++
+			prev_failed = cur_failed
+			prev_notusable = cur_notusable
+			prev_prevfatal = cur_prevfatal
+			cur_failed = 0
+			cur_notusable = 0
+			cur_prevfatal = 0
 			next
 		}
 		{
-			sections[section] = sections[section] $0 "\n"
+			if (index($0,
+				"GPU process launch failed: error_code=")) {
+				cur_failed = 1
+			}
+			if (index($0,
+				"GPU process isn'\''t usable. Goodbye.")) {
+				cur_notusable = 1
+			}
+			if (index($0,
+				"Previous launch hit GPU process FATAL")) {
+				cur_prevfatal = 1
+			}
 		}
 		END {
-			target = section > 1 ? section - 1 : section
-			if (target < 1) {
+			if (section >= 2) {
+				t_failed = prev_failed
+				t_notusable = prev_notusable
+				t_prevfatal = prev_prevfatal
+			} else if (section == 1) {
+				t_failed = cur_failed
+				t_notusable = cur_notusable
+				t_prevfatal = cur_prevfatal
+			} else {
 				exit 1
 			}
-			text = sections[target]
-			if (index(text,
-				"GPU process launch failed: error_code=") &&
-				index(text,
-				"GPU process isn'\''t usable. Goodbye.")) {
-				exit 0
-			}
-			if (index(text,
-				"Previous launch hit GPU process FATAL")) {
+			if ((t_failed && t_notusable) || t_prevfatal) {
 				exit 0
 			}
 			exit 1
@@ -185,12 +243,13 @@ _previous_launch_hit_gpu_fatal() {
 # Linux-environment gap; the tools/chromium-switch-smoke.sh guard
 # fails loudly if the effective switch list drifts without a
 # deliberate baseline update. Kept defaults, each with its reason:
-#   --class=$WM_CLASS         WM_CLASS/.desktop contract (#647, #652)
+#   --class=$WM_CLASS         cmdline UI fingerprint (#647, #652, #779)
 #   XRDP auto GPU-off         blank window on remote GPU (#319)
 #   GPU-crash sticky recovery GPU process FATAL exhaustion (#583)
 #   Wayland backend selection CLAUDE_USE_WAYLAND tri-state (#226, #404)
 #   --no-sandbox              only where structurally required
-#                             (AppImage FUSE; deb/nix on Wayland)
+#                             (AppImage FUSE; deb/nix on Wayland unless
+#                             CLAUDE_FORCE_SANDBOX=1, see #804)
 # --password-store is passed ONLY when CLAUDE_PASSWORD_STORE is set;
 # otherwise the official os_crypt autodetection owns the decision.
 #
@@ -212,8 +271,11 @@ build_electron_args() {
 	# AppImage always needs --no-sandbox due to FUSE constraints
 	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
 
-	# WM_CLASS must match the .desktop StartupWMClass and upstream's
-	# productName. Ref: #647, #652
+	# Chromium ignores --class for the window class (it reads the asar
+	# desktopName instead — WM_CLASS is derived from the same field),
+	# but the flag is load-bearing as the /proc cmdline UI fingerprint:
+	# _claude_desktop_ui_cmdline_matches keys on it. Ref: #647, #652,
+	# #779
 	electron_args+=("--class=$WM_CLASS")
 
 	# Password store: the official build's os_crypt autodetection owns
@@ -261,16 +323,30 @@ build_electron_args() {
 		log_message \
 			'Previous launch hit GPU process FATAL - disabling GPU'
 	fi
-	[[ $_disable_gpu == true ]] \
-		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')
+	# Keep Chromium's software rasterizer available. Disabling both
+	# hardware GPU and the software fallback can make Electron abort
+	# with "GPU process isn't usable" instead of recovering.
+	[[ $_disable_gpu == true ]] && electron_args+=('--disable-gpu')
 
 	# X11 session - no display-backend flags needed.
 	if [[ $is_wayland != true ]]; then
 		log_message 'X11 session detected'
 	else
 		# Wayland: deb/nix packages need --no-sandbox in both modes
-		[[ $package_type == 'deb' || $package_type == 'nix' ]] \
-			&& electron_args+=('--no-sandbox')
+		# (see #804: this default isn't universally required -- the AppArmor
+		# userns profile #687 installs for deb/Ubuntu-family systems already
+		# covers the one documented real blocker, and isn't Wayland-specific
+		# -- but rpm and nix have no equivalent profile, so it isn't safe to
+		# drop by default across all three package types yet).
+		# CLAUDE_FORCE_SANDBOX=1: opt-in escape hatch, symmetrical to
+		# CLAUDE_DISABLE_GPU above, for users who know their system doesn't
+		# need this workaround and want the sandbox kept on regardless.
+		if [[ ${CLAUDE_FORCE_SANDBOX:-} == '1' ]]; then
+			log_message \
+				'CLAUDE_FORCE_SANDBOX=1 - keeping Chromium sandbox enabled on Wayland'
+		elif [[ $package_type == 'deb' || $package_type == 'nix' ]]; then
+			electron_args+=('--no-sandbox')
+		fi
 
 		if [[ $use_x11_on_wayland == true ]]; then
 			# Use X11 via XWayland; globalShortcut uses an X11 key grab.
@@ -347,8 +423,11 @@ _claude_desktop_ui_cmdline_matches() {
 # is: a process whose cmdline carries our --class fingerprint (see
 # _claude_desktop_ui_cmdline_matches) and is actually runnable (not
 # stopped/zombie), excluding our own launcher bash and its parent.
-_claude_desktop_ui_is_alive() {
-	local pid cmdline state
+#
+# _claude_desktop_ui_pids prints the fingerprint-matching PIDs, one per
+# line; _claude_desktop_ui_is_alive adds the runnable check on top.
+_claude_desktop_ui_pids() {
+	local pid cmdline
 	for pid in \
 		$(pgrep -u "$(id -u)" -f -- "--class=$WM_CLASS" 2>/dev/null); do
 		# Skip our own launcher bash and its parent.
@@ -356,9 +435,28 @@ _claude_desktop_ui_is_alive() {
 		cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline") \
 			|| continue
 		_claude_desktop_ui_cmdline_matches "$cmdline" || continue
+		printf '%s\n' "$pid"
+	done
+}
+
+# Process state letter from /proc/PID/status (R, S, T, t, Z, ...).
+_proc_state() {
+	local key value rest
+	while read -r key value rest; do
+		if [[ $key == 'State:' ]]; then
+			printf '%s' "$value"
+			return 0
+		fi
+	done 2>/dev/null < "/proc/$1/status"
+	return 1
+}
+
+# Is a live (runnable) Claude Desktop UI running for this user?
+_claude_desktop_ui_is_alive() {
+	local pid state
+	for pid in $(_claude_desktop_ui_pids); do
 		# Skip stopped (T/t) and zombie (Z) processes — not a live UI.
-		state=$(awk '/^State:/ {print $2; exit}' \
-			"/proc/$pid/status" 2>/dev/null) || continue
+		state=$(_proc_state "$pid") || continue
 		[[ $state == T || $state == t || $state == Z ]] && continue
 		# Found a genuine live Electron UI.
 		return 0
@@ -366,19 +464,152 @@ _claude_desktop_ui_is_alive() {
 	return 1
 }
 
+# SIGTERM every PID, wait up to ~2s for all of them to go, then
+# escalate to SIGKILL for whatever is left.  Logs "$label (PIDs: ...)",
+# or "$label (SIGKILL, PIDs: ...)" when escalation was needed.
+_kill_pids_escalating() {
+	local label="$1"
+	shift
+	local pid alive=false waited=0
+
+	for pid in "$@"; do
+		kill "$pid" 2>/dev/null || true
+	done
+
+	while ((waited < 20)); do
+		alive=false
+		for pid in "$@"; do
+			if kill -0 "$pid" 2>/dev/null; then
+				alive=true
+				break
+			fi
+		done
+		[[ $alive == false ]] && break
+		sleep 0.1
+		((waited++))
+	done
+
+	if [[ $alive == true ]]; then
+		for pid in "$@"; do
+			kill -KILL "$pid" 2>/dev/null || true
+		done
+		log_message "$label (SIGKILL, PIDs: $*)"
+	else
+		log_message "$label (PIDs: $*)"
+	fi
+}
+
+# Was this process's executable replaced (unlinked) underneath it?
+# The kernel appends " (deleted)" to /proc/PID/exe once the binary
+# behind a running process is gone, which is exactly what dpkg/rpm do
+# when they upgrade a package while its UI is still running.
+#
+# Plain readlink, NOT readlink -f: -f canonicalizes, so it fails when
+# the install DIRECTORY is gone too (a package migration or layout
+# change, not just a file replace) and the replaced UI would be
+# silently missed. The raw link content carries the marker either way.
+_claude_desktop_ui_is_replaced() {
+	local exe_path
+
+	exe_path=$(readlink "/proc/$1/exe" 2>/dev/null) || return 1
+	[[ $exe_path == *' (deleted)' ]]
+}
+
+# Is PID a Claude Desktop browser process, one that can legitimately
+# hold the SingletonLock in ~/.config/Claude?
+#
+# Keyed on the executable's path, NOT on the --class UI fingerprint
+# above. That fingerprint exists to find OUR instances for cleanup and
+# deliberately rejects everything else, but the lock is shared by every
+# Claude Desktop build on the machine: the official Anthropic .deb
+# (/usr/lib/claude-desktop/claude-desktop, launched without --class),
+# this project's deb/rpm/AppImage/Nix (.../claude-desktop/claude-desktop
+# or .../claude-desktop-unofficial/claude-desktop), and a pre-3.0 tree
+# still running across an upgrade
+# (/usr/lib/claude-desktop/node_modules/electron/dist/electron, with
+# --class=Claude). Each of them is a live holder, so the test is the one
+# thing they all share, `claude-desktop` somewhere in the path. A
+# basename set (claude-desktop, electron) would cover the same holders
+# but also count every unrelated node_modules/.../electron on a
+# developer machine as live. The " (deleted)" marker of a replaced
+# binary needs no special case: the path still carries the name, and
+# that process still holds the lock until cleanup_replaced_desktop_ui
+# reaps it.
+#
+# Errs toward "live" when /proc/PID/exe cannot be read (a zombie, or a
+# process that exec'd a setuid binary and is no longer dumpable):
+# keeping a stale lock costs nothing, Electron unlinks it itself on the
+# next start, while a wrong "stale" turns into a `Fix: rm` on a live
+# lock in the doctor.
+_pid_is_claude_desktop() {
+	local exe
+	exe=$(readlink "/proc/$1/exe" 2>/dev/null) || return 0
+	[[ $exe == *claude-desktop* ]]
+}
+
+# Terminate a live Claude Desktop UI whose executable was replaced
+# underneath it by dpkg/rpm. If left alive, the next launcher loses
+# Electron's single-instance lock to the old process and appears to
+# do nothing instead of starting the newly-installed build.
+#
+# A no-op on AppImage by construction: the binary lives inside the
+# FUSE mount, which stays valid after the .AppImage file itself is
+# replaced, so /proc/PID/exe never carries the marker there.
+cleanup_replaced_desktop_ui() {
+	local pids=() pid
+	for pid in $(_claude_desktop_ui_pids); do
+		_claude_desktop_ui_is_replaced "$pid" || continue
+		pids+=("$pid")
+	done
+
+	[[ ${#pids[@]} -gt 0 ]] || return 0
+
+	_kill_pids_escalating 'Killed replaced Claude Desktop UI' \
+		"${pids[@]}"
+}
+
+# PIDs of this user's bwrap-fallback cowork daemon, one per line.
+#
+# Fingerprinted by argv shape, not by a `cowork-vm-service.js`
+# substring: the substring also matches an editor, `tail -f` or a
+# shell that merely names the file, and the reaper below SIGKILLs
+# whatever this returns (#882, the #534 host-wide pgrep -f class).
+# cowork-bwrap.sh spawn swap B starts the daemon as exactly
+#   <node> <resourcesPath>/cowork-vm-service.js -socket <sock>
+# so argv[1] ends in /cowork-vm-service.js and argv[2] is -socket.
+# The official Rust helper (cowork-linux-helper) never matches.
+#
+# pgrep only narrows the candidates; the argv check decides. Scoped
+# to this user and skipping our own launcher bash and its parent,
+# like _claude_desktop_ui_pids. cmdline is read NUL-split into an
+# array because `tr '\0' ' '` would lose the argument boundaries.
+_cowork_fallback_daemon_pids() {
+	local pid
+	local -a argv
+	for pid in \
+		$(pgrep -u "$(id -u)" -f 'cowork-vm-service\.js' 2>/dev/null); do
+		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
+		mapfile -d '' argv 2>/dev/null < "/proc/$pid/cmdline" \
+			|| continue
+		[[ ${argv[1]:-} == */cowork-vm-service.js ]] || continue
+		[[ ${argv[2]:-} == -socket ]] || continue
+		printf '%s\n' "$pid"
+	done
+}
+
 # Kill orphaned cowork-vm-service daemon processes.
 # After a crash or unclean shutdown the cowork daemon may outlive the
 # main Electron UI process.  The orphaned daemon holds LevelDB locks
-# in ~/.config/Claude/Local Storage/ AND keeps the Unix socket at
-# $XDG_RUNTIME_DIR/cowork-vm-service.sock bound, which causes a new
-# launch to either silently quit (LevelDB) or connect to the stale
-# daemon (socket) and hang with a blank window.
-# Must run BEFORE cleanup_stale_lock / cleanup_stale_cowork_socket
-# so that stale files left behind by the daemon can be cleaned up.
+# in ~/.config/Claude/Local Storage/ AND keeps the Unix socket the
+# client passed it (-socket $XDG_RUNTIME_DIR/claude-cowork-vm.sock)
+# bound, which causes a new launch to either silently quit (LevelDB)
+# or connect to the stale daemon (socket) and hang with a blank window.
+# Must run BEFORE cleanup_stale_lock so that stale files left behind
+# by the daemon can be cleaned up.
 cleanup_orphaned_cowork_daemon() {
-	local cowork_pids pid
-	cowork_pids=$(pgrep -f 'cowork-vm-service\.js' 2>/dev/null) \
-		|| return 0
+	local -a pids
+	mapfile -t pids < <(_cowork_fallback_daemon_pids)
+	[[ ${#pids[@]} -gt 0 ]] || return 0
 
 	# A live Claude Desktop UI process means the daemon is expected;
 	# leave it alone.  See _claude_desktop_ui_is_alive for why neither
@@ -388,26 +619,12 @@ cleanup_orphaned_cowork_daemon() {
 	fi
 
 	# No UI process found — daemon is orphaned, terminate it.
-	# Escalate to SIGKILL if a daemon is stuck and does not exit
-	# after SIGTERM within ~2s, so cleanup_stale_cowork_socket
-	# (which runs next) reliably sees no daemon.
-	for pid in $cowork_pids; do
-		kill "$pid" 2>/dev/null || true
-	done
-	local _wait=0
-	while ((_wait < 20)); do
-		pgrep -f 'cowork-vm-service\.js' &>/dev/null || break
-		sleep 0.1
-		((_wait++))
-	done
-	if pgrep -f 'cowork-vm-service\.js' &>/dev/null; then
-		for pid in $cowork_pids; do
-			kill -KILL "$pid" 2>/dev/null || true
-		done
-		log_message "Killed orphaned cowork-vm-service daemon (SIGKILL, PIDs: $cowork_pids)"
-	else
-		log_message "Killed orphaned cowork-vm-service daemon (PIDs: $cowork_pids)"
-	fi
+	# _kill_pids_escalating SIGKILLs a daemon still alive ~2s after
+	# SIGTERM. The socket it leaves behind needs no launcher cleanup:
+	# the client respawns on ECONNREFUSED and the next daemon unlinks
+	# the stale path before it binds (#888).
+	_kill_pids_escalating 'Killed orphaned cowork-vm-service daemon' \
+		"${pids[@]}"
 }
 
 _desktop_helper_cmdline_matches() {
@@ -470,33 +687,8 @@ cleanup_stale_desktop_helpers() {
 
 	[[ ${#matched[@]} -gt 0 ]] || return 0
 
-	for pid in "${matched[@]}"; do
-		kill "$pid" 2>/dev/null || true
-	done
-
-	local wait_count=0 alive
-	while ((wait_count < 20)); do
-		alive=false
-		for pid in "${matched[@]}"; do
-			if kill -0 "$pid" 2>/dev/null; then
-				alive=true
-				break
-			fi
-		done
-		[[ $alive == false ]] && break
-		sleep 0.1
-		wait_count=$((wait_count + 1))
-	done
-
-	if [[ $alive == true ]]; then
-		for pid in "${matched[@]}"; do
-			kill -KILL "$pid" 2>/dev/null || true
-		done
-		log_message \
-			"Killed stale Claude Desktop helpers (SIGKILL, PIDs: ${matched[*]})"
-	else
-		log_message "Killed stale Claude Desktop helpers (PIDs: ${matched[*]})"
-	fi
+	_kill_pids_escalating 'Killed stale Claude Desktop helpers' \
+		"${matched[@]}"
 }
 
 # Clean up stale SingletonLock if the owning process is no longer running.
@@ -519,7 +711,15 @@ cleanup_stale_lock() {
 	[[ $lock_pid =~ ^[0-9]+$ ]] || return 0
 
 	if kill -0 "$lock_pid" 2>/dev/null; then
-		# Process is still running — lock is valid
+		# Signalable is not enough (#784): PIDs are recycled, so any
+		# other same-user process that inherits the number makes a
+		# dead instance's lock look held. Electron would unlink it
+		# itself on start; doing it here keeps the log honest.
+		_pid_is_claude_desktop "$lock_pid" && return 0
+
+		rm -f "$lock_file"
+		log_message "Removed stale SingletonLock (PID $lock_pid was" \
+			'reused by another process)'
 		return 0
 	fi
 
@@ -527,36 +727,51 @@ cleanup_stale_lock() {
 	log_message "Removed stale SingletonLock (PID $lock_pid no longer running)"
 }
 
-# Clean up stale cowork-vm-service socket if no daemon is listening.
-# The service daemon creates a Unix socket at
-# $XDG_RUNTIME_DIR/cowork-vm-service.sock. After a crash or unclean
-# shutdown, the socket file persists but nothing is listening, causing
-# ECONNREFUSED instead of ENOENT when the app tries to connect.
+# #855: reclaim disk space left behind when a vm_bundles bundle
+# migrated from the pre-3.0 win32-manifest-repurposed rootfs.vhdx
+# format to the official unix-native rootfs.img format.
 #
-# NOTE: this function MUST run after cleanup_orphaned_cowork_daemon,
-# which is responsible for killing any orphaned daemon.  Given that
-# ordering, the presence of a live daemon proves the socket is in
-# use; the absence of a daemon proves the socket is stale.
-# We use that invariant directly instead of depending on socat (not
-# shipped by default on Debian/Ubuntu) or an age heuristic (the old
-# 24h fallback effectively disabled the cleanup for any recent
-# crash).
-cleanup_stale_cowork_socket() {
-	local sock="${XDG_RUNTIME_DIR:-/tmp}/cowork-vm-service.sock"
+# Before the v3.0.0 official-deb rebase, Linux Cowork worked by
+# repurposing the win32 manifest's VHDX entries (no native "unix"
+# manifest existed yet) and converting them to qcow2 on first use.
+# Anthropic's manifest has since grown a real "unix" platform entry
+# serving rootfs.img directly, and the official coworkd uses that
+# format without ever touching the old VHDX pair again once it
+# exists. Nothing deletes the superseded files, so a bundle that
+# predates the switch keeps ~11 GB of dead rootfs.vhdx /
+# rootfs.vhdx.zst forever.
+#
+# rootfs.img present is treated as proof the migration completed; a
+# bundle still on the old format alone (no rootfs.img yet) is left
+# untouched so an in-progress or vhdx-only install isn't disturbed.
+# The only code that ever read rootfs.vhdx on Linux is the 2.x KVM
+# backend in scripts/cowork-fallback/cowork-vm-service.js (vhdx ->
+# qcow2 on first use). It still exists but is unreachable in 3.x:
+# the daemon only spawns behind the asar gate
+# COWORK_VM_BACKEND=bwrap, and that value selects the bwrap backend
+# inside it. So no reachable path needs the vhdx once img exists.
+#
+# Fail-safe: never blocks launch.
+cleanup_stale_vm_bundle_images() {
+	local bundles_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/vm_bundles"
+	[[ -d $bundles_dir ]] || return 0
 
-	[[ -S $sock ]] || return 0
+	local bundle f removed
+	for bundle in "$bundles_dir"/*/; do
+		bundle=${bundle%/}
+		[[ -f "$bundle/rootfs.img" ]] || continue
 
-	# If a cowork daemon is alive, it owns this socket; leave it.
-	# cleanup_orphaned_cowork_daemon has already run and removed any
-	# orphan (with SIGKILL escalation), so anything still alive here
-	# is a non-orphaned, live daemon.
-	if pgrep -f 'cowork-vm-service\.js' &>/dev/null; then
-		return 0
-	fi
+		removed=()
+		for f in "$bundle/rootfs.vhdx" "$bundle/rootfs.vhdx.zst"; do
+			[[ -f $f ]] || continue
+			rm -f "$f" 2>/dev/null && removed+=("${f##*/}")
+		done
 
-	# No daemon — the socket file is left over from a crash.
-	rm -f "$sock"
-	log_message "Removed stale cowork-vm-service socket (no daemon running)"
+		if ((${#removed[@]} > 0)); then
+			log_message \
+				"Removed stale VM image(s) in ${bundle}: ${removed[*]} (#855)"
+		fi
+	done
 }
 
 # P1 (#768): rotate out-of-band backups of the user config and the
@@ -624,6 +839,19 @@ backup_user_config() {
 	done
 }
 
+# Print $1 as a double-quoted desktop-entry Exec token, mirroring the
+# escaping upstream applies to its own execPath: backslash-escape
+# \ " ` $, then % -> %%.
+_desktop_exec_quote() {
+	local escaped="$1"
+	escaped=${escaped//\\/\\\\}
+	escaped=${escaped//\"/\\\"}
+	escaped=${escaped//\`/\\\`}
+	escaped=${escaped//\$/\\\$}
+	escaped=${escaped//%/%%}
+	printf '"%s"' "$escaped"
+}
+
 # AUTO-1: when "Run on startup" is enabled, the official app writes
 # its own XDG autostart entry with Exec=<process.execPath> --startup —
 # the raw Electron ELF (or, under AppImage, the ephemeral
@@ -644,7 +872,7 @@ heal_autostart_entry() {
 	local launcher="$1"
 	local entry_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
 	local entry="$entry_dir/claude-desktop.desktop"
-	local exec_line current args rest escaped new_line tmp line
+	local exec_line current args rest new_line tmp line
 	local replaced=false
 
 	[[ -n $launcher && -f $entry ]] || return 0
@@ -670,15 +898,7 @@ heal_autostart_entry() {
 		*) return 0 ;;
 	esac
 
-	# Desktop-entry escaping, mirroring what upstream applies to its
-	# own execPath: backslash-escape \ " ` $, then % -> %%.
-	escaped="$launcher"
-	escaped=${escaped//\\/\\\\}
-	escaped=${escaped//\"/\\\"}
-	escaped=${escaped//\`/\\\`}
-	escaped=${escaped//\$/\\\$}
-	escaped=${escaped//%/%%}
-	new_line="Exec=\"$escaped\"$args"
+	new_line="Exec=$(_desktop_exec_quote "$launcher")$args"
 
 	# Rewrite only the first Exec line; keep everything else verbatim.
 	tmp="$entry.tmp.$$"
@@ -699,11 +919,125 @@ heal_autostart_entry() {
 	return 0
 }
 
+# Marker line identifying the hidden entry written by
+# ensure_portal_app_id_entry, so the launcher only ever rewrites or
+# removes its own file, never a user-authored one.
+readonly PORTAL_ENTRY_MARKER='X-Claude-Desktop-Debian-Portal-Alias=true'
+
+# The official app writes its own copy of <id>.desktop to the user data
+# dir (marked X-Claude-Generated=true, TryExec = the official Exec), but
+# only while the official system entry exists. That copy outlives the
+# official package: once TryExec stops resolving, GLib rejects the
+# entry and the portal refuses the app id again. Such a copy is
+# app-owned and dead, so ensure_portal_app_id_entry may replace it.
+# Returns 0 for a stale copy, 1 otherwise.
+_portal_entry_is_stale_generated() {
+	local entry="$1" try_exec
+	grep -qxF 'X-Claude-Generated=true' "$entry" 2>/dev/null \
+		|| return 1
+	try_exec=$(grep -m1 '^TryExec=' "$entry" 2>/dev/null) || return 1
+	try_exec="${try_exec#TryExec=}"
+	[[ -n $try_exec ]] || return 1
+	if [[ $try_exec == /* ]]; then
+		[[ ! -x $try_exec ]]
+	else
+		! command -v -- "$try_exec" > /dev/null 2>&1
+	fi
+}
+
+# #805: xdg-desktop-portal >= 1.20 identifies a host (non-Flatpak) app
+# by the id it passes to org.freedesktop.host.portal.Registry.Register,
+# and refuses any id without an installed <id>.desktop ("Could not
+# register app ID: App info not found"). GlobalShortcuts CreateSession
+# then fails with "An app id is required", so Quick Entry's hotkey is
+# never bound. Chromium (Electron >= 44) registers the asar desktopName
+# minus ".desktop" -- $WM_CLASS -- but our packages install
+# <package>.desktop: the official package owns
+# /usr/share/applications/$WM_CLASS.desktop and we install side-by-side
+# with it (D-002), so shipping that path would be a file conflict.
+#
+# So on native Wayland, the only backend that talks to the portal,
+# write a hidden (NoDisplay) user-level entry under that id when no
+# system one exists. Once one does (the official package got
+# installed), remove ours so it stops shadowing the official menu
+# entry. An entry without PORTAL_ENTRY_MARKER is left in place (and
+# logged), except the official app's own stale copy -- see
+# _portal_entry_is_stale_generated.
+#
+# $1 = absolute launcher path for Exec (/usr/bin/<package> or
+#      "$APPIMAGE"; empty -> no-op, like heal_autostart_entry)
+# $2 = icon name
+# Requires: is_wayland, use_x11_on_wayland (detect_display_backend)
+ensure_portal_app_id_entry() {
+	local launcher="$1"
+	local icon="${2:-}"
+	local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+	local entry="$data_home/applications/$WM_CLASS.desktop"
+	local ours=false stale=false dir tmp
+	local -a data_dirs
+
+	# Unsubstituted build-time placeholder: no real id to register.
+	[[ $WM_CLASS == *@@* ]] && return 0
+
+	if [[ -f $entry ]]; then
+		if grep -qxF "$PORTAL_ENTRY_MARKER" "$entry"; then
+			ours=true
+		elif _portal_entry_is_stale_generated "$entry"; then
+			stale=true
+		fi
+	fi
+
+	IFS=: read -r -a data_dirs \
+		<<< "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	for dir in "${data_dirs[@]}"; do
+		[[ -n $dir && -f $dir/applications/$WM_CLASS.desktop ]] \
+			|| continue
+		# A system entry already satisfies the portal.
+		if [[ $ours == true ]] && rm -f "$entry"; then
+			log_message "Removed portal app-id entry $entry" \
+				"(system entry $dir/applications/$WM_CLASS.desktop)"
+		fi
+		return 0
+	done
+
+	[[ $is_wayland == true && $use_x11_on_wayland == false ]] \
+		|| return 0
+	[[ -n $launcher ]] || return 0
+	# Any other entry is not ours to replace. Log it: if it is invalid,
+	# the portal keeps refusing the app id and nothing else says why.
+	if [[ -f $entry && $ours == false && $stale == false ]]; then
+		log_message "Left portal app-id entry $entry in place" \
+			'(not written by the launcher)'
+		return 0
+	fi
+
+	mkdir -p "${entry%/*}" 2>/dev/null || return 0
+	tmp="$entry.tmp.$$"
+	{
+		echo '[Desktop Entry]'
+		echo 'Type=Application'
+		echo 'Name=Claude'
+		echo "Exec=$(_desktop_exec_quote "$launcher")"
+		[[ -n $icon ]] && echo "Icon=$icon"
+		echo 'NoDisplay=true'
+		echo "$PORTAL_ENTRY_MARKER"
+	} > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+
+	if [[ $ours == true ]] && cmp -s "$tmp" "$entry"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	mv -f "$tmp" "$entry" 2>/dev/null || { rm -f "$tmp"; return 0; }
+	[[ $stale == true ]] && log_message \
+		'Replacing stale app-generated entry (TryExec not found)'
+	log_message "Wrote portal app-id entry $entry (#805)"
+	return 0
+}
+
 cleanup_after_electron_exit() {
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers
 	cleanup_stale_lock
-	cleanup_stale_cowork_socket
 }
 
 _electron_launcher_forward_signal() {
@@ -714,11 +1048,81 @@ _electron_launcher_forward_signal() {
 	fi
 }
 
-run_electron_and_cleanup() {
-	local status
+# Bound what a session can write to launcher.log (#864). Electron's
+# whole stdout/stderr lands in the log for the life of the session,
+# and a Chromium message stuck in a loop wrote 32 GB in a morning on
+# one machine: the launch-time rotation (#747) only ever sees the
+# file at the next start. Two defences, in order:
+#
+#   1. Runs of identical lines collapse to the line plus one
+#      "[launcher] last line repeated N more times" summary, so a
+#      single-line loop costs two lines however long it spins.
+#   2. After ELECTRON_LOG_CAP_BYTES of output (20 MiB default) the
+#      filter stops WRITING but keeps READING: a marker line records
+#      the cap, and every later line is consumed and dropped. The
+#      pipe is never closed, so Electron never sees SIGPIPE.
+#
+# fflush() per line keeps the log live for `tail -f`. mawk and gawk
+# both support it. Reads stdin, writes stdout; the caller aims stdout
+# at the log.
+_electron_output_filter() {
+	local max="${ELECTRON_LOG_CAP_BYTES:-$((20 * 1024 * 1024))}"
 
-	"$@" >> "$log_file" 2>&1 &
-	_electron_child_pid=$!
+	awk -v max="$max" '
+		function emit(line) {
+			print line
+			fflush()
+			written += length(line) + 1
+		}
+		function end_run() {
+			if (repeat > 1) {
+				emit("[launcher] last line repeated " (repeat - 1) \
+					" more times")
+			}
+			repeat = 0
+		}
+		{
+			if (have_prev && $0 == prev) {
+				repeat++
+				next
+			}
+			if (have_prev) end_run()
+			prev = $0
+			have_prev = 1
+			repeat = 1
+			if (written >= max) {
+				if (!capped) {
+					emit("[launcher] output cap (" max " bytes) reached;" \
+						" further output dropped this session (#864)")
+					capped = 1
+				}
+				next
+			}
+			emit($0)
+		}
+		END { end_run() }
+	'
+}
+
+run_electron_and_cleanup() {
+	local status fifo_dir fifo filter_pid=''
+
+	# A named pipe rather than > >(...) so the filter pid is known and
+	# the log can be drained before the exit line is written. Fail-safe:
+	# if the pipe cannot be made, fall back to the bare redirect rather
+	# than block launch.
+	if fifo_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-launcher.XXXXXX" \
+		2>/dev/null) && mkfifo "$fifo_dir/electron.out" 2>/dev/null; then
+		fifo="$fifo_dir/electron.out"
+		_electron_output_filter < "$fifo" >> "$log_file" &
+		filter_pid=$!
+		"$@" > "$fifo" 2>&1 &
+		_electron_child_pid=$!
+	else
+		[[ -n ${fifo_dir:-} ]] && rm -rf "$fifo_dir"
+		"$@" >> "$log_file" 2>&1 &
+		_electron_child_pid=$!
+	fi
 
 	trap '_electron_launcher_forward_signal TERM' TERM
 	trap '_electron_launcher_forward_signal INT' INT
@@ -731,6 +1135,20 @@ run_electron_and_cleanup() {
 	done
 
 	trap - TERM INT HUP
+
+	# Drain the filter so Electron's last lines land before the exit
+	# line. Bounded: a helper that inherited the pipe's write end and
+	# outlives the main process would keep it open, and the cleanup
+	# below is what reaps those; the filter finishes on its own once
+	# the last writer closes.
+	if [[ -n $filter_pid ]]; then
+		local i
+		for (( i = 0; i < 20; i++ )); do
+			kill -0 "$filter_pid" 2>/dev/null || break
+			sleep 0.1
+		done
+		rm -rf "$fifo_dir"
+	fi
 
 	log_message "Electron exited with code: $status"
 	cleanup_after_electron_exit
@@ -763,6 +1181,8 @@ load_launcher_config() {
 	# space-delimited match for the key that follows it.
 	local allowlist=' CLAUDE_USE_WAYLAND CLAUDE_PASSWORD_STORE'
 	allowlist+=' CLAUDE_GTK_IM_MODULE CLAUDE_DISABLE_GPU'
+	allowlist+=' CLAUDE_FORCE_SANDBOX'
+	allowlist+=' CLAUDE_TRAY_USE_DARK_ICON'
 	allowlist+=' COWORK_VM_BACKEND COWORK_NODE_PATH '
 	local line key val
 	while IFS= read -r line || [[ -n $line ]]; do
@@ -793,6 +1213,43 @@ load_launcher_config() {
 	done < "$cfg"
 }
 
+# Cinnamon can use a dark panel (org.cinnamon.theme) while GTK's colour
+# scheme stays light, so Electron's shouldUseDarkColors picks the black
+# tray PNG on a dark gray panel (#604). Export CLAUDE_TRAY_USE_DARK_ICON
+# for the asar patch; set it yourself to 0/1 to override auto-detect.
+setup_tray_icon_env() {
+	if [[ -n ${CLAUDE_TRAY_USE_DARK_ICON:-} ]]; then
+		export CLAUDE_TRAY_USE_DARK_ICON
+		log_message \
+			"Tray icon: CLAUDE_TRAY_USE_DARK_ICON=$CLAUDE_TRAY_USE_DARK_ICON (preset)"
+		if [[ $CLAUDE_TRAY_USE_DARK_ICON != 0 \
+			&& $CLAUDE_TRAY_USE_DARK_ICON != 1 ]]; then
+			log_message \
+				'Tray icon: preset is not 0/1 — the app ignores it,' \
+				'and Cinnamon auto-detect stays off'
+		fi
+		return 0
+	fi
+
+	local desktop="${XDG_CURRENT_DESKTOP:-}"
+	[[ ${desktop,,} == *cinnamon* ]] || return 0
+
+	if ! command -v gsettings &>/dev/null; then
+		return 0
+	fi
+
+	local cinnamon_theme
+	cinnamon_theme=$(gsettings get org.cinnamon.theme name 2>/dev/null) \
+		|| return 0
+	cinnamon_theme=${cinnamon_theme//[\'\"]/}
+	[[ ${cinnamon_theme,,} == *dark* ]] || return 0
+
+	export CLAUDE_TRAY_USE_DARK_ICON=1
+	log_message \
+		"Tray icon: cinnamon theme '$cinnamon_theme' has a dark panel;" \
+		'using TrayIconLinux-Dark.png (CLAUDE_TRAY_USE_DARK_ICON=1)'
+}
+
 setup_electron_env() {
 	# Persistent per-user launcher env (GUI launches can't set env via
 	# the .desktop Exec line) — load before anything reads these vars.
@@ -814,6 +1271,7 @@ setup_electron_env() {
 			"GTK_IM_MODULE override: $prev -> $GTK_IM_MODULE (via CLAUDE_GTK_IM_MODULE)"
 	fi
 
+	setup_tray_icon_env
 	setup_cowork_bwrap_env
 }
 

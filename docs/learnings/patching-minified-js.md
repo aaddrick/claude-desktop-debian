@@ -32,6 +32,86 @@ lesson stands):
 const fsMatch = region.match(/([$\w]+)\.existsSync\(/);
 ```
 
+### A capture narrower than the shape splices mid-identifier
+
+`[$\w]+` fixes the character class. The same failure recurs one
+widening later at the level of the *shape*: a capture that cannot
+express the whole construct still matches its tail, and regex
+engines match leftmost-**possible**, not leftmost-intended.
+
+`tray-icon-selection.sh` captured the DE-detector callee as
+"bare identifier, or the `(0,x.y)` indirect form" while the electron
+handle one line down already allowed `[\w$]+(?:\.[\w$]+)*`. Against
+1.26832.0's pristine ternary the asymmetry bit:
+
+```js
+t=p.lt()===`gnome`||R.nativeTheme.shouldUseDarkColors?`TrayIconLinux-Dark.png`:…
+```
+
+The match started at `lt`, the `p.` stayed in the retained prefix, and
+the splice glued the injected expression onto it:
+
+```js
+t=p.process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||…
+```
+
+`p` carries no `process` property in that scope, so the tray builder
+threw on its first read, the tray never registered, and the global
+Sentry handler swallowed it. Two releases shipped that way (1.26832.0,
+1.28929.0); 1.30096.x and 1.32885.1 happened to emit a bare callee and
+were clean. Whether a release breaks is luck of the minifier.
+
+Four things generalize:
+
+- **Keep captures for the same construct symmetric.** Two adjacent
+  captures of "a callee" that admit different shapes is a bug waiting
+  for the minifier to find it.
+- **A match-count assertion is not a splice assertion.** The
+  exactly-1 check passed throughout — there *was* exactly one ternary.
+  Count says the shape is present; it says nothing about where the
+  match begins. Assert the splice point separately, so a shape the
+  capture cannot express hard-fails instead of corrupting the bundle.
+- **Assert the splice point with an allowlist, not a denylist.** The
+  first cut of that guard rejected a preceding `[\w$.]`, which reads as
+  equivalent and isn't: `await lt()` walks through it (the preceding
+  char is a space) and moves the `await` onto the injected expression,
+  and `this.#lt()` walks through it to emit `this.#process.env.…`, an
+  undeclared private name — a SyntaxError that takes out the whole main
+  chunk rather than just the tray. Enumerating bad prefixes only moves
+  the goalposts to the next shape nobody pictured, which is the same
+  mistake one level up. State the requirement positively instead: the
+  retained prefix must *end an expression*, so its last non-whitespace
+  token has to be a punctuator that can be followed by a fresh one
+  (`[=(,;:?|{[]`, `=>`) or `return`. Choose that set against the real
+  bundles rather than from the grammar, and pin it from *both* sides: a
+  fixture per way a prefix can survive the match, and a fixture per
+  prefix that must keep passing, because an allowlist tightened one
+  character too far is a spurious build failure on a release nobody is
+  watching. `&` stays out because an `a&&` prefix would be absorbed by
+  the injected `||`-chain and the guard it expresses silently lost.
+  `|` is in — but as the status quo, not as a clean composition: with
+  `e||` retained in front, the `=0` state reduces to `e||!1||!1` → `e`.
+  A prefix the anchor cannot see is a limit on the patch's *reach*,
+  which the splice guard neither creates nor fixes; note it rather than
+  letting a passing test imply the semantics were checked.
+- **An idempotency guard keyed to a substring can be satisfied by the
+  corruption.** `code.includes(applied)` matched the mispatched text,
+  because `p.` + `applied` contains `applied`. The second pass logged
+  "already applied" and shipped the damage. Run every occurrence
+  through the same splice-point predicate: one that doesn't start an
+  expression means a prior build spliced mid-expression, so the bundle
+  is corrupt rather than patched and deserves its own named failure.
+
+The test that would have caught it is a fixture in the shape the
+capture cannot express. `tray-icon-selection.bats` covered the
+`(0,Ei.oPe)()` indirect form and a bare callee, never a plain `p.lt()`
+chain, which is why the suite stayed green through both broken
+releases. The near-miss fixtures that pin the splice guard are chosen
+the same way — `p?.lt()`, `await lt()`, `this.#lt()` — one shape per
+way a prefix can survive the match, plus an `e||AL()` fixture that
+must keep *passing* so the allowlist can't be tightened into a
+false hard-fail.
+
 ## The beautified false-negative trap
 
 Testing a regex against `build-reference/` is not verification. The
@@ -68,6 +148,73 @@ lesson stands) mixed both — `\s*` where the surrounding
 context is bounded enough that newline-spanning is harmless, and
 literal token sequences (`",b:` etc.) when stricter adjacency is
 required.
+
+## Quote style: `"` is not stable either
+
+Whitespace tolerance assumes the *tokens* hold still and only the
+spacing moves. Upstream 1.26832.0 broke that assumption: the bundler
+changed and every string literal flipped from double quotes to
+backticks. Same code, same strings, different delimiter.
+
+Measured across the main-process files of both bundles:
+
+| bundle | `"short-literal"` | `` `short-literal` `` |
+| --- | --- | --- |
+| 1.24012.11 | 46,526 | 429 |
+| 1.26832.0 | 3,050 | 44,701 |
+
+A near-total inversion. Four of the ten anchors in the active suite
+matched on a `"`-delimited literal and went to zero matches; they came
+back the instant the delimiter was generalized. The build-fatal ones
+failed the build, which is the outcome the guards are for, but the
+diagnosis cost a full triage cycle because "anchor not found" reads as
+"upstream deleted the feature" and the feature was untouched.
+
+**Never write a bare quote in an anchor.** Use a quote class so all
+three delimiters match:
+
+```bash
+# Bad: pins the delimiter the current minifier happens to emit
+grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))'
+
+# Good: tolerates ", ' and `
+grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*[`"'"'"']pop-up-menu[`"'"'"']\))'
+```
+
+In the `node` heredoc patches, build the class once and concatenate it
+rather than repeating the escaping:
+
+```js
+// Quote-class helper: match a literal under any delimiter.
+const q = s => '[`"\']' + s + '[`"\']';
+const arrRe = new RegExp('\\[\\s*' + q('\\/usr\\/libexec\\/virtiofsd') +
+    '\\s*,\\s*' + q('\\/usr\\/bin\\/virtiofsd') + '\\s*\\]');
+```
+
+Two related shifts landed in the same bump, so a bundler swap should be
+treated as a class of breakage rather than one delimiter change:
+
+- **Syntax level rose.** Optional chaining is now preserved instead of
+  being downleveled. An anchor written against
+  `(e==null?void 0:e.id)==="ubuntu"` has to also accept
+  ``e?.id===`ubuntu` ``. `let` likewise replaced most `const`/`var`
+  emission, so `(?:const|let)` beats either alone.
+- **Callee indirection appeared where there was none.** `X.spawn(` became
+  `(0,ye.spawn)(`. The tray patch already tolerated this shape; it is now
+  the default, not a special case, and every call-site anchor wants it.
+  Tolerate the plain property chain in the same alternation —
+  `(?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+(?:\.[\w$]+)*)`. The tray patch
+  originally shipped without that second `(?:\.[\w$]+)*` and mispatched
+  two releases; see "A capture narrower than the shape splices
+  mid-identifier" above.
+
+One inference worth flagging rather than asserting: when concatenation
+is re-emitted as interpolation, a message that was one contiguous
+literal (`"...completed in "+m+"ms"`) becomes a template with a
+`${...}` hole in the middle, so an anchor spanning that hole breaks
+even though the delimiter class is right. Anchor on the *stable prefix*
+before the first interpolation (`[warm] Promoting warm file`), not on a
+whole sentence.
 
 ## Replacement-string escaping: `\1`, `&`, `$1`
 
@@ -152,6 +299,41 @@ separates "anchor missing" from "already applied" in the build log:
 
 PR #436 verified by running the patch twice and diffing the output.
 
+## Retirement: a patch must change the pristine bundle
+
+Every build patches the freshly extracted official `app.asar`, so an
+active patch that changes no bytes there is a signal, not a success:
+
+```
+Retirement tripwire: patch_org_plugins_path changed nothing in the official bundle.
+  Retires by: bytes: no linux case upstream (unreported)
+```
+
+`_run_active_patches` in `app-asar.sh` digests `.vite/build/` before
+and after each patch and fails the build on a no-op. The patch's own
+log line is not evidence: `org-plugins.sh` prints `Added Linux
+org-plugins path` after a `sed` that may not have matched, and every
+idempotency guard in the suite keys on *our* injected bytes, so an
+upstream fix never reads as "already applied" — it reads as a quiet
+no-op, or as an anchor miss indistinguishable from a re-minify.
+
+When it fires, the `patch_retirement` row next to `active_patches`
+says what "fixed upstream" means for that patch:
+
+- **`bytes`** — diff the bundle against the last version where the
+  patch applied. If upstream shipped the fix, delete the patch and its
+  row; if the anchor merely moved, re-derive it.
+- **`behavior`** — the bug is outside `app.asar` (quick-window's is in
+  Electron), so a no-op is always an anchor reshape. Retire only on a
+  live repro that no longer reproduces.
+- **`never`** — our own feature (the bwrap backend). A no-op is
+  breakage; fix the anchor.
+
+The harness's second pass (`tests/test-patch-stage.sh`) runs with
+`PATCH_STAGE_RERUN=1`, which inverts the check: over an already-patched
+bundle every patch must change *nothing*, so a guard that misses its
+own output is named instead of surfacing as a bare hash diff.
+
 ## Anchor selection: prefer literals over identifiers
 
 The above sections cover making a patch work on first run. This one
@@ -164,6 +346,11 @@ minification untouched (true for the upstream bundler used here; a
 `--mangle-props` build would invalidate property-name anchors).
 Anchor on those. A hardcoded minified name silently no-ops the next
 release; the build log still says "patched."
+
+The string *content* survives; its *delimiter* does not, and neither
+does the syntax around it. Match literals through a quote class and
+keep the surrounding call shape loose — see "Quote style: `"` is not
+stable either" above, which is how the whole suite broke on 1.26832.0.
 
 Three patterns from the suite (quick-window survives the v3.0.0
 rebase; the cowork and tray examples are historical — patches deleted
@@ -226,6 +413,214 @@ When neither side is reliable, narrow the search region first.
 `cowork.sh:269-276` does this for the ENOENT check, scanning only a
 300-character window before the error string.
 
+## Code-split bundles: resolve the file, don't hardcode it
+
+For years the whole main process lived in one file,
+`.vite/build/index.js`, and every patch hardcoded that path. Upstream
+1.19367.0 code-split it: `index.js` became a ~700-byte entry stub that
+`require()`s a content-hashed main chunk (`index.chunk-<hash>.js`),
+which pulls in ~40 more `index.chunk-<hash>.js` files (86 by
+1.24012.11, 325 by 1.26832.0). The hash changes
+every release, so the name can't be hardcoded either. Every patch
+anchored on the literal `index.js` path silently missed — the
+build-fatal ones (`virtiofsd-probe`, `cowork-bwrap` A/B) failed the
+build, the WARN-only ones (`quick-window`, `org-plugins`) skipped and
+shipped an under-patched asar.
+
+Two rules fall out, both now in `app-asar.sh` / the patch suite:
+
+- **Resolve the target file, don't name it.** `_resolve_main_js`
+  (`app-asar.sh`) follows the stub's `require("./index.chunk-<hash>.js")`
+  to the main chunk and falls back to `index.js` for the pre-split
+  layout, so both bundle shapes work. It fails loud if `index.js` ever
+  requires more than one main chunk (a future deeper split), rather than
+  patching the wrong one silently. Patches read `$main_js`.
+
+- **One logical patch can span chunks.** The split follows dynamic
+  `import()` boundaries, so an optional subsystem can land in its own
+  chunk apart from the code that gates it. `cowork-bwrap`'s A/B/C1 were
+  in the main chunk, but its warm-prefetch block (C2) moved to a
+  separate warm chunk — resolved there by a stable `[warm]` log literal,
+  exactly the "anchor on a developer string, then find the file that
+  carries it" move. Don't assume the whole patch touches one file.
+
+**The single-chunk assumption died in 1.26832.0.** That release
+dissolved the core: `index.js` went from a 773-byte stub with one
+`require()` to a 195,889-byte file issuing 104 `require()` calls across
+83 distinct chunks, and the 5.2 MB core chunk was replaced by a largest
+chunk of 1.28 MB. Total main-process bytes moved +2.4%, so this was a
+re-split of existing code, not new code — the core-shrink signature.
+`_resolve_main_js`'s multi-chunk guard fired exactly as designed and
+failed the build rather than mispatching, which is the outcome to want,
+but it means the "resolve one file, hand it to every patch" contract is
+finished. Anchors now live in three different places at once: the tray
+ternary in `index.js` itself, quick-window and org-plugins and virtiofsd
+in `index.chunk-*` files, and the cowork evaluator in a second
+`index2.chunk-*` family that did not exist before.
+
+Resolution has to become per-anchor: grep the whole `.vite/build` tree
+for the anchor's stable literal, assert exactly one file carries it,
+patch that file. `cowork-bwrap` already did this for its warm chunk
+(`grep -lF '[warm] ...'`), and that one-off is the shape the rest of the
+suite needs. Two traps the census surfaced:
+
+- **Presence is not the anchor.** `pop-up-menu` appears in two 1.26832.0
+  chunks, but only one carries the `setAlwaysOnTop(!0,...)` call the
+  patch actually rewrites. Resolve on the *full anchor shape*, not on the
+  distinctive string alone, or the exactly-one assertion picks a decoy.
+- **A missing anchor is not always a missing feature.** Of the four
+  1.26832.0 anchors that survived the quote-class fix and still missed,
+  every one was a genuine upstream reshape rather than a deletion: the
+  virtiofsd resolver now returns `await FT(kT)||...` where it returned a
+  bare identifier, and `cowork-bwrap` C1 inverted polarity from
+  ``(x?.status)!=="supported"?!1:`` to ``x?.status===`supported`?(...)``.
+  An inverted guard is the dangerous one — a regex loose enough to match
+  both shapes would install the gate backwards. The fix is to stop the
+  anchor *before* the comparison: C1 matches only the function head and
+  destructure, then injects ahead of upstream's check, which is correct
+  under either polarity because it never has to agree with one.
+
+### Adjacency is an assumption too
+
+Stopping the anchor early leaves it holding one last unstated
+assumption: that the tokens it *does* span stay next to each other.
+1.37937.1 broke C1 again on exactly that. Same function, same
+destructure, same `return` — upstream inserted one statement in front:
+
+```js
+1.26832.0:  async function ut(e,n){let{yukonSilver:r}=p.n();return …
+1.37937.1:  async function QH(e,t){await nB();let{yukonSilver:r}=iB();return …
+```
+
+The anchor required the destructure to sit immediately after the opening
+brace, so it went to zero matches and `_resolve_anchor_file` failed the
+build — through four upstream bumps (1.37937.1, 1.37937.3, 1.40609.0,
+1.40609.1) in which no release shipped. Worth noting how it read: an
+anchor that *lost a feature* and an anchor that *gained a statement*
+produce the same "matched no file" line, and the second is by far the
+likelier of the two.
+
+Leave a bounded prelude between the tokens you span, and fence it on
+braces rather than on `.`:
+
+```
+async function\s+[\w$]+\([\w$]+,[\w$]+\)\{ [^{}]{0,80} (?:const|let)\{yukonSilver:…
+```
+
+`[^{}]` cannot cross a nested block or leave the function body, so the
+budget buys a couple of simple statements and nothing structural — where
+`.{0,80}` would happily reach past an `if(e){t()}` and gate a function
+whose head is 80 bytes from an unrelated destructure. It also absorbs a
+`;` inside a template literal, which a statement-counting
+`(?:[^{};]*;){0,2}` splits on.
+
+Loosening buys back the match at the cost of the uniqueness the tight
+version got for free, so pay for it in two places at once:
+
+- **Keep a discriminator past the loosened joint.** C1's was the
+  `();return` tail (since replaced by a log literal — next section).
+  `startVM` in the same chunk opened identically and destructured the
+  same property, and was told apart only by continuing into `if(`
+  instead of `return`. Drop the tail and the gate installs on the wrong
+  function.
+- **Assert exactly one match.** `replace()` silently takes the first.
+  The count assertion is what turns a future second call site into a
+  named warning instead of a coin flip — the same guard patches A and B
+  already carried.
+
+### The terminus is an assumption too
+
+1.46388.2 broke C1 a third time, and this one had nothing to do with
+spacing. The destructure the anchor ended on was simply gone:
+
+```js
+1.37937.1:  async function QH(e,t){await nB();let{yukonSilver:r}=iB();return r?.status===`supported`&&(…
+1.46388.2:  async function YU(e,t){return await wB(),EB().status==="supported"&&(…
+```
+
+Same function, same guard, same log line — the status now comes off a
+helper call instead of a local. The `();return` discriminator that told
+the download function apart from `startVM` was pinned to a *statement
+shape*, and statement shapes are the minifier's to rearrange. Both the
+prelude and the terminus had been chosen as syntax; the only thing in
+the function that held across all three reshapes was the developer
+string in its body (`[downloadVM] Download already in progress`), with
+nothing but its delimiter moving.
+
+So the terminus is now that literal, and the head→literal stretch is
+fenced instead of pinned:
+
+```
+async function\s+[\w$]+\([\w$]+,[\w$]+\)\{ (?:[^{}]|\{yukonSilver:[\w$]+\}){0,240}? \[downloadVM\] Download already in progress
+```
+
+Three things carry over from the prelude lesson. The fence is still
+`[^{}]`, and the one brace pair it admits is spelled out as the
+destructure the older shapes carry — a fence that admitted any `{…}`
+pair would step over `if(e){t()}` exactly as `.` would. The
+exactly-one assertion stays. And the literal is a *prefix* of the
+message, cut before `, waiting...`, so a future re-emission as a
+template with an interpolation hole cannot split it.
+
+One new trap the widening exposed: a body budget generous enough for
+the real function is also generous enough to absorb the patch's own
+injected gate on a re-run, which makes the marker allowance from the
+next section silently redundant — until upstream grows the prelude and
+the second pass fails at resolution. The mutation check is what
+surfaced it: dropping the allowance went green. The gate is now braced
+(`if(…){return!1}`) so the fence cannot swallow it, and dropping the
+allowance goes red in the idempotency test instead of in a future
+build. When a mutation on defensive code comes back green, ask what
+*else* is covering for it, and whether that cover has a budget.
+
+### A resolution anchor must survive its own patch
+
+Once a patch resolves its own file, the anchor acquires a second job it
+never had as a patch-site anchor: it has to still match *after* the patch
+has run. Six of the first ten anchors written for #820 failed that.
+`org-plugins` resolves on the compound `` `org-plugins`);default:return
+null `` shape and then inserts a `case"linux"` between those two halves;
+`cowork-bwrap` A resolves on a function head it rewrites; the tray patch
+resolves on a ternary condition it replaces. Every one resolved fine on a
+clean tree and failed on a re-run — and failed *at resolution*, so the
+carefully written idempotency guards inside each patch never got to run.
+
+The build normally extracts a fresh asar, so this hides in production and
+surfaces only under a second pass. Test it explicitly: run the whole
+patch stage twice against the same tree and assert the second run is a
+no-op and the repacked archive is byte-identical.
+
+Pick a resolution anchor the patch provably never rewrites, which is
+usually *adjacent* to the patch site rather than at it:
+
+| patch | resolves on | why it survives |
+| --- | --- | --- |
+| `org-plugins` | `Application Support/Claude/org-plugins` | the darwin path; the insert lands elsewhere in the switch |
+| `cowork-bwrap` A | `return process.platform,X()}` | the injected early-return goes in front of it, not through it |
+| `cowork-bwrap` B | the `-socket` literal | re-emitted verbatim in both branches of the swapped call |
+| tray | the two adjacent `TrayIconLinux*.png` literals | the condition is rewritten, the literals are re-emitted |
+
+Where that is impossible, teach the anchor to tolerate the patch's own
+marker — `cowork-bwrap` C1 allows an optional braced
+`/*cowork-bwrap-dl*/if(…){return!1}` segment between the function head
+and the body it fences (the braces are what keep that allowance
+load-bearing — see the previous section).
+
+One mechanical footnote: resolve with `grep -lPz`, not `grep -lP`. Bare
+`-P` is line-oriented, so a `\s*` in the anchor cannot cross a newline
+and every multi-line beautified bundle reports the anchor missing —
+the beautified false-negative trap again, this time in the resolver
+rather than in the patch.
+
+The corollary for anchor uniqueness: a literal that was unique across
+one 15 MB file can now recur across ~50 chunks (source-map tails,
+dead re-exports, the same string logged from two subsystems). Confirm
+your anchor is unique *within the resolved file*, not just present —
+`grep -c` the specific chunk, not the whole `.vite/build` tree. The
+tripwires (`_check_upstream_tripwires`) are the exception that still
+greps the whole asar on purpose: they only assert a behavior marker
+exists *somewhere*, so a relocated marker is fine.
+
 ## Verifying a hypothesis before shipping a fix
 
 Pull the pinned pool path and SHA from `scripts/setup/official-deb.sh`,
@@ -273,8 +668,9 @@ Four layers: build log, syntactic validity, asar markers, runtime.
    grep -E 'Active asar patches|WARNING:' build.log
    ```
 
-   A healthy v3.0.0 build logs `Active asar patches:
-   patch_quick_window patch_org_plugins_path` and no `WARNING:`.
+   A healthy build logs `Active asar patches: patch_quick_window
+   patch_org_plugins_path patch_virtiofsd_probe patch_cowork_bwrap`, a
+   `Main-process JS: …/index.chunk-<hash>.js` line, and no `WARNING:`.
    (Historical example — a healthy 1.5354.0 build logged `Applied 12
    cowork patches`, and a lower count or any `WARNING:` in the cowork
    section meant a half-patched asar; the cowork patches were deleted

@@ -6,14 +6,16 @@
 # default verdict for any patch is delete, and when the array is empty
 # the official app.asar ships byte-identical (no extract, no repack).
 #
-# Each entry is a function sourced from scripts/patches/*.sh that
-# operates on app.asar.contents/.vite/build/index.js relative to CWD;
-# patch_app_asar runs them with CWD = $app_staging_dir/resources.
+# Each entry is a function sourced from scripts/patches/*.sh that edits
+# the main-process JS relative to CWD; patch_app_asar runs them with
+# CWD = $app_staging_dir/resources. Each patch resolves the file its own
+# anchor lives in via _resolve_anchor_file — there is no single
+# main-process file to hand them all (see that function's comment).
 #
 # Sourced by: build.sh
 # Sourced globals:
-#   app_staging_dir, asar_exec, work_dir, project_root, WM_CLASS
-# Modifies globals: (none)
+#   app_staging_dir, asar_exec, work_dir, project_root
+# Modifies globals: WM_CLASS (derived + exported)
 #===============================================================================
 
 # Survivor candidates per docs/learnings/official-deb-rebase-verification.md:
@@ -33,11 +35,44 @@
 #                              #772). Every branch is gated on
 #                              COWORK_VM_BACKEND=bwrap, so unflagged
 #                              launches ship the official path unchanged.
+#   patch_tray_icon_env_override — Cinnamon can use a dark panel while
+#                              GTK still reports a light colour scheme,
+#                              so upstream's shouldUseDarkColors
+#                              heuristic picks the wrong PNG (#604).
+#                              The launcher exports
+#                              CLAUDE_TRAY_USE_DARK_ICON; this threads
+#                              it into the existing ternary. Interim
+#                              pending upstream (anthropics/claude-code
+#                              #77170); its hard-fail anchor is the
+#                              retirement tripwire.
 active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
 	patch_virtiofsd_probe
 	patch_cowork_bwrap
+	patch_tray_icon_env_override
+)
+
+# Retirement tripwire: how each active patch stops being needed. Every
+# build starts from the pristine official bundle, so a patch that
+# changes no bytes there has lost its reason to exist or its anchor —
+# _check_patch_effect fails the build either way and prints this entry
+# so whoever triages knows what "fixed upstream" means for that patch.
+#
+#   bytes      upstream can ship the fix in app.asar; a no-op is the
+#              retirement signal (or an anchor reshape — read the diff)
+#   behavior   the bug lives outside app.asar (e.g. in Electron), so
+#              bytes cannot prove it fixed; retire only on a repro that
+#              no longer reproduces, and a no-op is an anchor reshape
+#   never      our own feature, not an upstream bug; a no-op is breakage
+#
+# Every entry in active_patches needs a row (tests/app-asar.bats).
+declare -gA patch_retirement=(
+	[patch_quick_window]='behavior: Electron-on-KDE stale focus (#393)'
+	[patch_org_plugins_path]='bytes: no linux case upstream (unreported)'
+	[patch_virtiofsd_probe]='bytes: 771-cowork-virtiofsd-probe.md'
+	[patch_cowork_bwrap]='never: opt-in bwrap backend (#772)'
+	[patch_tray_icon_env_override]='bytes: 604-tray-panel-theme.md'
 )
 
 # The #768 config-wipe guard (config.sh) is NOT wired: a contrarian
@@ -57,10 +92,15 @@ active_patches=(
 # uncompressed) so the check also runs in patch-zero mode, where the
 # archive is never extracted.
 #
-#   apt_channel_pending — the official updater early-returns on this
-#     marker while the APT channel is pending (decision D-001). If it
-#     disappears, upstream turned on self-updating, which fights the
-#     package manager — the 2.x autoUpdater-noop question is live again.
+#   managed_by_package_manager — the telemetry reason inside the
+#     Linux build's constant-folded updater early-return ("[updater]
+#     Linux: in-app updater off (updates via apt)"). Renamed by
+#     upstream from apt_channel_pending in the 1.18286.2 → 1.19367.0
+#     window when the APT channel went live: Linux updates are now
+#     permanently the package manager's job (decision D-001). If it
+#     disappears, upstream rewrote that gate and may have turned on
+#     self-updating, which fights the package manager — the 2.x
+#     autoUpdater-noop question is live again.
 #   menuBarEnabled:!0   — the settings default that keeps the menu bar
 #     on. If it disappears, upstream flipped the default the deleted
 #     menuBar patch used to enforce.
@@ -70,9 +110,10 @@ active_patches=(
 _check_upstream_tripwires() {
 	local asar_path="$1"
 
-	if ! LC_ALL=C grep -aq 'apt_channel_pending' "$asar_path"; then
-		echo 'Tripwire (AU-1): "apt_channel_pending" is gone from the' \
-			'official bundle — upstream may have enabled the' \
+	if ! LC_ALL=C grep -aq 'managed_by_package_manager' "$asar_path"
+	then
+		echo 'Tripwire (AU-1): "managed_by_package_manager" is gone' \
+			'from the official bundle — upstream may have enabled the' \
 			'autoupdater. Re-evaluate before shipping (see' \
 			'docs/decisions.md D-001).' >&2
 		exit 1
@@ -86,7 +127,63 @@ _check_upstream_tripwires() {
 		exit 1
 	fi
 
-	echo 'Upstream tripwires clear (autoupdater pending, menu bar on)'
+	echo 'Upstream tripwires clear (updater off on Linux, menu bar on)'
+}
+
+# Digest every file under .vite/build (relative to CWD, like
+# _resolve_anchor_file). Every active patch writes here, because every
+# one resolves its target through _resolve_anchor_file; a patch that
+# writes anywhere else is invisible to this check and would trip a false
+# "changed nothing". A missing or empty tree fails rather than hashing
+# to a constant that compares equal on both sides.
+_bundle_digest() {
+	local build_dir='app.asar.contents/.vite/build'
+
+	[[ -d $build_dir ]] || return 1
+	[[ -n $(find "$build_dir" -type f -print -quit) ]] || return 1
+	find "$build_dir" -type f -print0 | LC_ALL=C sort -z \
+		| xargs -0 sha256sum | sha256sum | cut -d' ' -f1
+}
+
+# A patch's own success message is not evidence that it changed
+# anything: org-plugins.sh reports "Added" after a sed that may not have
+# matched. So the orchestrator measures instead. On the pristine bundle
+# every active patch must change bytes (a no-op means upstream fixed it
+# or the anchor moved); on a re-run over an already-patched bundle
+# (PATCH_STAGE_RERUN=1, the harness's idempotency pass) none may.
+_check_patch_effect() {
+	local patch_fn="$1"
+	local before="$2"
+	local after="$3"
+	local retire="${patch_retirement[$patch_fn]:-no patch_retirement entry}"
+
+	if [[ ${PATCH_STAGE_RERUN:-} == 1 ]]; then
+		[[ $before == "$after" ]] && return 0
+		echo "Idempotency: $patch_fn changed an already-patched" \
+			'bundle on re-run — its guard misses its own output.' >&2
+		return 1
+	fi
+
+	[[ $before != "$after" ]] && return 0
+	echo "Retirement tripwire: $patch_fn changed nothing in the" \
+		'official bundle.' >&2
+	echo "  Retires by: $retire" >&2
+	echo '  Either upstream shipped the fix (drop the patch from' \
+		'active_patches) or its anchor moved and the patch skipped' \
+		'(re-derive the anchor). Decide before shipping.' >&2
+	return 1
+}
+
+# Run every active patch, checking each one's effect on the bundle.
+_run_active_patches() {
+	local patch_fn before after
+
+	for patch_fn in "${active_patches[@]}"; do
+		before=$(_bundle_digest) || return 1
+		"$patch_fn" || return 1
+		after=$(_bundle_digest) || return 1
+		_check_patch_effect "$patch_fn" "$before" "$after" || return 1
+	done
 }
 
 # Read one field out of the asar's package.json without a full extract.
@@ -103,6 +200,92 @@ _asar_package_json_field() {
 		"$meta_dir/package.json" "$field"
 }
 
+# Derive the WM_CLASS / StartupWMClass value from the asar's
+# package.json desktopName (#779). Chromium derives the runtime X11
+# WM_CLASS / Wayland app_id from that field minus its .desktop suffix
+# — not from the ELF basename, the launcher's --class flag, or
+# productName. Upstream has renamed it once already
+# (claude-desktop.desktop → com.anthropic.Claude.desktop across
+# 1.18286.0 → 1.19367.0), so any hardcoded value silently breaks
+# window-to-launcher grouping on the next rename. Verified live on
+# GNOME and KDE against both releases (see #786).
+_derive_wm_class() {
+	local desktop_name="$1"
+
+	if [[ -z $desktop_name ]]; then
+		echo 'Error: package.json desktopName is missing/empty — cannot' \
+			'derive WM_CLASS. Upstream moved the field Chromium reads' \
+			'the window class from; re-verify before shipping (#779).' >&2
+		return 1
+	fi
+	if [[ $desktop_name != *.desktop ]]; then
+		echo "Error: desktopName '$desktop_name' has no .desktop" \
+			'suffix — upstream changed its shape; re-verify how Chromium' \
+			'derives the window class before shipping (#779).' >&2
+		return 1
+	fi
+	printf '%s\n' "${desktop_name%.desktop}"
+}
+
+# Resolve the single .vite/build file whose bytes carry an anchor, and
+# echo its path relative to the resources CWD.
+#
+# There is deliberately no "the main JS file" any more. Pre-3.x bundles
+# kept the whole main process in .vite/build/index.js; 1.19367.0 split it
+# into a stub plus one content-hashed main chunk; 1.26832.0 dissolved
+# that core entirely — index.js became a 190 KB file require()ing 83
+# chunks, across two chunk families (index.chunk-* and index2.chunk-*),
+# with the tray anchor left behind in index.js itself. A single resolved
+# path cannot serve every patch, so each anchor resolves its own file
+# (#820, docs/learnings/patching-minified-js.md).
+#
+# Takes a PCRE for the FULL anchor shape, not just its distinctive
+# string: on 1.26832.0 the literal `pop-up-menu` occurs in two chunks but
+# only one carries the setAlwaysOnTop call quick-window rewrites, so
+# resolving on the string alone picks a decoy. Asserting exactly one
+# match is what replaces the old multi-chunk guard: zero or many is a
+# hard error rather than a silent mispatch.
+#
+# Anchors must be written with a quote class ([`"']) rather than a bare
+# double quote — 1.26832.0 swapped the minifier and re-emitted nearly
+# every string literal as a backtick template.
+_resolve_anchor_file() {
+	local label="$1"
+	local pattern="$2"
+	local build_dir='app.asar.contents/.vite/build'
+
+	if [[ ! -d $build_dir ]]; then
+		echo "No $build_dir — upstream layout changed?" >&2
+		return 1
+	fi
+
+	# -z treats each file as one record so an anchor's \s* can span a
+	# newline. Shipped bytes are single-line, but a beautified reference
+	# bundle wraps the same expression across lines and a line-oriented
+	# grep would report it missing (the beautified false-negative trap in
+	# docs/learnings/patching-minified-js.md).
+	local -a hits
+	mapfile -t hits < <(
+		grep -rlPz --include='*.js' -- "$pattern" "$build_dir" 2>/dev/null \
+			| sort
+	)
+
+	if (( ${#hits[@]} == 0 )); then
+		echo "Anchor '$label' matched no file under $build_dir —" \
+			'upstream reshaped or removed it. Re-derive the anchor' \
+			'before shipping (#820).' >&2
+		return 1
+	fi
+	if (( ${#hits[@]} > 1 )); then
+		echo "Anchor '$label' matched ${#hits[@]} files (${hits[*]}) —" \
+			'ambiguous. Tighten the anchor to the full shape so it' \
+			'selects one file (#820).' >&2
+		return 1
+	fi
+
+	printf '%s\n' "${hits[0]}"
+}
+
 patch_app_asar() {
 	section_header 'Patch app.asar'
 
@@ -112,17 +295,30 @@ patch_app_asar() {
 		exit 1
 	fi
 
-	# Fail fast if upstream changed productName — a mismatch silently
-	# breaks StartupWMClass in every .desktop file we ship.
+	# Derive WM_CLASS from the field Chromium actually reads (see
+	# _derive_wm_class above). Exported because the packaging scripts
+	# that interpolate it into .desktop files and launcher-common.sh
+	# run as child processes of build.sh.
+	local desktop_name
+	desktop_name=$(_asar_package_json_field desktopName \
+		"$resources_dir/app.asar")
+	WM_CLASS=$(_derive_wm_class "$desktop_name") || exit 1
+	export WM_CLASS
+	echo "WM_CLASS '$WM_CLASS' derived from desktopName '$desktop_name'"
+
+	# productName stays tripwired separately: it no longer feeds
+	# WM_CLASS, but Electron's userData path (~/.config/Claude) keys on
+	# it, and the launcher, doctor, and docs all assume that location.
 	local product_name
 	product_name=$(_asar_package_json_field productName \
 		"$resources_dir/app.asar")
-	if [[ $product_name != "$WM_CLASS" ]]; then
-		echo "Error: upstream productName '$product_name' != WM_CLASS" \
-			"'$WM_CLASS' — update WM_CLASS in build.sh" >&2
+	if [[ $product_name != 'Claude' ]]; then
+		echo "Error: upstream productName '$product_name' != 'Claude'" \
+			'— the ~/.config/Claude userData assumption broke; re-audit' \
+			'the launcher and doctor paths before shipping.' >&2
 		exit 1
 	fi
-	echo "productName '$product_name' matches WM_CLASS"
+	echo "productName '$product_name' unchanged (userData path holds)"
 
 	# Runs against the pristine bytes, before any patch touches them.
 	_check_upstream_tripwires "$resources_dir/app.asar"
@@ -138,10 +334,20 @@ patch_app_asar() {
 	cd "$resources_dir" || exit 1
 	"$asar_exec" extract app.asar app.asar.contents || exit 1
 
-	local patch_fn
-	for patch_fn in "${active_patches[@]}"; do
-		"$patch_fn" || exit 1
-	done
+	# Layout census, informational only — each patch resolves the file
+	# its own anchor lives in (see _resolve_anchor_file). Printed so a
+	# build log still records when upstream reshapes the bundle.
+	local build_dir='app.asar.contents/.vite/build'
+	# grep -o | wc -l, not grep -c: the bundle is near-single-line, so
+	# grep -c would report matching LINES (a handful) rather than matches.
+	local js_count chunk_count
+	js_count=$(find "$build_dir" -name '*.js' -type f | wc -l)
+	chunk_count=$(grep -oP 'require\("\./index2?\.chunk-[^"]+\.js"\)' \
+		"$build_dir/index.js" 2>/dev/null | wc -l)
+	echo "Bundle layout: $js_count JS files under .vite/build," \
+		"$chunk_count chunk requires from index.js"
+
+	_run_active_patches || exit 1
 
 	# Repack, preserving upstream's unpacked set exactly. The unpack
 	# expression is derived from the shipped app.asar.unpacked tree

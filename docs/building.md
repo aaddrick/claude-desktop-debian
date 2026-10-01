@@ -36,7 +36,7 @@ The official `.deb` is unpacked with `ar` + `tar` instead of `dpkg-deb`, so rpm-
 | `--build deb` | `dpkg-deb` (dpkg-dev) |
 | `--build rpm` | `rpmbuild` (rpm-build) |
 | `--build appimage` | `appimagetool` — downloaded into `build/` automatically when not on PATH |
-| The asar patch stage | Node.js v20+ — a local v20.18.1 is downloaded into `build/` when the system Node is missing or too old; `@electron/asar` is npm-installed into `build/` |
+| The asar patch stage | Node.js v22.12+ (the `@electron/asar` engine floor) — a local v22.23.2 is downloaded into `build/` when the system Node is missing or too old; `@electron/asar` is npm-installed into `build/`, then run once to prove the host Node can execute it |
 
 On Debian- and RPM-family hosts, `build.sh` offers to install the missing system packages via `apt`/`dnf` (`check_dependencies` in `scripts/setup/dependencies.sh`). On other distros it lists what to install manually.
 

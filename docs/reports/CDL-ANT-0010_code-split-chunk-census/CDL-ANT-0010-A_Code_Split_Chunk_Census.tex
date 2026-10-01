@@ -1,0 +1,385 @@
+% =============================================================================
+%  CDL-ANT-0010-A · Inside the Code Split: A Chunk Census of Claude Desktop
+%  1.19367.0
+% -----------------------------------------------------------------------------
+%  Built from docs/reports/templates/latex/cdl-ant-report-template.tex.
+%  ENGINE: XeLaTeX, two passes. Fonts: Public Sans, IBM Plex Mono, DejaVu Sans.
+%  HOUSE STYLE: no em dashes; commas, colons, semicolons, parentheses instead.
+% =============================================================================
+\nonstopmode
+\documentclass[11pt]{article}
+\usepackage[letterpaper,top=13mm,bottom=16mm,left=13mm,right=13mm,footskip=9mm]{geometry}
+\usepackage{fontspec}
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{shadings,fadings,positioning,arrows.meta}
+\usepackage{eso-pic}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{fancyvrb}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+
+% ---- Graphite + Copper palette ----
+\definecolor{base900}{HTML}{1A1B1E}
+\definecolor{base800}{HTML}{24262A}
+\definecolor{base700}{HTML}{30343A}
+\definecolor{base600}{HTML}{3A3D44}
+\definecolor{baseMid}{HTML}{5C616A}
+\definecolor{ink}{HTML}{181B20}
+\definecolor{muted}{HTML}{43505D}
+\definecolor{faint}{HTML}{6B7480}
+\definecolor{line}{HTML}{E2E4E8}
+\definecolor{linestrong}{HTML}{CDD0D6}
+\definecolor{paperalt}{HTML}{F5F6F8}
+\definecolor{accent}{HTML}{B05B33}
+\definecolor{accentsoft}{HTML}{E2B89C}
+\definecolor{accentbg}{HTML}{FAF1EA}
+\definecolor{accentink}{HTML}{7C3E20}
+
+% ---- fonts ----
+\setmainfont{Public Sans}[
+  UprightFont={* Regular}, BoldFont={* Bold},
+  ItalicFont={* Italic}, BoldItalicFont={* Bold Italic}]
+\newfontfamily\heavy{Public Sans}[UprightFont={* ExtraBold}]
+\setmonofont{IBM Plex Mono}[Scale=0.92,
+  UprightFont={* Regular}, BoldFont={* SemiBold}]
+\newfontfamily\symfont{DejaVu Sans}
+\newcommand{\mono}{\ttfamily}
+\newcommand{\arrow}{{\symfont\char"2192}}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\linespread{1.12}
+\color{ink}
+
+% ---- body paragraph ----
+\newcommand{\reppar}[1]{{\fontsize{10.5}{15.2}\selectfont #1\par}\vspace{8pt}}
+\newcommand{\code}[1]{{\mono\small #1}}
+
+% ---- mono eyebrow ----
+\newcommand{\eyebrow}[1]{{\mono\footnotesize\color{baseMid}\addfontfeatures{LetterSpace=8.0}\MakeUppercase{#1}}}
+
+% ---- section header ----
+\newcommand{\reportsection}[3]{%
+  \vspace{14pt}%
+  {\mono\footnotesize\color{baseMid}\addfontfeatures{LetterSpace=8.0}\MakeUppercase{#1\, \textbullet\, #2}}\par
+  \vspace{3pt}%
+  {\heavy\fontsize{17}{19}\selectfont\color{base900} #3\par}
+  \vspace{4pt}{\color{accent}\hrule height 1.6pt}\vspace{9pt}%
+}
+
+% ---- chunk sub-heading: mono chunk id + bold plain-language name ----
+\newcommand{\chunkhead}[2]{%
+  \vspace{4pt}%
+  {\fontsize{10.5}{15.2}\selectfont
+   {\mono\bfseries\color{accentink}#1}\;\textbullet\;\textbf{#2}\par}
+  \vspace{2pt}}
+
+% ---- table helpers ----
+\newcommand{\tabcap}[1]{{\mono\color{faint}\fontsize{8.4}{11}\selectfont #1\par}\vspace{5pt}}
+\newcommand{\thd}[1]{{\mono\bfseries\footnotesize\color{white}\MakeUppercase{#1}}}
+\newcommand{\thdr}[1]{\multicolumn{1}{r}{\thd{#1}}}
+\newcommand{\tname}[1]{\textbf{\color{base700}#1}}
+\newcommand{\pct}[1]{{\mono\color{faint}\small #1}}
+
+% ---- copper method-note banner ----
+\newcommand{\methodbanner}[1]{%
+  \begingroup\setlength{\fboxsep}{11pt}%
+  \noindent\fcolorbox{accentsoft}{accentbg}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{%
+      \color{accentink}\fontsize{9.4}{13.5}\selectfont #1}}\par\endgroup\vspace{8pt}}
+
+% ---- code block ----
+\DefineVerbatimEnvironment{codeblock}{Verbatim}%
+  {fontsize=\footnotesize,frame=leftline,framerule=1.4pt,%
+   rulecolor=\color{accent},framesep=9pt,xleftmargin=2pt,%
+   formatcom=\color{base700}}
+
+% ---- kind badges ----
+\newcommand{\badge}[2]{{\mono\bfseries\fontsize{7.4}{8}\selectfont\colorbox{#1}{\color{white}\,\MakeUppercase{#2}\,}}}
+\newcommand{\bfeat}{\badge{accent}{feature}}
+\newcommand{\bvend}{\badge{base700}{vendored}}
+\newcommand{\bhelp}{\badge{baseMid}{helper}}
+\newcommand{\bmix}{\badge{base600}{mixed}}
+
+% ---- title-block key label ----
+\newcommand{\kvk}[1]{{\mono\bfseries\footnotesize\color{base700}\MakeUppercase{#1}}}
+
+% ---- running footer ----
+\fancypagestyle{reportftr}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+  \fancyfoot[C]{\parbox{\linewidth}{%
+    {\color{linestrong}\hrule}\vspace{4pt}%
+    {\mono\color{faint}\fontsize{7.6}{10}\selectfont CDL-ANT-0010 \textperiodcentered{} Code-Split Chunk Census \hfill aaddrick/claude-desktop-debian \textperiodcentered{} July 12, 2026 \textperiodcentered{} p.\,\thepage}%
+  }}%
+}
+
+\begin{document}
+\pagestyle{reportftr}
+\sloppy
+\emergencystretch=2.5em
+\hbadness=3000
+
+% ===== COVER (page 1) =====
+\AddToShipoutPictureBG*{%
+  \AtPageLowerLeft{%
+    \begin{tikzpicture}[remember picture,overlay]
+      \shade[top color=base900, bottom color=base700, middle color=base800]
+        (current page.north west)
+        rectangle ([yshift=-150mm]current page.north east);
+      \begin{scope}
+        \clip (current page.north west) rectangle ([yshift=-150mm]current page.north east);
+        \shade[inner color=accent, outer color=base900, opacity=0.18]
+          ([xshift=-14mm,yshift=8mm]current page.north east) circle (62mm);
+      \end{scope}
+    \end{tikzpicture}}}
+\thispagestyle{reportftr}
+\vspace*{14mm}
+{\color{white}%
+  {\heavy\fontsize{20}{22}\selectfont aaddrick/claude-desktop-debian}\par
+  \vspace{12mm}
+  {\mono\footnotesize\addfontfeatures{LetterSpace=11.0}\textcolor{white!82}{UPSTREAM BUNDLE ANALYSIS / CHUNK CENSUS}}\par
+  \vspace{10pt}
+  {\heavy\fontsize{31}{34}\selectfont Inside the Code Split: \\[2pt] A Chunk Census of Claude Desktop 1.19367.0\par}
+  \vspace{11pt}
+  {\fontsize{12.5}{17.5}\selectfont\textcolor{white!88}{\parbox{140mm}{Release 1.19367.0 split the desktop app's main process from one 15\,MB file into a tiny stub, one 7.7\,MB core, and 44 lazy-loaded satellite chunks. This report names every satellite: the agent-session platform behind Claude Code and Cowork, the enterprise sign-in flows, the built-in MCP servers, the Bluetooth bridge behind the Claude Desktop Buddy gadget, and the one satellite the Linux repackage actually patches.}}\par}
+}
+\vspace*{0pt}\vspace{7mm}
+
+\renewcommand{\arraystretch}{1.4}\setlength{\tabcolsep}{10pt}
+\noindent\begin{tabular}{@{}>{\columncolor{paperalt}}m{32mm} >{\raggedright\arraybackslash}m{\dimexpr\linewidth-32mm-2\tabcolsep-2\arrayrulewidth\relax}@{}}
+\hline
+\kvk{Document} & CDL-ANT-0010 \textperiodcentered{} Rev A \textperiodcentered{} FINAL \\ \hline
+\kvk{Subject} & Census of the 44 satellite chunks introduced by upstream's 1.19367.0 main-process code split \\ \hline
+\kvk{Focus} & What each chunk is scoped to, what loads it at runtime, and what the split means for downstream patching \\ \hline
+\kvk{Scope} & Official \code{claude-desktop\_1.19367.0\_amd64.deb} (SHA-256 pinned in \code{scripts/setup/official-deb.sh}), \code{.vite/build/} main-process tree only \\ \hline
+\kvk{Tools} & \code{ar}+\code{tar}+\code{@electron/asar} extraction, \code{prettier} beautification, deterministic require-graph mapping, 44 parallel model-assisted chunk analyses with structured output, selective hand re-verification \\ \hline
+\kvk{Headline} & The split is bundler mechanics, not a rewrite: 37 of 44 satellites are first-party feature islands loaded on demand, five carry vendored library code, two are tiny shared helpers, and the boundaries read as a feature inventory, from the agent platform to surfaces still shipped dark. \\ \hline
+\kvk{Author} & Claude Fable 5 \textperiodcentered{} July 12, 2026 \\ \hline
+\kvk{Reviewed by} & Aaddrick Williams \\ \hline
+\end{tabular}
+\clearpage
+
+% ===== 01 OVERVIEW =====
+\reportsection{01}{Overview}{One File Became Forty-Six}
+
+\reppar{Before release 1.19367.0, every line of Claude Desktop's Electron main process, the privileged Node.js side of the app that owns windows, spawns processes, talks to the OS, and brokers every MCP connection, shipped as a single minified 15\,MB file: \code{.vite/build/index.js}. In 1.19367.0 that file became a 700-byte stub whose only real job is one \code{require()} call. The code moved into \code{index.chunk-CNXUb5h4.js}, a 7.7\,MB core that still holds the always-running app, plus \textbf{44 content-hashed satellite chunks} totaling about 1.95\,MB that load lazily, each the first time its feature is touched.}
+
+\reppar{This project repackages Anthropic's official Linux \code{.deb} into the formats Anthropic does not serve (RPM, AppImage, Nix, AUR), shipping the official application bytes unmodified except for four small Linux-specific patches. Those patches anchored on the old single-file path, so the split broke our build (fixed in PR \#793). Repairing it meant mapping the new layout anyway, and the map turned out to be interesting on its own: \textbf{the chunk boundaries are a de-facto feature inventory of Claude Desktop}, drawn by the bundler along the exact seams where the app defers work until a feature is used.}
+
+\reppar{The census answer, in one paragraph: 37 of the 44 satellites are first-party feature code. The biggest cluster is the agent-session platform behind Claude Code Desktop and Cowork (worktree management, terminals, remote SSH targets, session secrets, usage probes). A second cluster is enterprise sign-in (OIDC discovery, Microsoft Entra, GCP Workforce Identity, Anthropic Console key minting). A third is the extension system (MCPB bundles, auto-updates, marketplace migrations). Five chunks carry vendored open-source libraries, two are tiny shared helpers, and the tail holds the app's most tangible features: the Bluetooth bridge behind Anthropic's open-source \textit{Claude Desktop Buddy} desk gadget, and an \textit{Imagine} visualization MCP server that still appears to be shipped dark behind feature flags.}
+
+\methodbanner{\textbf{Reading guide.} Terms that recur: \textbf{MCP} is the Model Context Protocol, the plugin standard Claude apps use to talk to external tools. \textbf{MCPB} (MCP Bundle) is Anthropic's packaged-extension format, successor to the older \textbf{DXT} desktop extensions. \textbf{Cowork} is Claude Desktop's autonomous-agent workspace. \textbf{CCD} appears throughout upstream's own strings as the tag for Claude Code Desktop, the embedded Claude Code sessions in the app. A \textbf{git worktree} is a disposable checkout the app gives an agent session so it can edit code without touching your working copy. Chunk names below are shortened: \code{8hARSK4E} means \code{index.chunk-8hARSK4E.js}.}
+
+% ===== 02 METHOD =====
+\reportsection{02}{Method}{How the Census Was Taken}
+
+\reppar{Everything was measured against the official artifact, not our repackage: the SHA-256-pinned \code{claude-desktop\_1.19367.0\_amd64.deb} from Anthropic's APT pool. The \code{app.asar} archive was extracted with \code{@electron/asar}, all 44 satellites were run through \code{prettier} for readability, and the require graph between chunks was computed deterministically with \code{grep} over the minified bytes. Each satellite then got its own analysis pass: 44 parallel model-assisted reviews (Claude Sonnet subagents), each reading one beautified chunk plus its position in the require graph, and returning a structured verdict: what the chunk is, what runtime path loads it, and the literal strings that prove it (log prefixes, IPC channel names, endpoint URLs, store filenames).}
+
+\reppar{The evidence rule was strict: a claim counts only if the string is actually in the file. Where a verdict looked thin it was re-verified by hand against the beautified source; the per-chunk descriptions below fold in those corrections. Sizes are minified bytes as shipped. One caveat applies globally: \textit{what triggers loading a chunk} is inferred from the require graph and the chunk's own strings, not from tracing a live process, so trigger descriptions are confident but not instrumented.}
+
+% ===== 03 TOPOLOGY =====
+\reportsection{03}{Topology}{A Stub, a Core, and 44 Satellites}
+
+\reppar{The entry file upstream's Electron app boots is now almost empty. Minus the Sentry crash-reporting banner that is stamped into every chunk, this is the entire file:}
+
+\begin{codeblock}
+// .vite/build/index.js, 1.19367.0 (Sentry banner elided)
+require("node:child_process"); require("node:path");
+require("node:process");
+require("./index.chunk-CNXUb5h4.js");   // <-- the actual main process
+require("electron"); require("node:crypto"); require("node:os");
+\end{codeblock}
+
+\reppar{\code{index.chunk-CNXUb5h4.js} is the old \code{index.js} in everything but name: 7.7\,MB, always loaded, owning windows, the tray, settings, networking, and the MCP host. The 44 satellites hang off it. 31 of them are required directly by the core; the rest chain through intermediate satellites. Two chunks act as hubs: \code{CVKCxtdY}, the Claude Code session backend, pulls in eleven other satellites, and \code{DmcY3fXx}, the session API layer, pulls in five. One satellite (\code{BSeLkQD3}, the scheduled-tasks handlers) is referenced by nothing statically and is reached through a computed dynamic import.}
+
+\begin{table}[H]
+\tabcap{The 1.19367.0 main-process bundle by the numbers. Sizes are minified bytes inside app.asar; renderer and preload bundles are out of scope.}
+\setlength{\tabcolsep}{7pt}\renewcommand{\arraystretch}{1.3}
+\rowcolors{3}{paperalt}{white}
+\noindent\begin{tabular}{@{}l r l@{}}
+\rowcolor{base800}
+\thd{Piece} & \thdr{Size} & \thd{Role} \\
+\tname{index.js} & \pct{0.9 KB} & boot stub, one require() \\
+\tname{index.chunk-CNXUb5h4.js} & \pct{7.7 MB} & the always-loaded core (old index.js) \\
+\tname{44 satellite chunks} & \pct{1.95 MB} & lazy feature islands, this report's subject \\
+\tname{37 of 44} & \pct{} & first-party app features \\
+\tname{5 of 44} & \pct{} & vendored library code (one mixed with feature code) \\
+\tname{2 of 44} & \pct{} & tiny shared helpers \\
+\end{tabular}
+\end{table}
+
+\reppar{Why did upstream do this? Almost certainly not by hand: the boundaries match dynamic \code{import()} sites, which Vite/Rollup splits into separate files by default. The win is startup cost: the app no longer parses SSH transports, extension packers, and BLE bridges at boot; it parses them the first time you use them. Nothing behavioral moved, which is also why our whole-bundle tripwires kept passing while every patch anchor silently relocated.}
+
+% ===== 04 VENDORED =====
+\reportsection{04}{Vendored Code}{Libraries and Dev Tooling}
+
+\reppar{Six chunks are mostly or entirely other people's code (or Anthropic's own published packages), pulled out of the core so their weight is only paid on use.}
+
+\chunkhead{z2KVH7ws}{MCPB extension toolkit, 430 KB}
+\reppar{A vendored copy of Anthropic's published \code{@anthropic-ai/mcpb} package, the toolkit for MCP Bundles: manifest schema validation, packing and unpacking \code{.mcpb} archives, signing and signature verification, and dependency pruning. It even carries the package's interactive scaffolding wizard (built on \code{@inquirer/core}), which a desktop app will likely never show. It loads whenever the app needs to validate, verify, or unpack an extension bundle, which makes it the trust root of the extension install path: the signature check that decides whether an extension is allowed to install lives here.}
+
+\chunkhead{DSARmh3w}{electron-devtools-installer, 138 KB}
+\reppar{The stock npm package that downloads Chrome extensions (React DevTools and friends) from Google's Web Store endpoint and loads them into Electron. It is reachable only through \code{B43foloX} below, on a development-profiling path; a normal user install should never execute it.}
+
+\chunkhead{B43foloX}{React DevTools loader, 2.5 KB}
+\reppar{First-party glue in front of the previous chunk: tries \code{electron-devtools-installer} first, then falls back to scanning a locally installed Chrome profile for the React DevTools extension ID. Every log line is prefixed \code{[profile]}, marking it as an internal profiling convenience that ships in the production bundle but stays dormant.}
+
+\chunkhead{Gd8OsLOY}{Zod re-export barrel, 4 KB}
+\reppar{Zod is the schema-validation library used across the app; its implementation lives in the core chunk. This satellite is a pure re-export shim, about eighty \code{exports.X = core.X} lines, that exists only because Zod's package entry point became its own module boundary during the split. It does nothing, but it is a nice fossil of how mechanical the split was.}
+
+\chunkhead{DLO6Ax9W}{shellQuote, 0.7 KB}
+\reppar{A single function that POSIX-quotes a string for safe shell interpolation. Three different chunks (the SSH stack, the PTY manager, the session backend) require it, which tells you those are the places the app builds command lines from user-derived paths.}
+
+\chunkhead{DuRzChhd}{Sentry banner stub, 0.6 KB}
+\reppar{Nothing but the Sentry release-ID and debug-ID stamp that the build pipeline injects into every chunk for crash symbolication; this one happens to contain nothing else. Included for completeness, and as the baseline noise floor: when a chunk below is described as small, subtract this banner from its size mentally.}
+
+% ===== 05 AGENT PLATFORM =====
+\reportsection{05}{Agent Sessions}{The Claude Code / Cowork Platform}
+
+\reppar{The largest first-party cluster, eleven chunks, is the machinery behind agentic coding sessions: what happens when you point Claude Desktop at a repository and let it work. The architecture that emerges from the strings is concrete: every session gets an isolated git worktree from a managed, reusable pool; sessions run against local folders, SSH hosts, or WSL; transcripts live in \code{\textasciitilde/.claude/projects} as JSONL; and a governor evicts idle sessions under memory pressure.}
+
+\chunkhead{CVKCxtdY}{Claude Code session backend, 374 KB}
+\reppar{The heart of the cluster and the third-largest satellite. It owns the full session lifecycle: start-to-outcome telemetry for every message cycle, a session governor with soft-cap eviction, tail-loading of large \code{agent-*.jsonl} transcripts, tool-permission auto-approve and deny logic (including a computer-use permission path), GitHub PR-check polling with rate-limit handling, and the wiring that exposes scheduled tasks, transcript search, and session archiving to the model as MCP tools. Eleven other satellites are pulled in through it; if you are using Claude Code inside the desktop app, this chunk is resident.}
+
+\chunkhead{DmcY3fXx}{Session API layer, 46 KB}
+\reppar{\code{createLocalSessionsApi}, the IPC-facing service the UI calls to start sessions and send messages, with one abstraction covering three target types: local folders, remote SSH hosts, and WSL distributions. It handles SSH connection tests and password prompts, WSL path resolution, remote git diff and commit-log retrieval, and workspace-trust checks; strings like \textit{teleport to cloud} mark the handoff hooks that move a local session to a hosted one.}
+
+\chunkhead{8hARSK4E}{Git worktree manager, 64 KB}
+\reppar{A \code{GitWorktreeManager} class that creates, tracks, reaps, and migrates per-session git worktrees, persisted in a \code{git-worktrees.json} store with corruption recovery (a corrupt store is preserved for forensics and rebuilt empty, per its own log message). It runs git through a PATH- and SSH-agent-aware spawner with prompts disabled (\code{GIT\_TERMINAL\_PROMPT=0}), parses diffs and commit logs, and enforces a workspace-trust gate before touching a repo. It also scans diffs for \textit{dangerous feature sources}, a defensive check on what an agent brings into your tree.}
+
+\chunkhead{CDs06AOQ}{Worktree pool, 10 KB}
+\reppar{A performance layer over the worktree manager: a pool that leases worktrees to sessions and keeps a configurable number of \textit{warm} pre-created ones so a new session starts instantly. A periodic sweep reaps idle worktrees and resets dirty ones. Feature-flag gated, which suggests upstream was still rolling it out at this release.}
+
+\chunkhead{BhLwdw68}{Session diagnostics and stats, 21 KB}
+\reppar{Three jobs in one chunk. First, a giant error classifier that maps raw crash strings (exit codes, Windows NTSTATUS values, spawn failures, proxy and network errors) into stable category tags for telemetry, which is a readable catalog of every way a Claude Code session has died in the field. Second, the usage-stats aggregator that reads your local transcripts and a stats cache to compute daily activity, per-model token usage, and streaks. Third, the SFTP uploader that copies chat attachments to a remote host's \code{.claude/uploads} before a remote session references them.}
+
+\chunkhead{BeyKyjh2}{Claude Code config bridge, 11 KB}
+\reppar{The shared reader/writer for the Claude Code CLI's own configuration: it parses \code{\textasciitilde/.claude.json} with lock-file-protected atomic saves and backups, tracks per-project trust-dialog acceptance, lists trusted workspaces, and extracts MCP server entries. It also hand-rolls a git-config/INI parser to resolve repo root, branches, and remotes, including worktree indirection. This is the seam where the desktop app and the standalone CLI share state.}
+
+\chunkhead{BYTSEZgv}{Terminal PTY manager, 19 KB}
+\reppar{\code{ShellPtyManager}, the pseudo-terminal engine behind the integrated terminal panel: spawns interactive shells via \code{node-pty} (including a hardened SSH remote-shell path that validates host, port, and identity file), keeps a bounded 256\,KB ring buffer per session, strips ANSI escape sequences, and kills every live process through a registered quit handler on app exit.}
+
+\chunkhead{DuBC1uXg}{Agent SDK toolset, 19 KB}
+\reppar{The local tool implementations an agent session actually calls: sandboxed bash, read, write, edit, glob, and grep tools (exported in the SDK's \code{beta*Tool} naming, bundled as toolset \code{20260401}), plus skill-archive extraction and version resolution. When Claude edits a file on your disk during a session, the code doing it is here.}
+
+\chunkhead{iS43ruUD}{Session secrets materializer, 3 KB}
+\reppar{For enterprise (third-party provider) deployments only: writes short-lived credential files under a per-session private directory so a spawned CLI process can read them, with generation tracking against stale writes and a boot-time sweep that clears the whole secrets root on startup. Small chunk, careful code; the sweep-on-boot detail is the kind of hygiene you want to see around credentials on disk.}
+
+\chunkhead{DIyoLvd8}{Usage probe, 5 KB}
+\reppar{Feeds the usage and rate-limit UI by spawning the host-installed Claude Code CLI in a no-tools throwaway session and calling its usage API, whose actual exported name is \code{usage\_EXPERIMENTAL\_MAY\_CHANGE\_DO\_NOT\_RELY\_ON\_THIS\_API\_YET}. Wrapped in five-minute success caching, backoff, a rate floor, and a shape-drift error class for when that experimental API inevitably changes.}
+
+\chunkhead{DPyL7Qop}{File-open consent dialog, 1.4 KB}
+\reppar{A single confirmation dialog, \textit{File access request}, shown before a session opens a generated or referenced file with your OS default application, with de-duplication so repeat requests for the same file do not re-prompt. A one-purpose chunk that exists purely as a human-in-the-loop gate.}
+
+% ===== 06 PR AUTOMATION + REMOTE =====
+\reportsection{06}{Autonomy \& Reach}{PR Automation and Remote Machines}
+
+\reppar{Eight chunks extend sessions in two directions: unattended operation against GitHub, and execution on machines that are not the one running the app. The PR-automation pair is the part most users will not know exists.}
+
+\chunkhead{DDPvNCKb}{AutoFixEngine, 8 KB}
+\reppar{A background engine that sweeps active coding sessions that have auto-fix enabled and an attached GitHub pull request. It polls the PR's checks, review comments, and merge state, and when it finds newly failing CI, a merge conflict, or an unaddressed reviewer comment, it wakes the session by injecting a synthesized \code{<ci-monitor-event>} prompt telling Claude Code to fix the checks and reply to the review threads. In other words: the desktop app ships a CI babysitter that argues with your reviewers for you, opt-in.}
+
+\chunkhead{BgxihPuA}{AutoArchiveEngine, 4 KB}
+\reppar{The companion janitor: every five minutes (verified in source: a 300-second sweep interval), if the \code{ccAutoArchiveOnPrClose} preference is on, it archives sessions whose pull requests have all reached a terminal state (merged or closed), skipping running or exempted sessions. Together with AutoFixEngine it gives sessions a full unattended lifecycle: work, respond to CI, get archived when the PR lands.}
+
+\chunkhead{BsymZHkE\;+\;Ds\_EujvB}{PR-state helpers, 0.8 + 1.4 KB}
+\reppar{Two micro-chunks of shared vocabulary: predicates for terminal versus open PR states (\code{MERGED}/\code{CLOSED} vs \code{OPEN}/\code{QUEUED}), and normalizers that fold GitHub's inconsistent REST and GraphQL mergeable-state answers into one enum. Three different feature chunks share them, which is why the bundler gave them their own files.}
+
+\chunkhead{BfcG\_552}{SSH transport + remote deploy, 427 KB}
+\reppar{The second-largest satellite fuses a vendored, patched copy of the \code{ssh2} npm package (a complete SSH client: key parsing for RSA, Ed25519, OpenSSH and PuTTY formats, packet framing, auth flow) with the first-party code that uses it: detect the remote OS and shell, download or upload the Claude Code CLI binary to the host, write a session token, start a remote daemon, and expose a controller API. This is the chunk that turns \textit{Claude Code on this laptop} into \textit{Claude Code on that server}.}
+
+\chunkhead{Cc0Cjw5X}{Remote controller barrel, 1 KB}
+\reppar{A 45-line pass-through that re-exports the remote-server controller getters from the chunk above. It exists so the core can reference the controller without statically dragging in 427\,KB of SSH; the price of one indirection buys lazy loading of the whole transport.}
+
+\chunkhead{Ch2QrYhw}{SSH MCP proxy, 7 KB}
+\reppar{\code{SshMcpServerManager}: runs your local stdio MCP servers on the remote host instead, bridging their JSON-RPC over the SSH connection. It filters which environment variables are forwarded to an allowlist, and refuses to proxy servers whose command is a laptop-local absolute path (\code{/Users/...}, \code{/opt/homebrew/...}) that the remote could never resolve, a small design detail that prevents a whole class of confusing failures.}
+
+\chunkhead{r07KBe07}{Remote plugin sync, 5 KB}
+\reppar{Before hooks and tools run on a remote host, this chunk walks your local Claude Code plugin directories, content-hashes each, tars and SFTP-uploads them to \code{.claude/remote/plugins/<hash>} on the host, and extracts them there. It guards against symlinks and path-escaping archive entries, the classic tar-extraction attack shapes.}
+
+% ===== 07 EXTENSIONS =====
+\reportsection{07}{Extensions}{Install, Update, Migrate}
+
+\reppar{Five chunks manage the desktop extension system (DXT, now MCPB bundles): how extensions update themselves and how upstream is migrating locally stored plugin data to account-level backend storage.}
+
+\chunkhead{Brn8atpb}{Extension update cache, 4 KB}
+\reppar{Downloads an extension update from the registry, unzips it to a temp dir, validates the manifest, verifies the package signature (lazily pulling the 430\,KB MCPB toolkit only when a signature actually needs checking), enforces the enterprise \code{signatureRequired} policy and a blocklist, then stages the verified files in a per-extension cache with a metadata sidecar. Notably, policy enforcement happens at cache time, before anything is installed.}
+
+\chunkhead{Cy4jOZYe}{Extension auto-updater, 5 KB}
+\reppar{The loop that uses that cache: every six hours it checks each installed extension for a newer version and stages updates; at startup it applies them, renaming the old extension directory to a timestamped backup and rolling back on failure. Extensions you side-loaded (IDs starting \code{local.dxt}, \code{local.mcpb}, \code{local.unpacked}) are skipped, so dev builds never get clobbered.}
+
+\chunkhead{PJQ5N4g6}{Org update consent dialog, 2 KB}
+\reppar{One localized message box, loaded only when an update arrives for an \textit{organization-provided} extension: install or skip, with the org's name in the prompt. Org-pushed code updates get an explicit human gate that ordinary registry updates do not.}
+
+\chunkhead{BNkiwKJJ\;+\;DNqqgruO}{Marketplace migrations, 4.7 + 5.7 KB}
+\reppar{Two one-shot, feature-flagged startup migrations (both gated by the \code{claudeai\_cowork\_backend\_marketplaces} flag, both leaving run-once sentinels): one zips locally stored uploaded plugins and re-registers them as account-level remote plugins; the other re-registers locally known marketplace entries (sanitized GitHub URLs only) with the backend. Together they mark a clear direction: Cowork plugin state is moving off your disk and into your account.}
+
+% ===== 08 ENTERPRISE AUTH =====
+\reportsection{08}{Enterprise Sign-In}{Seven Chunks of OAuth}
+
+\reppar{Seven small chunks, all sharing the \code{custom-3p} log prefix (third-party), implement authentication for enterprise deployments where Claude Desktop talks to a customer's own model gateway (Bedrock, Vertex, Azure) instead of Anthropic's API. Consumer users never load any of them; together they map exactly which identity systems upstream supports.}
+
+\chunkhead{BBdaXF74}{OIDC discovery, 2.5 KB}
+\reppar{The shared foundation: fetches an identity provider's \code{/.well-known/openid-configuration}, enforces HTTPS on every endpoint (with a deliberate localhost exception for testing), and warns when a provider's token endpoint lives on a different host than its issuer. The two grant-flow chunks below build on it.}
+
+\chunkhead{5ms3G7cx}{External IdP grant, 3.5 KB}
+\reppar{The generic flow: a loopback-PKCE browser sign-in against whatever OIDC provider the org configured for its inference gateway, plus silent refresh that distinguishes \textit{fresh}, \textit{no id token}, \textit{invalid grant}, and \textit{transient} outcomes so the UI can tell a re-login from a blip. Google gets special-cased offline-access handling.}
+
+\chunkhead{CttfaNvQ}{GCP Workforce Identity, 4 KB}
+\reppar{The Vertex AI variant: after the OIDC sign-in, it exchanges the resulting ID token at Google's STS token-exchange endpoint for a GCP access token (Workforce Identity Federation), so the app can call a customer's Vertex deployment without a Google account in the loop.}
+
+\chunkhead{DMU53tq3}{Microsoft Entra flows, 7 KB}
+\reppar{The Azure variant: device-code grant, browser PKCE grant, and refresh-token exchange against Microsoft Entra ID (Azure AD), requesting the Cognitive Services scope used by Azure-hosted model endpoints (Azure AI Foundry). Tokens come back tagged with tenant and client IDs.}
+
+\chunkhead{oBJ0NwSq}{Console key minting, 3 KB}
+\reppar{The Anthropic-native variant: \textit{Sign in with Console} runs a PKCE flow against the Anthropic Console's OAuth endpoints, then calls a \code{create\_api\_key} endpoint to mint a real API key on your Console org and caches it. The desktop app can bootstrap its own API credentials from a browser login.}
+
+\chunkhead{Bft8Ec9w}{Device-code window, 2 KB}
+\reppar{A fixed-size, always-on-top \textit{Verify sign-in code} BrowserWindow used by the device-code flows above; it loads the deployment's verification page and exists so the code prompt cannot get lost behind the main window.}
+
+\chunkhead{K1Q8\_qz3}{Auth-expiry toast, 2 KB}
+\reppar{The failure UX for all of the above: when a credential expires or an org policy returns a 403, this shows either a \textit{Sign in again} toast with a re-auth action or a non-actionable \textit{access denied by your organization} notice, de-duplicated per credential epoch so a burst of failed requests produces one toast, not twenty.}
+
+% ===== 09 BUILT-IN SERVERS & ODDITIES =====
+\reportsection{09}{Built-In Servers}{MCP Tools, a VM Prefetcher, and a Gadget}
+
+\reppar{The last seven chunks are the most fun: MCP servers the app hosts \textit{inside itself} to give the model extra abilities, a bandwidth-saving VM prefetcher, the desktop end of Anthropic's hardware companion, and one surface that still appears to be unannounced.}
+
+\chunkhead{BG2Aybw\_}{The Imagine server, 252 KB}
+\reppar{The fourth-largest satellite is an internal MCP server named \code{visualize} that gives the model a \code{show\_widget} tool for rendering interactive SVG/HTML visualizations inline in chat, plus a \code{read\_me} tool that serves the model its own instruction manual. Nearly all of the 252\,KB is embedded documentation payload: a Claude Design System token vocabulary, an \textit{Imagine, Visual Creation Suite} guide, and form-building guidance, alongside a CDN allowlist (esm.sh, cdnjs, jsDelivr, unpkg, Google Fonts) for what a rendered widget may load. It is double-feature-flag gated and restricted to Cowork and Claude Code session types: infrastructure for a richer in-chat canvas, shipped dark.}
+
+\chunkhead{D3JJQa7m\;+\;BSeLkQD3}{Scheduled tasks, 15 + 5 KB}
+\reppar{A pair implementing recurring automation: an internal MCP server exposing \code{list\_scheduled\_tasks}, \code{create\_scheduled\_task}, and \code{update\_scheduled\_task} tools (so the model itself can set up cron-style or one-time jobs, each stored as a \code{SKILL.md} under its task directory), and the main-process dispatch handlers that validate the cron expressions and paths behind those calls. The handler chunk is the one satellite reachable only through a dynamic import, loaded when the scheduled-tasks surface is first used.}
+
+\chunkhead{Bv2T366m}{read\_terminal tool, 4 KB}
+\reppar{A one-tool MCP server that lets a Claude Code session read the last N lines of your integrated terminal panel, with escape sequences stripped and an optional wait-for-new-output mode. Gated to local (non-SSH) Claude Code sessions and a feature flag. Small, but it closes a real loop: the model can now see the output of the terminal you are typing in.}
+
+\chunkhead{Dy7ODfSE}{Hardware Buddy bridge, 15 KB}
+\reppar{The desktop end of \textit{Claude Desktop Buddy}, Anthropic's open-source BLE desk companion (an ESP32 gadget that shows Claude's status and lets you approve tool permissions from your desk; the reference firmware and Bluetooth API live at \code{anthropics/claude-desktop-buddy} on GitHub). This chunk is the app-side bridge: it pairs and scans via Electron's Bluetooth APIs, opens a dedicated \code{buddy\_window}, streams a live summary of your running agent sessions to the device (running and waiting counts, latest transcript snippet, pending permission approvals, daily token usage), and uploads custom \textit{character} packs of GIFs and text (capped at 1.8\,MB) in chunked, acknowledged BLE writes. In-code the device is affectionately a \textit{nibblet}. Opt-in behind a remote feature flag and a \code{hardwareBuddyEnabled} preference; on Linux this is also a surface worth watching, since Electron's Bluetooth chooser has its own portal quirks under Wayland.}
+
+\chunkhead{DPIWTp-Y}{Cowork VM warm download, 8 KB}
+\reppar{Cowork's Linux VM image is a multi-gigabyte download, so this chunk prefetches the \textit{next} version in the background while you work: it pulls zstd-compressed bundle files from \code{downloads.claude.ai}, verifies SHA-256 streaming, requires a 5x free-disk margin before starting, and atomically promotes the warm copy when the app update actually lands. For this repository it has a second significance, covered in the closing section: it is the only satellite our patch suite touches.}
+
+\chunkhead{DVe-Qi89}{TLS fallback fetch, 4 KB}
+\reppar{A Node \code{https} fetch used when a request must bypass Electron's Chromium networking stack. The clever part: it pins the TLS leaf certificate to the SHA-256 fingerprint Chromium already validated for that host, so stepping outside the browser stack does not mean trusting a different certificate chain. Capped at 4\,MB bodies, refuses redirects and event streams; a narrow escape hatch, deliberately kept narrow.}
+
+% ===== 10 CLOSE =====
+\reportsection{10}{Implications}{What the Map Is Good For}
+
+\reppar{For users, the census is a rare unobstructed look at where Claude Desktop is going. The chunk boundaries say what upstream considers optional (everything above loads on demand), the feature flags say what is gated or not finished (the Imagine canvas, worktree pooling, backend marketplaces), and the string literals say how the shipped features actually behave: sessions live in disposable git worktrees from a warm pool, an opt-in engine will respond to your CI failures and reviewer comments autonomously, extensions are signature-checked before they are staged, and enterprise deployments get real OIDC plumbing rather than pasted API keys.}
+
+\reppar{For this repository, the practical findings are narrower. First, the split is mechanical: every one of our patch anchors survived byte-for-byte, they just moved files, which is why the fix in PR \#793 is a resolver (\code{\_resolve\_main\_js} follows the stub's \code{require()} to the real core chunk) rather than new patches. Second, exactly one satellite matters to patching today: the Cowork warm-download chunk, whose prefetch our \code{cowork-bwrap} patch suppresses on setups where the multi-gigabyte pull is unwanted; it is resolved by its stable \code{[warm]} log literal, not its content hash, because \textbf{every chunk hash in this report rotates on every release}. Third, the census sets the watch list: features that live in always-loaded core code stay in the core, but anything lazy (VM downloads, worktrees, SSH) can migrate between satellites in any future release, so file paths are never load-bearing, only string anchors are.}
+
+\reppar{The durable point: 1.19367.0 looks like a big structural change and is not one; it is the same application with its lazy seams made visible. The visibility is the value. One release's bundler flag turned a 15\,MB blob into a labeled map of Claude Desktop's present features and near future, and this report is that map, written down.}
+
+\end{document}

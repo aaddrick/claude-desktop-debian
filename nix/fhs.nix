@@ -13,6 +13,7 @@
   uv,
   OVMF,
   qemu_kvm,
+  virtiofsd,
 }:
 
 let
@@ -75,6 +76,19 @@ buildFHSEnv {
   # whole /dev (--dev-bind /dev /dev) — but the host must still grant
   # kvm-group access (/dev/kvm is root:kvm 0660, else EACCES) and load
   # vhost_vsock (no node until the module is in); --doctor flags both.
+  #
+  # virtiofsd is a THIRD gate, and the one #806 hit. Cowork probes
+  # /usr/libexec/virtiofsd then /usr/bin/virtiofsd (R_OK), and only falls
+  # back to its own resources/virtiofsd when the host is Ubuntu 22 —
+  # `return probed || (isUbuntu22 ? bundled : null)`. #773 un-gated that
+  # fallback via patch_virtiofsd_probe, but nix/claude-desktop.nix unpacks
+  # the official .deb without running scripts/patches/*.sh, so no asar
+  # patch reaches this format. With the probe unresolved, Cowork reports
+  # virtualization_tools_missing ("Cowork requires QEMU") on every non-
+  # Ubuntu-22 host, NixOS included. nixpkgs' virtiofsd is the Rust
+  # implementation at bin/virtiofsd, which buildFHSEnv surfaces at
+  # /usr/bin/virtiofsd — the second probe path — so the package resolves
+  # the gate without widening the probe array.
   targetPkgs = pkgs: [
     bubblewrap
     claude-desktop
@@ -86,6 +100,7 @@ buildFHSEnv {
     ovmfCompat
     qemu_kvm
     uv
+    virtiofsd
   ];
 
   runScript = "${claude-desktop}/bin/claude-desktop";

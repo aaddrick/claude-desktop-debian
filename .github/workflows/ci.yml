@@ -122,6 +122,44 @@ jobs:
           name: package-arm64-appimage
           path: artifacts/
 
+      # --- Reference-source tooling ---
+      #
+      # asar and prettier belong to "Generate and upload reference
+      # source" at the end of this job, which has nothing to do with
+      # release notes. This install stays ungated on purpose: when
+      # claude-desktop-versions went private on 2026-07-24 its
+      # continue-on-error checkout still rendered green, but its
+      # *outcome* was failure, so every step gated on it skipped —
+      # including the asar install. The reference-source step then
+      # exited 127, failing the release job and skipping the four
+      # publish jobs that carry `needs: [release]`.
+
+      # Node 22, not 20: asar declares engines.node >=22.12.0 from
+      # 4.0.0 onward, and the claude-code CLI installed further down
+      # declares >=22.0.0. Neither install fails loudly below that —
+      # what it does depends on the runner's npm. A bare install is a
+      # range spec, and npm-pick-manifest >=9.1.0 (npm >=10.8.2, the
+      # npm Node 20 bundles) stops taking the latest-tag shortcut when
+      # engines mismatch, so Node 20 quietly resolves asar 3.4.1 and
+      # CLI 2.1.197 instead. Older npm keeps the shortcut: it resolves
+      # 4.3.0, whose EBADENGINE is only a warning, leaving an asar
+      # that `command -v` finds and that dies on first use — the
+      # shape #839 was reported as, from a host whose npm is packaged
+      # separately from its Node. Both outcomes are silent, so pin
+      # the runtime and the resolved versions are ours rather than
+      # the runner's. Package names are spelled bare on purpose —
+      # tests/ci-release-job.bats greps this region for the npm
+      # specifiers without stripping comments first.
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install asar and prettier
+        continue-on-error: true
+        run: npm install -g @electron/asar prettier
+
       # --- Release notes generation (inline, with fallback) ---
 
       - name: Checkout claude-desktop-versions
@@ -139,13 +177,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node.js 20
-        if: steps.checkout_versions.outcome == 'success'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        continue-on-error: true
-        with:
-          node-version: "20"
-
       - name: Install difftastic
         if: steps.checkout_versions.outcome == 'success'
         continue-on-error: true
@@ -153,10 +184,16 @@ jobs:
           curl -fsSL https://github.com/Wilfred/difftastic/releases/latest/download/difft-x86_64-unknown-linux-gnu.tar.gz \
             | sudo tar xz -C /usr/local/bin
 
-      - name: Install Node.js tools
+      - name: Install claude-code CLI
         if: steps.checkout_versions.outcome == 'success'
         continue-on-error: true
-        run: npm install -g @anthropic-ai/claude-code @electron/asar prettier
+        # Version-pinned like the SHA-pinned actions above, and like the
+        # triage workflows: this CLI runs with the Anthropic API key, so
+        # a floating `latest` is a supply-chain hole. Bump deliberately.
+        # Its only consumer is the compare-releases step below, which is
+        # currently `if: false`; the pin is what makes re-enabling that
+        # step safe rather than something to remember at the time.
+        run: npm install -g @anthropic-ai/claude-code@2.1.214
 
       - name: Checkout repo for git history
         id: checkout_repo
@@ -378,6 +415,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Every exit path here is a warning, never a failure: the
+          # reference-source tarball is a convenience asset, and this
+          # job gates the APT/DNF/AUR publish jobs.
+          if ! command -v asar >/dev/null 2>&1; then
+            echo "::warning::asar unavailable, skipping reference-source"
+            exit 0
+          fi
           appimage=$(find artifacts/ -name '*amd64*.AppImage' ! -name '*.zsync' | head -1)
           if [[ -z "$appimage" ]]; then
             echo "::warning::No AppImage found, skipping reference-source"
@@ -425,10 +469,13 @@ jobs:
               exit 1
             }
             echo "Mirroring $official_deb_filename ($arch)..."
-            if ! wget -q -O "$official_deb_filename" "$official_deb_url"; then
+            # Same pool-lag exposure as the build (#859): retry rather
+            # than fail the mirror on one 404.
+            _download_official_deb "$official_deb_url" \
+                "$official_deb_filename" || {
               echo "::error::Failed to download $official_deb_url"
               exit 1
-            fi
+            }
             if ! verify_sha256 "$official_deb_filename" \
                 "$official_deb_sha256" "official $arch .deb"; then
               exit 1
@@ -592,9 +639,12 @@ jobs:
           # can't be set (DNS points at Cloudflare, not Pages, so Pages
           # can't provision its own cert). Cloudflare/Worker answers
           # both schemes, so http vs https is cosmetic here.
+          # The Worker percent-encodes the tag's '+' as %2B (#898);
+          # accept either form so the check tracks the tag, not its
+          # encoding (#900).
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
-            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}(\\+|%2B)claude${claudeVer}/"
             "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$deb_url"
@@ -834,9 +884,12 @@ jobs:
           # can't be set (DNS points at Cloudflare, not Pages, so Pages
           # can't provision its own cert). Cloudflare/Worker answers
           # both schemes, so http vs https is cosmetic here.
+          # The Worker percent-encodes the tag's '+' as %2B (#898);
+          # accept either form so the check tracks the tag, not its
+          # encoding (#900).
           expected_hops=(
             "https?://${WORKER_DOMAIN}/"
-            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}\\+claude${claudeVer}/"
+            "https://github\\.com/aaddrick/claude-desktop-debian/releases/download/v${repoVer}(\\+|%2B)claude${claudeVer}/"
             "https://(objects|release-assets)\\.githubusercontent\\.com/"
           )
           url="$rpm_url"
@@ -868,7 +921,20 @@ jobs:
   update-aur-repo:
     name: Update AUR Package
     # RC tags never touch the AUR package.
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc')
+    #
+    # AUR_PUBLISH_ENABLED is a kill switch: set the repo variable to
+    # 'false' to pause AUR publishing, any other value (or unset) keeps
+    # it on, so a deleted variable can't silently stop releases forever.
+    # Paused 2026-08-01 — claude-desktop-appimage was deleted from the
+    # AUR under PRQ#85209 and a reinstatement request is pending. The
+    # pkgbase git repo still accepts pushes, so this job would recreate
+    # the package while a moderator is reviewing that request. Re-enable
+    # with `gh variable set AUR_PUBLISH_ENABLED --body true` once the
+    # package is restored.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !contains(github.ref_name, '-rc') &&
+      vars.AUR_PUBLISH_ENABLED != 'false'
     needs: [release]
     runs-on: ubuntu-latest
 
@@ -987,3 +1053,75 @@ jobs:
           git commit -m "Update to v${PKGVER}"
           git push
 
+  # A tag push is the release, and nobody watches the Actions tab for
+  # it: the v3.2.4+claude2.2553.0 build died on a pool-lag 404 and went
+  # unnoticed until the next day's bump superseded it (#859). When any
+  # job in the tag chain fails, open one tracking issue per tag (or
+  # append to it on a re-run) so the failure lands in the inbox. Same
+  # shape as the apt-repo-heartbeat issue. `always()` keeps this job
+  # alive when an upstream job failed; the `contains` keeps it quiet
+  # when nothing did (skipped publish jobs are not failures).
+  report-tag-failure:
+    name: Report tag build failure
+    runs-on: ubuntu-latest
+    if: >-
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      contains(needs.*.result, 'failure')
+    needs:
+      - test-flags
+      - build
+      - test-artifacts
+      - test-artifacts-arm64
+      - release
+      - mirror-official-deb
+      - update-apt-repo
+      - update-dnf-repo
+      - update-aur-repo
+    permissions:
+      issues: write
+
+    steps:
+      - name: Open or update the tag's failure issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const tag = process.env.TAG;
+            const needs = JSON.parse(process.env.NEEDS);
+            const failed = Object.entries(needs)
+              .filter(([, job]) => job.result === 'failure')
+              .map(([name]) => `\`${name}\``);
+            const label = 'release-failure';
+            const title = `Tag build failed: ${tag}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Tag \`${tag}\` failed at ${new Date().toISOString()}.`,
+              `Failed jobs: ${failed.join(', ')}`,
+              `Run: ${runUrl}`,
+              '',
+              'Runbook: RELEASING.md § "A tag build fails".',
+            ].join('\n');
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              labels: label,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                ...context.repo,
+                title,
+                body,
+                labels: [label],
+              });
+            }
