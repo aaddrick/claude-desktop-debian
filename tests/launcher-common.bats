@@ -1208,12 +1208,14 @@ _run_predicate_as_daemon() {
 	# The #882 case again, through the helper reaper: on a fresh launch
 	# no UI is alive, and every stand-in below is inside the scoped
 	# pgrep, so a cowork-vm-service.js substring arm would reap the
-	# bystanders along with the daemon.
+	# bystanders along with the daemon. The daemon is spawned last so
+	# its PID is the last one pgrep prints: the scoped stub must exit
+	# like pgrep, or the reaper's `pids=$(...) || return 0` bails.
 	_claude_desktop_ui_is_alive() { return 1; }
-	_spawn_cowork_daemon_stand_in
 	_spawn_cowork_bystander_stand_in editor
 	_spawn_cowork_bystander_stand_in relative
 	_spawn_cowork_bystander_stand_in packed
+	_spawn_cowork_daemon_stand_in
 	_scope_pgrep_to_stand_ins
 
 	setup_logging
