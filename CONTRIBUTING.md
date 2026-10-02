@@ -102,8 +102,6 @@ CODEOWNERS auto-requests reviews; this list is for human discoverability.
   even though the Settings UI page is owner-only. Upstream-triggered
   releases need no one at all — `check-claude-version.yml` sets the
   version and pushes the tag itself.
-- **@RayCharlizard**: Cowork (`scripts/patches/cowork-bwrap.sh`,
-  `scripts/cowork-fallback/`, `tests/cowork-*.bats`).
 - **@typedrat**: Nix (`flake.nix`, `flake.lock`, `/nix/`).
 
 ## Before submitting a PR
