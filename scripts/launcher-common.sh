@@ -748,18 +748,71 @@ _desktop_helper_cmdline_matches() {
 			;;
 	esac
 
-	# Argument-shaped arms: these identify a helper by what it was
-	# handed, not by which binary runs it (argv[0] here is node, or
-	# the Electron main). They stay whole-cmdline by necessity.
-	case "$cmdline" in
-		*"--user-data-dir=$config_dir "*)
-			return 0
+	# A Claude Desktop Chromium helper carrying our profile: argv[0]
+	# named claude-desktop, a --type= switch and our --user-data-dir.
+	# This is the only arm that reaps helpers outside /usr/lib, such as
+	# the Nix store tree. Live gpu, utility and renderer helpers carry
+	# all three; a bystander handed the same profile dir, such as
+	# `chromium --user-data-dir=~/.config/Claude`, does not (#908).
+	if [[ ${argv0##*/} == claude-desktop && $cmdline == *--type=* \
+		&& $cmdline == *"--user-data-dir=$config_dir "* ]]; then
+		return 0
+	fi
+
+	# Extension servers are matched by argv shape in
+	# cleanup_stale_desktop_helpers (_is_claude_extension_server), not
+	# here: a `$config_dir/Claude Extensions/` substring also matches a
+	# pager, an editor or `rg` on an extension's files (#908).
+	return 1
+}
+
+# Is PID an MCP server of an installed Claude Desktop extension?
+#
+# Fingerprinted by argv shape, not by a `Claude Extensions/` substring
+# (#908, the #905 class): argv[0]'s basename is an interpreter, and
+# argv[1], or a --directory value, sits under the extensions dir. That
+# is how the app starts a server on a system runtime (`node
+# <ext>/server/index.js`, `uv run --directory <ext> ...`). With the
+# built-in Node it is a utilityProcess (--type=utility), which the
+# in-tree arm of _desktop_helper_cmdline_matches already covers, or
+# the claude-desktop binary run with ELECTRON_RUN_AS_NODE=1, counted
+# here as an interpreter (#903). An unreadable environ is no match.
+#
+# Known gap, not a regression: a server started with the extension dir
+# as its cwd and only relative arguments (`dynamic-uv`, `python -m`)
+# names no extension path in argv and is not matched. /proc/PID/cwd
+# would close that if it ever matters.
+#
+# cmdline is read NUL-split into an array: the dir name has a space.
+_is_claude_extension_server() {
+	local ext_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/Claude Extensions/"
+	local -a argv
+	local i
+	mapfile -d '' argv 2>/dev/null < "/proc/$1/cmdline" || return 1
+
+	case ${argv[0]##*/} in
+		node|python*|uv|uvx|bun|deno)
 			;;
-		*"$config_dir/Claude Extensions/"*)
-			return 0
+		claude-desktop)
+			tr '\0' '\n' 2>/dev/null < "/proc/$1/environ" \
+				| grep -qx 'ELECTRON_RUN_AS_NODE=1' || return 1
+			;;
+		*)
+			return 1
 			;;
 	esac
 
+	[[ ${argv[1]:-} == "$ext_dir"* ]] && return 0
+	for ((i = 1; i < ${#argv[@]}; i++)); do
+		case ${argv[i]} in
+			--directory=*)
+				[[ ${argv[i]#--directory=} == "$ext_dir"* ]] && return 0
+				;;
+			--directory)
+				[[ ${argv[i + 1]:-} == "$ext_dir"* ]] && return 0
+				;;
+		esac
+	done
 	return 1
 }
 
@@ -781,7 +834,8 @@ cleanup_stale_desktop_helpers() {
 	for pid in $pids; do
 		[[ $pid == "$$" || $pid == "$PPID" ]] && continue
 		[[ ${_electron_child_pid:-} == "$pid" ]] && continue
-		if _is_cowork_fallback_daemon "$pid"; then
+		if _is_cowork_fallback_daemon "$pid" \
+			|| _is_claude_extension_server "$pid"; then
 			matched+=("$pid")
 			continue
 		fi
