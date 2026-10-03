@@ -137,7 +137,7 @@ _scope_pgrep_to_stand_ins() {
 		local pid ours found=1
 		while read -r pid; do
 			for ours in "${cowork_pids[@]}" "${bystander_pids[@]}" \
-				"${main_stand_in_pids[@]}"; do
+				"${main_stand_in_pids[@]}" "${argv_stand_in_pids[@]}"; do
 				[[ $pid == "$ours" ]] || continue
 				printf '%s\n' "$pid"
 				found=0
@@ -166,12 +166,53 @@ _kill_stand_ins() {
 	local pid
 	for pid in "${claude_pid:-}" "${plain_pid:-}" \
 		"${cowork_pids[@]}" "${bystander_pids[@]}" \
-		"${main_stand_in_pids[@]}"; do
+		"${main_stand_in_pids[@]}" "${argv_stand_in_pids[@]}"; do
 		[[ -n $pid ]] || continue
 		kill -KILL "$pid" 2>/dev/null || true
 	done
 	unset claude_pid plain_pid cowork_pid cowork_pids bystander_pids \
-		main_stand_in_pids
+		main_stand_in_pids argv_stand_in_pids
+}
+
+# Spawn a REAL process whose argv is exactly <argv0> <script> [args...]
+# (#908): bash runs <script>, which blocks on a fifo, and exec -a sets
+# argv[0]. <script> is created when missing, so it can stand for a
+# server's entry point or for a file a bystander has open. A relative
+# <script> resolves against $argv_cwd (default: the current dir), which
+# is how `uv run --directory <ext> ...` gets argv[1] = run. The exe stays
+# bash, so the live-UI gate never mistakes one for a Claude Desktop
+# main. Appends to argv_stand_in_pids and sets argv_stand_in_pid.
+_spawn_argv_stand_in() {
+	local argv0="$1" script="$2" fifo="$TEST_TMP/argv-block" path
+	shift 2
+	[[ -p $fifo ]] || mkfifo "$fifo"
+	path=$script
+	[[ $path == /* ]] || path="${argv_cwd:-$PWD}/$script"
+	mkdir -p "${path%/*}"
+	[[ -e $path ]] || printf 'read -r _ < %q\n' "$fifo" > "$path"
+	(cd "${argv_cwd:-.}" && exec -a "$argv0" bash "$script" "$@") 3>&- &
+	argv_stand_in_pid=$!
+	argv_stand_in_pids+=("$argv_stand_in_pid")
+	_await_argv0 "$argv_stand_in_pid" "$argv0"
+}
+
+# Spawn a REAL Electron-run-as-Node stand-in (#903, #908): a copy of
+# bash named claude-desktop runs <script> with ELECTRON_RUN_AS_NODE=1,
+# so argv is [<dir>/claude-desktop, <script>] and the exe is named
+# claude-desktop, as for an extension server on the built-in Node.
+# <script> is created when missing. Appends to main_stand_in_pids and
+# sets stand_in_pid.
+_spawn_claude_node_mode_stand_in() {
+	local script="$1" dir="$TEST_TMP/node-mode-$RANDOM"
+	local fifo="$TEST_TMP/node-mode-block"
+	mkdir -p "$dir" "${script%/*}" || return 1
+	cp /bin/bash "$dir/claude-desktop" || return 1
+	[[ -p $fifo ]] || mkfifo "$fifo"
+	[[ -e $script ]] || printf 'read -r _ < %q\n' "$fifo" > "$script"
+	ELECTRON_RUN_AS_NODE=1 "$dir/claude-desktop" "$script" 3>&- &
+	stand_in_pid=$!
+	main_stand_in_pids+=("$stand_in_pid")
+	_await_exe "$stand_in_pid" "$dir/claude-desktop"
 }
 
 # Spawn a REAL process standing in for a Claude Desktop Electron main or

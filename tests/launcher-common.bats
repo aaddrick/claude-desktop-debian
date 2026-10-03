@@ -1158,14 +1158,32 @@ _run_predicate_as_daemon() {
 		"/usr/lib/claude-desktop/claude-desktop --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
-	# tr '\0' ' ' joins cmdline args with a trailing space, so the
-	# --user-data-dir arm anchors on "$config_dir " — exact dir only.
+	# The --user-data-dir arm reaps helpers outside /usr/lib (the Nix
+	# store tree) when argv[0] is named claude-desktop and --type= is
+	# set (#908). tr '\0' ' ' joins cmdline args with a trailing space,
+	# so it anchors on "$config_dir " — exact dir only.
+	local nix=/nix/store/abc-claude-desktop/lib/claude-desktop/claude-desktop
 	run _desktop_helper_cmdline_matches \
-		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=$config_dir "
+		"$nix --type=utility --user-data-dir=$config_dir "
 	[[ $status -eq 0 ]]
 
 	run _desktop_helper_cmdline_matches \
-		"/tmp/.mount_claudeXXXXXX/electron --type=utility --user-data-dir=${config_dir}Dev "
+		"$nix --type=utility --user-data-dir=${config_dir}Dev "
+	[[ $status -ne 0 ]]
+
+	# A Nix main or zygote carries no --type= (#908).
+	run _desktop_helper_cmdline_matches \
+		"$nix --user-data-dir=$config_dir "
+	[[ $status -ne 0 ]]
+
+	# Another browser handed our profile dir is a bystander (#908),
+	# with or without a --type= switch.
+	run _desktop_helper_cmdline_matches \
+		"/usr/lib/chromium/chromium --type=renderer --user-data-dir=$config_dir "
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"chromium --user-data-dir=$config_dir --incognito "
 	[[ $status -ne 0 ]]
 
 	# No cowork-vm-service.js substring arm (#905): the fallback daemon
@@ -1187,9 +1205,16 @@ _run_predicate_as_daemon() {
 		"/usr/lib/claude-desktop-unofficial/claude-desktop --type=utility --user-data-dir=$config_dir"
 	[[ $status -eq 0 ]]
 
+	# No Claude Extensions substring arm (#908): extension servers are
+	# matched by argv shape in the reaper (_is_claude_extension_server),
+	# so a command line merely naming the dir is not a helper.
 	run _desktop_helper_cmdline_matches \
-		"node $config_dir/Claude Extensions/ant.dir.example/server.js"
-	[[ $status -eq 0 ]]
+		"node $config_dir/Claude Extensions/ant.dir.example/server.js "
+	[[ $status -ne 0 ]]
+
+	run _desktop_helper_cmdline_matches \
+		"less $config_dir/Claude Extensions/ant.dir.example/manifest.json "
+	[[ $status -ne 0 ]]
 
 	# chrome_crashpad_handler outlives the browser by design and
 	# carries no --type= switch (only
@@ -1292,6 +1317,104 @@ _run_predicate_as_daemon() {
 		"$log_file"
 }
 
+# Wait up to ~3s for each PID to exit; fail on the first survivor.
+_await_reaped() {
+	local pid i
+	for pid in "$@"; do
+		for ((i = 0; i < 30; i++)); do
+			kill -0 "$pid" 2>/dev/null || break
+			sleep 0.1
+		done
+		kill -0 "$pid" 2>/dev/null && return 1
+	done
+	return 0
+}
+
+@test "cleanup_stale_desktop_helpers: reaps extension servers, spares processes naming their files (#908)" {
+	# Every stand-in is inside the scoped pgrep and names the extensions
+	# dir, so a `Claude Extensions/` substring arm would reap them all:
+	# only the argv fingerprint tells a server from a bystander. The
+	# live-UI gate is the real one; no stand-in counts as a main.
+	local ext="$XDG_CONFIG_HOME/Claude/Claude Extensions/ant.dir.probe"
+	local tools="$TEST_TMP/tools" pid
+	local -a spared=() reaped=()
+	_scope_pgrep_to_stand_ins
+
+	# Bystanders, one per condition: a pager on the manifest (argv[0]
+	# is no interpreter); an interpreter running its own tool on the
+	# manifest (argv[1] is not under the dir); the claude-desktop name
+	# without ELECTRON_RUN_AS_NODE=1.
+	_spawn_argv_stand_in less "$ext/manifest.json"
+	spared+=("$argv_stand_in_pid")
+	_spawn_argv_stand_in python3 "$tools/check.py" "$ext/manifest.json"
+	spared+=("$argv_stand_in_pid")
+	_spawn_argv_stand_in /opt/x/claude-desktop "$ext/server/index.js"
+	spared+=("$argv_stand_in_pid")
+
+	# Servers: system node on the entry point, `uv run --directory`,
+	# and the built-in Node (Electron run as Node). Spawned last, so the
+	# scoped pgrep's exit status is exercised (see the #905 test).
+	_spawn_argv_stand_in node "$ext/server/index.js"
+	reaped+=("$argv_stand_in_pid")
+	mkdir -p "$TEST_TMP/uv-cwd"
+	argv_cwd="$TEST_TMP/uv-cwd" _spawn_argv_stand_in uv run \
+		--directory "$ext" python main.py
+	reaped+=("$argv_stand_in_pid")
+	_spawn_claude_node_mode_stand_in "$ext/server/index.js"
+	reaped+=("$stand_in_pid")
+
+	setup_logging
+	# `run` for the errexit reason given in the cowork daemon tests.
+	run cleanup_stale_desktop_helpers
+
+	_await_reaped "${reaped[@]}"
+	for pid in "${spared[@]}"; do
+		kill -0 "$pid" || return 1
+	done
+	# The log names the servers, and only the servers.
+	grep -qx \
+		"Killed stale Claude Desktop helpers (PIDs: ${reaped[*]})" \
+		"$log_file"
+}
+
+@test "cleanup_stale_desktop_helpers: --user-data-dir reaps only Claude Desktop helpers (#908)" {
+	# A Nix-store helper is reaped only through the --user-data-dir arm
+	# (its argv[0] is outside /usr/lib), so that arm must keep it while
+	# sparing anything else handed our profile dir.
+	local config_dir="$XDG_CONFIG_HOME/Claude"
+	local nix=/nix/store/abc-claude-desktop/lib/claude-desktop/claude-desktop
+	local browser="$TEST_TMP/tools/browser" pid helper
+	local -a spared=()
+	_scope_pgrep_to_stand_ins
+
+	# Bystanders, one per condition: another browser on our profile
+	# (argv[0] not claude-desktop), with and without --type=, and a
+	# Nix-path claude-desktop without --type= (a main or zygote shape).
+	_spawn_argv_stand_in chromium "$browser" \
+		"--user-data-dir=$config_dir" --incognito
+	spared+=("$argv_stand_in_pid")
+	_spawn_argv_stand_in /usr/lib/chromium/chromium "$browser" \
+		--type=renderer "--user-data-dir=$config_dir"
+	spared+=("$argv_stand_in_pid")
+	_spawn_argv_stand_in "$nix" "$browser" "--user-data-dir=$config_dir"
+	spared+=("$argv_stand_in_pid")
+
+	_spawn_argv_stand_in "$nix" "$browser" --type=utility \
+		"--user-data-dir=$config_dir"
+	helper=$argv_stand_in_pid
+
+	setup_logging
+	# `run` for the errexit reason given in the cowork daemon tests.
+	run cleanup_stale_desktop_helpers
+
+	_await_reaped "$helper"
+	for pid in "${spared[@]}"; do
+		kill -0 "$pid" || return 1
+	done
+	grep -qx "Killed stale Claude Desktop helpers (PIDs: $helper)" \
+		"$log_file"
+}
+
 @test "_claude_desktop_ui_cmdline_matches: keys on the --class fingerprint" {
 	# Live UI: launcher argv carries --class=$WM_CLASS (tr '\0' ' '
 	# leaves every argument space-terminated). Since #700 app.asar no
@@ -1356,8 +1479,9 @@ _run_predicate_as_daemon() {
 	_scope_pgrep_to_main_stand_ins
 	local ext
 	ext="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/Claude Extensions/ext"
-	ELECTRON_RUN_AS_NODE=1 \
-		_spawn_claude_main_stand_in "$ext/server/index.js"
+	# argv[1] is the server script, as for a real Node-mode server:
+	# since #908 the reaper matches it by argv shape.
+	_spawn_claude_node_mode_stand_in "$ext/server/index.js"
 	setup_logging
 	run cleanup_stale_desktop_helpers
 	local i
