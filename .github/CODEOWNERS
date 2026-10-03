@@ -6,7 +6,7 @@
 #   2. Explicit assignments grouped by logical role (listed even
 #      where redundant, so the intent is visible to future
 #      collaborators scanning the file)
-#   3. Cowork and Nix overrides at the bottom so they stick
+#   3. Nix overrides at the bottom so they stick
 #
 # Each listed user must be a repo collaborator (Settings →
 # Collaborators) with at least read access, or GitHub silently
@@ -60,8 +60,7 @@
 
 # ---- Testing & release quality ----
 # Integration test suite, artifact validation, flag-parsing tests,
-# and the --doctor diagnostic tool. Cowork-specific tests stay with
-# @RayCharlizard via the override below.
+# and the --doctor diagnostic tool.
 /tests/                                 @sabiut
 /scripts/doctor.sh                      @sabiut
 
@@ -69,13 +68,6 @@
 # Overrides — listed last so their assignments stick against the
 # broad globs above (/docs/, /.github/, etc.)
 #===============================================================================
-
-# ---- Cowork ----
-# The bwrap fallback patch, its runtime helpers, and its tests/docs.
-/scripts/patches/cowork-bwrap.sh        @RayCharlizard
-/scripts/cowork-fallback/               @RayCharlizard
-/tests/cowork-*.bats                    @RayCharlizard
-/docs/learnings/cowork-*.md             @RayCharlizard
 
 # ---- Nix ----
 /flake.nix                              @typedrat
