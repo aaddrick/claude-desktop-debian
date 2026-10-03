@@ -360,11 +360,11 @@ the harness; everything else after them is a recombination.
 Most of the framing decisions are settled in the [Decisions](#decisions)
 table. What remains:
 
-1. **Owner assignments per row.** [`MEMORY.md`](https://github.com/aaddrick/claude-desktop-debian/blob/main/.claude/projects/-home-aaddrick-source-claude-desktop-debian/memory/MEMORY.md)
-   notes cowork → @RayCharlizard, nix → @typedrat. Hypr-N row is the
-   natural fit for @typedrat once the Nix flake exists. The other eight
-   rows: aaddrick by default, but worth asking the contributor base in a
-   discussion thread.
+1. **Owner assignments per row.** [`CODEOWNERS`](../../.github/CODEOWNERS)
+   assigns Nix to @typedrat and everything else, Cowork included, to
+   @sabiut. Hypr-N row is the natural fit for @typedrat once the Nix
+   flake exists. The other rows: @sabiut by default, but worth asking
+   the contributor base in a discussion thread.
 2. **AT-SPI escape-hatch trigger.** Decision 1 punts on Python until a
    specific test forces it. T17 is the only candidate today, and portal
    mocking probably covers it. If T17 actually needs real-dialog

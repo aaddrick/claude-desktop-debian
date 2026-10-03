@@ -206,7 +206,7 @@ residual risk; they do not un-delete shipped code.
 - Live arm64 rootfs availability check (needs the manifest sha from a
   running install).
 - Cowork socket protocol capture on a KVM host (feeds the 3.1
-  `cowork-bwrapd` scoping; owner @RayCharlizard).
+  `cowork-bwrapd` scoping).
 
 ### No-hardware follow-ons (separate PRs; tracked in `.tmp/plans/official-deb-rebase-tracking.md`)
 
