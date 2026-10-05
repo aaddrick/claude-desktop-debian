@@ -13,6 +13,11 @@ concurrency:
 
 jobs:
   check-version:
+    # Forks inherit this schedule; skip scheduled runs outside
+    # upstream. Manual workflow_dispatch still runs in a fork.
+    if: >-
+      github.event_name != 'schedule' ||
+      github.repository == 'aaddrick/claude-desktop-debian'
     runs-on: ubuntu-latest
 
     steps:
