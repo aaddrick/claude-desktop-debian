@@ -36,10 +36,10 @@ jobs:
         id: check
         run: |
           if git diff --quiet flake.lock; then
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "flake.lock is already up to date"
           else
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "flake.lock has changes:"
             nix flake metadata --json | jq -r '.locks.nodes | to_entries[] | select(.key != "root") | "\(.key): \(.value.locked.rev[0:8])"'
           fi
