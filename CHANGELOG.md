@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.4] — 2026-10-06
+
 ### Fixed
 
 - The launcher's helper reaper no longer kills a process that merely names an extension's files or passes `--user-data-dir=~/.config/Claude`, such as `less` on a `manifest.json`, `rg` over the `Claude Extensions` dir, or another browser started on that profile. Both arms matched those strings anywhere in a command line, and the reaper runs before launch and after Electron exits whenever no Claude UI is up. The `--user-data-dir` arm, the only one that reaps Nix-store helpers, now also requires an argv[0] named `claude-desktop` and a `--type=` switch. Extension servers are matched by argv shape (`_is_claude_extension_server`): argv[0] is an interpreter (`node`, `python*`, `uv`, `uvx`, `bun`, `deno`, or `claude-desktop` run with `ELECTRON_RUN_AS_NODE=1`), and argv[1] or a `--directory` value sits under the extensions dir. A server started with the extension dir as its working directory and only relative arguments is still not matched, as before. Dropping the arm instead is unsafe: an orphaned Node server holding a handle such as a file watcher never exits on its own. ([#908](https://github.com/aaddrick/claude-desktop-debian/issues/908))
