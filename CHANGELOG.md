@@ -8,9 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.5] — 2026-10-07
+
 ### Fixed
 
 - The Nix build failed because `pipewire` was missing from `buildInputs` in `nix/claude-desktop.nix` after Claude Desktop 2.19675.1 made it a requirement ([#920](https://github.com/aaddrick/claude-desktop-debian/issues/920))
+- Every package build failed on Claude Desktop 2.19675.1 because the quick-window patch's anchor matched two chunks: 2.19675.1 added a second pop-up window with the identical `setAlwaysOnTop(!0,"pop-up-menu")` call. The anchor now also requires the `QUICK_ENTRY` window tag that precedes the real call, so it selects the Quick Entry chunk and leaves the new window untouched ([#919](https://github.com/aaddrick/claude-desktop-debian/issues/919))
 
 ## [v3.3.4] — 2026-10-06
 
