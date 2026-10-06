@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `--doctor` run from an AppImage no longer reports the version of a `claude-desktop-unofficial` deb installed on the same host as its own. The version check looked the deb up by package name, so it printed `[PASS] Installed version:` with the host package's version and the drift check compared that against the official pool, warning about a version the AppImage doesn't ship. An AppImage now reads the version stamped into its own bundled desktop entry (`X-AppImage-Version`), so the drift check also works for AppImages. ([#927](https://github.com/aaddrick/claude-desktop-debian/issues/927))
+
 ## [v3.3.5] — 2026-10-07
 
 ### Fixed
