@@ -107,6 +107,44 @@ n.o.info(`[QuickEntry] Creating new chat with submit_quick_entry`);i.s()||i.f.sh
 	[[ $status -ne 0 ]]
 }
 
+# 2.19675.1 shipped bytes: an extra `rFr(mY)` call now sits between the
+# QUICK_ENTRY tag and the setAlwaysOnTop call, and the submit path's
+# show() site reads `Io()||Eo.show()`.
+QW_2_19675='function fFr(){return!mY||mY.isDestroyed()}function pFr(){fFr()||mY.hide()}
+Li.QUICK_ENTRY),rFr(mY),mY.setAlwaysOnTop(!0,"pop-up-menu"),mY.webContents
+P.info("[QuickEntry] Creating new chat with submit_quick_entry");let n=DFr();if(!n)return P.info("[QuickEntry] mainView webContents unavailable; dropping payload"),!1;if(setTimeout((()=>{!Eo||Eo.isDestroyed()||(Io()||Eo.show(),Eo.focus(),B?.webContents?.focus(),_Fr())}),0),!n.isLoading()){'
+
+# 2.19675.1 shipped bytes from index.chunk-Vk0jD3SM.js: a different
+# pop-up window with the identical setAlwaysOnTop call and no QUICK_ENTRY.
+QW_2_19675_SIBLING='c.webContents.setWindowOpenHandler((()=>({action:"deny"}))),c.setAlwaysOnTop(!0,"pop-up-menu"),p.for(c.webContents)'
+
+@test "quick-window: sibling pop-up window with the same call is not selected" {
+	# 2.19675.1 shipped a second pop-up-menu setAlwaysOnTop call in its
+	# own chunk, so the call shape alone matched two files and every
+	# build failed as ambiguous (#919).
+	_chunk 'index.chunk-sibling.js' "$QW_2_19675_SIBLING"
+	_chunk 'index.chunk-real.js' "$QW_2_19675"
+	run patch_quick_window
+	[[ $status -eq 0 ]]
+	[[ $output == *'Found quick window variable: mY'* ]]
+	grep -qF 'mY.blur(),mY.hide()' "$BUILD/index.chunk-real.js"
+	grep -qF 'Io())||Eo.show()' "$BUILD/index.chunk-real.js"
+	[[ "$(cat "$BUILD/index.chunk-sibling.js")" == "$QW_2_19675_SIBLING" ]]
+}
+
+@test "quick-window: a statement boundary breaks the QUICK_ENTRY anchor" {
+	# Near miss: the same pieces split by `;` must not match, or the
+	# gap would let QUICK_ENTRY anywhere earlier vouch for an unrelated
+	# setAlwaysOnTop call.
+	_chunk 'index.chunk-test.js' \
+		'Li.QUICK_ENTRY);c.setAlwaysOnTop(!0,"pop-up-menu")'
+	run patch_quick_window
+	[[ $status -ne 0 ]]
+	# Name the anchor: the submit anchor is absent from this fixture
+	# too, so a bare 'matched no file' would pass on that miss alone.
+	[[ $output == *"Anchor 'quick-window setAlwaysOnTop' matched no file"* ]]
+}
+
 # =============================================================================
 # org-plugins
 # =============================================================================
