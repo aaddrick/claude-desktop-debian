@@ -1,0 +1,56 @@
+name: Nix Build
+run-name: |
+  Nix Build: ${{
+    github.event_name == 'pull_request' && format('PR #{0} by @{1} - {2}', github.event.pull_request.number, github.actor, github.event.pull_request.title) ||
+    github.event_name == 'push' && github.event.head_commit && format('Push by @{0} - {1}', github.actor, github.event.head_commit.message) ||
+    format('{0} triggered by @{1}', github.event_name, github.actor)
+  }}
+
+# Nothing else in CI builds the Nix derivation, so an upstream bump
+# that adds a library dependency breaks `nix build` silently (#920).
+# The path list covers both automated writers: check-claude-version
+# (official-deb.sh pins + the nix SRI) and update-flake-lock
+# (flake.lock). Both push with GH_PAT, so their commits trigger this.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'nix/**'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'scripts/setup/official-deb.sh'
+      - '.github/workflows/nix-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'nix/**'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'scripts/setup/official-deb.sh'
+      - '.github/workflows/nix-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix-build:
+    name: nix build (x86_64-linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+
+      # The FHS package depends on claude-desktop, so this one build
+      # covers both outputs, including autoPatchelfHook's dependency
+      # check in fixupPhase.
+      - name: Build claude-desktop-fhs
+        run: nix build -L .#claude-desktop-fhs --no-link --print-out-paths
