@@ -13,6 +13,11 @@ concurrency:
 
 jobs:
   update-flake-lock:
+    # Forks inherit this schedule; skip scheduled runs outside
+    # upstream. Manual workflow_dispatch still runs in a fork.
+    if: >-
+      github.event_name != 'schedule' ||
+      github.repository == 'aaddrick/claude-desktop-debian'
     runs-on: ubuntu-latest
 
     steps:
@@ -31,10 +36,10 @@ jobs:
         id: check
         run: |
           if git diff --quiet flake.lock; then
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "flake.lock is already up to date"
           else
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "flake.lock has changes:"
             nix flake metadata --json | jq -r '.locks.nodes | to_entries[] | select(.key != "root") | "\(.key): \(.value.locked.rev[0:8])"'
           fi
