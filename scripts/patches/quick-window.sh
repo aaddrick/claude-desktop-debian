@@ -23,17 +23,25 @@ patch_quick_window() {
 
 	# Resolve on the full setAlwaysOnTop shape, not on "pop-up-menu"
 	# alone — the bare literal also occurs in a sibling chunk that has no
-	# call to rewrite.
+	# call to rewrite. The QUICK_ENTRY prefix (the window-kind enum key
+	# passed just before the call; a property name, so the minifier keeps
+	# it) is required too: 2.19675.1 added a second pop-up window in its
+	# own chunk with the identical setAlwaysOnTop call (#919). The gap
+	# allows the extra call 2.19675.1 inserts between the two
+	# (`Li.QUICK_ENTRY),rFr(mY),mY.setAlwaysOnTop`) but not a statement
+	# boundary.
+	local always_on_top_re="QUICK_ENTRY\\)[^;]{0,200}?"
+	always_on_top_re+="\\K[\$\\w]+(?=\\.setAlwaysOnTop\\(\\s*!0\\s*,\\s*"
+	always_on_top_re+="${_QW_Q}pop-up-menu${_QW_Q}\\))"
 	local index_js
 	index_js=$(_resolve_anchor_file 'quick-window setAlwaysOnTop' \
-		"[\$\\w]+\\.setAlwaysOnTop\\(\\s*!0\\s*,\\s*${_QW_Q}pop-up-menu${_QW_Q}\\)") \
+		"$always_on_top_re") \
 		|| return 1
 
-	# Extract the quick window variable name from the unique "pop-up-menu"
-	# setAlwaysOnTop call, e.g.: Sa.setAlwaysOnTop(!0,`pop-up-menu`)
+	# Extract the quick window variable name from the same anchor,
+	# e.g.: Li.QUICK_ENTRY),Sa.setAlwaysOnTop(!0,`pop-up-menu`)
 	local quick_var
-	quick_var=$(grep -oP "[\$\\w]+(?=\\.setAlwaysOnTop\\(\\s*!0\\s*,\\s*${_QW_Q}pop-up-menu${_QW_Q}\\))" \
-		"$index_js" | head -1)
+	quick_var=$(grep -oP "$always_on_top_re" "$index_js" | head -1)
 	if [[ -z $quick_var ]]; then
 		echo 'WARNING: Could not extract quick window variable name'
 		echo '##############################################################'
