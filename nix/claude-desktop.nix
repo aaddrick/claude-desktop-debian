@@ -191,6 +191,7 @@ stdenv.mkDerivation {
     nspr
     nss
     pango
+    pipewire # DT_NEEDED of @ant/claude-native/claude-native-binding.node
     stdenv.cc.cc.lib # libstdc++ (node-pty), libgcc_s
     systemd
     libx11
