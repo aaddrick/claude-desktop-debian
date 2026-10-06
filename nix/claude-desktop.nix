@@ -191,6 +191,7 @@ stdenv.mkDerivation {
     nspr
     nss
     pango
+    pipewire
     stdenv.cc.cc.lib # libstdc++ (node-pty), libgcc_s
     systemd
     libx11

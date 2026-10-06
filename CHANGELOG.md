@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The Nix build failed because `pipewire` was missing from `buildInputs` in `nix/claude-desktop.nix` after Claude Desktop 2.19675.1 made it a requirement ([#920](https://github.com/aaddrick/claude-desktop-debian/issues/920))
+
 ## [v3.3.4] — 2026-10-06
 
 ### Fixed
