@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- Signing in works again after a native Wayland launch (`CLAUDE_USE_WAYLAND=1`). Since v3.3.3 the launcher writes a hidden `~/.local/share/applications/com.anthropic.Claude.desktop` so the portal accepts the app id (#805). The app then registers that entry as the `claude://` handler on every startup, but its `Exec` line had no `%u`, so the browser's login callback started the app with no URL and the session stayed signed out. The entry now passes the URL and declares `MimeType=x-scheme-handler/claude;`, like the packaged entry. An entry written by an earlier launcher is rewritten on the next launch on any backend, because `mimeapps.list` keeps pointing at it after a return to the XWayland default. ([#916](https://github.com/aaddrick/claude-desktop-debian/issues/916))
+
 ## [v3.3.5] — 2026-10-07
 
 ### Fixed
