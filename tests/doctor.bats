@@ -1026,6 +1026,73 @@ _hide_pkg_tools() {
 	[[ -z $output ]]
 }
 
+# Lay out the AppDir shape appimage.sh builds: the bundled desktop
+# entry at the root, the Electron binary under usr/lib/claude-desktop.
+# $1 = desktop entry body. Prints the electron path AppRun would pass.
+_make_appdir() {
+	local appdir="$BATS_TEST_TMPDIR/AppDir"
+	mkdir -p "$appdir/usr/lib/claude-desktop"
+	: > "$appdir/usr/lib/claude-desktop/claude-desktop"
+	printf '%s\n' "$1" > "$appdir/com.anthropic.Claude.desktop"
+	printf '%s\n' "$appdir/usr/lib/claude-desktop/claude-desktop"
+}
+
+@test "_doctor_check_pkg_version: AppImage reports its own version, not the host's deb" {
+	# The host has an old deb installed; an AppImage run used to
+	# report it as a [PASS] and feed it to the drift check.
+	rpm() { return 1; }
+	dpkg-query() { printf 'installed 1.52386.3-3.2.4'; }
+	local app
+	app=$(_make_appdir $'[Desktop Entry]\nName=Claude\nX-AppImage-Version=2.19675.1-3.3.5')
+
+	run _doctor_check_pkg_version "$app" appimage
+	[[ $status -eq 0 ]]
+	[[ $output == *'[PASS] Installed version: 2.19675.1-3.3.5 (AppImage)'* ]]
+	[[ $output != *'1.52386.3'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_pkg_version: AppImage records its version for the drift check" {
+	# Asserted in-shell, not via `run`: the subshell would discard the
+	# _installed_pkg_version assignment the drift check reads.
+	dpkg-query() { printf 'installed 1.52386.3-3.2.4'; }
+	local app _installed_pkg_version=''
+	app=$(_make_appdir $'[Desktop Entry]\nX-AppImage-Version=2.19675.1-3.3.5')
+
+	_doctor_check_pkg_version "$app" appimage > /dev/null
+	[[ $_installed_pkg_version == '2.19675.1-3.3.5' ]]
+
+	_stub_curl_packages '2.19675.1'
+	run _check_official_drift
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'in sync'* ]]
+}
+
+@test "run_doctor: passes the package type to _doctor_check_pkg_version" {
+	# Structural pin: run_doctor runs every host check, so it is not
+	# exercised end to end here. Without the second argument the
+	# AppImage branch above is unreachable and the host's deb comes
+	# back (the helper defaults to 'deb').
+	run declare -f run_doctor
+	[[ $output == *'_doctor_check_pkg_version "$electron_path" "$package_type"'* ]]
+}
+
+@test "_doctor_check_pkg_version: AppImage without a stamped version is info, never the host's deb" {
+	dpkg-query() { printf 'installed 1.52386.3-3.2.4'; }
+	local app _installed_pkg_version=''
+	app=$(_make_appdir $'[Desktop Entry]\nName=Claude')
+
+	_doctor_check_pkg_version "$app" appimage > /dev/null
+	[[ -z $_installed_pkg_version ]]
+
+	run _doctor_check_pkg_version "$app" appimage
+	[[ $status -eq 0 ]]
+	[[ $output == *'Installed version: unknown'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'1.52386.3'* ]]
+}
+
 # =============================================================================
 # _check_legacy_env: 2.x knobs no longer honored (post-rebase)
 # =============================================================================
