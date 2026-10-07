@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- Shell commands in Cowork work on NixOS under the opt-in bwrap fallback (`COWORK_VM_BACKEND=bwrap`). The session sandbox bound `/usr` and `/etc` but not `/nix`, and inside a `buildFHSEnv` such as `appimage-run`, `/usr/bin/bash` is a symlink into `/nix/store`, so every command failed with `bwrap: execvp /usr/bin/bash: No such file or directory`. The sandbox now also binds `/nix` and the FHS env's `/.host-etc` read-only whenever they exist, and `disabledDefaultBinds` can still drop either. ([#667](https://github.com/aaddrick/claude-desktop-debian/issues/667))
+
 ## [v3.3.5] — 2026-10-07
 
 ### Fixed

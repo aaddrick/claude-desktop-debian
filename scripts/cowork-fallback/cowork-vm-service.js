@@ -879,6 +879,54 @@ function loadBwrapMountsConfig(configPath, logFn) {
 
 const CRITICAL_MOUNTS = new Set(['/', '/dev', '/proc']);
 
+/**
+ * Build the default bwrap args for a session: an empty tmpfs root with
+ * only the necessary system paths bound in read-only. This avoids
+ * exposing the real home directory and allows creating the /sessions/
+ * guest path structure that claude-code-vm expects. User config is
+ * merged on top by mergeBwrapArgs.
+ *
+ * fsApi (existsSync, readlinkSync) is injectable for tests.
+ */
+function buildDefaultBwrapArgs(fsApi = fs) {
+    const args = [
+        '--tmpfs', '/',
+        '--ro-bind', '/usr', '/usr',
+        '--ro-bind', '/etc', '/etc',
+        '--dev', '/dev',
+        '--proc', '/proc',
+        '--tmpfs', '/tmp',
+        '--tmpfs', '/run',
+    ];
+
+    // Handle /bin, /lib, /lib64, /sbin: on merged-usr distros
+    // (Fedora, recent Debian/Ubuntu) these are symlinks into /usr.
+    // On others they are real directories needing separate mounts.
+    for (const dir of ['/bin', '/lib', '/lib64', '/sbin']) {
+        try {
+            const target = fsApi.readlinkSync(dir);
+            args.push('--symlink', target, dir);
+        } catch (_) {
+            if (fsApi.existsSync(dir)) {
+                args.push('--ro-bind', dir, dir);
+            }
+        }
+    }
+
+    // #667: on NixOS every binary lives in /nix/store, and inside a
+    // buildFHSEnv (appimage-run) /usr/bin/* points there while most /etc
+    // entries point into /.host-etc. Without these the sandbox's
+    // /usr/bin/bash is a dangling link ("bwrap: execvp /usr/bin/bash: No
+    // such file or directory"). Read-only, and only when present.
+    for (const dir of ['/nix', '/.host-etc']) {
+        if (fsApi.existsSync(dir)) {
+            args.push('--ro-bind', dir, dir);
+        }
+    }
+
+    return args;
+}
+
 function mergeBwrapArgs(defaultArgs, config) {
     const result = [];
     const disabled = new Set(
@@ -1368,33 +1416,7 @@ class BwrapBackend extends LocalBackend {
         const rawArgs = params.args || [];
         const mergedEnv = buildBaseSpawnEnv(params.env);
 
-        // Build a minimal sandbox: empty tmpfs root with only the
-        // necessary system paths bound in read-only. This avoids
-        // exposing the real home directory and allows creating the
-        // /sessions/ guest path structure that claude-code-vm expects.
-        const defaultBwrapArgs = [
-            '--tmpfs', '/',
-            '--ro-bind', '/usr', '/usr',
-            '--ro-bind', '/etc', '/etc',
-            '--dev', '/dev',
-            '--proc', '/proc',
-            '--tmpfs', '/tmp',
-            '--tmpfs', '/run',
-        ];
-
-        // Handle /bin, /lib, /lib64, /sbin: on merged-usr distros
-        // (Fedora, recent Debian/Ubuntu) these are symlinks into /usr.
-        // On others they are real directories needing separate mounts.
-        for (const dir of ['/bin', '/lib', '/lib64', '/sbin']) {
-            try {
-                const target = fs.readlinkSync(dir);
-                defaultBwrapArgs.push('--symlink', target, dir);
-            } catch (_) {
-                if (fs.existsSync(dir)) {
-                    defaultBwrapArgs.push('--ro-bind', dir, dir);
-                }
-            }
-        }
+        const defaultBwrapArgs = buildDefaultBwrapArgs();
 
         // Preserve DNS resolution: /etc/resolv.conf is often a symlink
         // to /run/systemd/resolve/stub-resolv.conf which --tmpfs /run
@@ -2908,6 +2930,7 @@ module.exports = {
     CRITICAL_MOUNTS,
     validateMountPath,
     loadBwrapMountsConfig,
+    buildDefaultBwrapArgs,
     mergeBwrapArgs,
     classifyBwrapProbeError,
     detectBackend,

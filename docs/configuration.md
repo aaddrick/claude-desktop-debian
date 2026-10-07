@@ -131,6 +131,12 @@ Extra host paths can be exposed to the sandbox via `coworkBwrapMounts` (`additio
 > mount is accessible under `~/` inside the sandbox. Both forms are accepted
 > by the validator; only the `/home/...` form will appear under `$HOME`.
 
+> **Note for NixOS:** the sandbox binds `/nix` and `/.host-etc` read-only
+> whenever they exist, because inside a `buildFHSEnv` such as `appimage-run`,
+> `/usr/bin/*` points into `/nix/store` and most `/etc` entries point into
+> `/.host-etc`. You no longer need `additionalROBinds: ["/nix"]` for that.
+> List either path in `disabledDefaultBinds` to drop it.
+
 ## Removed in v3.0.0
 
 The v3.0.0 rebase deleted the patches that read these variables. The doctor's legacy-environment check warns when any of them is still set:
