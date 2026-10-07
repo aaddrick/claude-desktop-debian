@@ -22,11 +22,11 @@ OFFICIAL_APT_BASE='https://downloads.claude.ai/claude-desktop/apt/stable'
 
 # Pinned artifact per architecture, seeded from the Packages indexes on
 # 2026-07-04. Bumped by check-claude-version after the rebase lands.
-OFFICIAL_DEB_VERSION='2.19675.1'
-OFFICIAL_DEB_POOL_AMD64='pool/main/c/claude-desktop/claude-desktop_2.19675.1_amd64.deb'
-OFFICIAL_DEB_SHA256_AMD64='9ba127eeccf270f6e60d35f5c5333654053bf0540c88fc82a009d01711b106fc'
-OFFICIAL_DEB_POOL_ARM64='pool/main/c/claude-desktop/claude-desktop_2.19675.1_arm64.deb'
-OFFICIAL_DEB_SHA256_ARM64='681d122ae97d0eb302f0e6d92c7f232847064bb01746458dc50a2c095a40ed12'
+OFFICIAL_DEB_VERSION='2.26454.0'
+OFFICIAL_DEB_POOL_AMD64='pool/main/c/claude-desktop/claude-desktop_2.26454.0_amd64.deb'
+OFFICIAL_DEB_SHA256_AMD64='6d3e4973dcb11511ddd962040b3073b435d1592b3174a82ef52e50377a75a63f'
+OFFICIAL_DEB_POOL_ARM64='pool/main/c/claude-desktop/claude-desktop_2.26454.0_arm64.deb'
+OFFICIAL_DEB_SHA256_ARM64='01bdff873d3ce37b4dcc56cd2dfbc4711b9c8f9abce479e75a52f946a083d981'
 
 # Set official_deb_url/sha256/filename from the pinned block for the
 # current (or given) architecture.
