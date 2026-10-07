@@ -259,27 +259,85 @@ function translateGuestPath(guestPath, mountMap) {
 }
 
 /**
- * Resolve a subpath that may be root-relative (e.g. "home/user/.config/...")
- * or home-relative (e.g. ".config/..."). app.asar generates root-relative
- * subpaths via path.relative('/', absolutePath), so path.join('/', subpath)
- * recovers the original absolute path. Falls back to home-relative for
- * legacy or genuinely relative subpaths.
- *
- * Fix for https://github.com/aaddrick/claude-desktop-debian/issues/373
+ * Resolve a subpath sent by app.asar. The app builds every mount and
+ * SDK subpath with path.relative('/', absolutePath), so it is always
+ * root-relative and path.join('/', subpath) recovers the absolute path,
+ * in $HOME or not (#373, #676).
  */
-function resolveSubpath(subpath) {
+function resolveAppSubpath(subpath) {
     if (!subpath) return os.homedir();
-    const asRoot = path.resolve(path.join('/', subpath));
-    if (asRoot.startsWith(os.homedir() + path.sep) || asRoot === os.homedir()) {
-        return asRoot;
+    return path.resolve(path.join('/', subpath));
+}
+
+/**
+ * Resolve one of our own home-relative names (".claude",
+ * ".auto-memory") under $HOME. Never use this for an app-sent subpath:
+ * those are root-relative, see resolveAppSubpath.
+ */
+function resolveHomeSubpath(name) {
+    return path.resolve(path.join(os.homedir(), name));
+}
+
+// True when p is $HOME or under it, in either the configured form or
+// the fully-resolved one (/home -> /var/home on immutable distros).
+function isUnderHome(p) {
+    const home = os.homedir();
+    let realHome = home;
+    try { realHome = fs.realpathSync(home); } catch (_) {}
+    const under = (h) => p === h || p.startsWith(h + path.sep);
+    return under(home) || under(realHome);
+}
+
+/**
+ * Validate a host path before a session binds it (#676). Shared by
+ * both mount routes: spawn-time additionalMounts (buildMountMap) and
+ * runtime mountPath(). It takes the app-sent subpath, so a ".."
+ * segment in it is caught before path.join() normalizes it away.
+ *
+ * The returned path is the one to bind: resolved the way the kernel
+ * will resolve it (#896's resolveExistingPrefix, dangling links
+ * included), so a symlink can't move the bind after the check. Under
+ * $HOME it may not exist yet (the spawn creates it); off $HOME it must
+ * already be a directory, since nothing is ever created outside $HOME.
+ *
+ * Returns { valid: true, hostPath, offHome } or { valid: false, reason }.
+ */
+function validateSessionMount(subpath) {
+    if (typeof subpath !== 'string' || !subpath) {
+        return { valid: false, reason: 'empty subpath' };
     }
-    return path.resolve(path.join(os.homedir(), subpath));
+    if (subpath.split('/').includes('..')) {
+        return { valid: false, reason: 'subpath must not contain ".." segments' };
+    }
+    const normalized = resolveAppSubpath(subpath);
+    const hostPath = resolveExistingPrefix(normalized);
+    for (const p of new Set([normalized, hostPath])) {
+        for (const forbidden of FORBIDDEN_MOUNT_PATHS) {
+            if (p === forbidden ||
+                (forbidden !== '/' && p.startsWith(forbidden + '/'))) {
+                return { valid: false, reason: `forbidden path: ${p}` };
+            }
+        }
+    }
+    if (isUnderHome(hostPath)) {
+        return { valid: true, hostPath, offHome: false };
+    }
+    let isDir = false;
+    try { isDir = fs.statSync(hostPath).isDirectory(); } catch (_) {}
+    if (!isDir) {
+        return {
+            valid: false,
+            reason: `outside $HOME and not an existing directory: ${hostPath}`,
+        };
+    }
+    return { valid: true, hostPath, offHome: true };
 }
 
 /**
  * Build a mount-name -> host-path mapping from mountBinds (prior
- * mountPath() calls) and additionalMounts (spawn params).
- * additionalMounts entries take precedence over mountBinds.
+ * mountPath() calls, already validated there) and additionalMounts
+ * (spawn params). additionalMounts entries take precedence over
+ * mountBinds.
  */
 function buildMountMap(additionalMounts, mountBinds) {
     const map = {};
@@ -291,16 +349,17 @@ function buildMountMap(additionalMounts, mountBinds) {
     }
 
     if (additionalMounts) {
-        const homeDir = os.homedir();
         for (const [name, info] of Object.entries(additionalMounts)) {
             if (!info || !info.path) continue;
-            const resolved = resolveSubpath(info.path);
-            if (resolved !== homeDir &&
-                !resolved.startsWith(homeDir + path.sep)) {
-                log(`buildMountMap: rejecting "${name}" — resolves outside home: ${resolved}`);
+            const check = validateSessionMount(info.path);
+            if (!check.valid) {
+                log(`buildMountMap: rejecting "${name}": ${check.reason}`);
                 continue;
             }
-            map[name] = resolved;
+            if (check.offHome) {
+                log(`buildMountMap: accepting off-home mount "${name}": ${check.hostPath}`);
+            }
+            map[name] = check.hostPath;
         }
     }
 
@@ -347,11 +406,16 @@ function buildSpawnEnv(appEnv, mountMap) {
         } else {
             // Host path — may be doubled by app.asar's own
             // path.join(homedir, rootRelativeSubpath). Extract the
-            // relative part and resolve it properly.
+            // relative part; only when it reads as a root-relative path
+            // back under $HOME was it doubled. Otherwise (~/.claude) it
+            // is already right.
             const homeDir = os.homedir();
             if (mergedEnv.CLAUDE_CONFIG_DIR.startsWith(homeDir + path.sep)) {
                 const relative = mergedEnv.CLAUDE_CONFIG_DIR.slice(homeDir.length + 1);
-                const fixed = resolveSubpath(relative);
+                const asRoot = resolveAppSubpath(relative);
+                const doubled = asRoot === homeDir ||
+                    asRoot.startsWith(homeDir + path.sep);
+                const fixed = doubled ? asRoot : mergedEnv.CLAUDE_CONFIG_DIR;
                 if (fixed !== mergedEnv.CLAUDE_CONFIG_DIR) {
                     log(`buildSpawnEnv: fixed doubled CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR} -> ${fixed}`);
                     mergedEnv.CLAUDE_CONFIG_DIR = fixed;
@@ -366,9 +430,8 @@ function buildSpawnEnv(appEnv, mountMap) {
     // regardless of backend, but on HostBackend the /sessions/ directory
     // does not exist. Try translateGuestPath first (works if .auto-memory
     // is in mountMap via additionalMounts), then fall back to resolving
-    // the mount-name portion the way HostBackend.mountPath() would —
-    // via resolveSubpath() — so the path resolves to a writable host
-    // location (typically ~/.auto-memory).
+    // the mount name under $HOME (resolveHomeSubpath), so the path
+    // resolves to a writable host location (typically ~/.auto-memory).
     if (mergedEnv.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE) {
         const memPath = mergedEnv.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE;
         if (memPath.startsWith('/sessions/')) {
@@ -378,15 +441,14 @@ function buildSpawnEnv(appEnv, mountMap) {
                 mergedEnv.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE = translated;
             } else {
                 // .auto-memory is an internal Cowork path typically not
-                // present in additionalMounts. Extract the mount-name
-                // (and any trailing subpath) and resolve via
-                // resolveSubpath, mirroring HostBackend.mountPath().
+                // present in additionalMounts. Extract the mount name
+                // (and any trailing subpath); the name is home-relative.
                 const match = memPath.match(
                     /^\/sessions\/[^/]+\/mnt\/([^/]+)(\/.*)?$/
                 );
                 if (match) {
                     const hostPath = path.join(
-                        resolveSubpath(match[1]),
+                        resolveHomeSubpath(match[1]),
                         match[2] || ''
                     );
                     log(`buildSpawnEnv: resolved CLAUDE_COWORK_MEMORY_PATH_OVERRIDE via fallback: ${memPath} -> ${hostPath}`);
@@ -559,7 +621,7 @@ function resolvePluginRoot(pluginPath, mountBase) {
 function resolveWorkDir(cwd, sharedCwdPath, mountMap) {
     let workDir = cwd || os.homedir();
     if (sharedCwdPath) {
-        workDir = resolveSubpath(sharedCwdPath);
+        workDir = resolveAppSubpath(sharedCwdPath);
     } else if (cwd && cwd.startsWith('/sessions/')) {
         const translated = translateGuestPath(cwd, mountMap || {});
         if (translated) {
@@ -596,7 +658,7 @@ function resolveWorkDir(cwd, sharedCwdPath, mountMap) {
 function resolveSdkBinary(sdkSubpath, version, label) {
     if (!sdkSubpath || !version) return null;
     const candidatePath = path.join(
-        resolveSubpath(sdkSubpath), version, 'claude'
+        resolveAppSubpath(sdkSubpath), version, 'claude'
     );
     try {
         fs.accessSync(candidatePath, fs.constants.X_OK);
@@ -1305,7 +1367,7 @@ class HostBackend extends LocalBackend {
     async mountPath(params) {
         const { subpath } = params;
         log(`HostBackend mountPath: ${subpath}`);
-        const guestPath = resolveSubpath(subpath);
+        const guestPath = resolveAppSubpath(subpath);
         return { guestPath };
     }
 }
@@ -1450,6 +1512,13 @@ class BwrapBackend extends LocalBackend {
                     }
                 } catch { /* ENOENT is fine — path doesn't exist yet */ }
                 if (!fs.existsSync(hostPath)) {
+                    // Never create anything outside $HOME (#676). The
+                    // validator only admits an off-home path that is
+                    // already a directory; if it vanished since, skip it.
+                    if (!isUnderHome(hostPath)) {
+                        log(`BwrapBackend spawn: off-home mount ${mountName} is gone, skipping: ${hostPath}`);
+                        continue;
+                    }
                     fs.mkdirSync(hostPath, { recursive: true });
                 }
             } catch (e) {
@@ -1493,7 +1562,15 @@ class BwrapBackend extends LocalBackend {
     async mountPath(params) {
         const { subpath, mountName } = params;
         log(`BwrapBackend mountPath: ${mountName} -> ${subpath}`);
-        const hostPath = resolveSubpath(subpath);
+        const check = validateSessionMount(subpath);
+        if (!check.valid) {
+            // Thrown errors reach the app as { success: false, error }.
+            throw new Error(`mountPath rejected: ${check.reason}`);
+        }
+        const { hostPath } = check;
+        if (check.offHome) {
+            log(`BwrapBackend mountPath: accepting off-home mount "${mountName || subpath}": ${hostPath}`);
+        }
         // Store for --bind on next spawn
         this.mountBinds.set(mountName || subpath, hostPath);
         return { guestPath: hostPath };
@@ -2330,7 +2407,7 @@ class KvmBackend extends BackendBase {
         }
 
         // No home share — return host path with a warning
-        const hostPath = resolveSubpath(subpath);
+        const hostPath = resolveAppSubpath(subpath);
         log('KvmBackend: no home share, returning host path');
         return { guestPath: hostPath };
     }
@@ -2911,4 +2988,10 @@ module.exports = {
     mergeBwrapArgs,
     classifyBwrapProbeError,
     detectBackend,
+    resolveAppSubpath,
+    resolveHomeSubpath,
+    validateSessionMount,
+    buildMountMap,
+    buildSpawnEnv,
+    BwrapBackend,
 };
