@@ -1339,7 +1339,7 @@ assertEqual(result[bindIdx + 2], '/tmp', 'bind dst');
 # =============================================================================
 
 # Fake fs: $1 = JS array of paths that exist, $2 = JS object of
-# symlink -> target. Defines fakeFs in the node script.
+# symlink -> target. Defines fakeFs and hasBind in the node script.
 _fake_fs() {
 	printf '%s' "
 const present = new Set($1);
