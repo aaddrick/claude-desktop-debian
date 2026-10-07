@@ -1124,6 +1124,14 @@ _portal_entry_is_stale_generated() {
 # logged), except the official app's own stale copy -- see
 # _portal_entry_is_stale_generated.
 #
+# #916: the app calls setAsDefaultProtocolClient('claude') on every
+# startup, which points x-scheme-handler/claude in mimeapps.list at
+# <desktopName>.desktop -- this entry. So it must take the URL (%u) like
+# the packaged one does, or GIO launches (the browser's sign-in
+# callback) start the app with no argument. An entry of ours is kept
+# current on any backend, since the scheme mapping outlives the native
+# Wayland launch that wrote it; only creating one needs native Wayland.
+#
 # $1 = absolute launcher path for Exec (/usr/bin/<package> or
 #      "$APPIMAGE"; empty -> no-op, like heal_autostart_entry)
 # $2 = icon name
@@ -1160,8 +1168,10 @@ ensure_portal_app_id_entry() {
 		return 0
 	done
 
-	[[ $is_wayland == true && $use_x11_on_wayland == false ]] \
-		|| return 0
+	if [[ $ours == false ]]; then
+		[[ $is_wayland == true && $use_x11_on_wayland == false ]] \
+			|| return 0
+	fi
 	[[ -n $launcher ]] || return 0
 	# Any other entry is not ours to replace. Log it: if it is invalid,
 	# the portal keeps refusing the app id and nothing else says why.
@@ -1177,9 +1187,10 @@ ensure_portal_app_id_entry() {
 		echo '[Desktop Entry]'
 		echo 'Type=Application'
 		echo 'Name=Claude'
-		echo "Exec=$(_desktop_exec_quote "$launcher")"
+		echo "Exec=$(_desktop_exec_quote "$launcher") %u"
 		[[ -n $icon ]] && echo "Icon=$icon"
 		echo 'NoDisplay=true'
+		echo 'MimeType=x-scheme-handler/claude;'
 		echo "$PORTAL_ENTRY_MARKER"
 	} > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
 
