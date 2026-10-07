@@ -78,6 +78,24 @@ Why a launcher-written user file and not a packaged one: the official package ow
 
 The one gap: right after the official package is installed, our entry still shadows its menu entry until our launcher runs once more. Nix is unaffected — the derivation ships the official tree, `com.anthropic.Claude.desktop` included.
 
+## Side effect: the Secret portal `app_id` (#913)
+
+`Registry.Register` is not scoped to GlobalShortcuts. Chromium 152 calls it once per launch, under `--ozone-platform=x11` as well, and its `os_crypt` `SecretPortalKeyProvider` then calls `org.freedesktop.portal.Secret.RetrieveSecret` from the same D-Bus connection. So the desktop-id gate above also decides which key gnome-keyring hands out:
+
+| Launch | `com.anthropic.Claude.desktop` | `Register` | Secret portal `app_id` |
+|---|---|---|---|
+| XWayland (default) | absent | `App info not found` | `""` |
+| Native Wayland (`CLAUDE_USE_WAYLAND=1`) | written by `ensure_portal_app_id_entry` | OK | `com.anthropic.Claude` |
+| XWayland after one native-Wayland launch | still present (the launcher no-ops on X11) | OK | `com.anthropic.Claude` |
+
+Installing the official package side by side has the same effect as the second row, since it ships the entry. gnome-keyring keys the portal secret on the `app_id`, so each value gets its own `org.freedesktop.portal.Secret` item ("Application key for <id>") with a different random secret. The empty-`app_id` item the #913 reporter found in GNOME Keyring is the first-row key, which every unregistered host app shares.
+
+Today the flip is harmless. Portal init succeeds (`os_crypt.portal.prev_init_success: true` in `Local State`), yet cookies are still written with the `v11` prefix (the libsecret `Claude Safe Storage` key), and Electron `safeStorage` uses that same libsecret item. All persistent claude.ai cookies survived an `""` → `com.anthropic.Claude` → `""` round trip with unchanged `creation_utc`. The binary carries a `kSecretPortalKeyProviderUseForEncryption` feature, which appears off in this build.
+
+**Re-check on Electron bumps.** If Chromium starts encrypting with the portal key (`v12` cookies), any `app_id` change (the first `CLAUDE_USE_WAYLAND=1` launch, or installing or removing the official package) makes existing cookies undecryptable and costs one re-login at that launch. With the app closed, `sqlite3 ~/.config/Claude/Cookies "SELECT DISTINCT substr(encrypted_value, 1, 3) FROM cookies"` printing only `v11` means the portal key is still unused for encryption.
+
+How it was tested (2026-10-03; Ubuntu 26.04.1, xdg-desktop-portal 1.21.1, gnome-keyring 50, official 2.9939.4 / Electron 44.4.3): a private `dbus-run-session` running its own `gnome-keyring-daemon --unlock` and `xdg-desktop-portal -r`, a throwaway `HOME` and `XDG_*_HOME`, and the official ELF launched directly. The `app_id` is the second argument of `org.freedesktop.impl.portal.Secret.RetrieveSecret` in `dbus-monitor`. Two traps: on gnome-keyring 50 an empty unlock password creates no `login` collection, so both Chromium and the portal fall into `CreateCollection` prompts that open `gcr-prompter` dialogs on the real screen; and `XDG_RUNTIME_DIR` must be a short path (the keyring control socket hits the 108-byte socket-path limit). The official build also ignores `--remote-debugging-port`, so cookies cannot be seeded over CDP; let claude.ai set its own and stop the app with SIGTERM to the main PID only, or the cookie store never flushes.
+
 ## First-run UX and escape hatch
 
 When the portal path engages, GNOME shows a **one-time permission dialog** the first time the shortcut is registered; the user must accept it to bind the shortcut. Expected portal behaviour, not a bug. A dismissed or denied dialog persists in the portal permission store and later `globalShortcut.register()` calls then fail silently; clearing the stored decision with `flatpak permission-reset <app-id>` (the store is shared with non-Flatpak apps) should re-trigger the dialog on the next launch — untested here.
