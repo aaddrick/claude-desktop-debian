@@ -415,10 +415,9 @@ function buildSpawnEnv(appEnv, mountMap) {
                 const asRoot = resolveAppSubpath(relative);
                 const doubled = asRoot === homeDir ||
                     asRoot.startsWith(homeDir + path.sep);
-                const fixed = doubled ? asRoot : mergedEnv.CLAUDE_CONFIG_DIR;
-                if (fixed !== mergedEnv.CLAUDE_CONFIG_DIR) {
-                    log(`buildSpawnEnv: fixed doubled CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR} -> ${fixed}`);
-                    mergedEnv.CLAUDE_CONFIG_DIR = fixed;
+                if (doubled && asRoot !== mergedEnv.CLAUDE_CONFIG_DIR) {
+                    log(`buildSpawnEnv: fixed doubled CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR} -> ${asRoot}`);
+                    mergedEnv.CLAUDE_CONFIG_DIR = asRoot;
                 }
             }
         }
