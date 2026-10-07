@@ -16,6 +16,7 @@ const {
     CRITICAL_MOUNTS,
     validateMountPath,
     loadBwrapMountsConfig,
+    buildDefaultBwrapArgs,
     mergeBwrapArgs,
 } = require("'"${SCRIPT_DIR}"'/../cowork-vm-service.js");
 
@@ -1323,6 +1324,115 @@ assertEqual(result[bindIdx + 2], '/tmp', 'bind dst');
 		 .--die-with-parent.,\s*
 		 .--new-session.,\s*
 		 .--.,/sx
+	))' "$svc"
+	[[ "$status" -eq 0 ]]
+}
+
+# =============================================================================
+# buildDefaultBwrapArgs (#667)
+#
+# On NixOS every binary lives in /nix/store, and inside a buildFHSEnv
+# (appimage-run) /usr/bin/* points there while most /etc entries point
+# into /.host-etc. The session sandbox must bind both, read-only, when
+# they exist, or /usr/bin/bash is a dangling link. A fake fs stands in
+# for the host so the cases don't depend on where the suite runs.
+# =============================================================================
+
+# Fake fs: $1 = JS array of paths that exist, $2 = JS object of
+# symlink -> target. Defines fakeFs and hasBind in the node script.
+_fake_fs() {
+	printf '%s' "
+const present = new Set($1);
+const links = $2;
+const fakeFs = {
+    existsSync: p => present.has(p) || p in links,
+    readlinkSync: p => {
+        if (p in links) return links[p];
+        const e = new Error('EINVAL: ' + p); e.code = 'EINVAL'; throw e;
+    },
+};
+function hasBind(args, flag, src, dst) {
+    for (let i = 0; i + 2 < args.length; i++) {
+        if (args[i] === flag && args[i + 1] === src && args[i + 2] === dst) {
+            return true;
+        }
+    }
+    return false;
+}
+"
+}
+
+@test "buildDefaultBwrapArgs: binds /nix read-only when present (#667)" {
+	run node -e "${NODE_PREAMBLE}
+$(_fake_fs "['/nix']" '{}')
+const args = buildDefaultBwrapArgs(fakeFs);
+assert(hasBind(args, '--ro-bind', '/nix', '/nix'), 'ro-bind /nix: ' + JSON.stringify(args));
+assert(!hasBind(args, '--bind', '/nix', '/nix'), '/nix must not be writable');
+"
+	[[ "$status" -eq 0 ]] || { echo "$output"; false; }
+}
+
+@test "buildDefaultBwrapArgs: binds /.host-etc read-only when present (#667)" {
+	run node -e "${NODE_PREAMBLE}
+$(_fake_fs "['/.host-etc']" '{}')
+const args = buildDefaultBwrapArgs(fakeFs);
+assert(hasBind(args, '--ro-bind', '/.host-etc', '/.host-etc'), 'ro-bind /.host-etc: ' + JSON.stringify(args));
+"
+	[[ "$status" -eq 0 ]] || { echo "$output"; false; }
+}
+
+@test "buildDefaultBwrapArgs: no /nix or /.host-etc bind when absent (#667)" {
+	run node -e "${NODE_PREAMBLE}
+$(_fake_fs '[]' '{}')
+const args = buildDefaultBwrapArgs(fakeFs);
+assert(!args.includes('/nix'), 'no /nix: ' + JSON.stringify(args));
+assert(!args.includes('/.host-etc'), 'no /.host-etc: ' + JSON.stringify(args));
+"
+	[[ "$status" -eq 0 ]] || { echo "$output"; false; }
+}
+
+@test "buildDefaultBwrapArgs: base layout and merged-usr handling unchanged" {
+	run node -e "${NODE_PREAMBLE}
+$(_fake_fs "['/lib64']" "{'/bin': 'usr/bin', '/lib': 'usr/lib', '/sbin': 'usr/sbin'}")
+const args = buildDefaultBwrapArgs(fakeFs);
+assertDeepEqual(args, [
+    '--tmpfs', '/',
+    '--ro-bind', '/usr', '/usr',
+    '--ro-bind', '/etc', '/etc',
+    '--dev', '/dev',
+    '--proc', '/proc',
+    '--tmpfs', '/tmp',
+    '--tmpfs', '/run',
+    '--symlink', 'usr/bin', '/bin',
+    '--symlink', 'usr/lib', '/lib',
+    '--ro-bind', '/lib64', '/lib64',
+    '--symlink', 'usr/sbin', '/sbin',
+], 'default layout');
+"
+	[[ "$status" -eq 0 ]] || { echo "$output"; false; }
+}
+
+@test "buildDefaultBwrapArgs: disabledDefaultBinds can still drop /nix (#667)" {
+	run node -e "${NODE_PREAMBLE}
+$(_fake_fs "['/nix', '/.host-etc']" '{}')
+const merged = mergeBwrapArgs(buildDefaultBwrapArgs(fakeFs), {
+    additionalROBinds: [], additionalBinds: [],
+    disabledDefaultBinds: ['/nix'],
+});
+assert(!merged.includes('/nix'), '/nix dropped: ' + JSON.stringify(merged));
+assert(hasBind(merged, '--ro-bind', '/.host-etc', '/.host-etc'), '/.host-etc kept');
+"
+	[[ "$status" -eq 0 ]] || { echo "$output"; false; }
+}
+
+# BwrapBackend.spawn is not exported, so pin that it builds its defaults
+# with buildDefaultBwrapArgs and merges user config on top of them;
+# otherwise the cases above test a function the session never calls.
+@test "BwrapBackend session spawn uses buildDefaultBwrapArgs (#667)" {
+	local svc="${SCRIPT_DIR}/../cowork-vm-service.js"
+	run perl -0ne 'exit(!(
+		/const\s+defaultBwrapArgs\s*=\s*buildDefaultBwrapArgs\(\s*\)/s
+		&& /mergeBwrapArgs\(\s*defaultBwrapArgs\s*,/s
 	))' "$svc"
 	[[ "$status" -eq 0 ]]
 }
