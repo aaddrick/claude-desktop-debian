@@ -2307,6 +2307,7 @@ _write_pre_916_entry() {
 	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial' \
 		'claude-desktop-unofficial'
 	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial" %u' "$portal_entry"
+	grep -qxF 'MimeType=x-scheme-handler/claude;' "$portal_entry"
 }
 
 @test "ensure_portal_app_id_entry: no-op under XWayland" {
