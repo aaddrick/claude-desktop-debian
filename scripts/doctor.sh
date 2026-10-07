@@ -837,14 +837,26 @@ _doctor_check_cowork_daemon() {
 # rpm installed the file, which a stale dpkg record can never claim.
 # dpkg is consulted only when rpm does not own the path.
 #
-# AppImage and Nix installs (no package owns the path) keep the
-# existing not-found warn; hosts with no package tools stay silent.
+# An AppImage never asks the package managers: no package owns its
+# mounted path, and the dpkg branch looks the package up by name, so
+# it would report whatever deb the host happens to have installed and
+# feed that to the drift check. The AppImage reports the version
+# stamped into its own bundled desktop entry instead.
 #
-# Usage: _doctor_check_pkg_version <electron_path>
+# Nix installs (no package owns the path) keep the existing not-found
+# warn; hosts with no package tools stay silent.
+#
+# Usage: _doctor_check_pkg_version <electron_path> [package_type]
 _doctor_check_pkg_version() {
 	local electron_path="${1:-}"
+	local package_type="${2:-deb}"
 	local probe_path="$electron_path"
 	local pkg_version=''
+
+	if [[ $package_type == 'appimage' ]]; then
+		_doctor_check_appimage_version "$electron_path"
+		return 0
+	fi
 
 	if [[ -z $probe_path ]]; then
 		# Official layout: bare ELF at the package root (no
@@ -900,6 +912,35 @@ _doctor_check_pkg_version() {
 		_warn 'claude-desktop-unofficial not found via dpkg/rpm' \
 			'(AppImage?)'
 	fi
+}
+
+# AppImage half of _doctor_check_pkg_version. appimage.sh stamps the
+# package version into the bundled desktop entry as X-AppImage-Version
+# (the same value `--version` prints), at the AppDir root next to
+# usr/lib/claude-desktop/claude-desktop, which is the path AppRun hands
+# run_doctor.
+#
+# Usage: _doctor_check_appimage_version <electron_path>
+_doctor_check_appimage_version() {
+	local electron_path="${1:-}"
+	local appdir="${electron_path%/usr/lib/claude-desktop/claude-desktop}"
+	local entry version=''
+
+	if [[ -n $electron_path && $appdir != "$electron_path" ]]; then
+		for entry in "$appdir"/*.desktop; do
+			[[ -f $entry ]] || continue
+			version=$(grep -m1 -oP '^X-AppImage-Version=\K\S+' \
+				"$entry" 2>/dev/null) && break
+		done
+	fi
+
+	if [[ -z $version ]]; then
+		_info 'Installed version: unknown (AppImage desktop entry' \
+			'has no X-AppImage-Version)'
+		return 0
+	fi
+	_installed_pkg_version="$version"
+	_pass "Installed version: $version (AppImage)"
 }
 
 # Best-effort drift check against Anthropic's official APT pool.
@@ -1683,7 +1724,7 @@ run_doctor() {
 	echo
 
 	# -- Installed package version --
-	_doctor_check_pkg_version "$electron_path"
+	_doctor_check_pkg_version "$electron_path" "$package_type"
 
 	# -- Version drift vs. the official pool (best-effort, network) --
 	_check_official_drift

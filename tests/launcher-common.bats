@@ -2248,10 +2248,66 @@ _write_system_entry() {
 	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial' \
 		'claude-desktop-unofficial'
 	[[ -f $portal_entry ]]
-	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial"' "$portal_entry"
+	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial" %u' "$portal_entry"
 	grep -qxF 'Icon=claude-desktop-unofficial' "$portal_entry"
 	grep -qxF 'NoDisplay=true' "$portal_entry"
 	grep -qxF "$PORTAL_ENTRY_MARKER" "$portal_entry"
+}
+
+# #916: the app makes this entry the x-scheme-handler/claude default on
+# every startup, so it must take the URL the way the packaged entry does.
+@test "ensure_portal_app_id_entry: entry handles claude:// URLs (#916)" {
+	_portal_setup
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(grep -c '^Exec=' "$portal_entry") -eq 1 ]]
+	[[ $(grep '^Exec=' "$portal_entry") == *' %u' ]]
+	grep -qxF 'MimeType=x-scheme-handler/claude;' "$portal_entry"
+}
+
+# An entry written before #916 (no %u) must heal on the next launch, on
+# any backend: mimeapps.list keeps pointing at it after the user goes
+# back to the XWayland default.
+_write_pre_916_entry() {
+	mkdir -p "${portal_entry%/*}"
+	{
+		echo '[Desktop Entry]'
+		echo 'Type=Application'
+		echo 'Name=Claude'
+		echo 'Exec="/usr/bin/claude-desktop-unofficial"'
+		echo 'Icon=claude-desktop-unofficial'
+		echo 'NoDisplay=true'
+		echo "$PORTAL_ENTRY_MARKER"
+	} > "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: heals a pre-#916 entry on native Wayland" {
+	_portal_setup
+	_write_pre_916_entry
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial' \
+		'claude-desktop-unofficial'
+	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial" %u' "$portal_entry"
+	grep -qxF 'MimeType=x-scheme-handler/claude;' "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: heals a pre-#916 entry under XWayland" {
+	_portal_setup
+	use_x11_on_wayland=true
+	_write_pre_916_entry
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial' \
+		'claude-desktop-unofficial'
+	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial" %u' "$portal_entry"
+	grep -qxF 'MimeType=x-scheme-handler/claude;' "$portal_entry"
+}
+
+@test "ensure_portal_app_id_entry: heals a pre-#916 entry on X11" {
+	_portal_setup
+	is_wayland=false
+	use_x11_on_wayland=true
+	_write_pre_916_entry
+	ensure_portal_app_id_entry '/usr/bin/claude-desktop-unofficial' \
+		'claude-desktop-unofficial'
+	grep -qxF 'Exec="/usr/bin/claude-desktop-unofficial" %u' "$portal_entry"
+	grep -qxF 'MimeType=x-scheme-handler/claude;' "$portal_entry"
 }
 
 @test "ensure_portal_app_id_entry: no-op under XWayland" {
@@ -2398,7 +2454,7 @@ _write_app_generated_entry() {
 	_portal_setup
 	ensure_portal_app_id_entry "$HOME/Old/Claude.AppImage"
 	ensure_portal_app_id_entry "$HOME/Apps/Claude.AppImage"
-	grep -qxF "Exec=\"$HOME/Apps/Claude.AppImage\"" "$portal_entry"
+	grep -qxF "Exec=\"$HOME/Apps/Claude.AppImage\" %u" "$portal_entry"
 	[[ $(grep -c '^Exec=' "$portal_entry") -eq 1 ]]
 }
 
