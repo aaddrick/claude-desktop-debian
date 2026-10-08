@@ -11,12 +11,11 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 
-# -- Shared Node.js preamble that defines the functions under test --------
+# -- Shared Node.js preamble that imports the functions under test --------
 # We store it in a variable so every test can prepend it.
 
 NODE_PREAMBLE='
 const path = require("path");
-const fs = require("fs");
 const os = require("os");
 
 const {
