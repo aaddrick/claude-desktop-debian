@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.7] — 2026-10-09
+
 ### Fixed
 
 - Cowork project folders outside `$HOME` work under the opt-in bwrap fallback (`COWORK_VM_BACKEND=bwrap`). The app sends mount paths root-relative, but the daemon read an off-home one as home-relative, created an empty `~/<path>` and bound that, so the session saw an empty folder. Both mount routes (spawn-time `additionalMounts` and runtime `mountPath`) now share one validator: an off-home path must already be a directory and is never created, the bound path is resolved the way the kernel will resolve it (dangling symlinks included), `..` segments and `/`, `/proc`, `/sys`, `/dev` are rejected, and each accepted off-home bind is logged. Nothing is ever created outside `$HOME`. ([#676](https://github.com/aaddrick/claude-desktop-debian/issues/676))
