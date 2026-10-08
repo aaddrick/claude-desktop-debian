@@ -1423,10 +1423,143 @@ class HostBackend extends LocalBackend {
 // BwrapBackend — Bubblewrap namespace sandbox
 // ============================================================
 
+// Mount modes as the app sends them: a base access level ("ro", "rw",
+// "rwd"), with "+hide" appended when the folder holds protected
+// subpaths and "+hide+glob" when one of those is a leaf glob. Only the
+// base picks the bind type, so "ro+hide" must stay read-only. A missing
+// mode keeps the old read-write default; an unrecognized one fails
+// closed to read-only.
+const MOUNT_MODE_BASES = new Set(['ro', 'rw', 'rwd']);
+
+function parseMountMode(mode) {
+    if (mode === undefined || mode === null || mode === '') {
+        return { bindType: '--bind', base: 'rw', known: true };
+    }
+    const base = String(mode).split('+')[0];
+    if (!MOUNT_MODE_BASES.has(base)) {
+        return { bindType: '--ro-bind', base: 'ro', known: false };
+    }
+    return {
+        bindType: base === 'ro' ? '--ro-bind' : '--bind',
+        base,
+        known: true,
+    };
+}
+
+// A leaf glob from the app's protected-subpath list: "*" and "?" only,
+// matched case-insensitively like the app's own classifier.
+function leafGlobToRegExp(glob) {
+    const body = glob.split('').map((c) => {
+        if (c === '*') return '[^/]*';
+        if (c === '?') return '[^/]';
+        return c.replace(/[\\^$.|+()[\]{}]/g, '\\$&');
+    }).join('');
+    return new RegExp(`^${body}$`, 'i');
+}
+
+/**
+ * Build the bwrap args that hide a mount's protected subpaths, the
+ * "hide" list the app computes for every granted folder (credential
+ * stores, keys, browser profiles). Each entry is relative to the mount
+ * root: { path } for a fixed location, or { path, match: "leaf-glob" }
+ * where the last segment is a glob. A protected directory is covered by
+ * an empty read-only tmpfs and a protected file by /dev/null. Paths are
+ * resolved on the host first, so a symlink inside the mount is hidden
+ * where it lands; one that leaves the mount is not reachable through
+ * this mount and is skipped.
+ *
+ * Returns { ok: true, args, hidden } or { ok: false, reason }. A
+ * malformed entry fails the whole mount, mirroring the app, which does
+ * not mount a folder whose protected list it could not compute.
+ *
+ * fsApi (lstatSync, statSync, realpathSync, readdirSync) is injectable
+ * for tests.
+ */
+function buildHideArgs(hostRoot, guestRoot, hide, fsApi = fs) {
+    if (hide === undefined || hide === null) {
+        return { ok: true, args: [], hidden: [] };
+    }
+    if (!Array.isArray(hide)) {
+        return { ok: false, reason: 'hide is not a list' };
+    }
+    const wanted = new Set();
+    for (const entry of hide) {
+        const rel = entry && typeof entry.path === 'string'
+            ? entry.path : '';
+        const segs = rel.split('/');
+        if (!rel || rel.startsWith('/')
+            || segs.some((s) => s === '' || s === '.' || s === '..')) {
+            return {
+                ok: false,
+                reason: `invalid hide path ${JSON.stringify(rel)}`,
+            };
+        }
+        if (entry.match === undefined) {
+            wanted.add(rel);
+            continue;
+        }
+        if (entry.match !== 'leaf-glob') {
+            return {
+                ok: false,
+                reason: `unknown hide match ${JSON.stringify(entry.match)}`,
+            };
+        }
+        const dirRel = segs.slice(0, -1).join('/');
+        const re = leafGlobToRegExp(segs[segs.length - 1]);
+        let names = [];
+        try {
+            names = fsApi.readdirSync(path.join(hostRoot, dirRel));
+        } catch (_) { /* no such directory: nothing to hide */ }
+        for (const n of names) {
+            if (re.test(n)) wanted.add(dirRel ? `${dirRel}/${n}` : n);
+        }
+    }
+
+    let realRoot;
+    try {
+        realRoot = fsApi.realpathSync(hostRoot);
+    } catch (e) {
+        return { ok: false, reason: `mount root unresolvable: ${e.message}` };
+    }
+    const args = [];
+    const hidden = [];
+    const seen = new Set();
+    for (const rel of [...wanted].sort()) {
+        let real;
+        try {
+            real = fsApi.realpathSync(path.join(hostRoot, rel));
+        } catch (_) {
+            continue; // absent or dangling: nothing to read
+        }
+        if (real === realRoot || !real.startsWith(realRoot + path.sep)) {
+            continue; // lands outside this mount
+        }
+        const inside = path.relative(realRoot, real);
+        if (seen.has(inside)) continue;
+        let isDir;
+        try {
+            isDir = fsApi.statSync(real).isDirectory();
+        } catch (_) {
+            continue; // removed since realpath: nothing to read
+        }
+        seen.add(inside);
+        const dest = `${guestRoot}/${inside.split(path.sep).join('/')}`;
+        if (isDir) {
+            args.push('--tmpfs', dest, '--remount-ro', dest);
+        } else {
+            args.push('--ro-bind', '/dev/null', dest);
+        }
+        hidden.push(inside);
+    }
+    return { ok: true, args, hidden };
+}
+
 class BwrapBackend extends LocalBackend {
     constructor(emitEvent) {
         super(emitEvent, 'BwrapBackend');
         this.mountBinds = new Map(); // mountName -> hostPath
+        // mountName -> { mode, hide } as sent with mountPath()
+        this.mountOptions = new Map();
         this.bwrapMountsConfig = loadBwrapMountsConfig(null, log);
         const mc = this.bwrapMountsConfig;
         if (mc.additionalROBinds.length
@@ -1460,6 +1593,7 @@ class BwrapBackend extends LocalBackend {
         log('BwrapBackend: stopVM');
         this._killAllProcesses('SIGKILL');
         this.mountBinds.clear();
+        this.mountOptions.clear();
         this._setDisconnected();
         return {};
     }
@@ -1514,6 +1648,9 @@ class BwrapBackend extends LocalBackend {
         bwrapArgs.push('--dir', `/sessions/${name}`);
         bwrapArgs.push('--dir', sessionMnt);
 
+        // Mounts actually bound below; a skipped one must not become the
+        // cwd, or bwrap fails to chdir into a directory it never made.
+        const boundMounts = {};
         for (const [mountName, hostPath] of Object.entries(mountMap)) {
             try {
                 // Fix #342: upstream fs-extra can create .mcpb-cache
@@ -1547,10 +1684,21 @@ class BwrapBackend extends LocalBackend {
                 continue;
             }
             const guestPath = `${sessionMnt}/${mountName}`;
-            const mode = additionalMounts?.[mountName]?.mode;
-            const bindType = mode === 'ro' ? '--ro-bind' : '--bind';
-            bwrapArgs.push(bindType, hostPath, guestPath);
-            log(`BwrapBackend spawn: mount ${mountName}: ${hostPath} -> ${guestPath} (${mode || 'rw'})`);
+            // Spawn-time entries win, as they do in buildMountMap.
+            const opts = additionalMounts?.[mountName]
+                ?? this.mountOptions.get(mountName) ?? {};
+            const { bindType, known } = parseMountMode(opts.mode);
+            if (!known) {
+                log(`BwrapBackend spawn: unknown mode ${JSON.stringify(opts.mode)} for ${mountName}, binding read-only`);
+            }
+            const hidden = buildHideArgs(hostPath, guestPath, opts.hide);
+            if (!hidden.ok) {
+                log(`BwrapBackend spawn: not mounting ${mountName}: ${hidden.reason}`);
+                continue;
+            }
+            bwrapArgs.push(bindType, hostPath, guestPath, ...hidden.args);
+            boundMounts[mountName] = hostPath;
+            log(`BwrapBackend spawn: mount ${mountName}: ${hostPath} -> ${guestPath} (${opts.mode || 'rw'}, ${hidden.hidden.length} hidden)`);
         }
 
         // Namespace isolation + actual command
@@ -1564,7 +1712,7 @@ class BwrapBackend extends LocalBackend {
         );
 
         // Use the primary user mount as cwd (first non-dotfile, non-uploads mount)
-        const primaryMount = findPrimaryMount(mountMap);
+        const primaryMount = findPrimaryMount(boundMounts);
         const guestWorkDir = primaryMount
             ? `${sessionMnt}/${primaryMount}`
             : sessionMnt;
@@ -1581,7 +1729,7 @@ class BwrapBackend extends LocalBackend {
     }
 
     async mountPath(params) {
-        const { subpath, mountName } = params;
+        const { subpath, mountName, mode, hide } = params;
         log(`BwrapBackend mountPath: ${mountName} -> ${subpath}`);
         const check = validateSessionMount(subpath);
         if (!check.valid) {
@@ -1592,8 +1740,12 @@ class BwrapBackend extends LocalBackend {
         if (check.offHome) {
             log(`BwrapBackend mountPath: accepting off-home mount "${mountName || subpath}": ${hostPath}`);
         }
-        // Store for --bind on next spawn
-        this.mountBinds.set(mountName || subpath, hostPath);
+        // Store for --bind on next spawn, with the mode and protected
+        // subpaths the app sent, so the bind is not left read-write and
+        // unfiltered.
+        const key = mountName || subpath;
+        this.mountBinds.set(key, hostPath);
+        this.mountOptions.set(key, { mode, hide });
         return { guestPath: hostPath };
     }
 }
@@ -3013,6 +3165,8 @@ module.exports = {
     resolveAppSubpath,
     resolveHomeSubpath,
     validateSessionMount,
+    parseMountMode,
+    buildHideArgs,
     buildMountMap,
     buildSpawnEnv,
     BwrapBackend,
