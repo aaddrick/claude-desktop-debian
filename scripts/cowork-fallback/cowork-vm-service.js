@@ -399,7 +399,12 @@ function buildSpawnEnv(appEnv, mountMap) {
             const translated = translateGuestPath(
                 mergedEnv.CLAUDE_CONFIG_DIR, mountMap
             );
-            if (translated !== mergedEnv.CLAUDE_CONFIG_DIR) {
+            if (translated === null) {
+                // No mount for it. Unset it rather than store null: the
+                // child would see the string "null" as its config dir.
+                log(`buildSpawnEnv: no mount for CLAUDE_CONFIG_DIR, removing: ${mergedEnv.CLAUDE_CONFIG_DIR}`);
+                delete mergedEnv.CLAUDE_CONFIG_DIR;
+            } else if (translated !== mergedEnv.CLAUDE_CONFIG_DIR) {
                 log(`buildSpawnEnv: translated CLAUDE_CONFIG_DIR: ${mergedEnv.CLAUDE_CONFIG_DIR} -> ${translated}`);
                 mergedEnv.CLAUDE_CONFIG_DIR = translated;
             }

@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- When Cowork runs without a sandbox (the host backend) and the session's `CLAUDE_CONFIG_DIR` is a guest path with no matching mount, the daemon now unsets it so Claude Code falls back to `~/.claude`. Since the April path rework it stored `null`, which reached Claude Code as the literal string `null`, a config directory named `null`.
+
 ## [v3.3.7] — 2026-10-09
 
 ### Fixed
