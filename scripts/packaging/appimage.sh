@@ -383,6 +383,14 @@ echo 'Running in GitHub Actions - embedding update information for automatic upd
 update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
 echo "Update info: $update_info"
 
+# appimagetool writes the .zsync itself (no zsyncmake needed), into the
+# current directory under the AppImage's base name rather than next to
+# $output_path. build.sh runs this from the project root, where the
+# release upload picks it up. Clear any earlier copy first, so a stale
+# file can't pass the check below.
+zsync_file="$PWD/${output_filename}.zsync"
+rm -f "$zsync_file"
+
 if ! "$appimagetool_path" --runtime-file "$runtime_path" \
 	--updateinformation "$update_info" "$appdir_path" "$output_path"; then
 	echo "Failed to build AppImage using $appimagetool_path" >&2
@@ -390,18 +398,13 @@ if ! "$appimagetool_path" --runtime-file "$runtime_path" \
 fi
 
 echo "AppImage built successfully with embedded update info: $output_path"
-# appimagetool writes the .zsync into the current directory, not next
-# to $output_path. build.sh runs this script from the repo root and
-# moves the AppImage there too, which is where CI uploads both from.
-# The pinned tool generates the .zsync itself, so zsyncmake is not
-# needed on the host.
-zsync_file="$PWD/$output_filename.zsync"
-if [[ -f $zsync_file ]]; then
-	echo "zsync file generated: $zsync_file"
-	echo 'zsync file will be included in release artifacts'
-else
-	echo "zsync file not generated (expected $zsync_file)" >&2
+# The embedded update info points installed AppImages at this file; a
+# release without it breaks in-place updates, so its absence is fatal.
+if [[ ! -f $zsync_file ]]; then
+	echo "zsync file not found at $zsync_file" >&2
+	exit 1
 fi
+echo "zsync file generated: $zsync_file"
 
 echo '--- AppImage Build Finished ---'
 

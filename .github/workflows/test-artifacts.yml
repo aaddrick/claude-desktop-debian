@@ -64,19 +64,29 @@ jobs:
           sudo apt-get install -y file fuse3 nodejs npm \
             xvfb xdotool dbus-x11 procps
 
-      # The AppImage embeds the static type2 runtime, which needs only
-      # fusermount3 (fuse3), not libfuse2 (#932). Remove libfuse2 in
-      # case the runner image ships it, so this leg proves the AppImage
-      # mounts and launches without it; test-artifact-appimage.sh fails
-      # if libfuse.so.2 is still present.
-      - name: Remove libfuse2 (AppImage)
+      # The AppImage embeds the static type2 runtime, which mounts through
+      # fusermount3 and needs no libfuse.so.2 (#932). Remove any libfuse2
+      # the runner image ships and prove it is gone, so the launch test
+      # below runs on the host #932 broke and a regression back to the
+      # libfuse2-linked runtime fails here instead of on users' machines.
+      - name: Remove libfuse2 for the AppImage launch test (Ubuntu)
         if: matrix.format == 'appimage'
         run: |
-          for pkg in libfuse2 libfuse2t64; do
-            if dpkg-query -W "$pkg" >/dev/null 2>&1; then
-              sudo apt-get remove -y "$pkg"
-            fi
-          done
+          mapfile -t pkgs < <(dpkg-query -W -f='${binary:Package} ${db:Status-Status}\n' \
+            'libfuse2*' 2>/dev/null | awk '$2 == "installed" {print $1}')
+          if (( ${#pkgs[@]} > 0 )); then
+            echo "Removing ${pkgs[*]}"
+            sudo apt-get remove -y "${pkgs[@]}"
+          fi
+          sudo ldconfig
+          if ldconfig -p | grep -q 'libfuse\.so\.2'; then
+            echo '::error::libfuse.so.2 is still present on the runner'
+            ldconfig -p | grep 'libfuse\.so\.2'
+            exit 1
+          fi
+          command -v fusermount3 \
+            || { echo '::error::fusermount3 missing'; exit 1; }
+          echo 'No libfuse.so.2 on this runner; fusermount3 present'
 
       # Fail loud if a smoke-test tool is missing. Without this guard a
       # missing/renamed tool turns run_launch_smoke_test into a silent
@@ -102,7 +112,6 @@ jobs:
       - name: Run artifact tests
         env:
           TARGET_ARCH: ${{ inputs.arch }}
-          REQUIRE_NO_LIBFUSE2: ${{ matrix.format == 'appimage' && '1' || '' }}
         run: |
           chmod +x tests/test-artifact-${{ matrix.format }}.sh
           tests/test-artifact-${{ matrix.format }}.sh artifacts/

@@ -16,13 +16,13 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 
 **Expected:** AppImage runs without first installing `libfuse2t64`. Either the AppImage bundles its own FUSE shim, the `.desktop`/postinst declares the dep, or the launcher gives a clear error pointing at the package name.
 
-**Currently:** Fixed by #932 for builds after v3.3.7: the AppImage embeds the pinned static AppImage/type2-runtime, which links FUSE in and needs no `libfuse.so.2`. Releases up to v3.3.7 embed AppImageKit's runtime and fail on Ubuntu 24.04 with `dlopen(): error loading libfuse.so.2` (workaround: `sudo apt install libfuse2t64`).
+**Currently:** Fixed by #932 from v3.3.9: the AppImage embeds the pinned static AppImage/type2-runtime, which links FUSE in and needs no `libfuse.so.2`. Releases up to v3.3.8 embed AppImageKit's runtime and fail on Ubuntu 24.04 with `dlopen(): error loading libfuse.so.2` (workaround: `sudo apt install libfuse2t64`). CI covers this: the AppImage legs of `test-artifacts.yml` remove `libfuse2` and assert no `libfuse.so.2` is left before the launch test, so a regression to a libfuse2-linked runtime fails there.
 
 **Diagnostics on failure:** Full stderr from the AppImage launch, `ldd ./claude-desktop-*.AppImage`, `dpkg -l | grep -i fuse`.
 
 **References:** —
 
-**Code anchors:** `scripts/packaging/appimage.sh` (`TYPE2_RUNTIME_*` and `APPIMAGETOOL_*` pins; the runtime is forced with `--runtime-file`, and the tool runs with `APPIMAGE_EXTRACT_AND_RUN=1`), `scripts/launcher-common.sh:64` (AppImage forces `--no-sandbox` "due to FUSE constraints"), `.github/workflows/test-artifacts.yml` (the AppImage leg removes libfuse2 and installs `fuse3`), `tests/test-artifact-appimage.sh` (with `REQUIRE_NO_LIBFUSE2=1`, fails if `libfuse.so.2` is present and checks the image mounts via `--appimage-mount`).
+**Code anchors:** `scripts/packaging/appimage.sh` (`TYPE2_RUNTIME_*` and `APPIMAGETOOL_*` pins; the runtime is forced with `--runtime-file`, and the tool runs with `APPIMAGE_EXTRACT_AND_RUN=1`), `scripts/launcher-common.sh:64` (AppImage forces `--no-sandbox` "due to FUSE constraints"), `.github/workflows/test-artifacts.yml` (the AppImage leg removes libfuse2 and installs `fuse3`), `tests/test-artifact-appimage.sh` (checks the image mounts via `--appimage-mount`).
 
 ## S02 — `XDG_CURRENT_DESKTOP=ubuntu:GNOME` doesn't break DE detection
 

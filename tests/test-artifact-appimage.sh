@@ -42,19 +42,11 @@ else
 	fail "AppImage file type unexpected: $file_type"
 fi
 
-# --- Mounts without libfuse2 (#932) ---
+# --- Mounts through FUSE (#932) ---
 # The AppImage embeds the static type2 runtime, which links FUSE in and
-# needs only fusermount3. CI runs this leg with libfuse2 removed and
-# REQUIRE_NO_LIBFUSE2=1 (test-artifacts.yml), so a regression to a
-# libfuse2-linked runtime fails here instead of on users' machines.
-if [[ ${REQUIRE_NO_LIBFUSE2:-} == 1 ]]; then
-	if ldconfig -p | grep -q 'libfuse\.so\.2 '; then
-		fail 'libfuse.so.2 is installed; this leg must run without it'
-	else
-		pass 'libfuse.so.2 is absent on the test host'
-	fi
-fi
-
+# needs only fusermount3. CI removes libfuse2 before this script runs
+# and fails the job if libfuse.so.2 is left (test-artifacts.yml), so on
+# CI this check proves the image mounts without libfuse2.
 # --appimage-mount prints the mount point, then holds the mount until
 # killed. AppRun showing up under it proves the runtime mounted the
 # image through FUSE, not just that it extracts.
