@@ -61,8 +61,32 @@ jobs:
         if: matrix.format != 'rpm'
         run: |
           sudo apt-get update
-          sudo apt-get install -y file libfuse2 nodejs npm \
+          sudo apt-get install -y file fuse3 nodejs npm \
             xvfb xdotool dbus-x11 procps
+
+      # The AppImage embeds the static type2 runtime, which mounts through
+      # fusermount3 and needs no libfuse.so.2 (#932). Remove any libfuse2
+      # the runner image ships and prove it is gone, so the launch test
+      # below runs on the host #932 broke and a regression back to the
+      # libfuse2-linked runtime fails here instead of on users' machines.
+      - name: Remove libfuse2 for the AppImage launch test (Ubuntu)
+        if: matrix.format == 'appimage'
+        run: |
+          mapfile -t pkgs < <(dpkg-query -W -f='${binary:Package} ${db:Status-Status}\n' \
+            'libfuse2*' 2>/dev/null | awk '$2 == "installed" {print $1}')
+          if (( ${#pkgs[@]} > 0 )); then
+            echo "Removing ${pkgs[*]}"
+            sudo apt-get remove -y "${pkgs[@]}"
+          fi
+          sudo ldconfig
+          if ldconfig -p | grep -q 'libfuse\.so\.2'; then
+            echo '::error::libfuse.so.2 is still present on the runner'
+            ldconfig -p | grep 'libfuse\.so\.2'
+            exit 1
+          fi
+          command -v fusermount3 \
+            || { echo '::error::fusermount3 missing'; exit 1; }
+          echo 'No libfuse.so.2 on this runner; fusermount3 present'
 
       # Fail loud if a smoke-test tool is missing. Without this guard a
       # missing/renamed tool turns run_launch_smoke_test into a silent
