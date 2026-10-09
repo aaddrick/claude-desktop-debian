@@ -263,9 +263,9 @@ TYPE2_RUNTIME_SHA256_AARCH64='00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6
 # hash is removed and the build fails.
 fetch_pinned() {
 	local url="$1" dest="$2" sha256="$3"
+	local checksum_line="$sha256  $dest"
 	if [[ -f $dest ]] \
-		&& printf '%s  %s\n' "$sha256" "$dest" \
-			| sha256sum -c --status - 2> /dev/null; then
+		&& sha256sum -c --status <<< "$checksum_line" 2> /dev/null; then
 		echo "Using cached $dest"
 		return 0
 	fi
@@ -275,7 +275,7 @@ fetch_pinned() {
 		rm -f "$dest"
 		return 1
 	fi
-	if ! printf '%s  %s\n' "$sha256" "$dest" | sha256sum -c --status -; then
+	if ! sha256sum -c --status <<< "$checksum_line"; then
 		echo "SHA-256 mismatch for $dest (expected $sha256)" >&2
 		rm -f "$dest"
 		return 1
