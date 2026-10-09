@@ -41,12 +41,6 @@ jobs:
         run: |
           dnf install -y git findutils
 
-      - name: Install FUSE for AppImageTool (Ubuntu)
-        if: inputs.artifact_suffix != 'rpm'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2
-
       - name: Make build script executable
         run: chmod +x ./build.sh
 

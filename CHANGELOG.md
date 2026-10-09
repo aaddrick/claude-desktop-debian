@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Fixed
 
 - The AppImage runs on hosts without libfuse2, such as Fedora 44 Atomic Desktops (Silverblue, Kinoite) and a default Ubuntu 24.04 install. It embedded AppImageKit's runtime, which loads `libfuse.so.2` to mount itself and failed with `dlopen(): error loading libfuse.so.2`. It now embeds the static AppImage/type2-runtime, built with appimagetool from the AppImage/appimagetool project, both pinned by release and SHA-256. The build no longer needs FUSE either: appimagetool runs with `APPIMAGE_EXTRACT_AND_RUN=1`. ([#932](https://github.com/aaddrick/claude-desktop-debian/issues/932))
+- CI now proves the AppImage needs no libfuse2. The AppImage test leg removes libfuse2, installs `fuse3` for `fusermount3`, fails if `libfuse.so.2` is still present, and checks that the AppImage mounts through FUSE with `--appimage-mount`. The build job no longer installs libfuse2, since appimagetool runs with `APPIMAGE_EXTRACT_AND_RUN=1`. ([#935](https://github.com/aaddrick/claude-desktop-debian/pull/935))
+- The AppImage build no longer reports "zsync file not generated" when it was. appimagetool writes the `.zsync` into the current directory, and the check looked next to the build output instead. The build also stops installing `zsyncmake`, which the pinned appimagetool does not need. ([#935](https://github.com/aaddrick/claude-desktop-debian/pull/935))
 
 ## [v3.3.8] — 2026-10-09
 

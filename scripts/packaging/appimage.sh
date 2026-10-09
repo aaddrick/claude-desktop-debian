@@ -375,20 +375,6 @@ fi
 # GitHub Actions build - embed update information
 echo 'Running in GitHub Actions - embedding update information for automatic updates...'
 
-# Install zsync if needed for .zsync file generation
-if ! command -v zsyncmake &> /dev/null; then
-	echo 'zsyncmake not found. Installing zsync package for .zsync file generation...'
-	if command -v apt-get &> /dev/null; then
-		sudo apt-get update && sudo apt-get install -y zsync
-	elif command -v dnf &> /dev/null; then
-		sudo dnf install -y zsync
-	elif command -v zypper &> /dev/null; then
-		sudo zypper install -y zsync
-	else
-		echo 'Cannot install zsync automatically. .zsync files may not be generated.'
-	fi
-fi
-
 # Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
 # The 'claude-desktop-*' wildcard is deliberately NOT renamed along with
 # $package_name: it matches both the old claude-desktop-* and the new
@@ -404,12 +390,17 @@ if ! "$appimagetool_path" --runtime-file "$runtime_path" \
 fi
 
 echo "AppImage built successfully with embedded update info: $output_path"
-zsync_file="${output_path}.zsync"
+# appimagetool writes the .zsync into the current directory, not next
+# to $output_path. build.sh runs this script from the repo root and
+# moves the AppImage there too, which is where CI uploads both from.
+# The pinned tool generates the .zsync itself, so zsyncmake is not
+# needed on the host.
+zsync_file="$PWD/${output_filename}.zsync"
 if [[ -f $zsync_file ]]; then
 	echo "zsync file generated: $zsync_file"
 	echo 'zsync file will be included in release artifacts'
 else
-	echo 'zsync file not generated (zsyncmake may not be installed)'
+	echo "zsync file not generated (expected $zsync_file)" >&2
 fi
 
 echo '--- AppImage Build Finished ---'

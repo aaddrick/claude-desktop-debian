@@ -61,8 +61,22 @@ jobs:
         if: matrix.format != 'rpm'
         run: |
           sudo apt-get update
-          sudo apt-get install -y file libfuse2 nodejs npm \
+          sudo apt-get install -y file fuse3 nodejs npm \
             xvfb xdotool dbus-x11 procps
+
+      # The AppImage embeds the static type2 runtime, which needs only
+      # fusermount3 (fuse3), not libfuse2 (#932). Remove libfuse2 in
+      # case the runner image ships it, so this leg proves the AppImage
+      # mounts and launches without it; test-artifact-appimage.sh fails
+      # if libfuse.so.2 is still present.
+      - name: Remove libfuse2 (AppImage)
+        if: matrix.format == 'appimage'
+        run: |
+          for pkg in libfuse2 libfuse2t64; do
+            if dpkg-query -W "$pkg" >/dev/null 2>&1; then
+              sudo apt-get remove -y "$pkg"
+            fi
+          done
 
       # Fail loud if a smoke-test tool is missing. Without this guard a
       # missing/renamed tool turns run_launch_smoke_test into a silent
@@ -88,6 +102,7 @@ jobs:
       - name: Run artifact tests
         env:
           TARGET_ARCH: ${{ inputs.arch }}
+          REQUIRE_NO_LIBFUSE2: ${{ matrix.format == 'appimage' && '1' || '' }}
         run: |
           chmod +x tests/test-artifact-${{ matrix.format }}.sh
           tests/test-artifact-${{ matrix.format }}.sh artifacts/

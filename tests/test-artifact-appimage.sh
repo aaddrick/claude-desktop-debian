@@ -13,6 +13,8 @@ source "$script_dir/test-artifact-common.sh"
 # extract_dir is AppImage-specific so it's torn down here.
 _cleanup() {
 	_launch_smoke_cleanup
+	[[ -n ${mount_pid:-} ]] && kill "$mount_pid" 2>/dev/null
+	[[ -n ${mount_log:-} ]] && rm -f "$mount_log"
 	[[ -n ${extract_dir:-} ]] && rm -rf "$extract_dir"
 }
 trap _cleanup EXIT INT TERM
@@ -39,6 +41,40 @@ if [[ $file_type == *"ELF"* ]] || [[ $file_type == *"executable"* ]]; then
 else
 	fail "AppImage file type unexpected: $file_type"
 fi
+
+# --- Mounts without libfuse2 (#932) ---
+# The AppImage embeds the static type2 runtime, which links FUSE in and
+# needs only fusermount3. CI runs this leg with libfuse2 removed and
+# REQUIRE_NO_LIBFUSE2=1 (test-artifacts.yml), so a regression to a
+# libfuse2-linked runtime fails here instead of on users' machines.
+if [[ ${REQUIRE_NO_LIBFUSE2:-} == 1 ]]; then
+	if ldconfig -p | grep -q 'libfuse\.so\.2 '; then
+		fail 'libfuse.so.2 is installed; this leg must run without it'
+	else
+		pass 'libfuse.so.2 is absent on the test host'
+	fi
+fi
+
+# --appimage-mount prints the mount point, then holds the mount until
+# killed. AppRun showing up under it proves the runtime mounted the
+# image through FUSE, not just that it extracts.
+mount_log=$(mktemp)
+"$appimage_file" --appimage-mount > "$mount_log" 2>&1 &
+mount_pid=$!
+mount_point=''
+for _ in {1..100}; do
+	mount_point=$(head -1 "$mount_log")
+	[[ -n $mount_point && -x $mount_point/AppRun ]] && break
+	sleep 0.1
+done
+if [[ -n $mount_point && -x $mount_point/AppRun ]]; then
+	pass "AppImage mounts via FUSE ($mount_point)"
+else
+	fail "AppImage did not mount: $(head -3 "$mount_log" | tr '\n' ' ')"
+fi
+kill "$mount_pid" 2>/dev/null
+wait "$mount_pid" 2>/dev/null
+mount_pid=''
 
 # --- Extract AppImage ---
 extract_dir=$(mktemp -d)
