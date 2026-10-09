@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.9] — 2026-10-09
+
 ### Fixed
 
 - The AppImage runs on hosts without libfuse2, such as Fedora 44 Atomic Desktops (Silverblue, Kinoite) and a default Ubuntu 24.04 install. It embedded AppImageKit's runtime, which loads `libfuse.so.2` to mount itself and failed with `dlopen(): error loading libfuse.so.2`. It now embeds the static AppImage/type2-runtime, built with appimagetool from the AppImage/appimagetool project, both pinned by release and SHA-256. The build no longer needs FUSE either: appimagetool runs with `APPIMAGE_EXTRACT_AND_RUN=1`. ([#932](https://github.com/aaddrick/claude-desktop-debian/issues/932))
