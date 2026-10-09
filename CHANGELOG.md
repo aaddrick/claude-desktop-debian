@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Fixed
 
 - The opt-in bwrap fallback (`COWORK_VM_BACKEND=bwrap`) now applies the mount settings the app sends for each Cowork folder. A read-only folder whose mode carries a suffix (`ro+hide`, `ro+hide+glob`) was bound read-write, and a folder mounted through `mountPath` lost its mode entirely. The app's list of protected subpaths inside a folder (credential stores, keys, browser profiles) is now honored: a protected directory appears empty and read-only, and a protected file can't be read. A folder whose list can't be applied is not mounted, as the app itself does, and a skipped folder no longer becomes the session's working directory.
+- When Cowork runs without a sandbox (the host backend) and the session's `CLAUDE_CONFIG_DIR` is a guest path with no matching mount, the daemon now unsets it so Claude Code falls back to `~/.claude`. Since the April path rework it stored `null`, which reached Claude Code as the literal string `null`, a config directory named `null`.
 
 ## [v3.3.7] — 2026-10-09
 
