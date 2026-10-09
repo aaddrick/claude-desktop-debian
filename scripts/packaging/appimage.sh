@@ -395,7 +395,7 @@ echo "AppImage built successfully with embedded update info: $output_path"
 # moves the AppImage there too, which is where CI uploads both from.
 # The pinned tool generates the .zsync itself, so zsyncmake is not
 # needed on the host.
-zsync_file="$PWD/${output_filename}.zsync"
+zsync_file="$PWD/$output_filename.zsync"
 if [[ -f $zsync_file ]]; then
 	echo "zsync file generated: $zsync_file"
 	echo 'zsync file will be included in release artifacts'
