@@ -41,11 +41,13 @@ jobs:
         run: |
           dnf install -y git findutils
 
-      - name: Install FUSE for AppImageTool (Ubuntu)
+      # No FUSE install: appimagetool runs with APPIMAGE_EXTRACT_AND_RUN=1
+      # and the AppImage embeds the static type2 runtime (#932), so the
+      # build host needs neither libfuse2 nor fuse3. The list refresh
+      # stays for build.sh's own dependency installs.
+      - name: Refresh apt package lists (Ubuntu)
         if: inputs.artifact_suffix != 'rpm'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2
+        run: sudo apt-get update
 
       - name: Make build script executable
         run: chmod +x ./build.sh

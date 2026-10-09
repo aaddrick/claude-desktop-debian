@@ -375,20 +375,6 @@ fi
 # GitHub Actions build - embed update information
 echo 'Running in GitHub Actions - embedding update information for automatic updates...'
 
-# Install zsync if needed for .zsync file generation
-if ! command -v zsyncmake &> /dev/null; then
-	echo 'zsyncmake not found. Installing zsync package for .zsync file generation...'
-	if command -v apt-get &> /dev/null; then
-		sudo apt-get update && sudo apt-get install -y zsync
-	elif command -v dnf &> /dev/null; then
-		sudo dnf install -y zsync
-	elif command -v zypper &> /dev/null; then
-		sudo zypper install -y zsync
-	else
-		echo 'Cannot install zsync automatically. .zsync files may not be generated.'
-	fi
-fi
-
 # Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
 # The 'claude-desktop-*' wildcard is deliberately NOT renamed along with
 # $package_name: it matches both the old claude-desktop-* and the new
@@ -397,6 +383,14 @@ fi
 update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
 echo "Update info: $update_info"
 
+# appimagetool writes the .zsync itself (no zsyncmake needed), into the
+# current directory under the AppImage's base name rather than next to
+# $output_path. build.sh runs this from the project root, where the
+# release upload picks it up. Clear any earlier copy first, so a stale
+# file can't pass the check below.
+zsync_file="$PWD/${output_filename}.zsync"
+rm -f "$zsync_file"
+
 if ! "$appimagetool_path" --runtime-file "$runtime_path" \
 	--updateinformation "$update_info" "$appdir_path" "$output_path"; then
 	echo "Failed to build AppImage using $appimagetool_path" >&2
@@ -404,13 +398,13 @@ if ! "$appimagetool_path" --runtime-file "$runtime_path" \
 fi
 
 echo "AppImage built successfully with embedded update info: $output_path"
-zsync_file="${output_path}.zsync"
-if [[ -f $zsync_file ]]; then
-	echo "zsync file generated: $zsync_file"
-	echo 'zsync file will be included in release artifacts'
-else
-	echo 'zsync file not generated (zsyncmake may not be installed)'
+# The embedded update info points installed AppImages at this file; a
+# release without it breaks in-place updates, so its absence is fatal.
+if [[ ! -f $zsync_file ]]; then
+	echo "zsync file not found at $zsync_file" >&2
+	exit 1
 fi
+echo "zsync file generated: $zsync_file"
 
 echo '--- AppImage Build Finished ---'
 
