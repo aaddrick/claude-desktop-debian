@@ -95,9 +95,10 @@ build "succeeded"; only executing the artifact on target hardware
 (the first native-arm64 `test-artifacts` run) exposed it.
 
 The fix forces the target runtime explicitly — download
-`runtime-${ARCH}` from the same AppImageKit release as the tool and
-pass `--runtime-file "$runtime_path"` to every appimagetool
-invocation (see `appimage.sh`).
+`runtime-${ARCH}` and pass `--runtime-file "$runtime_path"` to every
+appimagetool invocation (see `appimage.sh`). Since #932 that runtime
+is the pinned, static AppImage/type2-runtime build rather than
+AppImageKit's, which linked against `libfuse.so.2`.
 
 The general lesson: a host-arch *tool* that writes bytes into the
 artifact may default those bytes to its own arch. `readelf -h` the

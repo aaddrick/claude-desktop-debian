@@ -243,39 +243,74 @@ case "$host_arch" in
 		;;
 esac
 
+# Pinned AppImage toolchain (#932). The runtime is the stub every
+# AppImage starts with: AppImageKit's (the old continuous release) is
+# dynamically linked against libfuse.so.2, which Fedora 44 Atomic
+# Desktops and stock Ubuntu 24.04 no longer ship. The type2-runtime
+# build is static-pie with FUSE linked in, so the AppImage needs no
+# libfuse2 on the host. appimagetool comes from the matching
+# AppImage/appimagetool project, which also writes the .zsync itself.
+# Both are pinned by release and SHA-256 rather than "continuous".
+APPIMAGETOOL_VERSION='1.9.1'
+APPIMAGETOOL_SHA256_X86_64='ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0'
+APPIMAGETOOL_SHA256_AARCH64='f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158'
+TYPE2_RUNTIME_VERSION='20251108'
+TYPE2_RUNTIME_SHA256_X86_64='2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d'
+TYPE2_RUNTIME_SHA256_AARCH64='00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444'
+
+# Download $1 (URL) to $2 unless a copy with SHA-256 $3 is already
+# there, then verify it. A cached or downloaded file with the wrong
+# hash is removed and the build fails.
+fetch_pinned() {
+	local url="$1" dest="$2" sha256="$3"
+	if [[ -f $dest ]] \
+		&& printf '%s  %s\n' "$sha256" "$dest" \
+			| sha256sum -c --status - 2> /dev/null; then
+		echo "Using cached $dest"
+		return 0
+	fi
+	echo "Downloading $url"
+	if ! wget -q -O "$dest" "$url"; then
+		echo "Failed to download $url" >&2
+		rm -f "$dest"
+		return 1
+	fi
+	if ! printf '%s  %s\n' "$sha256" "$dest" | sha256sum -c --status -; then
+		echo "SHA-256 mismatch for $dest (expected $sha256)" >&2
+		rm -f "$dest"
+		return 1
+	fi
+	return 0
+}
+
 appimagetool_path=''
 
-# Check system PATH first
+# Check system PATH first. The runtime is forced with --runtime-file
+# below, so a local tool still produces a FUSE-2-free AppImage.
 if command -v appimagetool &> /dev/null; then
 	appimagetool_path=$(command -v appimagetool)
 	echo "Found appimagetool in PATH: $appimagetool_path"
 fi
 
-# Check for a previously downloaded HOST-arch tool
+# Otherwise use the pinned HOST-arch tool. The versioned name keeps a
+# --clean no build from reusing an older AppImageKit download.
 if [[ -z $appimagetool_path ]]; then
-	local_path="$work_dir/appimagetool-${host_arch}.AppImage"
-	if [[ -f $local_path ]]; then
-		appimagetool_path="$local_path"
-		echo "Found downloaded ${host_arch} appimagetool: $appimagetool_path"
-	fi
+	case "$host_arch" in
+		x86_64) appimagetool_sha256="$APPIMAGETOOL_SHA256_X86_64" ;;
+		aarch64) appimagetool_sha256="$APPIMAGETOOL_SHA256_AARCH64" ;;
+	esac
+	appimagetool_url='https://github.com/AppImage/appimagetool/releases/download/'
+	appimagetool_url+="${APPIMAGETOOL_VERSION}/appimagetool-${host_arch}.AppImage"
+	appimagetool_path="$work_dir/appimagetool-${APPIMAGETOOL_VERSION}"
+	appimagetool_path+="-${host_arch}.AppImage"
+	fetch_pinned "$appimagetool_url" "$appimagetool_path" \
+		"$appimagetool_sha256" || exit 1
+	chmod +x "$appimagetool_path" || exit 1
 fi
 
-# Download if not found
-if [[ -z $appimagetool_path ]]; then
-	echo 'Downloading appimagetool...'
-
-	appimagetool_url="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${host_arch}.AppImage"
-	appimagetool_path="$work_dir/appimagetool-${host_arch}.AppImage"
-
-	if wget -q -O "$appimagetool_path" "$appimagetool_url"; then
-		chmod +x "$appimagetool_path" || exit 1
-		echo "Downloaded appimagetool to $appimagetool_path"
-	else
-		echo "Failed to download appimagetool from $appimagetool_url" >&2
-		rm -f "$appimagetool_path"
-		exit 1
-	fi
-fi
+# Run the tool without mounting it, so the build host needs no FUSE
+# either (#932).
+export APPIMAGE_EXTRACT_AND_RUN=1
 
 # Normalize AppDir permissions before squashing. The staging copy above
 # uses `cp -a`, which preserves source modes, and a restrictive build
@@ -299,11 +334,17 @@ output_path="$work_dir/$output_filename"
 # bundled with the tool itself, which is host-arch. On a cross-build
 # that bakes an x86_64 stub into an arm64 AppImage, which then can't
 # start on target hardware (caught by test-artifacts on the first
-# native-arm64 run). Fetch the TARGET-arch runtime from the same
-# release as the tool and force it in with --runtime-file.
+# native-arm64 run). Fetch the pinned TARGET-arch type2 runtime and
+# force it in with --runtime-file.
 case "$architecture" in
-	amd64) export ARCH='x86_64' ;;
-	arm64) export ARCH='aarch64' ;;
+	amd64)
+		export ARCH='x86_64'
+		runtime_sha256="$TYPE2_RUNTIME_SHA256_X86_64"
+		;;
+	arm64)
+		export ARCH='aarch64'
+		runtime_sha256="$TYPE2_RUNTIME_SHA256_AARCH64"
+		;;
 	*)
 		echo "Unsupported target architecture for ARCH: $architecture" >&2
 		exit 1
@@ -311,16 +352,10 @@ case "$architecture" in
 esac
 echo "Using ARCH=$ARCH"
 
-runtime_path="$work_dir/appimage-runtime-${ARCH}"
-if [[ ! -f $runtime_path ]]; then
-	runtime_url="https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-${ARCH}"
-	echo "Downloading AppImage runtime for ${ARCH}..."
-	if ! wget -q -O "$runtime_path" "$runtime_url"; then
-		echo "Failed to download AppImage runtime from $runtime_url" >&2
-		rm -f "$runtime_path"
-		exit 1
-	fi
-fi
+runtime_url='https://github.com/AppImage/type2-runtime/releases/download/'
+runtime_url+="${TYPE2_RUNTIME_VERSION}/runtime-${ARCH}"
+runtime_path="$work_dir/type2-runtime-${TYPE2_RUNTIME_VERSION}-${ARCH}"
+fetch_pinned "$runtime_url" "$runtime_path" "$runtime_sha256" || exit 1
 
 # Local build - no update information
 if [[ $GITHUB_ACTIONS != 'true' ]]; then
