@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.8] — 2026-10-09
+
 ### Fixed
 
 - The opt-in bwrap fallback (`COWORK_VM_BACKEND=bwrap`) now applies the mount settings the app sends for each Cowork folder. A read-only folder whose mode carries a suffix (`ro+hide`, `ro+hide+glob`) was bound read-write, and a folder mounted through `mountPath` lost its mode entirely. The app's list of protected subpaths inside a folder (credential stores, keys, browser profiles) is now honored: a protected directory appears empty and read-only, and a protected file can't be read. A folder whose list can't be applied is not mounted, as the app itself does, and a skipped folder no longer becomes the session's working directory.
