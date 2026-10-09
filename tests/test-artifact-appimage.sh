@@ -11,9 +11,22 @@ source "$script_dir/test-artifact-common.sh"
 # between resource alloc and normal exit is covered. _launch_smoke_cleanup
 # (test-artifact-common.sh) reaps an interrupted launch and its temp dirs;
 # extract_dir is AppImage-specific so it's torn down here.
+# The runtime's FUSE half daemonizes into its own session, so killing
+# the --appimage-mount process can leave the mount (and that daemon)
+# behind. Unmount by path; the daemon exits once the mount is gone.
+_unmount_appimage() {
+	[[ -n ${mount_point:-} ]] || return 0
+	if mountpoint -q "$mount_point" 2>/dev/null; then
+		fusermount3 -u "$mount_point" 2>/dev/null \
+			|| fusermount -u "$mount_point" 2>/dev/null
+	fi
+	mount_point=''
+}
+
 _cleanup() {
 	_launch_smoke_cleanup
 	[[ -n ${mount_pid:-} ]] && kill "$mount_pid" 2>/dev/null
+	_unmount_appimage
 	[[ -n ${mount_log:-} ]] && rm -f "$mount_log"
 	[[ -n ${extract_dir:-} ]] && rm -rf "$extract_dir"
 }
@@ -67,6 +80,7 @@ fi
 kill "$mount_pid" 2>/dev/null
 wait "$mount_pid" 2>/dev/null
 mount_pid=''
+_unmount_appimage
 
 # --- Extract AppImage ---
 extract_dir=$(mktemp -d)
