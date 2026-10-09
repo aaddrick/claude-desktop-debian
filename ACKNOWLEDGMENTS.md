@@ -201,3 +201,4 @@ Special thanks to:
 - **[kubni](https://github.com/kubni)** for diagnosing that the Cowork bwrap sandbox never bound `/nix`, so `/usr/bin/bash` inside a NixOS FHS env pointed nowhere, and for the `additionalROBinds: ["/nix"]` workaround the fix makes the default (#667)
 - **[lzcunt](https://github.com/lzcunt)** for spotting that the FHS env's `/etc` entries point into `/.host-etc`, which the same fix now binds (#667)
 - **[abagonhishead](https://github.com/abagonhishead)** for tracing empty Cowork project folders outside `$HOME` to `resolveSubpath`, which recovered the right root-relative path and then discarded it for a home-relative one that didn't exist (#676)
+- **[guniens](https://github.com/guniens)** for reporting that the AppImage needs libfuse2, which Fedora 44 Atomic Desktops no longer ship, and pointing at the static type2 runtime as the fix (#932)
