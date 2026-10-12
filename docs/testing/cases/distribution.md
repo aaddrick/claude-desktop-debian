@@ -22,7 +22,7 @@ Tests covering Ubuntu/DEB-specific install behavior, Fedora/RPM-specific install
 
 **References:** —
 
-**Code anchors:** `scripts/packaging/appimage.sh` (`TYPE2_RUNTIME_*` and `APPIMAGETOOL_*` pins; the runtime is forced with `--runtime-file`, and the tool runs with `APPIMAGE_EXTRACT_AND_RUN=1`), `scripts/launcher-common.sh:64` (AppImage forces `--no-sandbox` "due to FUSE constraints"), `.github/workflows/test-artifacts.yml` (CI still installs `libfuse2` before running the AppImage, so CI does not prove the FUSE-2-free path).
+**Code anchors:** `scripts/packaging/appimage.sh` (`TYPE2_RUNTIME_*` and `APPIMAGETOOL_*` pins; the runtime is forced with `--runtime-file`, and the tool runs with `APPIMAGE_EXTRACT_AND_RUN=1`), `scripts/launcher-common.sh:64` (AppImage forces `--no-sandbox` "due to FUSE constraints"), `.github/workflows/test-artifacts.yml` (the AppImage leg removes libfuse2 and installs `fuse3`), `tests/test-artifact-appimage.sh` (checks the image mounts via `--appimage-mount`).
 
 ## S02 — `XDG_CURRENT_DESKTOP=ubuntu:GNOME` doesn't break DE detection
 
