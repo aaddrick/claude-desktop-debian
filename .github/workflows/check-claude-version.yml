@@ -156,11 +156,11 @@ jobs:
         run: |
           NIX_FILE="nix/claude-desktop.nix"
 
-          # The Nix derivation is a `throw` stub until @typedrat lands the
-          # official-deb rework. Skip cleanly until it exposes a real
-          # `version = "..."` line to anchor on.
+          # The seds below anchor on the derivation's single
+          # `version = "..."` line. If a refactor drops it, warn and skip
+          # rather than fail: Nix stays non-blocking for releases.
           if ! grep -q 'version = ' "$NIX_FILE"; then
-            echo "nix derivation is still a stub; skipping SRI update"
+            echo "::warning::no version line in $NIX_FILE; skipping SRI update"
             exit 0
           fi
 

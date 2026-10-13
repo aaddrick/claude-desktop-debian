@@ -135,8 +135,7 @@ systemd-inhibit --list
 
 ```bash
 claude-desktop-unofficial --version
-gh variable get CLAUDE_DESKTOP_VERSION
-gh variable get REPO_VERSION
+gh variable list | grep -E '^(REPO_VERSION|CLAUDE_DESKTOP_VERSION)\s'
 ```
 
 Always include the upstream version + project version in the issue body and the matrix-update commit message.
