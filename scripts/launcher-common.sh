@@ -501,6 +501,8 @@ _claude_desktop_any_main_is_alive() {
 		# --type=, but not a main. Counting it would let an orphan
 		# hold the gate open and shield itself from the reapers.
 		# An unreadable environ falls through to "alive" (safe side).
+		# Defensive only: the shipped binary has Electron's RunAsNode
+		# fuse off, so ELECTRON_RUN_AS_NODE=1 starts the full app.
 		tr '\0' '\n' 2>/dev/null < "/proc/$pid/environ" \
 			| grep -qx 'ELECTRON_RUN_AS_NODE=1' && continue
 		state=$(_proc_state "$pid") || continue
@@ -777,6 +779,9 @@ _desktop_helper_cmdline_matches() {
 # in-tree arm of _desktop_helper_cmdline_matches already covers, or
 # the claude-desktop binary run with ELECTRON_RUN_AS_NODE=1, counted
 # here as an interpreter (#903). An unreadable environ is no match.
+# That last case is defensive: the shipped binary has Electron's
+# RunAsNode fuse off, so ELECTRON_RUN_AS_NODE=1 starts the full app,
+# and no server runs this way today.
 #
 # Known gap, not a regression: a server started with the extension dir
 # as its cwd and only relative arguments (`dynamic-uv`, `python -m`)
