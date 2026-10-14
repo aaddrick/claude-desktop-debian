@@ -374,7 +374,7 @@ gh run download RUN_ID -n artifact-name
 - `claude-desktop_1.16000.0-1_all.deb` - transitional apt package (produced by the amd64 leg) that migrates legacy `claude-desktop` installs from our repo to `claude-desktop-unofficial`
 - `claude-desktop-unofficial-VERSION-1.x86_64.rpm` / `claude-desktop-unofficial-VERSION-1.aarch64.rpm` - RPM packages
 - `claude-desktop-unofficial-VERSION-amd64.AppImage` / `claude-desktop-unofficial-VERSION-arm64.AppImage` - AppImages (+ `.zsync` in CI)
-- `result/` - Nix build output (symlink, gitignored; the derivation is a stub until the @typedrat rework lands)
+- `result/` - Nix build output (symlink, gitignored; the derivation repackages the official `.deb`, see [`docs/learnings/nix.md`](docs/learnings/nix.md))
 
 One cross-building `build.yml` produces all of these from `ubuntu-latest` via the `--arch` input (see [`docs/learnings/cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) for the host-vs-target trap).
 
@@ -476,17 +476,17 @@ Release versions are managed via two GitHub Actions repository variables (not fi
 Tags follow the pattern `v{REPO_VERSION}+claude{CLAUDE_DESKTOP_VERSION}`, e.g., `v1.3.23+claude1.1.7714`. Pushing a tag triggers the CI release build.
 
 ```bash
-# Check current values
-gh variable get REPO_VERSION
-gh variable get CLAUDE_DESKTOP_VERSION
+# Check current values (`gh variable list`, since older gh lacks `get`)
+gh variable list | grep -E '^(REPO_VERSION|CLAUDE_DESKTOP_VERSION)\s'
 
 # Bump repo version and tag a release
 gh variable set REPO_VERSION --body "1.3.24"
-git tag "v1.3.24+claude$(gh variable get CLAUDE_DESKTOP_VERSION)"
-git push origin "v1.3.24+claude$(gh variable get CLAUDE_DESKTOP_VERSION)"
+cdv=$(gh variable list | awk '$1 == "CLAUDE_DESKTOP_VERSION" {print $2}')
+git tag "v1.3.24+claude$cdv"
+git push origin "v1.3.24+claude$cdv"
 ```
 
-When upstream Claude Desktop updates, the `check-claude-version` workflow resolves the newest entry from the official APT `Packages` indexes (both arches, with a cross-arch agreement gate), seds the `OFFICIAL_DEB_*` pins in `scripts/setup/official-deb.sh` (and the Nix SRI hashes once the derivation stops being a stub), updates `CLAUDE_DESKTOP_VERSION`, and creates a new tag — no manual intervention needed. **Do not run it by hand from a branch**: the auto-tag cuts a release with whatever `REPO_VERSION` is staged.
+When upstream Claude Desktop updates, the `check-claude-version` workflow resolves the newest entry from the official APT `Packages` indexes (both arches, with a cross-arch agreement gate), seds the `OFFICIAL_DEB_*` pins in `scripts/setup/official-deb.sh` and the version plus per-arch SRI hashes in `nix/claude-desktop.nix`, updates `CLAUDE_DESKTOP_VERSION`, and creates a new tag — no manual intervention needed. **Do not run it by hand from a branch**: the auto-tag cuts a release with whatever `REPO_VERSION` is staged.
 
 ## Common Gotchas
 
@@ -498,10 +498,10 @@ When upstream Claude Desktop updates, the `check-claude-version` workflow resolv
   ```
 - **SingletonLock** - If app won't start, check for stale lock: `~/.config/Claude/SingletonLock`
 - **Node version** - Build requires Node.js; the script downloads its own if needed (keyed to the HOST arch — see the cross-build learning)
-- **Version pins** - The official `.deb` version, pool paths, and SHA-256 sums are pinned in `scripts/setup/official-deb.sh` (`OFFICIAL_DEB_*`), updated automatically by `check-claude-version` on main (which also seds the Nix SRI once the derivation lands). Before committing `scripts/setup/official-deb.sh`, ensure your branch carries the latest pins:
+- **Version pins** - The official `.deb` version, pool paths, and SHA-256 sums are pinned in `scripts/setup/official-deb.sh` (`OFFICIAL_DEB_*`), updated automatically by `check-claude-version` on main (which also seds the Nix version and SRI hashes). Before committing `scripts/setup/official-deb.sh`, ensure your branch carries the latest pins:
   ```bash
   # Check repo variable (source of truth)
-  gh variable get CLAUDE_DESKTOP_VERSION
+  gh variable list | awk '$1 == "CLAUDE_DESKTOP_VERSION" {print $2}'
 
   # Check the pinned version on your branch
   grep -oP "^OFFICIAL_DEB_VERSION='\K[^']+" scripts/setup/official-deb.sh
