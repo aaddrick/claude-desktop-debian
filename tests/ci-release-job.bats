@@ -220,6 +220,6 @@ job_needs_line() {
 	# every release until #817.
 	local region
 	region=$(release_region)
-	[[ $region == *'### DNF (Fedora/RHEL)'* ]]
-	[[ $region != *'claude-desktop-appimage'* ]]
+	[[ "$region" == *'### DNF (Fedora/RHEL)'* ]]
+	[[ "$region" != *'claude-desktop-appimage'* ]]
 }
