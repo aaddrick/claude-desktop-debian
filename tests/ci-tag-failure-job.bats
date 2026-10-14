@@ -66,19 +66,19 @@ tag_gated_jobs() {
 }
 
 @test "report job needs every job of the tag chain" {
-	# The chain is: every job gated on the tag (release + the four
+	# The chain is: every job gated on the tag (release + the three
 	# publishers) plus everything release itself needs. A job missing
 	# here is a failure the reporter can't see.
 	local needs expected
 	needs=$(job_needs report-tag-failure | sort)
 	expected=$(printf '%s\n' test-flags build test-artifacts \
 		test-artifacts-arm64 release mirror-official-deb \
-		update-apt-repo update-dnf-repo update-aur-repo | sort)
+		update-apt-repo update-dnf-repo | sort)
 	[[ $needs == "$expected" ]]
 }
 
 @test "report job's needs cover every tag-gated job in ci.yml" {
-	# Derived, not hardcoded: adding a fifth publisher without adding it
+	# Derived, not hardcoded: adding a fourth publisher without adding it
 	# to the reporter's needs reds this one.
 	local missing job
 	missing=''

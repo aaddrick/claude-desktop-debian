@@ -4,9 +4,9 @@
 # Structural invariants for the "Create Release" job in
 # .github/workflows/ci.yml.
 #
-# The release job is a chokepoint: mirror-official-deb, update-apt-repo,
-# update-dnf-repo and update-aur-repo all carry `needs: [release]`, so a
-# step that fails the job also withholds the release from every channel.
+# The release job is a chokepoint: mirror-official-deb, update-apt-repo
+# and update-dnf-repo all carry `needs: [release]`, so a step that fails
+# the job also withholds the release from every channel.
 #
 # On 2026-07-24 the claude-desktop-versions repo went private. Its
 # checkout is `continue-on-error: true`, so it rendered as a green check
@@ -86,7 +86,7 @@ job_needs_line() {
 	# Proves we are in the right job, and that the region stops at the
 	# job boundary instead of bleeding into the publish jobs.
 	[[ "$region" == *'Create GitHub Release'* ]]
-	[[ "$region" != *'Update AUR Package'* ]]
+	[[ "$region" != *'Mirror Official .deb'* ]]
 }
 
 @test "asar is installed by exactly one step" {
@@ -207,10 +207,19 @@ job_needs_line() {
 	# This is what makes a release-job failure expensive, and is the
 	# premise every test above rests on.
 	local job needs
-	for job in mirror-official-deb update-apt-repo update-dnf-repo \
-		update-aur-repo; do
+	for job in mirror-official-deb update-apt-repo update-dnf-repo; do
 		needs=$(job_needs_line "$job")
 		[[ -n "$needs" ]]
 		[[ "$needs" == *release* ]]
 	done
+}
+
+@test "release notes advertise no AUR install command (#817)" {
+	# claude-desktop-appimage was deleted from the AUR on 2026-08-01, but
+	# both release-notes generators kept printing its yay command on
+	# every release until #817.
+	local region
+	region=$(release_region)
+	[[ "$region" == *'### DNF (Fedora/RHEL)'* ]]
+	[[ "$region" != *'claude-desktop-appimage'* ]]
 }

@@ -23,7 +23,7 @@ This file is a fast reference for the highest-leverage rules and the project's a
 
 ## Project Overview
 
-This project repackages **Anthropic's official Claude Desktop for Linux `.deb`** into the formats Anthropic doesn't serve (RPM, AppImage, Nix, AUR) plus our own `.deb`, and wraps every format in a launcher with Linux-environment fixes (Wayland opt-in, GPU-crash recovery, `--doctor` diagnostics). Since the v3.0.0 rebase (decision [D-002](docs/decisions.md)) the contract is **patch-zero**: the official `app.asar` ships byte-identical unless a patch justifies itself against official bytes as compensating a genuine Linux gap.
+This project repackages **Anthropic's official Claude Desktop for Linux `.deb`** into the formats Anthropic doesn't serve (RPM, AppImage, Nix) plus our own `.deb`, and wraps every format in a launcher with Linux-environment fixes (Wayland opt-in, GPU-crash recovery, `--doctor` diagnostics). Since the v3.0.0 rebase (decision [D-002](docs/decisions.md)) the contract is **patch-zero**: the official `app.asar` ships byte-identical unless a patch justifies itself against official bytes as compensating a genuine Linux gap.
 
 ## Learnings
 

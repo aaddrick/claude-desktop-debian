@@ -1,6 +1,6 @@
 # Releasing
 
-This project ships through tag-driven CI. A tag of the form `v{REPO_VERSION}+claude{CLAUDE_DESKTOP_VERSION}` on `main` triggers the release job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which builds for both architectures, attaches the artifacts to a GitHub Release, and updates the APT and DNF repositories (and AUR, when the `AUR_PUBLISH_ENABLED` repo variable isn't `false`).
+This project ships through tag-driven CI. A tag of the form `v{REPO_VERSION}+claude{CLAUDE_DESKTOP_VERSION}` on `main` triggers the release job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which builds for both architectures, attaches the artifacts to a GitHub Release, and updates the APT and DNF repositories.
 
 There are two flavors of release:
 
@@ -69,7 +69,7 @@ The [`release`](.github/workflows/ci.yml) job in `ci.yml` is gated on `startsWit
 2. Generates release notes from the commit log since the previous tag. The [`aaddrick/claude-desktop-versions`](https://github.com/aaddrick/claude-desktop-versions) checkout that used to feed upstream diffs has failed since that repo went private on 2026-07-24, and the AI `compare-releases` step is `if: false`; the step is `continue-on-error`, so neither blocks the release.
 3. Creates the GitHub Release with those nine files, then uploads `reference-source.tar.gz`.
 4. `mirror-official-deb` attaches the pinned official `claude-desktop_<ver>_<arch>.deb` for both architectures, for twelve assets in all.
-5. Hands off to `update-apt-repo`, `update-dnf-repo`, and `update-aur-repo` (skipped while `AUR_PUBLISH_ENABLED` is `false`), which publish to the Cloudflare-fronted package repos ([`docs/learnings/apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) for the redirect chain).
+5. Hands off to `update-apt-repo` and `update-dnf-repo`, which publish to the Cloudflare-fronted package repos ([`docs/learnings/apt-worker-architecture.md`](docs/learnings/apt-worker-architecture.md) for the redirect chain).
 
 ## After the release lands
 

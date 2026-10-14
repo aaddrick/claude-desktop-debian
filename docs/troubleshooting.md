@@ -791,16 +791,13 @@ claude-desktop`). A version of `1.17377.1` or higher is **Anthropic's
 official package** — leave it alone unless you mean to uninstall the
 official app too.
 
-### For AUR installations (Arch Linux)
+### For legacy AUR installations (`claude-desktop-appimage`)
+
+This project no longer publishes to the AUR
+([#817](https://github.com/aaddrick/claude-desktop-debian/issues/817)),
+so an installed `claude-desktop-appimage` gets no further updates:
 
 ```bash
-# Using yay
-yay -R claude-desktop-appimage
-
-# Or using paru
-paru -R claude-desktop-appimage
-
-# Or using pacman directly
 sudo pacman -R claude-desktop-appimage
 ```
 
