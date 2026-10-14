@@ -86,7 +86,7 @@ By default the official Linux client runs Cowork as a helper daemon driving QEMU
 | KVM | `/dev/kvm` present and read-write (`sudo usermod -aG kvm $USER` if not) | `_check_kvm` |
 | vsock | `/dev/vhost-vsock` present (`sudo modprobe vhost_vsock`) | `_check_vhost_vsock` |
 | QEMU | `qemu-system-x86_64` (or `qemu-system-aarch64` on arm64) on `PATH` | `_check_cowork_stack` |
-| Firmware | OVMF at one of the **hardcoded** probe paths: `/usr/share/OVMF/OVMF_CODE_4M.fd` or `/usr/share/OVMF/OVMF_CODE.fd` (arm64: `/usr/share/AAVMF/AAVMF_CODE.fd`). No env override exists — firmware installed at Fedora/Arch edk2 locations is not found without a compat symlink. Our RPM package's `%post` creates that symlink automatically (CW-1). | `_check_cowork_stack` |
+| Firmware | OVMF at one of the **hardcoded** probe paths: `/usr/share/OVMF/OVMF_CODE_4M.fd` or `/usr/share/OVMF/OVMF_CODE.fd` (arm64: `/usr/share/AAVMF/AAVMF_CODE.fd`). No env override exists — firmware installed at Fedora/Arch edk2 locations is not found without a compat symlink. The client derives the VARS template from the CODE path (`CODE` → `VARS`), so both files must exist. Our RPM package's `%post` links a matching pair automatically (CW-1). | `_check_cowork_stack` |
 | virtiofsd | On `PATH` or at a well-known off-PATH location (`/usr/libexec/virtiofsd`, `/usr/lib/qemu/virtiofsd`, `/usr/lib/virtiofsd`) | `_check_cowork_stack` |
 
 Run `claude-desktop-unofficial --doctor` — the Cowork Mode section reports each component with a distro-specific install hint and a one-line readiness summary. A missing stack never fails the doctor; the app works fine without Cowork.

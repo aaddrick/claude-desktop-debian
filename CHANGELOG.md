@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Fixed
 
 - CI now proves the AppImage needs no libfuse2. The AppImage test leg removes libfuse2, installs `fuse3` for `fusermount3` and fails if `libfuse.so.2` is still present, and the build job no longer installs libfuse2 ([#937](https://github.com/aaddrick/claude-desktop-debian/pull/937)). The AppImage test now also checks that the image mounts through FUSE with `--appimage-mount`, instead of relying on the launch test alone ([#936](https://github.com/aaddrick/claude-desktop-debian/pull/936)).
+- Cowork firmware on RHEL-family hosts (EL 9/10). The RPM linked the firmware as `/usr/share/OVMF/OVMF_CODE_4M.fd`, but the app derives the VARS template from that name (`OVMF_VARS_4M.fd`), which EL never ships. The RPM now links a matching CODE/VARS pair, replaces the old link on upgrade, and finds openSUSE's current `ovmf-x86_64-4m-*` files. `--doctor` warns when the VARS file the app will look for is missing. ([#884](https://github.com/aaddrick/claude-desktop-debian/issues/884))
 - The AppImage build no longer reports "zsync file not generated" when it was. appimagetool writes the `.zsync` into the current directory, and the check looked next to the build output instead. The build also stops installing `zsyncmake`, which the pinned appimagetool does not need. ([#937](https://github.com/aaddrick/claude-desktop-debian/pull/937))
 
 ## [v3.3.9] — 2026-10-09
