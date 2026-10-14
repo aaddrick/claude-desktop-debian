@@ -14,6 +14,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 - Cowork firmware on RHEL-family hosts (EL 9/10). The RPM linked the firmware as `/usr/share/OVMF/OVMF_CODE_4M.fd`, but the app derives the VARS template from that name (`OVMF_VARS_4M.fd`), which EL never ships. The RPM now links a matching CODE/VARS pair, replaces the old link on upgrade, and finds openSUSE's current `ovmf-x86_64-4m-*` files. `--doctor` warns when the VARS file the app will look for is missing. ([#884](https://github.com/aaddrick/claude-desktop-debian/issues/884))
 - The AppImage build no longer reports "zsync file not generated" when it was. appimagetool writes the `.zsync` into the current directory, and the check looked next to the build output instead. The build also stops installing `zsyncmake`, which the pinned appimagetool does not need. ([#937](https://github.com/aaddrick/claude-desktop-debian/pull/937))
 
+### Removed
+
+- AUR publishing. `claude-desktop-appimage` was deleted from the AUR on 2026-08-01 and publishing had been paused since. The `update-aur-repo` CI job and the `AUR_PUBLISH_ENABLED` switch are gone, release notes no longer advertise `yay -S claude-desktop-appimage`, and the README points Arch users to `aur/claude-desktop` or the AppImage. ([#817](https://github.com/aaddrick/claude-desktop-debian/issues/817))
+
 ## [v3.3.9] — 2026-10-09
 
 ### Fixed

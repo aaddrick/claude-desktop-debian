@@ -157,7 +157,7 @@ claude-desktop-debian repackages Anthropic's Claude Desktop (an Electron app dis
 1. Downloads the Windows installer (contains app.asar with the Electron app source)
 2. Extracts and patches the JavaScript for Linux compatibility
 3. Packages into .deb, .rpm, and .AppImage formats
-4. Distributes via GitHub Releases, APT repo, DNF repo, and AUR
+4. Distributes via GitHub Releases, APT repo, and DNF repo (no longer the AUR)
 
 Common issue categories:
 - **Build failures**: build.sh errors, missing dependencies, architecture-specific issues

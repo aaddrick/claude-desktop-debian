@@ -1,7 +1,7 @@
 You are classifying a GitHub issue for the claude-desktop-debian project.
 
 The project repackages Anthropic's official Claude Desktop Linux `.deb`
-into the formats Anthropic doesn't serve (rpm / appimage / nix / AUR)
+into the formats Anthropic doesn't serve (rpm / appimage / nix)
 plus its own deb. Its surface area: build scripts (`build.sh`,
 `scripts/patches/*.sh`), packaging metadata, the launcher scripts
 (Wayland opt-in, GPU-crash recovery, `--doctor`), cowork mode

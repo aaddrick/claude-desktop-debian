@@ -1,6 +1,6 @@
 # Claude Desktop for Linux
 
-This project repackages Claude Desktop for Linux formats Anthropic doesn't ship themselves: `.rpm` (Fedora/RHEL), distribution-agnostic AppImages, a Nix flake for NixOS, and an [AUR package](#using-aur-arch-linux) for Arch (currently unavailable — see below).
+This project repackages Claude Desktop for Linux formats Anthropic doesn't ship themselves: `.rpm` (Fedora/RHEL), distribution-agnostic AppImages, and a Nix flake for NixOS.
 
 On 2026-06-30 Anthropic shipped a first-party Claude Desktop for Linux beta, distributed as a `.deb` (amd64 and arm64) from their own APT repository. Since v3.0.0, this project repackages that official Linux `.deb`. It no longer repackages the Windows installer.
 
@@ -26,7 +26,7 @@ I'll still be around for questions and the occasional PR — reachable on [GitHu
 
 ## Features
 
-- **Official app, extra formats**: repackages Anthropic's official Linux `.deb` into `.rpm`, AppImage, and AUR builds.
+- **Official app, extra formats**: repackages Anthropic's official Linux `.deb` into `.rpm` and AppImage builds, plus a Nix flake.
 - **MCP support**: full Model Context Protocol integration. Config lives at `~/.config/Claude/claude_desktop_config.json` (see [Configuration](#configuration)).
 - **Launcher for Linux quirks**: opt-in native Wayland (`CLAUDE_USE_WAYLAND=1`), GPU-crash auto-recovery, XRDP detection, IM-module override, and autostart-entry healing.
 - **`--doctor` diagnostics**: checks the display server, sandbox permissions, MCP config, stale locks, the KVM/Cowork stack, and official-version drift.
@@ -52,7 +52,7 @@ Anthropic serves the `.deb`. We serve everything else. Since v3.0.0 our packages
 | `.deb` (Debian/Ubuntu, amd64 + arm64) | Anthropic's official APT repo. Ours mirrors it as `claude-desktop-unofficial` (launcher + doctor added), so it can sit beside the official package. |
 | `.rpm` (Fedora/RHEL) | This project. |
 | AppImage (any distro) | This project. |
-| AUR (Arch) | This project (builds the AppImage). **Unavailable** — see [below](#using-aur-arch-linux). |
+| AUR (Arch) | Not this project. See [Arch Linux](#arch-linux). |
 | Nix flake (NixOS) | This project. |
 
 On top of packaging, every format we build carries:
@@ -101,27 +101,14 @@ sudo dnf install claude-desktop-unofficial
 
 Future updates will be installed automatically with your regular system updates (`sudo dnf upgrade`).
 
-### Using AUR (Arch Linux)
+### Arch Linux
 
-**Unavailable since 2026-08-01.** `claude-desktop-appimage` was deleted from the AUR under deletion request [PRQ#85209](https://lists.archlinux.org/archives/list/aur-requests@lists.archlinux.org/thread/33X5H3TTGPXBEFKJFHEL5JYVGOE52IRV/) as a duplicate of `aur/claude-desktop`. A reinstatement request is with the list moderators. Until it resolves, install the [AppImage](#using-pre-built-releases) directly.
+This project no longer publishes to the AUR. Our `claude-desktop-appimage` package was deleted on 2026-08-01 under deletion request [PRQ#85209](https://lists.archlinux.org/archives/list/aur-requests@lists.archlinux.org/thread/33X5H3TTGPXBEFKJFHEL5JYVGOE52IRV/) as a duplicate of `aur/claude-desktop` ([#817](https://github.com/aaddrick/claude-desktop-debian/issues/817)). On Arch, pick one:
 
-Automated AUR publishing is paused while that request is open — a deleted pkgbase keeps its git repo and still accepts pushes, so a release would recreate the package mid-review. Once the package is restored:
+- [`aur/claude-desktop`](https://aur.archlinux.org/packages/claude-desktop), a community package of Anthropic's official `.deb`. It is not maintained by this project and does not carry our launcher or `--doctor`.
+- Our [AppImage](#using-pre-built-releases), which carries the launcher and `--doctor`.
 
-```bash
-gh variable set AUR_PUBLISH_ENABLED --body true
-```
-
-The `update-aur-repo` job in [`ci.yml`](.github/workflows/ci.yml) is gated on that variable, and the pending `pkgdesc`/`license` corrections still need pushing to the AUR pkgbase.
-
-When it is available, the package installs the AppImage build of Claude Desktop:
-
-```bash
-# Using yay
-yay -S claude-desktop-appimage
-
-# Or using paru
-paru -S claude-desktop-appimage
-```
+If you still have `claude-desktop-appimage` installed, it no longer receives updates. Remove it with `sudo pacman -R claude-desktop-appimage`.
 
 ### Using Nix Flake (NixOS)
 
