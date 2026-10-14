@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.10] — 2026-10-14
+
 ### Fixed
 
 - CI now proves the AppImage needs no libfuse2. The AppImage test leg removes libfuse2, installs `fuse3` for `fusermount3` and fails if `libfuse.so.2` is still present, and the build job no longer installs libfuse2 ([#937](https://github.com/aaddrick/claude-desktop-debian/pull/937)). The AppImage test now also checks that the image mounts through FUSE with `--appimage-mount`, instead of relying on the launch test alone ([#936](https://github.com/aaddrick/claude-desktop-debian/pull/936)).
