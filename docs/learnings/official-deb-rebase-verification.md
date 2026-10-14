@@ -189,6 +189,12 @@ residual risk; they do not un-delete shipped code.
   and points at a bridged layout. deb needs nothing (the official
   Recommends `ovmf` matches the probe); AppImage stays
   doctor-messaging; the Nix FHS bind rides the @typedrat derivation.
+  **Follow-up (#884):** the client derives the VARS template with
+  `code.replace("OVMF_CODE","OVMF_VARS")`, so the `OVMF_CODE_4M.fd`
+  link pointed it at `OVMF_VARS_4M.fd`, which EL 9/10 never ship
+  (their `/usr/share/OVMF/` has only `OVMF_VARS.fd`). `%post` now
+  links CODE/VARS pairs under the un-suffixed names, drops our legacy
+  `_4M` link on upgrade, and `--doctor` warns on a missing VARS file.
 - Runtime switch passthrough — confirmed on niri forced to native Wayland
   (`--ozone-platform=wayland`, `--enable-wayland-ime`, `WaylandWindowDecorations`
   all take; clean repaint through fullscreen⇄tile, no GPU fallback).

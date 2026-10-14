@@ -1190,10 +1190,35 @@ _make_appdir() {
 @test "_check_cowork_stack: firmware found at an official probe path passes" {
 	export _DOCTOR_OVMF_PATHS="$TEST_TMP/OVMF_CODE.fd"
 	: > "$_DOCTOR_OVMF_PATHS"
+	: > "$TEST_TMP/OVMF_VARS.fd"
 	run _check_cowork_stack debian
 	[[ $status -eq 0 ]]
 	[[ $output == *"Firmware: $_DOCTOR_OVMF_PATHS"* ]]
 	[[ $output != *'none of the official probe paths'* ]]
+	[[ $output != *'VARS template missing'* ]]
+}
+
+@test "_check_cowork_stack: CODE without its derived VARS file warns (#884)" {
+	# The pre-#884 RPM link: OVMF_CODE_4M.fd exists, but the client's
+	# derived OVMF_VARS_4M.fd does not (EL ships only OVMF_VARS.fd).
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/OVMF_CODE_4M.fd"
+	: > "$_DOCTOR_OVMF_PATHS"
+	: > "$TEST_TMP/OVMF_VARS.fd"
+	_cowork_incomplete=false
+	_check_cowork_stack debian >/dev/null
+	[[ $_cowork_incomplete == true ]]
+	run _check_cowork_stack debian
+	[[ $output == *"VARS template missing ($TEST_TMP/OVMF_VARS_4M.fd)"* ]]
+}
+
+@test "_check_cowork_stack: AAVMF CODE derives the AAVMF VARS path" {
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/AAVMF_CODE.fd"
+	: > "$_DOCTOR_OVMF_PATHS"
+	run _check_cowork_stack debian
+	[[ $output == *"VARS template missing ($TEST_TMP/AAVMF_VARS.fd)"* ]]
+	: > "$TEST_TMP/AAVMF_VARS.fd"
+	run _check_cowork_stack debian
+	[[ $output != *'VARS template missing'* ]]
 }
 
 @test "_check_cowork_stack: firmware absent from probe list warns (distro-layout note)" {

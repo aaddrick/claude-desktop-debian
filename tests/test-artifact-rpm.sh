@@ -174,6 +174,19 @@ else
 	fail "%post is missing the CW-1 firmware compat shim"
 fi
 
+# rpm only warns when a scriptlet fails, so a syntax error (#884: an
+# unquoted | in a for list) installs "successfully" with no symlinks.
+# Parse every scriptlet as rpm renders it.
+for tag in PREIN POSTIN PREUN POSTUN; do
+	body=$(rpm -q --qf "%{$tag}" claude-desktop-unofficial 2>/dev/null)
+	[[ -z $body || $body == '(none)' ]] && continue
+	if sh_err=$(sh -n 2>&1 <<< "$body"); then
+		pass "%{$tag} scriptlet parses under sh"
+	else
+		fail "%{$tag} scriptlet has a syntax error: $sh_err"
+	fi
+done
+
 # --- App contents (asar) ---
 resources_dir='/usr/lib/claude-desktop-unofficial/resources'
 validate_app_contents "$resources_dir" "$desktop_file"

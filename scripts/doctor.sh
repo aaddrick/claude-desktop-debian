@@ -1263,6 +1263,17 @@ _check_cowork_stack() {
 	done
 	if [[ -n $fw_found ]]; then
 		_pass "Firmware: $fw_found"
+		# The client derives the VARS template from the CODE path it
+		# found; a CODE file with no matching VARS file (e.g. a
+		# pre-#884 RPM compat link on EL) breaks the pair.
+		local fw_vars="${fw_found/OVMF_CODE/OVMF_VARS}"
+		fw_vars="${fw_vars/AAVMF_CODE/AAVMF_VARS}"
+		if [[ ! -f $fw_vars ]]; then
+			_warn "Firmware: VARS template missing ($fw_vars)"
+			_info 'The client derives it from the CODE path above.' \
+				'Link the VARS file that ships with your firmware there.'
+			_cowork_incomplete=true
+		fi
 	else
 		_warn 'Firmware: none of the official probe paths exist' \
 			"($fw_paths)"

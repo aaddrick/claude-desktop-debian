@@ -182,28 +182,49 @@ done
 
 # CW-1: the official Cowork client probes a hardcoded, Debian-layout
 # firmware list (x64: /usr/share/OVMF/OVMF_CODE{_4M,}.fd, arm64:
-# /usr/share/AAVMF/AAVMF_CODE.fd) with no env override. Fedora ships
-# its own /usr/share/OVMF compat layer, but other RPM hosts (openSUSE,
-# Arch-derived layouts) put edk2 firmware elsewhere, so Cowork breaks
-# out of the box there. The %post scriptlet below creates a compat
-# symlink at the probed path when no probed path exists but a known
-# edk2/qemu layout does; %postun removes it on erase (never a real
-# file, never another package's symlink). Filed upstream as the
+# /usr/share/AAVMF/AAVMF_CODE.fd) with no env override, and derives the
+# VARS template by swapping CODE for VARS in the path it found. Fedora
+# ships its own compat layer, but EL 9/10, openSUSE and Arch-derived
+# layouts put edk2 firmware elsewhere, so Cowork breaks out of the box
+# there. The %post scriptlet below links a matching CODE/VARS pair at
+# the probed names when no probed path exists but a known edk2/qemu
+# layout does; %postun removes the links on erase (never a real file,
+# never another package's symlink). Filed upstream as the
 # OVMF-probe-rigidity report.
+#
+# The x64 links use the un-suffixed names, so the derived VARS path is
+# OVMF_VARS.fd, which EL already ships beside the missing CODE file.
+# Through 3.3.9 the x64 link was OVMF_CODE_4M.fd, whose derived
+# OVMF_VARS_4M.fd exists nowhere on EL (#884); %post drops that legacy
+# link when it is ours so the pair is rebuilt on upgrade.
+#
+# fw_pairs: space-separated "code:vars" candidates, first match wins.
+# Not "|": the list lands unquoted in a for loop, where | is a pipe.
 if [[ $rpm_arch == 'aarch64' ]]; then
 	fw_probe_dir='/usr/share/AAVMF'
 	fw_probe_list='/usr/share/AAVMF/AAVMF_CODE.fd'
-	fw_link_name='AAVMF_CODE.fd'
-	fw_candidates='/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw'
-	fw_candidates+=' /usr/share/qemu/aavmf-aarch64-code.bin'
+	fw_code_link='AAVMF_CODE.fd'
+	fw_vars_link='AAVMF_VARS.fd'
+	fw_legacy_link=''
+	fw_pairs='/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw:'
+	fw_pairs+='/usr/share/edk2/aarch64/vars-template-pflash.raw'
+	fw_pairs+=' /usr/share/qemu/aavmf-aarch64-code.bin:'
+	fw_pairs+='/usr/share/qemu/aavmf-aarch64-vars.bin'
 else
 	fw_probe_dir='/usr/share/OVMF'
 	fw_probe_list='/usr/share/OVMF/OVMF_CODE_4M.fd'
 	fw_probe_list+=' /usr/share/OVMF/OVMF_CODE.fd'
-	fw_link_name='OVMF_CODE_4M.fd'
-	fw_candidates='/usr/share/edk2/ovmf/OVMF_CODE.fd'
-	fw_candidates+=' /usr/share/edk2/x64/OVMF_CODE.4m.fd'
-	fw_candidates+=' /usr/share/qemu/ovmf-x86_64-code.bin'
+	fw_code_link='OVMF_CODE.fd'
+	fw_vars_link='OVMF_VARS.fd'
+	fw_legacy_link='OVMF_CODE_4M.fd'
+	fw_pairs='/usr/share/edk2/ovmf/OVMF_CODE.fd:'
+	fw_pairs+='/usr/share/edk2/ovmf/OVMF_VARS.fd'
+	fw_pairs+=' /usr/share/edk2/x64/OVMF_CODE.4m.fd:'
+	fw_pairs+='/usr/share/edk2/x64/OVMF_VARS.4m.fd'
+	fw_pairs+=' /usr/share/qemu/ovmf-x86_64-4m-code.bin:'
+	fw_pairs+='/usr/share/qemu/ovmf-x86_64-4m-vars.bin'
+	fw_pairs+=' /usr/share/qemu/ovmf-x86_64-code.bin:'
+	fw_pairs+='/usr/share/qemu/ovmf-x86_64-vars.bin'
 fi
 
 cat > "$rpmbuild_dir/SPECS/$package_name.spec" << SPECEOF
@@ -285,9 +306,22 @@ chmod 4755 %{buildroot}/usr/lib/$package_name/chrome-sandbox
 # Update desktop database for MIME types
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
-# Cowork firmware compat symlink (CW-1): the official client probes a
-# hardcoded Debian-layout firmware list with no env override. If no
-# probed path exists but a known edk2/qemu layout does, bridge it.
+# Cowork firmware compat symlinks (CW-1): the official client probes a
+# hardcoded Debian-layout firmware list with no env override and
+# derives the VARS path from the CODE path it finds. If no probed path
+# exists but a known edk2/qemu layout does, link a matching pair.
+#
+# Drop the pre-#884 OVMF_CODE_4M.fd link first when it is ours (a
+# symlink no package owns, pointing into a layout we bridge): its
+# derived VARS path is missing on EL, and leaving it would also stop
+# the probe below from rebuilding a working pair.
+fw_legacy="$fw_probe_dir/$fw_legacy_link"
+if [ -n "$fw_legacy_link" ] && [ -L "\$fw_legacy" ] \\
+    && ! rpm -qf "\$fw_legacy" >/dev/null 2>&1; then
+    case "\$(readlink "\$fw_legacy")" in
+        /usr/share/edk2/*|/usr/share/qemu/*) rm -f "\$fw_legacy" ;;
+    esac
+fi
 fw_have=''
 for fw_probe in $fw_probe_list; do
     if [ -e "\$fw_probe" ]; then
@@ -296,15 +330,20 @@ for fw_probe in $fw_probe_list; do
     fi
 done
 if [ -z "\$fw_have" ]; then
-    for fw_src in $fw_candidates; do
-        if [ -e "\$fw_src" ]; then
-            if mkdir -p $fw_probe_dir 2>/dev/null \\
-                && ln -sf "\$fw_src" $fw_probe_dir/$fw_link_name 2>/dev/null
-            then
-                echo "Cowork firmware compat symlink: $fw_probe_dir/$fw_link_name -> \$fw_src"
-            fi
-            break
+    for fw_pair in $fw_pairs; do
+        fw_code="\${fw_pair%%:*}"
+        fw_vars="\${fw_pair#*:}"
+        [ -e "\$fw_code" ] && [ -e "\$fw_vars" ] || continue
+        mkdir -p $fw_probe_dir 2>/dev/null || break
+        ln -sf "\$fw_code" $fw_probe_dir/$fw_code_link 2>/dev/null || break
+        echo "Cowork firmware compat symlink: $fw_probe_dir/$fw_code_link -> \$fw_code"
+        # Keep a VARS file the distro already ships at the derived path.
+        if [ ! -e $fw_probe_dir/$fw_vars_link ] \\
+            && ln -sf "\$fw_vars" $fw_probe_dir/$fw_vars_link 2>/dev/null
+        then
+            echo "Cowork firmware compat symlink: $fw_probe_dir/$fw_vars_link -> \$fw_vars"
         fi
+        break
     done
 fi
 
@@ -312,19 +351,21 @@ fi
 # Update desktop database after removal
 update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
-# CW-1 cleanup on erase only (\$1 = 0; upgrades keep the symlink).
-# Remove the compat symlink only when it is ours: a symlink no rpm
-# package owns (distro compat links — e.g. Fedora's directory-level
-# /usr/share/OVMF — are package-owned and must survive), pointing at
-# one of the layouts %post bridges.
-if [ "\$1" -eq 0 ] && [ -L $fw_probe_dir/$fw_link_name ] \\
-    && ! rpm -qf $fw_probe_dir/$fw_link_name >/dev/null 2>&1; then
-    case "\$(readlink $fw_probe_dir/$fw_link_name)" in
-        /usr/share/edk2/*|/usr/share/qemu/*)
-            rm -f $fw_probe_dir/$fw_link_name
-            rmdir $fw_probe_dir 2>/dev/null || true
-            ;;
-    esac
+# CW-1 cleanup on erase only (\$1 = 0; upgrades keep the links).
+# Remove a link only when it is ours: a symlink no rpm package owns
+# (distro compat links, e.g. Fedora's /usr/share/OVMF entries, are
+# package-owned and must survive) pointing at a layout %post bridges.
+# The legacy OVMF_CODE_4M.fd name covers pre-#884 installs.
+if [ "\$1" -eq 0 ]; then
+    for fw_link in $fw_code_link $fw_vars_link $fw_legacy_link; do
+        fw_link="$fw_probe_dir/\$fw_link"
+        [ -L "\$fw_link" ] || continue
+        rpm -qf "\$fw_link" >/dev/null 2>&1 && continue
+        case "\$(readlink "\$fw_link")" in
+            /usr/share/edk2/*|/usr/share/qemu/*) rm -f "\$fw_link" ;;
+        esac
+    done
+    rmdir $fw_probe_dir 2>/dev/null || true
 fi
 
 %files
