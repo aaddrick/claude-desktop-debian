@@ -1196,7 +1196,7 @@ _make_appdir() {
 	run _check_cowork_stack debian
 	[[ $status -eq 0 ]]
 	[[ $output == *"Firmware: $_DOCTOR_OVMF_PATHS"* ]]
-	[[ $output != *'none of the official probe paths'* ]]
+	[[ $output != *'none of the client-probed paths'* ]]
 	[[ $output != *'VARS template missing'* ]]
 }
 
@@ -1225,13 +1225,47 @@ _make_appdir() {
 
 @test "_check_cowork_stack: firmware absent from probe list warns (distro-layout note)" {
 	# A firmware file that exists elsewhere must NOT count — only the
-	# official probe paths do. Point the probe list at a nonexistent path.
+	# client-probed paths do. Point the probe list at a nonexistent path.
 	export _DOCTOR_OVMF_PATHS="$TEST_TMP/nope/OVMF_CODE.fd"
 	run _check_cowork_stack debian
 	[[ $status -eq 0 ]]
 	[[ $output == *'[WARN]'* ]]
-	[[ $output == *'none of the official probe paths'* ]]
-	[[ $output == *'edk2 layouts'* ]]
+	[[ $output == *'none of the client-probed paths'* ]]
+	[[ $output == *'openSUSE'* ]]
+}
+
+@test "_cowork_fw_probe_paths: x86_64 lists official paths, then edk2 (#884)" {
+	run _cowork_fw_probe_paths x86_64
+	[[ $output == '/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_CODE.fd:/usr/share/edk2/x64/OVMF_CODE.4m.fd:/usr/share/edk2/ovmf/OVMF_CODE.fd' ]]
+}
+
+@test "_cowork_fw_probe_paths: aarch64 is the official AAVMF path only" {
+	run _cowork_fw_probe_paths aarch64
+	[[ $output == '/usr/share/AAVMF/AAVMF_CODE.fd' ]]
+}
+
+@test "_cowork_fw_probe_paths: edk2 tail matches what the asar patch appends" {
+	# Doctor must report the paths the patched client probes, no more and
+	# no fewer. Read the patch's list straight from its source.
+	local patch="$BATS_TEST_DIRNAME/../scripts/patches/cowork-firmware-probe.sh"
+	local appended
+	appended=$(sed -n '/^const extra = \[/,/^\];/p' "$patch" \
+		| grep -oE "'/[^']+'" | tr -d "'" | paste -sd:)
+	[[ -n $appended ]]
+	run _cowork_fw_probe_paths x86_64
+	[[ $output == "/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_CODE.fd:$appended" ]]
+}
+
+@test "_check_cowork_stack: Arch edk2 layout pairs CODE with its VARS (#884)" {
+	# Arch ships OVMF_CODE.4m.fd beside OVMF_VARS.4m.fd; the client's
+	# replace("OVMF_CODE","OVMF_VARS") lands on the real file.
+	mkdir -p "$TEST_TMP/edk2/x64"
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/nope/OVMF_CODE.fd:$TEST_TMP/edk2/x64/OVMF_CODE.4m.fd"
+	: > "$TEST_TMP/edk2/x64/OVMF_CODE.4m.fd"
+	: > "$TEST_TMP/edk2/x64/OVMF_VARS.4m.fd"
+	run _check_cowork_stack arch
+	[[ $output == *"Firmware: $TEST_TMP/edk2/x64/OVMF_CODE.4m.fd"* ]]
+	[[ $output != *'VARS template missing'* ]]
 }
 
 # =============================================================================
