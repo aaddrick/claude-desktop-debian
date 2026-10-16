@@ -34,7 +34,7 @@ jobs:
         # that migrates legacy apt installs; its Worker redirect goes
         # via releases/latest and gets one extra hop.
         format: [deb, rpm, deb-transitional]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       WORKER_DOMAIN: pkg.claude-desktop-debian.dev
       GH_TOKEN: ${{ github.token }}

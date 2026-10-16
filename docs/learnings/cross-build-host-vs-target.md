@@ -17,13 +17,13 @@ was caught three times during the v3.0.0 CI cutover: twice as loud
   script (the canonical worked example)
 - [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) /
   [`.github/workflows/build.yml`](../../.github/workflows/build.yml) —
-  the 6-leg cross-building matrix, all legs on `ubuntu-latest`
+  the 6-leg cross-building matrix, all legs on `ubuntu-24.04`
 
 ## Why every build is potentially a cross-build
 
 Repackaging Anthropic's prebuilt official `.deb` is arch-independent —
 nothing compiles — so CI runs all six legs
-({amd64, arm64} × {deb, rpm, appimage}) on `ubuntu-latest` x86_64
+({amd64, arm64} × {deb, rpm, appimage}) on `ubuntu-24.04` x86_64
 runners. `ci.yml`'s matrix feeds `build.yml`, which just calls
 `./build.sh --arch ${{ inputs.arch }}`. Every arm64 leg is therefore a
 cross leg: target arm64, host x86_64.
@@ -56,7 +56,7 @@ Host side — the tool that must execute on the runner:
 ```bash
 # appimagetool is a native binary that must run on the HOST machine, not
 # the package's target architecture: CI cross-builds (e.g. an arm64
-# package on an ubuntu-latest/x86_64 runner) need the x86_64 tool even
+# package on an ubuntu-24.04/x86_64 runner) need the x86_64 tool even
 # though $architecture says arm64. Select strictly by uname -m here;
 # the target architecture is only used later for the embedded ARCH.
 host_arch=$(uname -m)

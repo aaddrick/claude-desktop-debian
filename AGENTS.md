@@ -376,7 +376,7 @@ gh run download RUN_ID -n artifact-name
 - `claude-desktop-unofficial-VERSION-amd64.AppImage` / `claude-desktop-unofficial-VERSION-arm64.AppImage` - AppImages (+ `.zsync` in CI)
 - `result/` - Nix build output (symlink, gitignored; the derivation is a stub until the @typedrat rework lands)
 
-One cross-building `build.yml` produces all of these from `ubuntu-latest` via the `--arch` input (see [`docs/learnings/cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) for the host-vs-target trap).
+One cross-building `build.yml` produces all of these from `ubuntu-24.04` via the `--arch` input (see [`docs/learnings/cross-build-host-vs-target.md`](docs/learnings/cross-build-host-vs-target.md) for the host-vs-target trap).
 
 ## Distribution
 

@@ -40,7 +40,7 @@ concurrency:
 jobs:
   nix-build:
     name: nix build (x86_64-linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
