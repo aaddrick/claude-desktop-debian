@@ -18,7 +18,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 WORKFLOWS="${SCRIPT_DIR}/../.github/workflows"
 
-# Every runs-on value as `<file>: <value>`, comments stripped.
+# Every runs-on value as `<file>: <value>`. The leading-whitespace
+# anchor skips commented-out runs-on lines.
 runs_on_values() {
 	grep -H -E '^[[:space:]]*runs-on:' "$WORKFLOWS"/*.yml \
 		| sed -E 's|^.*/([^/]+):[[:space:]]*runs-on:[[:space:]]*|\1: |'
@@ -52,7 +53,7 @@ labels_of() {
 }
 
 @test "every runs-on resolves to an explicitly versioned Ubuntu image" {
-	local file value label bad=''
+	local line file value label bad=''
 	while IFS= read -r line; do
 		file=${line%%: *}
 		value=${line#*: }

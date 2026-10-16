@@ -7,7 +7,7 @@ name: Build Package (Reusable)
 #
 # Every x64 job in .github/workflows pins `ubuntu-24.04`, never
 # `ubuntu-latest`: GitHub moves that label to 26.04 gradually from
-# 2026-10-19, so one release could build on both. Moving to a new
+# 2026-10-19, so one release could build on both images. Moving to a new
 # image is a deliberate one-line-per-job change, checked by
 # tests/workflow-runner-pin.bats.
 
