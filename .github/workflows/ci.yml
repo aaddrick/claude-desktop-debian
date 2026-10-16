@@ -180,10 +180,11 @@ jobs:
       - name: Install difftastic
         if: steps.checkout_versions.outcome == 'success'
         continue-on-error: true
-        # Pinned by release and SHA-256 for the same reason as the CLI
-        # below. The floating `latest/download` URL broke when 0.71.0
-        # put the version in the asset name, and failed silently here
-        # (continue-on-error) on every release since.
+        # Pinned by release and SHA-256, like the actions and the CLI in
+        # this job, so a bump is deliberate. The floating
+        # `latest/download` URL broke when 0.71.0 put the version in the
+        # asset name, and failed silently here (continue-on-error) on
+        # every release since.
         env:
           DIFFT_VERSION: '0.71.0'
           DIFFT_SHA256: '61aea5394a53c56f144637cf39b3a0c0dafa27769731745e5851ff276e6478da'
@@ -192,7 +193,7 @@ jobs:
           curl -fsSL -o "$tarball" \
             "https://github.com/Wilfred/difftastic/releases/download/${DIFFT_VERSION}/${tarball}"
           echo "${DIFFT_SHA256}  ${tarball}" | sha256sum -c -
-          sudo tar xzf "$tarball" -C /usr/local/bin difft
+          sudo tar --no-same-owner -xzf "$tarball" -C /usr/local/bin difft
           rm -f "$tarball"
           difft --version
 
