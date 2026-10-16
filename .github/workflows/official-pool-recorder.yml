@@ -24,7 +24,7 @@ jobs:
     if: >-
       github.event_name != 'schedule' ||
       github.repository == 'aaddrick/claude-desktop-debian'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

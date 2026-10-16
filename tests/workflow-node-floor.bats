@@ -120,7 +120,7 @@ setup_node_steps() {
 	# key from a file that has others passes both, and that step
 	# silently takes the runner's default Node instead of ours.
 	#
-	# Today that default clears the floor (22.23.2 on ubuntu-latest),
+	# Today that default clears the floor (22.23.2 on ubuntu-24.04),
 	# which is exactly why it would go unnoticed until the day it does
 	# not. Whether the runtime is ours or the runner's is the thing
 	# this suite exists to pin, so the count is asserted rather than
