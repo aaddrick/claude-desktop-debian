@@ -32,6 +32,8 @@ setup() {
 	unset _DOCTOR_DEB_ELECTRON
 	unset _DOCTOR_AA_PROFILE
 	unset _DOCTOR_AA_LOADED
+	# Keep the host's /usr/libexec/qemu-kvm (EL) out of the QEMU check.
+	export _DOCTOR_QEMU_KVM="$TEST_TMP/no-qemu-kvm"
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -1230,6 +1232,43 @@ _make_appdir() {
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'none of the official probe paths'* ]]
 	[[ $output == *'edk2 layouts'* ]]
+}
+
+# =============================================================================
+# _check_cowork_stack: QEMU binary (EL qemu-kvm via _DOCTOR_QEMU_KVM, #884)
+# =============================================================================
+
+# Make `command -v qemu-system-*` miss so the host's qemu can't leak in.
+_hide_host_qemu() {
+	command() {
+		[[ $1 == '-v' && $2 == qemu-system-* ]] && return 1
+		builtin command "$@"
+	}
+}
+
+# Assert directly, not via `run`: a `run` subshell would discard the
+# _cowork_incomplete mutation the second test checks.
+@test "_check_cowork_stack: EL qemu-kvm passes and names the launcher shim" {
+	_hide_host_qemu
+	printf '#!/bin/sh\nexit 0\n' > "$TEST_TMP/qemu-kvm"
+	chmod +x "$TEST_TMP/qemu-kvm"
+	export _DOCTOR_QEMU_KVM="$TEST_TMP/qemu-kvm"
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/OVMF_CODE.fd"
+	: > "$_DOCTOR_OVMF_PATHS"
+	_check_cowork_stack centos > "$TEST_TMP/out"
+	grep -qF "QEMU: $TEST_TMP/qemu-kvm (the launcher exposes it as" \
+		"$TEST_TMP/out"
+	run grep -q 'not found on PATH' "$TEST_TMP/out"
+	[[ $status -ne 0 ]]
+}
+
+@test "_check_cowork_stack: no qemu anywhere warns with the EL dnf hint" {
+	_hide_host_qemu
+	_cowork_incomplete=false
+	_check_cowork_stack rocky > "$TEST_TMP/out"
+	grep -q 'not found on PATH' "$TEST_TMP/out"
+	grep -qF 'sudo dnf install qemu-kvm' "$TEST_TMP/out"
+	[[ $_cowork_incomplete == true ]]
 }
 
 # =============================================================================

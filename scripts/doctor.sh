@@ -56,7 +56,8 @@ _cowork_pkg_hint() {
 	# Determine package manager command
 	case "$distro" in
 		debian|ubuntu) pkg_cmd='sudo apt install' ;;
-		fedora)        pkg_cmd='sudo dnf install' ;;
+		fedora|rhel|centos|almalinux|rocky)
+			pkg_cmd='sudo dnf install' ;;
 		arch)          pkg_cmd='sudo pacman -S' ;;
 		*)
 			printf '%s' "Install $tool using your package manager"
@@ -71,6 +72,9 @@ _cowork_pkg_hint() {
 			case "$distro" in
 				debian|ubuntu) pkg='qemu-system-x86 qemu-utils' ;;
 				fedora)        pkg='qemu-kvm qemu-img' ;;
+				# EL ships qemu only as /usr/libexec/qemu-kvm;
+				# the launcher exposes it on PATH (#884).
+				rhel|centos|almalinux|rocky) pkg='qemu-kvm' ;;
 				arch)          pkg='qemu-full' ;;
 			esac
 			;;
@@ -1241,9 +1245,15 @@ _check_cowork_stack() {
 			;;
 	esac
 
-	# QEMU binary — the client spawns it by PATH name.
+	# QEMU binary — the client spawns it by PATH name. On EL 9/10 the
+	# only qemu is /usr/libexec/qemu-kvm, which the launcher exposes
+	# under $qemu_bin (setup_cowork_qemu_path, #884). Path overridable
+	# via _DOCTOR_QEMU_KVM for tests.
+	local qemu_kvm="${_DOCTOR_QEMU_KVM:-/usr/libexec/qemu-kvm}"
 	if command -v "$qemu_bin" &>/dev/null; then
 		_pass "QEMU: $qemu_bin found"
+	elif [[ -x $qemu_kvm ]]; then
+		_pass "QEMU: $qemu_kvm (the launcher exposes it as $qemu_bin)"
 	else
 		_warn "QEMU: $qemu_bin not found on PATH"
 		_info "Fix: $(_cowork_pkg_hint "$distro" qemu)"

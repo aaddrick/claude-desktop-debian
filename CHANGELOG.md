@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- Cowork finds QEMU on RHEL, CentOS Stream, AlmaLinux and Rocky 9/10. These ship qemu only as `/usr/libexec/qemu-kvm`, and the official client looks for `qemu-system-<arch>` on `PATH`, so Cowork asked for QEMU even with `qemu-kvm` installed. The launcher now symlinks `qemu-kvm` as `qemu-system-<arch>` in `~/.cache/claude-desktop-debian/bin` and appends that directory to `PATH`, so a real `qemu-system-<arch>` always wins. `--doctor` reports the shim instead of a missing QEMU and suggests `dnf` packages on EL. ([#884](https://github.com/aaddrick/claude-desktop-debian/issues/884))
+
 ## [v3.3.10] — 2026-10-14
 
 ### Fixed

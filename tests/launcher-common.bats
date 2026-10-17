@@ -60,6 +60,8 @@ setup() {
 	unset CLAUDE_GTK_IM_MODULE
 	unset CLAUDE_PASSWORD_STORE
 	unset CLAUDE_TRAY_USE_DARK_ICON
+	# Keep the host's /usr/libexec/qemu-kvm (EL) out of setup_electron_env.
+	export _CLAUDE_QEMU_KVM="$TEST_TMP/no-qemu-kvm"
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
@@ -1949,6 +1951,12 @@ STUB
 
 	result=$(_cowork_pkg_hint arch qemu)
 	[[ $result == "sudo pacman -S qemu-full" ]]
+
+	result=$(_cowork_pkg_hint centos qemu)
+	[[ $result == "sudo dnf install qemu-kvm" ]]
+
+	result=$(_cowork_pkg_hint almalinux virtiofsd)
+	[[ $result == "sudo dnf install virtiofsd" ]]
 }
 
 @test "_cowork_pkg_hint: unknown distro gives generic message" {
@@ -2787,6 +2795,156 @@ _stub_featureless_node() {
 	setup_cowork_bwrap_env
 	grep -q 'lacks fs.statfsSync' "$log_file"
 	grep -q 'refuse to start' "$log_file"
+}
+
+# =============================================================================
+# setup_cowork_qemu_path: EL 9/10 qemu-kvm shim (#884)
+# =============================================================================
+
+# EL ships qemu only as /usr/libexec/qemu-kvm; the launcher symlinks it
+# as qemu-system-<arch> in a per-user dir appended to PATH. Tests pin
+# the arch via a uname stub, point _CLAUDE_QEMU_KVM at a stub, and
+# shadow `command` so the host's own qemu (if any) can't leak in.
+
+# Make `command -v qemu-system-*` miss unless the hit is our shim dir.
+_hide_host_qemu() {
+	command() {
+		if [[ $1 == '-v' && $2 == qemu-system-* ]]; then
+			# Like real command -v: the shim counts only while its
+			# dir is on PATH.
+			local d="$XDG_CACHE_HOME/claude-desktop-debian/bin"
+			[[ :$PATH: == *":$d:"* && -x $d/$2 ]]
+			return
+		fi
+		builtin command "$@"
+	}
+}
+
+_stub_qemu_kvm() {
+	printf '#!/bin/sh\nexit 0\n' > "$TEST_TMP/qemu-kvm"
+	chmod +x "$TEST_TMP/qemu-kvm"
+	export _CLAUDE_QEMU_KVM="$TEST_TMP/qemu-kvm"
+}
+
+_qemu_shim_dir() {
+	printf '%s' "$XDG_CACHE_HOME/claude-desktop-debian/bin"
+}
+
+@test "setup_cowork_qemu_path: links qemu-kvm and appends the dir to PATH" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	local orig_path="$PATH"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_qemu_path
+	local shim
+	shim="$(_qemu_shim_dir)/qemu-system-x86_64"
+	[[ -L $shim ]]
+	[[ $(readlink "$shim") == "$TEST_TMP/qemu-kvm" ]]
+	# Appended, never prepended: a real qemu earlier on PATH wins.
+	[[ $PATH == "$orig_path:$(_qemu_shim_dir)" ]]
+	grep -qF "qemu-system-x86_64 -> $TEST_TMP/qemu-kvm" "$log_file"
+}
+
+@test "setup_cowork_qemu_path: aarch64 links qemu-system-aarch64" {
+	uname() { echo aarch64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	setup_cowork_qemu_path
+	[[ -L "$(_qemu_shim_dir)/qemu-system-aarch64" ]]
+	[[ ! -e "$(_qemu_shim_dir)/qemu-system-x86_64" ]]
+}
+
+@test "setup_cowork_qemu_path: real qemu-system on PATH is left alone" {
+	uname() { echo x86_64; }
+	mkdir -p "$TEST_TMP/bin"
+	printf '#!/bin/sh\nexit 0\n' > "$TEST_TMP/bin/qemu-system-x86_64"
+	chmod +x "$TEST_TMP/bin/qemu-system-x86_64"
+	export PATH="$TEST_TMP/bin:$PATH"
+	_stub_qemu_kvm
+	local orig_path="$PATH"
+	setup_cowork_qemu_path
+	[[ $PATH == "$orig_path" ]]
+	[[ ! -e "$(_qemu_shim_dir)" ]]
+}
+
+@test "setup_cowork_qemu_path: no qemu-kvm is a no-op" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	export _CLAUDE_QEMU_KVM="$TEST_TMP/nope/qemu-kvm"
+	local orig_path="$PATH"
+	setup_cowork_qemu_path
+	[[ $PATH == "$orig_path" ]]
+	[[ ! -e "$(_qemu_shim_dir)" ]]
+}
+
+@test "setup_cowork_qemu_path: non-executable qemu-kvm is a no-op" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	chmod -x "$_CLAUDE_QEMU_KVM"
+	local orig_path="$PATH"
+	setup_cowork_qemu_path
+	[[ $PATH == "$orig_path" ]]
+	[[ ! -e "$(_qemu_shim_dir)" ]]
+}
+
+@test "setup_cowork_qemu_path: unsupported arch is a no-op" {
+	uname() { echo riscv64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	local orig_path="$PATH"
+	setup_cowork_qemu_path
+	[[ $PATH == "$orig_path" ]]
+	[[ ! -e "$(_qemu_shim_dir)" ]]
+}
+
+@test "setup_cowork_qemu_path: second call does not append PATH again" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	setup_cowork_qemu_path
+	local once="$PATH"
+	setup_cowork_qemu_path
+	[[ $PATH == "$once" ]]
+}
+
+@test "setup_cowork_qemu_path: relaunch with fresh PATH appends again" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	local orig_path="$PATH"
+	setup_cowork_qemu_path
+	# A later launch: the shim already exists, but PATH starts fresh.
+	PATH="$orig_path"
+	setup_cowork_qemu_path
+	[[ $PATH == "$orig_path:$(_qemu_shim_dir)" ]]
+	[[ -L "$(_qemu_shim_dir)/qemu-system-x86_64" ]]
+}
+
+@test "setup_cowork_qemu_path: unwritable cache dir logs and leaves PATH" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	# A file where the dir should be makes mkdir -p fail as any user.
+	mkdir -p "$XDG_CACHE_HOME/claude-desktop-debian"
+	: > "$XDG_CACHE_HOME/claude-desktop-debian/bin"
+	local orig_path="$PATH"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_qemu_path 2>/dev/null
+	[[ $PATH == "$orig_path" ]]
+	grep -q 'could not create' "$log_file"
+}
+
+@test "setup_electron_env: wires in the qemu-kvm shim" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	setup_electron_env
+	[[ -L "$(_qemu_shim_dir)/qemu-system-x86_64" ]]
+	[[ $PATH == *":$(_qemu_shim_dir)" ]]
 }
 
 # =============================================================================

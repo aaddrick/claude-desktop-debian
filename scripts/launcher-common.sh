@@ -1449,6 +1449,38 @@ setup_electron_env() {
 
 	setup_tray_icon_env
 	setup_cowork_bwrap_env
+	setup_cowork_qemu_path
+}
+
+# RHEL-family qemu shim for Cowork (#884). EL 9/10 (RHEL, CentOS Stream,
+# Alma, Rocky) ship qemu only as /usr/libexec/qemu-kvm, with no
+# qemu-system-<arch> on PATH, and the official client finds qemu by
+# walking PATH. Expose qemu-kvm under the expected name through a
+# per-user dir APPENDED to PATH, so a real qemu-system-<arch> always
+# wins. No root, no system changes; the symlink dangles harmlessly if
+# qemu-kvm is later removed. The qemu-kvm path is overridable via
+# _CLAUDE_QEMU_KVM for tests.
+setup_cowork_qemu_path() {
+	local qemu_bin
+	case "$(uname -m)" in
+		x86_64)  qemu_bin='qemu-system-x86_64' ;;
+		aarch64) qemu_bin='qemu-system-aarch64' ;;
+		*)       return 0 ;;
+	esac
+	command -v "$qemu_bin" &>/dev/null && return 0
+
+	local qemu_kvm="${_CLAUDE_QEMU_KVM:-/usr/libexec/qemu-kvm}"
+	[[ -x $qemu_kvm ]] || return 0
+
+	local shim_dir
+	shim_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian/bin"
+	if ! mkdir -p "$shim_dir" \
+		|| ! ln -sfn "$qemu_kvm" "$shim_dir/$qemu_bin"; then
+		log_message "Cowork qemu shim: could not create $shim_dir/$qemu_bin"
+		return 0
+	fi
+	export PATH="${PATH:+$PATH:}$shim_dir"
+	log_message "Cowork qemu shim: $qemu_bin -> $qemu_kvm (via PATH)"
 }
 
 # Opt-in Cowork bubblewrap backend (COWORK_VM_BACKEND=bwrap) for hosts
