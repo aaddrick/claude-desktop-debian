@@ -2810,7 +2810,10 @@ _stub_featureless_node() {
 _hide_host_qemu() {
 	command() {
 		if [[ $1 == '-v' && $2 == qemu-system-* ]]; then
-			[[ -x $XDG_CACHE_HOME/claude-desktop-debian/bin/$2 ]]
+			# Like real command -v: the shim counts only while its
+			# dir is on PATH.
+			local d="$XDG_CACHE_HOME/claude-desktop-debian/bin"
+			[[ :$PATH: == *":$d:"* && -x $d/$2 ]]
 			return
 		fi
 		builtin command "$@"
@@ -2905,6 +2908,19 @@ _qemu_shim_dir() {
 	local once="$PATH"
 	setup_cowork_qemu_path
 	[[ $PATH == "$once" ]]
+}
+
+@test "setup_cowork_qemu_path: relaunch with fresh PATH appends again" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_qemu_kvm
+	local orig_path="$PATH"
+	setup_cowork_qemu_path
+	# A later launch: the shim already exists, but PATH starts fresh.
+	PATH="$orig_path"
+	setup_cowork_qemu_path
+	[[ $PATH == "$orig_path:$(_qemu_shim_dir)" ]]
+	[[ -L "$(_qemu_shim_dir)/qemu-system-x86_64" ]]
 }
 
 @test "setup_cowork_qemu_path: unwritable cache dir logs and leaves PATH" {
