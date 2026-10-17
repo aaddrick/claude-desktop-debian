@@ -1280,20 +1280,58 @@ _hide_host_qemu() {
 	}
 }
 
-# Assert directly, not via `run`: a `run` subshell would discard the
-# _cowork_incomplete mutation the second test checks.
-@test "_check_cowork_stack: EL qemu-kvm passes and names the launcher shim" {
-	_hide_host_qemu
+_stub_doctor_qemu_kvm() {
 	printf '#!/bin/sh\nexit 0\n' > "$TEST_TMP/qemu-kvm"
 	chmod +x "$TEST_TMP/qemu-kvm"
 	export _DOCTOR_QEMU_KVM="$TEST_TMP/qemu-kvm"
 	export _DOCTOR_OVMF_PATHS="$TEST_TMP/OVMF_CODE.fd"
 	: > "$_DOCTOR_OVMF_PATHS"
+}
+
+# The link setup_cowork_qemu_path makes.
+_doctor_qemu_shim() {
+	printf '%s' "$XDG_CACHE_HOME/claude-desktop-debian/bin/qemu-system-x86_64"
+}
+
+# Assert directly, not via `run`: a `run` subshell would discard the
+# _cowork_incomplete mutations the warning tests check.
+@test "_check_cowork_stack: EL qemu-kvm passes and names the launcher shim" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_doctor_qemu_kvm
+	mkdir -p "$(dirname "$(_doctor_qemu_shim)")"
+	ln -s "$TEST_TMP/qemu-kvm" "$(_doctor_qemu_shim)"
 	_check_cowork_stack centos > "$TEST_TMP/out"
 	grep -qF "QEMU: $TEST_TMP/qemu-kvm (the launcher exposes it as" \
 		"$TEST_TMP/out"
 	run grep -q 'not found on PATH' "$TEST_TMP/out"
 	[[ $status -ne 0 ]]
+}
+
+@test "_check_cowork_stack: EL qemu-kvm without the shim link warns" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_doctor_qemu_kvm
+	_cowork_incomplete=false
+	_check_cowork_stack centos > "$TEST_TMP/out"
+	grep -qF "QEMU: $TEST_TMP/qemu-kvm found, but $(_doctor_qemu_shim) is missing or does not point at it" \
+		"$TEST_TMP/out"
+	grep -qF 'launch Claude Desktop once' "$TEST_TMP/out"
+	run grep -q 'PASS.*QEMU' "$TEST_TMP/out"
+	[[ $status -ne 0 ]]
+	[[ $_cowork_incomplete == true ]]
+}
+
+@test "_check_cowork_stack: shim link pointing elsewhere warns" {
+	uname() { echo x86_64; }
+	_hide_host_qemu
+	_stub_doctor_qemu_kvm
+	mkdir -p "$(dirname "$(_doctor_qemu_shim)")"
+	ln -s "$TEST_TMP/other-qemu" "$(_doctor_qemu_shim)"
+	_cowork_incomplete=false
+	_check_cowork_stack centos > "$TEST_TMP/out"
+	grep -qF 'is missing or does not point at it' "$TEST_TMP/out"
+	[[ $_cowork_incomplete == true ]]
 }
 
 @test "_check_cowork_stack: no qemu anywhere warns with the EL dnf hint" {

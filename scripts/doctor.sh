@@ -1263,13 +1263,23 @@ _check_cowork_stack() {
 
 	# QEMU binary — the client spawns it by PATH name. On EL 9/10 the
 	# only qemu is /usr/libexec/qemu-kvm, which the launcher exposes
-	# under $qemu_bin (setup_cowork_qemu_path, #884). Path overridable
-	# via _DOCTOR_QEMU_KVM for tests.
+	# under $qemu_bin (setup_cowork_qemu_path, #884). --doctor runs
+	# without the launcher's PATH, so pass only when the shim link the
+	# launcher made is in place and points at qemu-kvm. Path
+	# overridable via _DOCTOR_QEMU_KVM for tests.
 	local qemu_kvm="${_DOCTOR_QEMU_KVM:-/usr/libexec/qemu-kvm}"
+	local qemu_shim
+	qemu_shim="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian/bin/$qemu_bin"
 	if command -v "$qemu_bin" &>/dev/null; then
 		_pass "QEMU: $qemu_bin found"
-	elif [[ -x $qemu_kvm ]]; then
+	elif [[ -x $qemu_kvm && -L $qemu_shim \
+		&& $(readlink "$qemu_shim") == "$qemu_kvm" ]]; then
 		_pass "QEMU: $qemu_kvm (the launcher exposes it as $qemu_bin)"
+	elif [[ -x $qemu_kvm ]]; then
+		_warn "QEMU: $qemu_kvm found, but $qemu_shim is missing or does not point at it"
+		_info 'Fix: launch Claude Desktop once (the launcher creates the link), then re-run --doctor'
+		_info "If it stays missing, check that ${qemu_shim%/*} is writable"
+		_cowork_incomplete=true
 	else
 		_warn "QEMU: $qemu_bin not found on PATH"
 		_info "Fix: $(_cowork_pkg_hint "$distro" qemu)"
