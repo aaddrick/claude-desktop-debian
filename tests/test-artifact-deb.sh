@@ -244,7 +244,8 @@ run_version_flag_test 'deb launcher' \
 	/usr/bin/claude-desktop-unofficial
 
 # --- Headless launch smoke test ---
-# ubuntu-latest runs as a non-root user, so no privilege drop needed.
+# The GitHub-hosted Ubuntu runner runs as a non-root user, so no
+# privilege drop needed.
 run_launch_smoke_test 'deb package' '/usr/lib/claude-desktop-unofficial' \
 	'' /usr/bin/claude-desktop-unofficial
 

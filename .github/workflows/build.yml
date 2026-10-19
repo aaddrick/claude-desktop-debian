@@ -2,8 +2,14 @@ name: Build Package (Reusable)
 
 # Single cross-building reusable workflow. Repackaging Anthropic's
 # prebuilt official .deb is arch-independent (no compilation), so both
-# amd64 and arm64 build on ubuntu-latest; build.sh fetches the official
+# amd64 and arm64 build on ubuntu-24.04; build.sh fetches the official
 # .deb for `--arch` and re-emits it in the requested format.
+#
+# Every x64 job in .github/workflows pins `ubuntu-24.04`, never
+# `ubuntu-latest`: GitHub moves that label to 26.04 gradually from
+# 2026-10-19, so one release could build on both images. Moving to a new
+# image is a deliberate one-line-per-job change, checked by
+# tests/workflow-runner-pin.bats.
 
 on:
   workflow_call:
@@ -29,7 +35,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ${{ inputs.artifact_suffix == 'rpm' && 'fedora:42' || '' }}
 
     steps:

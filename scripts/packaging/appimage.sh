@@ -231,7 +231,7 @@ echo "AppStream metadata created at $appdata_file"
 # --- Get appimagetool ---
 # appimagetool is a native binary that must run on the HOST machine, not
 # the package's target architecture: CI cross-builds (e.g. an arm64
-# package on an ubuntu-latest/x86_64 runner) need the x86_64 tool even
+# package on an ubuntu-24.04/x86_64 runner) need the x86_64 tool even
 # though $architecture says arm64. Select strictly by uname -m here;
 # the target architecture is only used later for the embedded ARCH.
 host_arch=$(uname -m)

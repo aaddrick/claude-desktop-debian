@@ -25,10 +25,10 @@ jobs:
             container: ""
 
     name: Validate ${{ inputs.arch }} ${{ matrix.format }} package
-    # arm64 artifacts run on a native arm64 runner (matching build-arm64)
-    # so the launch smoke test actually executes the packaged binary
-    # rather than failing on a foreign architecture.
-    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-latest' }}
+    # arm64 artifacts run on a native arm64 runner so the launch smoke
+    # test actually executes the packaged binary rather than failing on
+    # a foreign architecture. Both legs use the same Ubuntu release.
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     container: ${{ matrix.container || '' }}
 
     steps:
