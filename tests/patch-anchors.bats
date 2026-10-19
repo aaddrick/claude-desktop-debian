@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 #
 # patch_quick_window / patch_org_plugins_path / patch_virtiofsd_probe:
-# the three asar patches that had no BATS coverage until #820. Each is
+# the three asar patches that had no BATS coverage until #820, plus
+# patch_cowork_firmware_probe (#884). Each is
 # exercised against BOTH shipped shapes, because 1.26832.0 swapped the
 # bundler and re-emitted the same code differently:
 #
@@ -18,7 +19,8 @@
 # (docs/learnings/test-methodology-and-coverage.md).
 
 setup() {
-	for p in quick-window org-plugins virtiofsd-probe cowork-bwrap; do
+	for p in quick-window org-plugins virtiofsd-probe cowork-firmware-probe \
+		cowork-bwrap; do
 		# shellcheck source=/dev/null
 		source "$BATS_TEST_DIRNAME/../scripts/patches/$p.sh"
 	done
@@ -255,6 +257,73 @@ VFSD_NEW='kT=[`/usr/libexec/virtiofsd`,`/usr/bin/virtiofsd`];async function AT()
 	run patch_virtiofsd_probe
 	[[ $status -ne 0 ]]
 	[[ $output == *'found 2'* ]]
+}
+
+# =============================================================================
+# cowork-firmware-probe (#884)
+# =============================================================================
+
+# 2.42304.0 shipped bytes: double quotes again, the aarch64 array beside
+# the x86_64 one in the same ternary, and the virtiofsd array after it.
+FW_242='var lTn=process.arch==="arm64"?"qemu-system-aarch64":"qemu-system-x86_64",uTn=process.arch==="arm64"?["/usr/share/AAVMF/AAVMF_CODE.fd"]:["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd"],dTn=["/usr/libexec/virtiofsd","/usr/bin/virtiofsd"];'
+
+# The same bytes with the backtick delimiters 1.26832.0's minifier used
+# for every literal.
+FW_TICK=${FW_242//\"/\`}
+
+FW_PATCHED='["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd","/usr/share/edk2/x64/OVMF_CODE.4m.fd","/usr/share/edk2/ovmf/OVMF_CODE.fd"]'
+
+@test "firmware: appends the edk2 paths on the 2.42304.0 shape" {
+	_chunk 'index.chunk-test.js' "$FW_242"
+	run patch_cowork_firmware_probe
+	[[ $status -eq 0 ]]
+	# Official paths first, Arch then EL after them.
+	grep -qF ":$FW_PATCHED,dTn=" "$BUILD/index.chunk-test.js"
+	# aarch64 is left alone.
+	grep -qF '?["/usr/share/AAVMF/AAVMF_CODE.fd"]:' \
+		"$BUILD/index.chunk-test.js"
+}
+
+@test "firmware: keeps the bundle's delimiter (backtick shape)" {
+	_chunk 'index.chunk-test.js' "$FW_TICK"
+	run patch_cowork_firmware_probe
+	[[ $status -eq 0 ]]
+	grep -qF ":${FW_PATCHED//\"/\`},dTn=" "$BUILD/index.chunk-test.js"
+}
+
+@test "firmware: idempotent and byte-identical on re-run" {
+	_chunk 'index.chunk-test.js' "$FW_242"
+	patch_cowork_firmware_probe
+	local first; first="$(cat "$BUILD/index.chunk-test.js")"
+	run patch_cowork_firmware_probe
+	[[ $status -eq 0 ]]
+	[[ $output == *'already carries the edk2 paths'* ]]
+	[[ "$(cat "$BUILD/index.chunk-test.js")" == "$first" ]]
+}
+
+@test "firmware: missing probe array fails the build" {
+	_chunk 'index.chunk-test.js' \
+		'var x=["/usr/share/OVMF/OVMF_CODE.fd"];'
+	run patch_cowork_firmware_probe
+	[[ $status -ne 0 ]]
+	[[ $output == *'matched no file'* ]]
+}
+
+@test "firmware: duplicated probe array fails the exactly-1 guard" {
+	_chunk 'index.chunk-test.js' "$FW_242$FW_242"
+	run patch_cowork_firmware_probe
+	[[ $status -ne 0 ]]
+	[[ $output == *'found 2'* ]]
+}
+
+@test "firmware: an upstream-extended list fails instead of stacking" {
+	# One edit from the anchor: upstream adds its own third path. The
+	# patch must stop and ask for a re-check, not append behind it.
+	_chunk 'index.chunk-test.js' \
+		"${FW_242/OVMF_CODE.fd\"]/OVMF_CODE.fd\",\"/usr/share/qemu/OVMF.fd\"]}"
+	run patch_cowork_firmware_probe
+	[[ $status -ne 0 ]]
+	[[ $output == *'unexpected extra entries'* ]]
 }
 
 # =============================================================================

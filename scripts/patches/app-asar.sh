@@ -30,6 +30,12 @@
 #                              Cowork reports "requires QEMU" on
 #                              Arch/Debian/Pop with a complete KVM stack
 #                              (#771/#772; filed upstream)
+#   patch_cowork_firmware_probe — upstream resolves OVMF from two
+#                              /usr/share/OVMF paths with no override,
+#                              so Cowork finds no firmware on the edk2
+#                              layouts (Arch/CachyOS, EL). The
+#                              RPM %post links them, but the AppImage
+#                              has no install step and no root (#884)
 #   patch_cowork_bwrap       — opt-in bubblewrap Cowork backend for hosts
 #                              without KVM/vhost-vsock (ChromeOS Crostini,
 #                              #772). Every branch is gated on
@@ -49,6 +55,7 @@ active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
 	patch_virtiofsd_probe
+	patch_cowork_firmware_probe
 	patch_cowork_bwrap
 	patch_tray_icon_env_override
 )
@@ -71,6 +78,7 @@ declare -gA patch_retirement=(
 	[patch_quick_window]='behavior: Electron-on-KDE stale focus (#393)'
 	[patch_org_plugins_path]='bytes: no linux case upstream (unreported)'
 	[patch_virtiofsd_probe]='bytes: 771-cowork-virtiofsd-probe.md'
+	[patch_cowork_firmware_probe]='bytes: 884-cowork-firmware-probe.md'
 	[patch_cowork_bwrap]='never: opt-in bwrap backend (#772)'
 	[patch_tray_icon_env_override]='bytes: 604-tray-panel-theme.md'
 )

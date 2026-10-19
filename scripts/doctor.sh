@@ -1216,6 +1216,27 @@ _check_cowork_virtiofsd() {
 	_cowork_incomplete=true
 }
 
+# Colon-list of firmware CODE paths the (patched) client probes, in
+# order, for a `uname -m` value. The x86_64 tail is what
+# scripts/patches/cowork-firmware-probe.sh appends (#884); keep the
+# two in step (tests/doctor.bats checks it).
+#
+# Usage: _cowork_fw_probe_paths <machine>
+_cowork_fw_probe_paths() {
+	case "$1" in
+		aarch64)
+			echo '/usr/share/AAVMF/AAVMF_CODE.fd'
+			;;
+		*)
+			local paths='/usr/share/OVMF/OVMF_CODE_4M.fd'
+			paths+=':/usr/share/OVMF/OVMF_CODE.fd'
+			paths+=':/usr/share/edk2/x64/OVMF_CODE.4m.fd'
+			paths+=':/usr/share/edk2/ovmf/OVMF_CODE.fd'
+			echo "$paths"
+			;;
+	esac
+}
+
 # Check the QEMU/KVM userspace stack Cowork drives: the arch-matched
 # qemu-system binary on PATH, firmware at the paths the official client
 # hardcodes, and virtiofsd at the paths the client probes (see
@@ -1223,10 +1244,11 @@ _check_cowork_virtiofsd() {
 #
 # Firmware: the official probe list is hardcoded with no env override
 # (audit fact — docs/learnings/official-deb-rebase-verification.md).
-# Firmware present at a Fedora/Arch edk2 location does NOT count, so we
-# check only the official paths and explain the mismatch on a miss. The
-# probe list is overridable via _DOCTOR_OVMF_PATHS (colon-list) for
-# tests.
+# On x86_64 the cowork-firmware-probe patch appends the Arch and
+# EL edk2 CODE paths (#884), so those count too, after the
+# official ones and in the patched order. Anywhere else (openSUSE's
+# .bin names) does NOT count, and a miss explains why. The probe list
+# is overridable via _DOCTOR_OVMF_PATHS (colon-list) for tests.
 #
 # Usage: _check_cowork_stack <distro_id> <resources_dir>
 _check_cowork_stack() {
@@ -1234,26 +1256,30 @@ _check_cowork_stack() {
 	local resources_dir="${2:-}"
 	local qemu_bin fw_default
 	case "$(uname -m)" in
-		aarch64)
-			qemu_bin='qemu-system-aarch64'
-			fw_default='/usr/share/AAVMF/AAVMF_CODE.fd'
-			;;
-		*)
-			qemu_bin='qemu-system-x86_64'
-			fw_default='/usr/share/OVMF/OVMF_CODE_4M.fd'
-			fw_default+=':/usr/share/OVMF/OVMF_CODE.fd'
-			;;
+		aarch64) qemu_bin='qemu-system-aarch64' ;;
+		*) qemu_bin='qemu-system-x86_64' ;;
 	esac
+	fw_default=$(_cowork_fw_probe_paths "$(uname -m)")
 
 	# QEMU binary — the client spawns it by PATH name. On EL 9/10 the
 	# only qemu is /usr/libexec/qemu-kvm, which the launcher exposes
-	# under $qemu_bin (setup_cowork_qemu_path, #884). Path overridable
-	# via _DOCTOR_QEMU_KVM for tests.
+	# under $qemu_bin (setup_cowork_qemu_path, #884). --doctor runs
+	# without the launcher's PATH, so pass only when the shim link the
+	# launcher made is in place and points at qemu-kvm. Path
+	# overridable via _DOCTOR_QEMU_KVM for tests.
 	local qemu_kvm="${_DOCTOR_QEMU_KVM:-/usr/libexec/qemu-kvm}"
+	local qemu_shim
+	qemu_shim="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian/bin/$qemu_bin"
 	if command -v "$qemu_bin" &>/dev/null; then
 		_pass "QEMU: $qemu_bin found"
-	elif [[ -x $qemu_kvm ]]; then
+	elif [[ -x $qemu_kvm && -L $qemu_shim \
+		&& $(readlink "$qemu_shim") == "$qemu_kvm" ]]; then
 		_pass "QEMU: $qemu_kvm (the launcher exposes it as $qemu_bin)"
+	elif [[ -x $qemu_kvm ]]; then
+		_warn "QEMU: $qemu_kvm found, but $qemu_shim is missing or does not point at it"
+		_info 'Fix: launch Claude Desktop once (the launcher creates the link), then re-run --doctor'
+		_info "If it stays missing, check that ${qemu_shim%/*} is writable"
+		_cowork_incomplete=true
 	else
 		_warn "QEMU: $qemu_bin not found on PATH"
 		_info "Fix: $(_cowork_pkg_hint "$distro" qemu)"
@@ -1285,12 +1311,12 @@ _check_cowork_stack() {
 			_cowork_incomplete=true
 		fi
 	else
-		_warn 'Firmware: none of the official probe paths exist' \
+		_warn 'Firmware: none of the client-probed paths exist' \
 			"($fw_paths)"
-		_info 'The official client hardcodes this probe list with no' \
-			'env override, so firmware installed elsewhere'
-		_info '(Fedora/Arch edk2 layouts) is not found — add a compat' \
-			'symlink at the probed path.'
+		_info 'The client hardcodes this probe list with no env' \
+			'override, so firmware installed elsewhere'
+		_info '(e.g. openSUSE ovmf-x86_64-*.bin) is not found — add a' \
+			'compat symlink at a probed path.'
 		_cowork_incomplete=true
 	fi
 
