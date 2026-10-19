@@ -104,7 +104,8 @@ log_message "Arguments: $@"
 log_message "APPDIR: $appdir"
 log_session_env
 
-# Build Chromium switches (appimage mode adds --no-sandbox for FUSE)
+# Build Chromium switches (appimage mode adds --no-sandbox only when
+# user namespaces are unavailable, see #884)
 build_electron_args 'appimage'
 
 # Change to HOME directory before exec'ing the app to avoid CWD permission issues
