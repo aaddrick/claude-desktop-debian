@@ -212,3 +212,4 @@ Special thanks to:
 - **[nilltadios](https://github.com/nilltadios)**
   - Confirming on a real AlmaLinux 10.2 host that the EL firmware links let Cowork find `OVMF_CODE_4M.fd` (#884)
   - Exposing EL's `/usr/libexec/qemu-kvm` as `qemu-system-<arch>` through a launcher PATH shim, since the official client looks qemu up only on `PATH`, with the doctor's EL qemu check and dnf hints, and tests that model `command -v` by PATH membership so a relaunch with a fresh `PATH` is covered (#884, #943)
+  - Adding the Arch and EL edk2 firmware paths to the official client's OVMF probe with an asar patch, so Cowork finds firmware on the AppImage too, which has no install step to link it, verified by booting a Cowork VM on CachyOS; plus a doctor check that passes EL's qemu only once the launcher's shim link exists (#884, #947)
