@@ -33,7 +33,7 @@
 #   patch_cowork_firmware_probe — upstream resolves OVMF from two
 #                              /usr/share/OVMF paths with no override,
 #                              so Cowork finds no firmware on the edk2
-#                              layouts (Arch/CachyOS, Fedora/EL). The
+#                              layouts (Arch/CachyOS, EL). The
 #                              RPM %post links them, but the AppImage
 #                              has no install step and no root (#884)
 #   patch_cowork_bwrap       — opt-in bubblewrap Cowork backend for hosts

@@ -1,13 +1,13 @@
 # shellcheck shell=bash
 #===============================================================================
 # Cowork firmware probe: add the edk2 layouts to the x86_64 OVMF list so
-# Cowork finds firmware on Arch/CachyOS and Fedora/EL without root links.
+# Cowork finds firmware on Arch/CachyOS and EL without root links.
 #
 # The official client resolves OVMF from exactly two absolute paths
 # (/usr/share/OVMF/OVMF_CODE_4M.fd, /usr/share/OVMF/OVMF_CODE.fd), takes
 # the first readable one, and derives the VARS template from it with
 # .replace("OVMF_CODE","OVMF_VARS"). There is no env override. Arch
-# installs edk2-ovmf under /usr/share/edk2/x64/ and Fedora/EL under
+# installs edk2-ovmf under /usr/share/edk2/x64/ and EL under
 # /usr/share/edk2/ovmf/, so on those hosts firmwarePath stays null
 # unless something links the files into /usr/share/OVMF (#884).
 #
@@ -17,7 +17,11 @@
 # edk2 CODE paths fixes every format in one place:
 #
 #   /usr/share/edk2/x64/OVMF_CODE.4m.fd   Arch, CachyOS, Manjaro
-#   /usr/share/edk2/ovmf/OVMF_CODE.fd     Fedora, RHEL/Alma/Rocky 9/10
+#   /usr/share/edk2/ovmf/OVMF_CODE.fd     RHEL, CentOS Stream, Alma,
+#                                         Rocky 9/10. Fedora's edk2-ovmf
+#                                         also ships /usr/share/OVMF/
+#                                         OVMF_CODE.fd, so it resolves
+#                                         unpatched.
 #
 # Both pair with the client's VARS derivation (OVMF_VARS.4m.fd and
 # OVMF_VARS.fd ship beside them). The official paths stay first, so a
@@ -99,7 +103,7 @@ FIRMWARE_PATCH
 		echo 'Cowork firmware probe patch applied'
 	else
 		echo 'ERROR: Cowork firmware probe patch failed. Without it,' \
-			'Cowork finds no firmware on Arch/CachyOS or Fedora/EL' \
+			'Cowork finds no firmware on Arch/CachyOS or EL' \
 			'AppImage installs (#884). Update the anchor in' \
 			'scripts/patches/cowork-firmware-probe.sh against the new' \
 			'bundle before shipping.' >&2

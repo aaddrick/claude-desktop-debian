@@ -5,7 +5,7 @@
 ## Title
 
 ```
-[BUG] Claude Desktop for Linux: Cowork finds no OVMF firmware on Arch or Fedora/RHEL — probe list is two hardcoded /usr/share/OVMF paths with no override
+[BUG] Claude Desktop for Linux: Cowork finds no OVMF firmware on Arch or RHEL-family distros — probe list is two hardcoded /usr/share/OVMF paths with no override
 ```
 
 ## Form fields
@@ -21,7 +21,9 @@ Cowork's support evaluator resolves x86_64 firmware from exactly two absolute pa
 It takes the first path that's readable and derives the VARS template from it with `.replace("OVMF_CODE","OVMF_VARS")`. You can't override it with an env var or a setting. That layout is Debian's. Other major distros put edk2 somewhere else:
 
 - **Arch / CachyOS / Manjaro** (`edk2-ovmf`): `/usr/share/edk2/x64/OVMF_CODE.4m.fd` and `OVMF_VARS.4m.fd`
-- **Fedora, RHEL / CentOS Stream / Alma / Rocky 9 and 10** (`edk2-ovmf`): `/usr/share/edk2/ovmf/OVMF_CODE.fd` and `OVMF_VARS.fd`. EL ships `/usr/share/OVMF/OVMF_VARS.fd` but no `OVMF_CODE.fd` next to it.
+- **RHEL / CentOS Stream / Alma / Rocky 9 and 10** (`edk2-ovmf`): `/usr/share/edk2/ovmf/OVMF_CODE.fd` and `OVMF_VARS.fd`. EL ships `/usr/share/OVMF/OVMF_VARS.fd` but no `OVMF_CODE.fd` next to it.
+
+Fedora isn't affected: its `edk2-ovmf` also ships `/usr/share/OVMF/OVMF_CODE.fd` and `OVMF_VARS.fd`, so the existing probe finds them.
 
 On these hosts, `firmwarePath` ends up null even though the firmware is installed. To work around it, the user has to root-link files into `/usr/share/OVMF/` and pick names that make the derived VARS path come out right. If they link the CODE file as `OVMF_CODE_4M.fd` on EL, the client derives `OVMF_VARS_4M.fd`, and that file doesn't exist.
 
@@ -34,7 +36,7 @@ When firmware from the distro's own `edk2-ovmf` package is installed, Cowork sho
 
 ### Steps to Reproduce
 
-1. On Arch (or Fedora/EL), install `qemu` and `edk2-ovmf`, with a working `/dev/kvm` and `/dev/vhost-vsock`.
+1. On Arch (or RHEL, CentOS Stream, Alma or Rocky 9/10), install `qemu` and `edk2-ovmf`, with a working `/dev/kvm` and `/dev/vhost-vsock`.
 2. Install Claude Desktop and open Cowork.
 
 Expected: the VM is supported. Actual: the firmware probe resolves nothing, so Cowork isn't available. Linking the edk2 CODE and VARS files into `/usr/share/OVMF/` under the probed names, then restarting, fixes it.

@@ -1245,7 +1245,7 @@ _cowork_fw_probe_paths() {
 # Firmware: the official probe list is hardcoded with no env override
 # (audit fact — docs/learnings/official-deb-rebase-verification.md).
 # On x86_64 the cowork-firmware-probe patch appends the Arch and
-# Fedora/EL edk2 CODE paths (#884), so those count too, after the
+# EL edk2 CODE paths (#884), so those count too, after the
 # official ones and in the patched order. Anywhere else (openSUSE's
 # .bin names) does NOT count, and a miss explains why. The probe list
 # is overridable via _DOCTOR_OVMF_PATHS (colon-list) for tests.

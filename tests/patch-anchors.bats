@@ -277,7 +277,7 @@ FW_PATCHED='["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd","/
 	_chunk 'index.chunk-test.js' "$FW_242"
 	run patch_cowork_firmware_probe
 	[[ $status -eq 0 ]]
-	# Official paths first, Arch then Fedora/EL after them.
+	# Official paths first, Arch then EL after them.
 	grep -qF ":$FW_PATCHED,dTn=" "$BUILD/index.chunk-test.js"
 	# aarch64 is left alone.
 	grep -qF '?["/usr/share/AAVMF/AAVMF_CODE.fd"]:' \
