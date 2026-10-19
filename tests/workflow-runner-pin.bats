@@ -19,10 +19,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 WORKFLOWS="${SCRIPT_DIR}/../.github/workflows"
 
 # Every runs-on value as `<file>: <value>`. The leading-whitespace
-# anchor skips commented-out runs-on lines.
+# anchor skips commented-out runs-on lines. A trailing ` # comment` and
+# quotes around a bare label are stripped, so `'ubuntu-24.04'` and
+# `ubuntu-24.04 # pin` read as the label they are.
 runs_on_values() {
 	grep -H -E '^[[:space:]]*runs-on:' "$WORKFLOWS"/*.yml \
-		| sed -E 's|^.*/([^/]+):[[:space:]]*runs-on:[[:space:]]*|\1: |'
+		| sed -E \
+			-e 's|^.*/([^/]+):[[:space:]]*runs-on:[[:space:]]*|\1: |' \
+			-e 's|[[:space:]]+#.*$||' \
+			-e "s|: (['\"])([^'\"]*)\\1\$|: \\2|"
 }
 
 # The runner labels a runs-on value can resolve to: the value itself
@@ -53,14 +58,22 @@ labels_of() {
 }
 
 @test "every runs-on resolves to an explicitly versioned Ubuntu image" {
-	local line file value label bad=''
+	# An expression with no literal label (`${{ matrix.os }}`) yields
+	# no labels at all, so it is flagged here rather than passing by
+	# default.
+	local line file value label labels bad=''
 	while IFS= read -r line; do
 		file=${line%%: *}
 		value=${line#*: }
+		labels=$(labels_of "$value")
+		if [[ -z $labels ]]; then
+			bad+="${file}: ${value} (no literal label)"$'\n'
+			continue
+		fi
 		while IFS= read -r label; do
 			[[ $label =~ ^ubuntu-[0-9]{2}\.[0-9]{2}(-arm)?$ ]] \
 				|| bad+="${file}: ${label}"$'\n'
-		done < <(labels_of "$value")
+		done <<< "$labels"
 	done < <(runs_on_values)
 	[[ -z $bad ]] || { printf 'unpinned runner:\n%s' "$bad"; return 1; }
 }
