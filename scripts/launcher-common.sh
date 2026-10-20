@@ -247,8 +247,13 @@ _previous_launch_hit_gpu_fatal() {
 #                                            profile can pin the
 #                                            AppImage's /tmp/.mount_*
 #                                            path, so it stays blocked
-# The sysctl paths are overridable via _CLAUDE_USERNS_MAX,
-# _CLAUDE_USERNS_CLONE and _CLAUDE_USERNS_AA for tests.
+# The sysctls give a clear reason but miss other blockers, such as
+# Docker's default seccomp profile (distrobox, toolbox). So when none of
+# them blocks, create the namespaces Chromium's zygote needs (user, pid,
+# net), which takes a few ms. Without util-linux's unshare, the sysctl
+# result stands. The sysctl paths are overridable via
+# _CLAUDE_USERNS_MAX, _CLAUDE_USERNS_CLONE and _CLAUDE_USERNS_AA, and
+# the unshare binary via _CLAUDE_UNSHARE, for tests.
 _userns_sandbox_block_reason() {
 	local max_path="${_CLAUDE_USERNS_MAX:-/proc/sys/user/max_user_namespaces}"
 	local clone_path="${_CLAUDE_USERNS_CLONE:-/proc/sys/kernel/unprivileged_userns_clone}"
@@ -272,6 +277,15 @@ _userns_sandbox_block_reason() {
 	if [[ $val == '1' ]]; then
 		echo 'user namespaces restricted by AppArmor' \
 			'(kernel.apparmor_restrict_unprivileged_userns=1)'
+		return 0
+	fi
+
+	local unshare_bin="${_CLAUDE_UNSHARE:-unshare}" err
+	command -v "$unshare_bin" &> /dev/null || return 1
+	if ! err=$("$unshare_bin" --user --map-root-user --pid --net --fork \
+		true 2>&1 > /dev/null); then
+		err=${err%%$'\n'*}
+		echo "user namespace creation failed${err:+ ($err)}"
 		return 0
 	fi
 	return 1

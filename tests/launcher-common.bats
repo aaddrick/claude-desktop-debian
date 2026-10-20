@@ -68,6 +68,10 @@ setup() {
 	export _CLAUDE_USERNS_CLONE="$TEST_TMP/userns-clone"
 	export _CLAUDE_USERNS_AA="$TEST_TMP/userns-aa"
 	echo 63432 > "$_CLAUDE_USERNS_MAX"
+	# Stub unshare that succeeds and records its args; tests that need
+	# the probe to fail or be missing swap it out.
+	export _CLAUDE_UNSHARE="$TEST_TMP/bin/unshare"
+	_stub_unshare 0
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
@@ -93,6 +97,20 @@ setup() {
 # Make the userns probe report Ubuntu 24.04+'s AppArmor restriction.
 _restrict_userns() {
 	echo 1 > "$_CLAUDE_USERNS_AA"
+}
+
+# Write the stub unshare at $_CLAUDE_UNSHARE: exits $1, logs its args
+# to $TEST_TMP/unshare.args, and on failure prints the error a seccomp
+# denial gives.
+_stub_unshare() {
+	mkdir -p "$TEST_TMP/bin"
+	cat > "$TEST_TMP/bin/unshare" <<-EOF
+		#!/bin/sh
+		echo "\$*" >> "$TEST_TMP/unshare.args"
+		[ $1 -eq 0 ] || echo 'unshare: unshare failed: Operation not permitted' >&2
+		exit $1
+	EOF
+	chmod +x "$TEST_TMP/bin/unshare"
 }
 
 teardown() {
@@ -503,6 +521,35 @@ teardown() {
 	[[ $status -eq 1 ]]
 }
 
+@test "_userns_sandbox_block_reason: sysctls pass - creates the zygote's namespaces" {
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+	[[ $(<"$TEST_TMP/unshare.args") == '--user --map-root-user --pid --net --fork true' ]]
+}
+
+@test "_userns_sandbox_block_reason: sysctls pass but unshare fails (seccomp) - blocked" {
+	# Docker's default seccomp profile: the sysctls look fine, but
+	# creating a user namespace is denied.
+	_stub_unshare 1
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ $output == 'user namespace creation failed (unshare: unshare failed: Operation not permitted)' ]]
+}
+
+@test "_userns_sandbox_block_reason: unshare missing - sysctl result stands" {
+	export _CLAUDE_UNSHARE="$TEST_TMP/no-unshare"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+	[[ -z $output ]]
+}
+
+@test "_userns_sandbox_block_reason: a sysctl block skips the unshare probe" {
+	_restrict_userns
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ ! -e $TEST_TMP/unshare.args ]]
+}
+
 # =============================================================================
 # build_electron_args
 # =============================================================================
@@ -563,6 +610,16 @@ teardown() {
 	has_electron_arg '--no-sandbox'
 	run cat "$log_file"
 	[[ $output == *'Chromium sandbox disabled: user namespaces restricted by AppArmor'* ]]
+}
+
+@test "build_electron_args: X11 appimage, unshare fails - includes --no-sandbox" {
+	is_wayland=false
+	_stub_unshare 1
+	setup_logging
+	build_electron_args appimage
+	has_electron_arg '--no-sandbox'
+	run cat "$log_file"
+	[[ $output == *'Chromium sandbox disabled: user namespace creation failed'* ]]
 }
 
 @test "build_electron_args: X11 deb ignores the userns probe" {

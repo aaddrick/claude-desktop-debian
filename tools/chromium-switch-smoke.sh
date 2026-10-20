@@ -49,6 +49,8 @@ _CLAUDE_USERNS_MAX="$tmp_dir/userns-max"
 _CLAUDE_USERNS_CLONE="$tmp_dir/userns-clone"
 _CLAUDE_USERNS_AA="$tmp_dir/userns-aa"
 echo 63432 > "$_CLAUDE_USERNS_MAX"
+# The real unshare probe depends on the host too; stand in a success.
+_CLAUDE_UNSHARE=true
 
 # shellcheck source=scripts/launcher-common.sh
 source "$tmp_dir/launcher-common.sh"

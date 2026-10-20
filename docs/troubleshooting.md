@@ -314,6 +314,7 @@ The launcher passes `--no-sandbox` only when they aren't, because Chromium would
 - `user.max_user_namespaces` is `0`, or the kernel has no user-namespace support
 - `kernel.unprivileged_userns_clone` is `0` (Debian, linux-hardened)
 - `kernel.apparmor_restrict_unprivileged_userns` is `1` (Ubuntu 24.04+). The `.deb` gets an AppArmor profile for its own binary, but the AppImage's mount path changes every run, so no profile can cover it.
+- Creating a user namespace fails anyway, for example under a container's seccomp profile (Docker, distrobox, toolbox). When the settings above look fine, the launcher tries to create the namespaces Chromium needs with `unshare`; without `unshare`, it goes by the settings alone.
 
 Running the AppImage with `--doctor` reports which applies, and the launcher log records it. `CLAUDE_FORCE_SANDBOX=1` skips the check and keeps the sandbox on, which only helps if the check is wrong for your system. On those hosts, the `.deb` and `.rpm` can still sandbox through the setuid `chrome-sandbox` helper.
 
