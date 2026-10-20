@@ -1491,8 +1491,9 @@ _doctor_check_userns_apparmor() {
 	[[ -r $_userns_path ]] && _userns_val=$(<"$_userns_path")
 	# Gate on the deb's installed Electron, not $electron_path (the
 	# invoking build's binary): the profile pins this exact path, so only
-	# a deb install is confined by it. AppImage always runs --no-sandbox
-	# and Nix binaries live in the store — neither can hit the crash.
+	# a deb install is confined by it. AppImage falls back to
+	# --no-sandbox while the restriction is on (#884), and Nix binaries
+	# live in the store — neither can hit the crash.
 	local _deb_electron="${_DOCTOR_DEB_ELECTRON:-}"
 	[[ -n $_deb_electron ]] \
 		|| _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
@@ -1600,10 +1601,10 @@ _doctor_check_electron_binary() {
 # the AppImage's permission normalization drops the setuid bit, and the
 # mount/extract dir is owned by the running user, so the perms check
 # always failed with a `sudo chown root:root /tmp/.mount_.../` hint that
-# is both unactionable (transient, read-only) and moot —
-# build_electron_args passes --no-sandbox unconditionally for appimage,
-# so the helper is never invoked. Report that once and stop, matching
-# _doctor_check_effective_sandbox's appimage short-circuit.
+# is both unactionable (transient, read-only) and moot — the nosuid
+# FUSE mount means the helper can never run, so Chromium either uses
+# the user-namespace sandbox or gets --no-sandbox (#884). Report that
+# once and stop; _doctor_check_effective_sandbox reports which.
 #
 # _DOCTOR_DEB_SANDBOX overrides the hardcoded deb path (test hook; the
 # default is the real install location, so production is unaffected).
@@ -1614,8 +1615,8 @@ _doctor_check_chrome_sandbox() {
 	local package_type="${2:-}"
 	local sandbox_path
 	if [[ $package_type == 'appimage' ]]; then
-		_info 'Chrome sandbox: not used' \
-			'(AppImage runs with --no-sandbox)'
+		_info 'Chrome sandbox: setuid helper not used' \
+			'(AppImage mounts nosuid)'
 		return 0
 	fi
 	if [[ -n $electron_path ]]; then
@@ -1650,7 +1651,8 @@ _doctor_check_chrome_sandbox() {
 # Wayland, deb/nix launches pass --no-sandbox unconditionally (unless
 # CLAUDE_FORCE_SANDBOX=1), so _doctor_check_chrome_sandbox above can PASS
 # on file permissions while the sandbox is disabled the moment Electron
-# actually launches -- this check reports on that gap directly, by
+# actually launches. #884: the AppImage passes --no-sandbox only when
+# user namespaces are unavailable. This check reports on both directly, by
 # building the real argv the launcher would use rather than
 # re-deriving the same rule a second time (see the "single source of
 # truth" note on build_electron_args -- this project has been burned by
@@ -1676,7 +1678,6 @@ _doctor_check_effective_sandbox() {
 	# deb/nix-only --no-sandbox branch and wrongly report the sandbox
 	# as enabled.
 	[[ $package_type == 'rpm' ]] && package_type='deb'
-	[[ $package_type == 'appimage' ]] && return 0 # already unconditional, covered above
 	declare -F build_electron_args > /dev/null || return 0
 
 	local electron_args
@@ -1687,7 +1688,16 @@ _doctor_check_effective_sandbox() {
 		[[ $arg == '--no-sandbox' ]] && has_no_sandbox=true
 	done
 
-	if [[ $has_no_sandbox == true ]]; then
+	if [[ $has_no_sandbox == true && $package_type == 'appimage' ]]; then
+		local reason
+		reason=$(_userns_sandbox_block_reason)
+		_warn 'Chrome sandbox: disabled at runtime' \
+			"(AppImage: ${reason:-user namespaces unavailable})"
+		_info 'The AppImage cannot use the setuid chrome-sandbox helper, and'
+		_info 'Chromium needs unprivileged user namespaces to sandbox without'
+		_info 'it -- see #884. On Ubuntu 24.04+, the .deb installs an AppArmor'
+		_info 'profile that allows them for its own binary only.'
+	elif [[ $has_no_sandbox == true ]]; then
 		_warn 'Chrome sandbox: disabled at runtime (--no-sandbox on Wayland)'
 		_info 'Regardless of the file-permission result above, the sandbox is'
 		_info 'not actually engaged for this session -- see #804.'

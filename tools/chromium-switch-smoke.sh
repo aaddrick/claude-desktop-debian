@@ -7,7 +7,7 @@
 # build_electron_args in scripts/launcher-common.sh): it must not pass
 # any default flag that shadows an official upstream code path. This
 # tool sources a host-state-neutralized copy of the launcher, runs
-# detect_display_backend + build_electron_args for four canonical
+# detect_display_backend + build_electron_args for five canonical
 # scenarios, and diffs the emitted switch list against a checked-in
 # baseline. Any drift — an upstream Electron bump that shifts a
 # default, or a launcher PR that adds/removes a flag — fails loudly
@@ -43,6 +43,15 @@ unset _smoke_var
 unset XRDP_SESSION XDG_SESSION_ID WAYLAND_DISPLAY DISPLAY NIRI_SOCKET \
 	XDG_CURRENT_DESKTOP
 
+# The AppImage's --no-sandbox depends on the host's userns sysctls
+# (#884). Point the probe at temp files the AppImage scenarios set.
+_CLAUDE_USERNS_MAX="$tmp_dir/userns-max"
+_CLAUDE_USERNS_CLONE="$tmp_dir/userns-clone"
+_CLAUDE_USERNS_AA="$tmp_dir/userns-aa"
+echo 63432 > "$_CLAUDE_USERNS_MAX"
+# The real unshare probe depends on the host too; stand in a success.
+_CLAUDE_UNSHARE=true
+
 # shellcheck source=scripts/launcher-common.sh
 source "$tmp_dir/launcher-common.sh"
 
@@ -66,7 +75,7 @@ render_scenario() {
 	printf '%s: %s\n' "$name" "${electron_args[*]}"
 }
 
-# Emit all four canonical scenarios. Each clears the display vars it
+# Emit all five canonical scenarios. Each clears the display vars it
 # does not want before setting its own, so scenarios never leak state.
 generate() {
 	# 1. X11 deb (the minimal-argv case: --class only).
@@ -85,10 +94,18 @@ generate() {
 	CLAUDE_USE_WAYLAND='1'
 	render_scenario 'wayland-native-deb' deb
 
-	# 4. X11 AppImage (FUSE forces --no-sandbox).
+	# 4. X11 AppImage, user namespaces available: the userns sandbox
+	# runs, so no --no-sandbox.
 	unset WAYLAND_DISPLAY CLAUDE_USE_WAYLAND NIRI_SOCKET XDG_CURRENT_DESKTOP
 	DISPLAY=':0'
 	render_scenario 'x11-appimage' appimage
+
+	# 5. X11 AppImage, userns restricted by AppArmor (Ubuntu 24.04+):
+	# the nosuid FUSE mount rules out the setuid helper too, so
+	# --no-sandbox.
+	echo 1 > "$_CLAUDE_USERNS_AA"
+	render_scenario 'x11-appimage-userns-restricted' appimage
+	rm -f "$_CLAUDE_USERNS_AA"
 }
 
 output=$(generate)

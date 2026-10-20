@@ -1,4 +1,5 @@
 x11-deb: --class=com.anthropic.Claude
 wayland-xwayland-deb: --class=com.anthropic.Claude --no-sandbox --ozone-platform=x11
 wayland-native-deb: --class=com.anthropic.Claude --no-sandbox --ozone-platform=wayland --enable-wayland-ime --wayland-text-input-version=3 --enable-features=UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal
-x11-appimage: --no-sandbox --class=com.anthropic.Claude
+x11-appimage: --class=com.anthropic.Claude
+x11-appimage-userns-restricted: --no-sandbox --class=com.anthropic.Claude

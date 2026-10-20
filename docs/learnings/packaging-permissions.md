@@ -106,8 +106,10 @@ format re-asserts it where its model allows:
   ownership-wise).
 - **rpm** — `%install` sets `4755` in the buildroot *after* the
   normalization pass, so the payload records it directly.
-- **AppImage** — no SUID: FUSE mounts are `nosuid`, which is why the
-  AppRun launcher passes `--no-sandbox`.
+- **AppImage** — no SUID: FUSE mounts are `nosuid`, so the helper never
+  runs. Chromium uses its user-namespace sandbox instead, and the AppRun
+  launcher passes `--no-sandbox` only when user namespaces are
+  unavailable (#884).
 
 ## Unsticking an installed system
 

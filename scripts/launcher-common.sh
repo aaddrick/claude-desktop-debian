@@ -233,6 +233,64 @@ _previous_launch_hit_gpu_fatal() {
 	' "$log_file"
 }
 
+# Why Chromium's user-namespace sandbox can't run on this host, if it
+# can't. The AppImage runs from a nosuid FUSE mount, so the setuid
+# chrome-sandbox helper never works there; the namespace sandbox is the
+# only one it can use. Prints the reason and returns 0 when user
+# namespaces are unavailable to unprivileged processes; prints nothing
+# and returns 1 when the sandbox can start. Checks, in order:
+#   user.max_user_namespaces = 0 or absent   userns disabled / no
+#                                            CONFIG_USER_NS
+#   kernel.unprivileged_userns_clone = 0     Debian / linux-hardened knob
+#   kernel.apparmor_restrict_unprivileged_userns = 1
+#                                            Ubuntu 24.04+; no AppArmor
+#                                            profile can pin the
+#                                            AppImage's /tmp/.mount_*
+#                                            path, so it stays blocked
+# The sysctls give a clear reason but miss other blockers, such as
+# Docker's default seccomp profile (distrobox, toolbox). So when none of
+# them blocks, create the namespaces Chromium's zygote needs (user, pid,
+# net), which takes a few ms. Without util-linux's unshare, the sysctl
+# result stands. The sysctl paths are overridable via
+# _CLAUDE_USERNS_MAX, _CLAUDE_USERNS_CLONE and _CLAUDE_USERNS_AA, and
+# the unshare binary via _CLAUDE_UNSHARE, for tests.
+_userns_sandbox_block_reason() {
+	local max_path="${_CLAUDE_USERNS_MAX:-/proc/sys/user/max_user_namespaces}"
+	local clone_path="${_CLAUDE_USERNS_CLONE:-/proc/sys/kernel/unprivileged_userns_clone}"
+	local aa_path="${_CLAUDE_USERNS_AA:-/proc/sys/kernel/apparmor_restrict_unprivileged_userns}"
+	local val=''
+
+	[[ -r $max_path ]] && val=$(<"$max_path")
+	if [[ ! $val =~ ^[0-9]+$ || $val -eq 0 ]]; then
+		echo 'user namespaces disabled (user.max_user_namespaces=0)'
+		return 0
+	fi
+	val=''
+	[[ -r $clone_path ]] && val=$(<"$clone_path")
+	if [[ $val == '0' ]]; then
+		echo 'unprivileged user namespaces disabled' \
+			'(kernel.unprivileged_userns_clone=0)'
+		return 0
+	fi
+	val=''
+	[[ -r $aa_path ]] && val=$(<"$aa_path")
+	if [[ $val == '1' ]]; then
+		echo 'user namespaces restricted by AppArmor' \
+			'(kernel.apparmor_restrict_unprivileged_userns=1)'
+		return 0
+	fi
+
+	local unshare_bin="${_CLAUDE_UNSHARE:-unshare}" err
+	command -v "$unshare_bin" &> /dev/null || return 1
+	if ! err=$("$unshare_bin" --user --map-root-user --pid --net --fork \
+		true 2>&1 > /dev/null); then
+		err=${err%%$'\n'*}
+		echo "user namespace creation failed${err:+ ($err)}"
+		return 0
+	fi
+	return 1
+}
+
 # Build Electron arguments array based on display backend.
 #
 # LAUNCHER POLICY — opt-in only. Since the v3.0.0 rebase the packaged
@@ -248,7 +306,8 @@ _previous_launch_hit_gpu_fatal() {
 #   GPU-crash sticky recovery GPU process FATAL exhaustion (#583)
 #   Wayland backend selection CLAUDE_USE_WAYLAND tri-state (#226, #404)
 #   --no-sandbox              only where structurally required
-#                             (AppImage FUSE; deb/nix on Wayland unless
+#                             (AppImage without usable user namespaces,
+#                             #884; deb/nix on Wayland; both unless
 #                             CLAUDE_FORCE_SANDBOX=1, see #804)
 # --password-store is passed ONLY when CLAUDE_PASSWORD_STORE is set;
 # otherwise the official os_crypt autodetection owns the decision.
@@ -268,8 +327,23 @@ build_electron_args() {
 	# --enable-features=... at the end of the function.
 	local enable_features=()
 
-	# AppImage always needs --no-sandbox due to FUSE constraints
-	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
+	# AppImage: the FUSE mount is nosuid, so the setuid chrome-sandbox
+	# helper can't work, but Chromium's user-namespace sandbox can.
+	# Pass --no-sandbox only when user namespaces are unavailable
+	# (Ubuntu 24.04+ AppArmor, userns disabled), otherwise Chromium
+	# aborts on launch. CLAUDE_FORCE_SANDBOX=1 keeps the sandbox on
+	# regardless. Ref: #884
+	local userns_block
+	if [[ $package_type == 'appimage' ]] \
+		&& userns_block=$(_userns_sandbox_block_reason); then
+		if [[ ${CLAUDE_FORCE_SANDBOX:-} == '1' ]]; then
+			log_message 'CLAUDE_FORCE_SANDBOX=1 - keeping Chromium' \
+				"sandbox enabled despite: $userns_block"
+		else
+			electron_args+=('--no-sandbox')
+			log_message "Chromium sandbox disabled: $userns_block"
+		fi
+	fi
 
 	# Chromium ignores --class for the window class (it reads the asar
 	# desktopName instead — WM_CLASS is derived from the same field),

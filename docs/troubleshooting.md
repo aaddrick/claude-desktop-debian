@@ -307,12 +307,16 @@ and
 
 ### AppImage Sandbox Warning
 
-AppImages run with `--no-sandbox` because Electron's chrome-sandbox requires root privileges for unprivileged namespace creation, which the FUSE-mounted AppImage cannot provide. This is a known limitation of the AppImage format with Electron applications.
+The AppImage runs from a FUSE mount, which is `nosuid`, so Electron's setuid `chrome-sandbox` helper can't work there. Chromium falls back to its user-namespace sandbox, which needs no setuid bit, and the AppImage keeps the sandbox on wherever unprivileged user namespaces are available.
 
-For enhanced security, consider:
-- Using the .deb or .rpm package instead
-- Running the AppImage within a separate sandbox (e.g., bubblewrap)
-- Using Gear Lever's integrated AppImage management for better isolation
+The launcher passes `--no-sandbox` only when they aren't, because Chromium would otherwise abort on launch:
+
+- `user.max_user_namespaces` is `0`, or the kernel has no user-namespace support
+- `kernel.unprivileged_userns_clone` is `0` (Debian, linux-hardened)
+- `kernel.apparmor_restrict_unprivileged_userns` is `1` (Ubuntu 24.04+). The `.deb` gets an AppArmor profile for its own binary, but the AppImage's mount path changes every run, so no profile can cover it.
+- Creating a user namespace fails anyway, for example under a container's seccomp profile (Docker, distrobox, toolbox). When the settings above look fine, the launcher tries to create the namespaces Chromium needs with `unshare`; without `unshare`, it goes by the settings alone.
+
+Running the AppImage with `--doctor` reports which applies, and the launcher log records it. `CLAUDE_FORCE_SANDBOX=1` skips the check and keeps the sandbox on, which only helps if the check is wrong for your system. On those hosts, the `.deb` and `.rpm` can still sandbox through the setuid `chrome-sandbox` helper.
 
 ### Claude Desktop crashes immediately on launch (Ubuntu 24.04+, AppArmor blocks user namespaces)
 
@@ -325,7 +329,7 @@ appears. The deb's `postinst` installs a scoped AppArmor profile
 Electron binary only — exactly as the `google-chrome`, `code`, and `slack`
 packages do — so a normal install needs no action. (X11 sessions only:
 on Wayland the deb launcher runs with `--no-sandbox`, and AppImage builds
-always do, so neither can hit this crash.)
+pass it whenever this restriction is on, so neither can hit this crash.)
 
 You only need to act if the app still crashes on launch with:
 
@@ -485,8 +489,8 @@ profile keyed to its own binary path. That doesn't matter for bwrap
 specifically, though: `/usr/bin/bwrap` is a fixed host path regardless of
 where the AppImage mounts, so the same system-wide recipe and warning above
 apply unchanged to an AppImage-launched bwrap fallback. (The Electron
-launch-crash profile above never applies to AppImage builds — they always
-run with `--no-sandbox`, see
+launch-crash profile above never applies to AppImage builds — they run
+with `--no-sandbox` while the restriction is on, see
 ["AppImage Sandbox Warning"](#appimage-sandbox-warning) — so there's
 nothing AppImage-specific to add there either.)
 

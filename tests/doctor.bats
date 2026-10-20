@@ -2127,7 +2127,8 @@ _stub_stat() {
 	# normalization drops the setuid bit and the mount/extract dir is
 	# owned by the running user, so the perms check always FAILed with
 	# an unactionable `sudo chown root:root /tmp/.mount_.../` hint --
-	# and it is moot anyway (--no-sandbox is unconditional there).
+	# and it is moot anyway (the nosuid mount means the helper never
+	# runs; Chromium uses the userns sandbox or --no-sandbox, #884).
 	# A 0644 adjacent sandbox, the worst case, must still produce a
 	# single _info line and no stat call at all.
 	_DOCTOR_DEB_SANDBOX="$TEST_TMP/no-deb-sandbox"
@@ -2145,8 +2146,8 @@ _stub_stat() {
 	[[ $output != *'[WARN]'* ]]
 	[[ $output != *'[PASS]'* ]]
 	[[ $output != *'sudo chown'* ]]
-	[[ $output == *'not used'* ]]
-	[[ $output == *'--no-sandbox'* ]]
+	[[ $output == *'setuid helper not used'* ]]
+	[[ $output == *'nosuid'* ]]
 	[[ $(grep -c 'Chrome sandbox' <<< "$output") -eq 1 ]]
 }
 

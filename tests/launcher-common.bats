@@ -62,6 +62,16 @@ setup() {
 	unset CLAUDE_TRAY_USE_DARK_ICON
 	# Keep the host's /usr/libexec/qemu-kvm (EL) out of setup_electron_env.
 	export _CLAUDE_QEMU_KVM="$TEST_TMP/no-qemu-kvm"
+	# Keep the host's userns sysctls out of the AppImage sandbox decision
+	# (#884): default to a host where the namespace sandbox can start.
+	export _CLAUDE_USERNS_MAX="$TEST_TMP/userns-max"
+	export _CLAUDE_USERNS_CLONE="$TEST_TMP/userns-clone"
+	export _CLAUDE_USERNS_AA="$TEST_TMP/userns-aa"
+	echo 63432 > "$_CLAUDE_USERNS_MAX"
+	# Stub unshare that succeeds and records its args; tests that need
+	# the probe to fail or be missing swap it out.
+	export _CLAUDE_UNSHARE="$TEST_TMP/bin/unshare"
+	_stub_unshare 0
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
@@ -82,6 +92,25 @@ setup() {
 	sed -i "s/@@WM_CLASS@@/$test_wm_class/" "$TEST_TMP/launcher-common.sh"
 	# shellcheck source=scripts/launcher-common.sh
 	source "$TEST_TMP/launcher-common.sh"
+}
+
+# Make the userns probe report Ubuntu 24.04+'s AppArmor restriction.
+_restrict_userns() {
+	echo 1 > "$_CLAUDE_USERNS_AA"
+}
+
+# Write the stub unshare at $_CLAUDE_UNSHARE: exits $1, logs its args
+# to $TEST_TMP/unshare.args, and on failure prints the error a seccomp
+# denial gives.
+_stub_unshare() {
+	mkdir -p "$TEST_TMP/bin"
+	cat > "$TEST_TMP/bin/unshare" <<-EOF
+		#!/bin/sh
+		echo "\$*" >> "$TEST_TMP/unshare.args"
+		[ $1 -eq 0 ] || echo 'unshare: unshare failed: Operation not permitted' >&2
+		exit $1
+	EOF
+	chmod +x "$TEST_TMP/bin/unshare"
 }
 
 teardown() {
@@ -443,6 +472,85 @@ teardown() {
 }
 
 # =============================================================================
+# _userns_sandbox_block_reason (#884)
+# =============================================================================
+
+@test "_userns_sandbox_block_reason: userns available - returns 1, no output" {
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+	[[ -z $output ]]
+}
+
+@test "_userns_sandbox_block_reason: max_user_namespaces=0 - blocked" {
+	echo 0 > "$_CLAUDE_USERNS_MAX"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ $output == *'user.max_user_namespaces=0'* ]]
+}
+
+@test "_userns_sandbox_block_reason: max_user_namespaces missing (no CONFIG_USER_NS) - blocked" {
+	rm -f "$_CLAUDE_USERNS_MAX"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ $output == *'user namespaces disabled'* ]]
+}
+
+@test "_userns_sandbox_block_reason: unprivileged_userns_clone=0 - blocked" {
+	echo 0 > "$_CLAUDE_USERNS_CLONE"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ $output == *'kernel.unprivileged_userns_clone=0'* ]]
+}
+
+@test "_userns_sandbox_block_reason: unprivileged_userns_clone=1 - available" {
+	echo 1 > "$_CLAUDE_USERNS_CLONE"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+}
+
+@test "_userns_sandbox_block_reason: AppArmor restriction on - blocked" {
+	_restrict_userns
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ $output == *'restricted by AppArmor'* ]]
+}
+
+@test "_userns_sandbox_block_reason: AppArmor restriction off - available" {
+	echo 0 > "$_CLAUDE_USERNS_AA"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+}
+
+@test "_userns_sandbox_block_reason: sysctls pass - creates the zygote's namespaces" {
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+	[[ $(<"$TEST_TMP/unshare.args") == '--user --map-root-user --pid --net --fork true' ]]
+}
+
+@test "_userns_sandbox_block_reason: sysctls pass but unshare fails (seccomp) - blocked" {
+	# Docker's default seccomp profile: the sysctls look fine, but
+	# creating a user namespace is denied.
+	_stub_unshare 1
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ $output == 'user namespace creation failed (unshare: unshare failed: Operation not permitted)' ]]
+}
+
+@test "_userns_sandbox_block_reason: unshare missing - sysctl result stands" {
+	export _CLAUDE_UNSHARE="$TEST_TMP/no-unshare"
+	run _userns_sandbox_block_reason
+	[[ $status -eq 1 ]]
+	[[ -z $output ]]
+}
+
+@test "_userns_sandbox_block_reason: a sysctl block skips the unshare probe" {
+	_restrict_userns
+	run _userns_sandbox_block_reason
+	[[ $status -eq 0 ]]
+	[[ ! -e $TEST_TMP/unshare.args ]]
+}
+
+# =============================================================================
 # build_electron_args
 # =============================================================================
 
@@ -486,11 +594,43 @@ teardown() {
 	! has_electron_arg '--password-store=*'
 }
 
-@test "build_electron_args: X11 appimage - includes --no-sandbox" {
+@test "build_electron_args: X11 appimage, userns available - keeps the sandbox (#884)" {
 	is_wayland=false
 	setup_logging
 	build_electron_args appimage
+	# shellcheck disable=SC2314 # last command in test, ! works correctly
+	! has_electron_arg '--no-sandbox'
+}
+
+@test "build_electron_args: X11 appimage, userns restricted - includes --no-sandbox (#884)" {
+	is_wayland=false
+	_restrict_userns
+	setup_logging
+	build_electron_args appimage
 	has_electron_arg '--no-sandbox'
+	run cat "$log_file"
+	[[ $output == *'Chromium sandbox disabled: user namespaces restricted by AppArmor'* ]]
+}
+
+@test "build_electron_args: X11 appimage, unshare fails - includes --no-sandbox" {
+	is_wayland=false
+	_stub_unshare 1
+	setup_logging
+	build_electron_args appimage
+	has_electron_arg '--no-sandbox'
+	run cat "$log_file"
+	[[ $output == *'Chromium sandbox disabled: user namespace creation failed'* ]]
+}
+
+@test "build_electron_args: X11 deb ignores the userns probe" {
+	# The deb/rpm keep the setuid helper (and the AppArmor profile on
+	# Ubuntu), so a restricted host must not add --no-sandbox there.
+	is_wayland=false
+	_restrict_userns
+	setup_logging
+	build_electron_args deb
+	# shellcheck disable=SC2314 # last command in test, ! works correctly
+	! has_electron_arg '--no-sandbox'
 }
 
 @test "build_electron_args: Wayland XWayland deb - includes x11 platform and no-sandbox" {
@@ -548,12 +688,31 @@ teardown() {
 	has_electron_arg '--enable-features=*GlobalShortcutsPortal*'
 }
 
-@test "build_electron_args: Wayland appimage - always includes --no-sandbox" {
+@test "build_electron_args: Wayland appimage, userns available - keeps the sandbox (#884)" {
+	# The deb/nix Wayland --no-sandbox default (#804) is not applied to
+	# the AppImage: only the userns probe decides there.
+	local backend
+	for backend in true false; do
+		is_wayland=true
+		use_x11_on_wayland="$backend"
+		setup_logging
+		build_electron_args appimage
+		run has_electron_arg '--no-sandbox'
+		[[ $status -eq 1 ]]
+	done
+}
+
+@test "build_electron_args: Wayland appimage, userns restricted - includes --no-sandbox" {
 	is_wayland=true
 	use_x11_on_wayland=true
+	_restrict_userns
 	setup_logging
 	build_electron_args appimage
-	has_electron_arg '--no-sandbox'
+	local arg n=0
+	for arg in "${electron_args[@]}"; do
+		[[ $arg == '--no-sandbox' ]] && n=$((n + 1))
+	done
+	[[ $n -eq 1 ]]
 }
 
 @test "build_electron_args: Wayland native nix - includes --no-sandbox" {
@@ -584,15 +743,16 @@ teardown() {
 	! has_electron_arg '--no-sandbox'
 }
 
-@test "build_electron_args: CLAUDE_FORCE_SANDBOX=1 - appimage still gets --no-sandbox (FUSE, unconditional)" {
-	# FUSE constraints apply regardless of the sandbox opt-in — this
-	# escape hatch only ever affects the Wayland deb/nix branch.
-	is_wayland=true
-	use_x11_on_wayland=true
+@test "build_electron_args: CLAUDE_FORCE_SANDBOX=1 - appimage keeps the sandbox on a restricted host (#884)" {
+	is_wayland=false
+	_restrict_userns
 	CLAUDE_FORCE_SANDBOX=1
 	setup_logging
 	build_electron_args appimage
-	has_electron_arg '--no-sandbox'
+	run has_electron_arg '--no-sandbox'
+	[[ $status -eq 1 ]]
+	run cat "$log_file"
+	[[ $output == *'CLAUDE_FORCE_SANDBOX=1 - keeping Chromium sandbox enabled despite: user namespaces restricted by AppArmor'* ]]
 }
 
 @test "build_electron_args: CLAUDE_FORCE_SANDBOX unset - Wayland deb still gets --no-sandbox (default unchanged)" {
@@ -2561,15 +2721,17 @@ _write_launcher_cfg() {
 	[[ $status -eq 1 ]]
 }
 
-@test "load_launcher_config: sandbox override preserves AppImage args" {
+@test "load_launcher_config: sandbox override reaches AppImage args (#884)" {
 	_write_launcher_cfg 'CLAUDE_FORCE_SANDBOX=1'
+	_restrict_userns
 	setup_logging
 	load_launcher_config
 	[[ $CLAUDE_FORCE_SANDBOX == 1 ]]
 	is_wayland=true
 	use_x11_on_wayland=false
 	build_electron_args appimage
-	has_electron_arg '--no-sandbox'
+	run has_electron_arg '--no-sandbox'
+	[[ $status -eq 1 ]]
 }
 
 @test "load_launcher_config: environment wins over the config file" {
@@ -2683,14 +2845,30 @@ _write_launcher_cfg() {
 	[[ $output == *'disabled at runtime'* ]]
 }
 
-@test "_doctor_check_effective_sandbox: appimage - always a silent no-op (unconditional --no-sandbox, covered by the permissions check)" {
+@test "_doctor_check_effective_sandbox: appimage, userns available - PASS (#884)" {
 	is_wayland=true
 	use_x11_on_wayland=true
 	unset CLAUDE_FORCE_SANDBOX
 	setup_logging
 	run _doctor_check_effective_sandbox appimage
 	[[ $status -eq 0 ]]
-	[[ -z $output ]]
+	[[ $output == *'[PASS]'* ]]
+	[[ $output == *'enabled at runtime'* ]]
+}
+
+@test "_doctor_check_effective_sandbox: appimage, userns restricted - WARN names the cause (#884)" {
+	is_wayland=true
+	use_x11_on_wayland=true
+	unset CLAUDE_FORCE_SANDBOX
+	_restrict_userns
+	setup_logging
+	run _doctor_check_effective_sandbox appimage
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'disabled at runtime (AppImage: user namespaces restricted by AppArmor'* ]]
+	# The #804 Wayland text and its CLAUDE_FORCE_SANDBOX hint are for
+	# deb/nix; on a restricted host the override would only crash.
+	[[ $output != *'--no-sandbox on Wayland'* ]]
+	[[ $output != *'CLAUDE_FORCE_SANDBOX'* ]]
 }
 
 @test "_doctor_check_effective_sandbox: standalone doctor.sh (no launcher-common.sh in scope) is a silent no-op" {
