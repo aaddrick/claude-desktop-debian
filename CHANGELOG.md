@@ -12,6 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 - The AppImage keeps Chromium's sandbox on. It passed `--no-sandbox` on every launch, citing FUSE, but the `nosuid` mount only rules out the setuid `chrome-sandbox` helper, and Chromium's user-namespace sandbox works from inside the mount. The launcher now passes `--no-sandbox` only when unprivileged user namespaces are unavailable: `user.max_user_namespaces=0`, `kernel.unprivileged_userns_clone=0`, Ubuntu 24.04+'s `apparmor_restrict_unprivileged_userns=1` (no AppArmor profile can cover the AppImage's changing mount path), or creating one with `unshare` fails, as under a container's seccomp profile. `CLAUDE_FORCE_SANDBOX=1` keeps the sandbox on regardless. `--doctor` reports whether the sandbox is on for AppImage runs and why not. ([#884](https://github.com/aaddrick/claude-desktop-debian/issues/884))
 
+### Fixed
+
+- The launcher no longer takes over the official app's "Run on startup" entry when Anthropic's package is installed next to ours. Both apps write the same `~/.config/autostart/claude-desktop.desktop`, and the launcher rewrote its `Exec` to itself whenever the command ended in `/claude-desktop`, which includes the official `/usr/lib/claude-desktop/claude-desktop`. It now rewrites only our own `/usr/lib/claude-desktop-unofficial/` ELF or a command that no longer exists, such as an unmounted AppImage path. ([#949](https://github.com/aaddrick/claude-desktop-debian/issues/949))
+
 ## [v3.3.12] — 2026-10-20
 
 ### Fixed
