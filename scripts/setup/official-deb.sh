@@ -186,7 +186,7 @@ _control_field() {
 fetch_official_deb() {
 	section_header 'Download the official Claude Desktop .deb'
 
-	official_deb_pin || exit 1
+	official_deb_pin "$architecture" || exit 1
 	local claude_deb_path="${work_dir:?}/$official_deb_filename"
 
 	if [[ -n ${local_deb_path:-} ]]; then
