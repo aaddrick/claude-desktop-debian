@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Common shell utilities: logging, command checks, checksum verification,
 # asar resolution.

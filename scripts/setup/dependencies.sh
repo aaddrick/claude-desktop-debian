@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Dependency installation and work-directory/Node/asar bootstrap.
 #
@@ -16,7 +17,7 @@ check_dependencies() {
 	local all_deps='wget ar tar xz zstd'
 
 	# Add format-specific dependencies
-	case "$build_format" in
+	case "${build_format:-}" in
 		deb) all_deps="$all_deps dpkg-deb" ;;
 		rpm) all_deps="$all_deps rpmbuild" ;;
 	esac
@@ -36,7 +37,7 @@ check_dependencies() {
 	local cmd pkg
 	for cmd in $all_deps; do
 		if ! check_command "$cmd"; then
-			case "$distro_family" in
+			case "${distro_family:-}" in
 				debian) pkg="${debian_pkgs[$cmd]}" ;;
 				rpm)    pkg="${rpm_pkgs[$cmd]}" ;;
 				*)
@@ -72,7 +73,7 @@ check_dependencies() {
 			fi
 		fi
 
-		case "$distro_family" in
+		case "${distro_family:-}" in
 			debian)
 				if ! $sudo_cmd apt update; then
 					echo "Failed to run 'apt update'." >&2
@@ -102,7 +103,7 @@ check_dependencies() {
 }
 
 setup_work_directory() {
-	rm -rf "$work_dir"
+	rm -rf "${work_dir:?}"
 	mkdir -p "$work_dir" || exit 1
 }
 
@@ -196,7 +197,7 @@ setup_nodejs() {
 	cd "$work_dir" || exit 1
 	if ! wget -O "$node_tarball" "$node_url"; then
 		echo "Failed to download Node.js from $node_url" >&2
-		cd "$project_root" || exit 1
+		cd "${project_root:?}" || exit 1
 		exit 1
 	fi
 

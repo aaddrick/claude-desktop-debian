@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # app.asar patch orchestration for the official Linux tree.
 #
@@ -198,11 +199,12 @@ _run_active_patches() {
 _asar_package_json_field() {
 	local field="$1"
 	local asar_path="$2"
-	local meta_dir="$work_dir/asar-meta"
+	local meta_dir="${work_dir:?}/asar-meta"
 
 	rm -rf "$meta_dir"
 	mkdir -p "$meta_dir" || return 1
-	(cd "$meta_dir" && "$asar_exec" extract-file "$asar_path" package.json) \
+	(cd "$meta_dir" \
+		&& "${asar_exec:?}" extract-file "$asar_path" package.json) \
 		|| return 1
 	node -e 'console.log(require(process.argv[1])[process.argv[2]] ?? "")' \
 		"$meta_dir/package.json" "$field"
@@ -297,7 +299,7 @@ _resolve_anchor_file() {
 patch_app_asar() {
 	section_header 'Patch app.asar'
 
-	local resources_dir="$app_staging_dir/resources"
+	local resources_dir="${app_staging_dir:?}/resources"
 	if [[ ! -f "$resources_dir/app.asar" ]]; then
 		echo "No app.asar at $resources_dir — upstream layout changed?" >&2
 		exit 1
@@ -402,6 +404,7 @@ patch_app_asar() {
 	local p
 	for p in "${active_patches[@]}"; do
 		if [[ $p == 'patch_cowork_bwrap' ]]; then
+			: "${project_root:?}"
 			cp "$project_root/scripts/cowork-fallback/cowork-vm-service.js" \
 				"$resources_dir/cowork-vm-service.js" || exit 1
 			echo 'Cowork bwrap daemon staged at resources/cowork-vm-service.js'

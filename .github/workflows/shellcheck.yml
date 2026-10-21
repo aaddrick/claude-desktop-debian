@@ -27,6 +27,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt install -y shellcheck
+      # Every tracked *.sh, not just those with a shebang: -x follows
+      # build.sh's source lines but reports nothing inside a followed
+      # file, so a sourced module is only checked when named here. A
+      # module without a shebang needs `# shellcheck shell=bash` on
+      # line 1, or this step fails with SC2148.
       - name: shellcheck
         run: |
-          git grep -l '^#\( *shellcheck \|!\(/bin/\|/usr/bin/env \)\(sh\|bash\|dash\|ksh\)\)' -- '*.sh' | xargs shellcheck -x
+          git ls-files -- '*.sh' | xargs shellcheck -x

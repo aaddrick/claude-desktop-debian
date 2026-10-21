@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Linux org-plugins path: inject a case"linux" into the platform switch
 # that resolves the org-plugins source directory.

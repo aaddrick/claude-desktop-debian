@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Quick-window patches: KDE-gated blur/focus workarounds for the pop-up menu
 # so the main window reappears after quick-entry submit.
