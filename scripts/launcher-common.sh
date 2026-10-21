@@ -185,10 +185,36 @@ check_display() {
 # sections -- a GPU-crash-looping session can spew megabytes into one
 # section, and that giant section was re-scanned on every subsequent
 # launch, hanging the launcher before Electron ever started.
+#
+# Rotation (#946): setup_logging rotates an over-cap log to .1 before
+# the session header is written, so on that launch the live file holds
+# only the current header and the previous launch is the last section
+# of .1. When the live file has fewer than two sections and .1 exists,
+# the scan exits 3 and is rerun over ".1 then live", which makes .1's
+# last section the penultimate one. .1 is read on the rotating launch
+# only: once the live file holds two sections the previous launch is
+# in it, and the #747 bound above still holds.
 _previous_launch_hit_gpu_fatal() {
 	[[ -f ${log_file:-} ]] || return 1
 
-	awk '
+	local rotated="$log_file.1" defer=0 status
+	[[ -f $rotated ]] && defer=1
+
+	_scan_gpu_fatal_sections "$defer" "$log_file"
+	status=$?
+	((status == 3)) || return "$status"
+	_scan_gpu_fatal_sections 0 "$rotated" "$log_file"
+}
+
+# The single-pass scan behind _previous_launch_hit_gpu_fatal.
+# Usage: _scan_gpu_fatal_sections <defer> <file>...
+# Exits 0 on a hit, 1 otherwise, and 3 when <defer> is 1 and the
+# files hold fewer than two sections (the caller then adds .1).
+_scan_gpu_fatal_sections() {
+	local defer=$1
+	shift
+
+	awk -v defer="$defer" '
 		/^--- Claude Desktop (Launcher|AppImage) Start( \(NixOS\))? ---$/ {
 			section++
 			prev_failed = cur_failed
@@ -214,6 +240,9 @@ _previous_launch_hit_gpu_fatal() {
 			}
 		}
 		END {
+			if (section < 2 && defer) {
+				exit 3
+			}
 			if (section >= 2) {
 				t_failed = prev_failed
 				t_notusable = prev_notusable
@@ -230,7 +259,7 @@ _previous_launch_hit_gpu_fatal() {
 			}
 			exit 1
 		}
-	' "$log_file"
+	' "$@"
 }
 
 # Why Chromium's user-namespace sandbox can't run on this host, if it

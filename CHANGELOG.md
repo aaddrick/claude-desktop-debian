@@ -14,6 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
+- GPU-crash recovery survives the `launcher.log` rotation. The launcher rotates the log to `launcher.log.1` once it passes 5 MiB, before the session header is written, so on that launch the previous session's crash signature or "Previous launch hit GPU process FATAL" marker had moved to `.1` and `--disable-gpu` was skipped. A crash-looping session that wrote more than 5 MiB per launch never recovered. The check now also reads `launcher.log.1`, only when the live log holds fewer than two sessions, so the rotated file is scanned on the rotating launch only. ([#946](https://github.com/aaddrick/claude-desktop-debian/issues/946))
 - The launcher no longer takes over the official app's "Run on startup" entry when Anthropic's package is installed next to ours. Both apps write the same `~/.config/autostart/claude-desktop.desktop`, and the launcher rewrote its `Exec` to itself whenever the command ended in `/claude-desktop`, which includes the official `/usr/lib/claude-desktop/claude-desktop`. It now rewrites only our own `/usr/lib/claude-desktop-unofficial/` ELF or a command that no longer exists, such as an unmounted AppImage path. ([#949](https://github.com/aaddrick/claude-desktop-debian/issues/949))
 
 ## [v3.3.12] — 2026-10-20
