@@ -21,11 +21,10 @@ There are two flavors of release:
 
    ```bash
    bats tests/*.bats scripts/cowork-fallback/tests/*.bats
-   git grep -l '^#\( *shellcheck \|!\(/bin/\|/usr/bin/env \)\(sh\|bash\|dash\|ksh\)\)' -- '*.sh' \
-     | xargs shellcheck -x
+   git ls-files -- '*.sh' | xargs shellcheck -x
    ```
 
-   These are the commands `tests.yml` and `shellcheck.yml` run. The shellcheck selector picks files with a shebang or a `# shellcheck` directive; a bare `scripts/**/*.sh` glob only recurses with `shopt -s globstar`. See [`CLAUDE.md`](CLAUDE.md#linting).
+   These are the commands `tests.yml` and `shellcheck.yml` run. The shellcheck selector picks every tracked `*.sh`, so a sourced script without a shebang needs `# shellcheck shell=bash` on line 1 or it fails with SC2148; a bare `scripts/**/*.sh` glob only recurses with `shopt -s globstar`. See [`CLAUDE.md`](CLAUDE.md#linting).
 
 4. **AppImage artifact boots on a clean system.** The `test-artifacts.yml` reusable workflow already runs a `--doctor` smoke test against each format in CI (#592), but if you've touched the launcher or patch surface, build locally and confirm:
 
