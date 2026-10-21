@@ -12,6 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 - The AppImage keeps Chromium's sandbox on. It passed `--no-sandbox` on every launch, citing FUSE, but the `nosuid` mount only rules out the setuid `chrome-sandbox` helper, and Chromium's user-namespace sandbox works from inside the mount. The launcher now passes `--no-sandbox` only when unprivileged user namespaces are unavailable: `user.max_user_namespaces=0`, `kernel.unprivileged_userns_clone=0`, Ubuntu 24.04+'s `apparmor_restrict_unprivileged_userns=1` (no AppArmor profile can cover the AppImage's changing mount path), or creating one with `unshare` fails, as under a container's seccomp profile. `CLAUDE_FORCE_SANDBOX=1` keeps the sandbox on regardless. `--doctor` reports whether the sandbox is on for AppImage runs and why not. ([#884](https://github.com/aaddrick/claude-desktop-debian/issues/884))
 
+### Fixed
+
+- GPU-crash recovery survives the `launcher.log` rotation. The launcher rotates the log to `launcher.log.1` once it passes 5 MiB, before the session header is written, so on that launch the previous session's crash signature or "Previous launch hit GPU process FATAL" marker had moved to `.1` and `--disable-gpu` was skipped. A crash-looping session that wrote more than 5 MiB per launch never recovered. The check now also reads `launcher.log.1`, only when the live log holds fewer than two sessions, so the rotated file is scanned on the rotating launch only. ([#946](https://github.com/aaddrick/claude-desktop-debian/issues/946))
+
 ## [v3.3.12] — 2026-10-20
 
 ### Fixed

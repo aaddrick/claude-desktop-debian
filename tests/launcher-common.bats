@@ -206,6 +206,115 @@ teardown() {
 }
 
 # =============================================================================
+# GPU-crash recovery across the launch-time rotation (#946)
+# =============================================================================
+#
+# Each test runs the real launch order: setup_logging (which may rotate
+# launcher.log to .1), then the session header, then build_electron_args.
+# Calling rotate_log_file and the detector separately is how #787 missed
+# this.
+
+# Seed launcher.log before the launch: a pad of $1 bytes (over 5 MiB
+# forces the rotation) on its own line, then stdin.
+_seed_launcher_log() {
+	local pad=$1
+	mkdir -p "$XDG_CACHE_HOME/claude-desktop-debian"
+	{
+		if ((pad > 0)); then
+			head -c "$pad" /dev/zero | tr '\0' 'x'
+			echo
+		fi
+		cat
+	} > "$XDG_CACHE_HOME/claude-desktop-debian/launcher.log"
+}
+
+# One deb launch, in launcher order, with every other GPU-disable
+# signal cleared so only the log scan can add --disable-gpu.
+_launch_in_order() {
+	unset CLAUDE_DISABLE_GPU XRDP_SESSION XDG_SESSION_ID
+	is_wayland=false
+	setup_logging
+	log_message '--- Claude Desktop Launcher Start ---'
+	build_electron_args deb
+}
+
+@test "gpu rotation: crash signature rotated into .1 disables GPU" {
+	_seed_launcher_log $((6 * 1024 * 1024)) <<-'LOG'
+		--- Claude Desktop Launcher Start ---
+		GPU process launch failed: error_code=1002
+		GPU process isn't usable. Goodbye.
+	LOG
+
+	_launch_in_order
+
+	# The launch rotated: the crash is in .1, the live file has only
+	# the current header.
+	grep -q "GPU process isn't usable" "$log_file.1"
+	[[ $(grep -c 'Launcher Start' "$log_file") -eq 1 ]]
+	has_electron_arg '--disable-gpu'
+	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
+}
+
+@test "gpu rotation: sticky FATAL marker rotated into .1 keeps GPU off" {
+	_seed_launcher_log $((6 * 1024 * 1024)) <<-'LOG'
+		--- Claude Desktop Launcher Start ---
+		Previous launch hit GPU process FATAL - disabling GPU
+	LOG
+
+	_launch_in_order
+
+	grep -q 'Previous launch hit GPU process FATAL' "$log_file.1"
+	[[ $(grep -c 'Launcher Start' "$log_file") -eq 1 ]]
+	has_electron_arg '--disable-gpu'
+	grep -q 'Previous launch hit GPU process FATAL' "$log_file"
+}
+
+@test "gpu rotation: crash in .1 is ignored once the live file has two sections" {
+	# .1 is a leftover from an earlier rotation. The live file is under
+	# the cap, so it does not rotate, and the previous launch (clean)
+	# is in it. .1 must not be read at all (#787 bound).
+	_seed_launcher_log 0 <<-'LOG'
+		--- Claude Desktop Launcher Start ---
+		X11 session detected
+	LOG
+	cat > "$XDG_CACHE_HOME/claude-desktop-debian/launcher.log.1" <<-'LOG'
+		--- Claude Desktop Launcher Start ---
+		GPU process launch failed: error_code=1002
+		GPU process isn't usable. Goodbye.
+	LOG
+	# Record awk's argv to see which files the scan opens.
+	awk() {
+		printf '%s\n' "$@" >> "$TEST_TMP/awk.argv"
+		command awk "$@"
+	}
+
+	_launch_in_order
+
+	run has_electron_arg '--disable-gpu'
+	[[ $status -ne 0 ]]
+	# The recorder saw the live-file scan, and never .1.
+	grep -qFx -- "$log_file" "$TEST_TMP/awk.argv"
+	run grep -qFx -- "$log_file.1" "$TEST_TMP/awk.argv"
+	[[ $status -ne 0 ]]
+}
+
+@test "gpu rotation: no .1 after a failed rotation is not an error" {
+	# The over-cap log fails to move, so no .1 exists. The live file
+	# has no header of its own, so the scan has to decide about .1.
+	_seed_launcher_log $((6 * 1024 * 1024)) < /dev/null
+	mv() { return 1; }
+
+	_launch_in_order 2> "$TEST_TMP/stderr"
+
+	unset -f mv
+	[[ ! -e "$log_file.1" ]]
+	(($(stat -c '%s' "$log_file") > 5 * 1024 * 1024))
+	[[ ! -s "$TEST_TMP/stderr" ]]
+	run has_electron_arg '--disable-gpu'
+	[[ $status -ne 0 ]]
+}
+
+# =============================================================================
 # log_message
 # =============================================================================
 
