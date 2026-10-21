@@ -2429,7 +2429,7 @@ _autostart_exec() {
 	grep '^Exec=' "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
 }
 
-@test "heal_autostart_entry: rewrites the raw-ELF Exec to the launcher" {
+@test "heal_autostart_entry: rewrites our own raw-ELF Exec even while it exists" {
 	# Our own ELF heals even while it exists, unlike the official one.
 	_autostart_target_exists() { return 0; }
 	_write_autostart \
@@ -2460,6 +2460,7 @@ _autostart_exec() {
 }
 
 @test "heal_autostart_entry: rewrites an ephemeral AppImage mount path" {
+	# Deliberately no stub: runs the real -e on a mount path that is gone.
 	_write_autostart \
 		'Exec="/tmp/.mount_claudeXYZ/usr/lib/claude-desktop/claude-desktop" --startup'
 	heal_autostart_entry "$HOME/Apps/Claude.AppImage"

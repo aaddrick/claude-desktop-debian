@@ -1179,7 +1179,8 @@ heal_autostart_entry() {
 		*) return 0 ;;
 	esac
 
-	# Someone else's live ELF (the official package's): leave it alone.
+	# A live command outside our tree (the official package's ELF,
+	# say): leave it alone.
 	if [[ $current != /usr/lib/claude-desktop-unofficial/* ]] \
 		&& _autostart_target_exists "$current"; then
 		return 0
