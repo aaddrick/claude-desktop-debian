@@ -14,7 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
-- The shellcheck workflow now checks every tracked `*.sh`. It only named files with a shebang or a `# shellcheck` line, so nine sourced build scripts were never checked, including the whole patch stage (`app-asar.sh`) and the official `.deb` download and verification (`official-deb.sh`). `-x` follows `build.sh`'s `source` lines, but ShellCheck reports nothing inside a followed file. The nine now start with `# shellcheck shell=bash`, like the sourced scripts that were already covered, and a new sourced script without a shebang or that line fails the workflow with SC2148 instead of being skipped.
+- The shellcheck workflow now checks every tracked `*.sh`. It only named files with a shebang or a `# shellcheck` line, so nine sourced build scripts were never checked, including the whole patch stage (`app-asar.sh`) and the official `.deb` download and verification (`official-deb.sh`). `-x` follows `build.sh`'s `source` lines, but ShellCheck reports nothing inside a followed file. The nine now start with `# shellcheck shell=bash`, like the sourced scripts that were already covered, and a new sourced script without a shebang or that line fails the workflow with SC2148 instead of being skipped. ([#953](https://github.com/aaddrick/claude-desktop-debian/pull/953))
 
 ## [v3.3.12] — 2026-10-20
 
