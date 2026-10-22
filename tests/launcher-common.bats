@@ -2429,7 +2429,30 @@ _autostart_exec() {
 	grep '^Exec=' "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop"
 }
 
-@test "heal_autostart_entry: rewrites the raw-ELF Exec to the launcher" {
+@test "heal_autostart_entry: rewrites our own raw-ELF Exec even while it exists" {
+	# Our own ELF heals even while it exists, unlike the official one.
+	_autostart_target_exists() { return 0; }
+	_write_autostart \
+		'Exec="/usr/lib/claude-desktop-unofficial/claude-desktop" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == \
+		'Exec="/usr/bin/claude-desktop-unofficial" --startup' ]]
+}
+
+@test "heal_autostart_entry: leaves a live official ELF Exec alone (#949)" {
+	# Official package installed side by side: its entry is not ours.
+	_autostart_target_exists() {
+		[[ $1 == /usr/lib/claude-desktop/claude-desktop ]]
+	}
+	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
+	[[ $(_autostart_exec) == \
+		'Exec="/usr/lib/claude-desktop/claude-desktop" --startup' ]]
+}
+
+@test "heal_autostart_entry: rewrites a dead official-path Exec (#949)" {
+	# Pre-3.0 leftover, no official package behind it.
+	_autostart_target_exists() { return 1; }
 	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
 	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	[[ $(_autostart_exec) == \
@@ -2437,6 +2460,7 @@ _autostart_exec() {
 }
 
 @test "heal_autostart_entry: rewrites an ephemeral AppImage mount path" {
+	# Deliberately no stub: runs the real -e on a mount path that is gone.
 	_write_autostart \
 		'Exec="/tmp/.mount_claudeXYZ/usr/lib/claude-desktop/claude-desktop" --startup'
 	heal_autostart_entry "$HOME/Apps/Claude.AppImage"
@@ -2459,7 +2483,8 @@ _autostart_exec() {
 }
 
 @test "heal_autostart_entry: handles an unquoted hand-edited Exec" {
-	_write_autostart 'Exec=/usr/lib/claude-desktop/claude-desktop --startup --foo'
+	_write_autostart \
+		'Exec=/usr/lib/claude-desktop-unofficial/claude-desktop --startup --foo'
 	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	[[ $(_autostart_exec) == \
 		'Exec="/usr/bin/claude-desktop-unofficial" --startup --foo' ]]
@@ -2480,7 +2505,8 @@ _autostart_exec() {
 }
 
 @test "heal_autostart_entry: preserves non-Exec lines and escapes % in the path" {
-	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	_write_autostart \
+		'Exec="/usr/lib/claude-desktop-unofficial/claude-desktop" --startup'
 	heal_autostart_entry '/opt/100%/claude-desktop'
 	[[ $(_autostart_exec) == 'Exec="/opt/100%%/claude-desktop" --startup' ]]
 	grep -q '^X-GNOME-Autostart-enabled=true$' \
@@ -2491,7 +2517,8 @@ _autostart_exec() {
 
 @test "heal_autostart_entry: logs the heal when logging is set up" {
 	setup_logging
-	_write_autostart 'Exec="/usr/lib/claude-desktop/claude-desktop" --startup'
+	_write_autostart \
+		'Exec="/usr/lib/claude-desktop-unofficial/claude-desktop" --startup'
 	heal_autostart_entry '/usr/bin/claude-desktop-unofficial'
 	grep -q 'Healed autostart Exec' "$log_file"
 	grep -q 'AUTO-1' "$log_file"

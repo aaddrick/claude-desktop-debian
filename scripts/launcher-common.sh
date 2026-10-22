@@ -1120,6 +1120,12 @@ _desktop_exec_quote() {
 	printf '"%s"' "$escaped"
 }
 
+# Whether the autostart entry's command still exists. A function so the
+# tests can answer for a fixed absolute path without touching the host.
+_autostart_target_exists() {
+	[[ -e $1 ]]
+}
+
 # AUTO-1: when "Run on startup" is enabled, the official app writes
 # its own XDG autostart entry with Exec=<process.execPath> --startup —
 # the raw Electron ELF (or, under AppImage, the ephemeral
@@ -1127,6 +1133,13 @@ _desktop_exec_quote() {
 # policy (Wayland opt-in, GPU recovery, --class, CLAUDE_PASSWORD_STORE),
 # and the AppImage path rots on unmount. Rewrite the Exec command to
 # the launcher on every start.
+#
+# The entry is shared with Anthropic's official package when both are
+# installed (D-002): same app.asar, same file name. Its live ELF,
+# /usr/lib/claude-desktop/claude-desktop, is not ours to take over (#949).
+# So heal only our own deb/rpm tree, or a command that no longer exists:
+# an unmounted AppImage path, or a pre-3.0 leftover with no official
+# package behind it.
 #
 # Safe against the Settings toggle: upstream's is-enabled check reads
 # only file existence plus Hidden/X-GNOME-Autostart-enabled — never the
@@ -1165,6 +1178,13 @@ heal_autostart_entry() {
 		*/claude-desktop) ;;
 		*) return 0 ;;
 	esac
+
+	# A live command outside our tree (the official package's ELF,
+	# say): leave it alone.
+	if [[ $current != /usr/lib/claude-desktop-unofficial/* ]] \
+		&& _autostart_target_exists "$current"; then
+		return 0
+	fi
 
 	new_line="Exec=$(_desktop_exec_quote "$launcher")$args"
 
