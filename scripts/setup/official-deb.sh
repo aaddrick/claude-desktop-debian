@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Official Claude Desktop .deb acquisition: resolve, download, verify,
 # extract. Replaced the Windows-installer download path in the v3.0.0
@@ -127,6 +128,9 @@ resolve_official_deb() {
 		return 1
 	fi
 
+	# sha256 is read by check-claude-version.yml; size is part of the
+	# documented output above.
+	# shellcheck disable=SC2034
 	IFS=$'\t' read -r resolved_official_version resolved_official_filename \
 		resolved_official_sha256 resolved_official_size <<< "$newest"
 
@@ -182,8 +186,8 @@ _control_field() {
 fetch_official_deb() {
 	section_header 'Download the official Claude Desktop .deb'
 
-	official_deb_pin || exit 1
-	local claude_deb_path="$work_dir/$official_deb_filename"
+	official_deb_pin "$architecture" || exit 1
+	local claude_deb_path="${work_dir:?}/$official_deb_filename"
 
 	if [[ -n ${local_deb_path:-} ]]; then
 		echo "Using local official .deb: $local_deb_path"
@@ -236,7 +240,9 @@ fetch_official_deb() {
 	# The dependency contract differs per arch (e.g. qemu-system-x86 vs
 	# qemu-system-arm); packaging re-emits it verbatim rather than
 	# hardcoding a copy.
+	# shellcheck disable=SC2034  # build.sh exports it for packaging
 	official_deb_depends=$(_control_field "$control_path" Depends)
+	# shellcheck disable=SC2034  # build.sh exports it for packaging
 	official_deb_recommends=$(_control_field "$control_path" Recommends)
 
 	if [[ ! -d "$claude_extract_dir/usr/lib/claude-desktop" ]]; then

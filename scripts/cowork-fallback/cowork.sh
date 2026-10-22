@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # PARKED — not sourced by build.sh. Reference code for the 3.1
 # cowork-bwrapd investigation (owner @RayCharlizard); see README.md in

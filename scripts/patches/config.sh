@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Config-write guard (PARKED — not in active_patches). In-band fallback
 # for the claude_desktop_config.json wipe class (#768; upstream
@@ -177,7 +178,7 @@ fs.writeFileSync(p, code);
 console.log('  [OK] config-write wipe guard injected before config write');
 "; then
 		echo 'Failed to inject config write guard' >&2
-		cd "$project_root" || exit 1
+		cd "${project_root:?}" || exit 1
 		exit 1
 	fi
 

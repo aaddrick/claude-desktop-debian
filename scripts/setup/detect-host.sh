@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 #===============================================================================
 # Host detection and argument parsing: architecture, distro, requirements,
 # CLI flag processing.
@@ -131,6 +132,7 @@ parse_arguments() {
 	section_header 'Argument Parsing'
 
 	project_root="$(pwd)"
+	# shellcheck disable=SC2034  # read by build.sh after sourcing
 	work_dir="$project_root/build"
 	# app_staging_dir is derived in build.sh after the official .deb is
 	# extracted (it points into the extracted tree).
@@ -150,6 +152,9 @@ parse_arguments() {
 					echo "Error: Argument for $1 is missing" >&2
 					exit 1
 				fi
+				# local_deb_path and release_tag are read by build.sh and
+				# official-deb.sh; directives cannot go on a single case item.
+				# shellcheck disable=SC2034
 				case "$1" in
 					-a|--arch) architecture="$2" ;;
 					-b|--build) build_format="$2" ;;
@@ -161,6 +166,7 @@ parse_arguments() {
 				shift 2
 				;;
 			--test-flags)
+				# shellcheck disable=SC2034  # read by build.sh
 				test_flags_mode=true
 				shift
 				;;
@@ -228,6 +234,7 @@ parse_arguments() {
 	echo "Cleanup intermediate files: $cleanup_action"
 	echo "Target Architecture: $architecture"
 
+	# shellcheck disable=SC2034  # read by build.sh
 	[[ $cleanup_action == 'yes' ]] && perform_cleanup=true
 
 	section_footer 'Argument Parsing'
