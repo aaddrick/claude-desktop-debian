@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.13] — 2026-10-23
+
+The AppImage sandbox change (#884) first went out in the `v3.3.12+claude3.1623.0` auto-release, and the GPU-crash recovery fix (#946) in `v3.3.12+claude3.1623.1`. This release records them under their own version.
+
 ### Changed
 
 - The AppImage keeps Chromium's sandbox on. It passed `--no-sandbox` on every launch, citing FUSE, but the `nosuid` mount only rules out the setuid `chrome-sandbox` helper, and Chromium's user-namespace sandbox works from inside the mount. The launcher now passes `--no-sandbox` only when unprivileged user namespaces are unavailable: `user.max_user_namespaces=0`, `kernel.unprivileged_userns_clone=0`, Ubuntu 24.04+'s `apparmor_restrict_unprivileged_userns=1` (no AppArmor profile can cover the AppImage's changing mount path), or creating one with `unshare` fails, as under a container's seccomp profile. `CLAUDE_FORCE_SANDBOX=1` keeps the sandbox on regardless. `--doctor` reports whether the sandbox is on for AppImage runs and why not. ([#884](https://github.com/aaddrick/claude-desktop-debian/issues/884))
