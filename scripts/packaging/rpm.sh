@@ -118,6 +118,8 @@ cleanup_stale_desktop_helpers
 cleanup_stale_lock
 cleanup_stale_vm_bundle_images
 heal_autostart_entry "/usr/bin/$package_name"
+heal_file_manager_entries "/usr/bin/$package_name" \
+	"/usr/share/icons/hicolor/256x256/apps/$package_name.png"
 backup_user_config
 
 # Log startup info

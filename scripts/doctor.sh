@@ -610,6 +610,63 @@ _doctor_check_tray_icon() {
 	fi
 }
 
+# FM-1: the official app's "Send to Claude" / "Open in Claude Code"
+# file-manager entries. PASS only when every entry's command exists and
+# is not an AppImage mount (gone once that app quits), and when a menu
+# icon named $FILE_MANAGER_ICON is installed. Guarded like
+# _doctor_check_tray_icon: the helpers live in launcher-common.sh.
+_doctor_check_file_manager_entries() {
+	declare -F _file_manager_entries > /dev/null || return 0
+	local entry target gone='' mounted=false have_menu=false icon
+	local n_gone=0
+	local -a entries
+
+	mapfile -t entries < <(_file_manager_entries)
+	if ((${#entries[@]} == 0)); then
+		_info 'File-manager entries: none (the app writes them' \
+			'once it has run)'
+		return 0
+	fi
+
+	for entry in "${entries[@]}"; do
+		[[ $entry == *.desktop ]] && have_menu=true
+		target=$(_file_manager_entry_exec "$entry") || continue
+		if [[ ! -e $target ]]; then
+			((n_gone++))
+			gone="$target"
+		elif [[ $target == */.mount_*/* ]]; then
+			mounted=true
+		fi
+	done
+
+	if ((n_gone)); then
+		_warn "File-manager entries: $n_gone of ${#entries[@]} run" \
+			"$gone, which no longer exists"
+		_info 'Send to Claude and Open in Claude Code do nothing' \
+			'until they are repointed'
+		_info 'Fix: start and quit Claude through the launcher once;' \
+			'it repoints them on exit (FM-1)'
+	elif [[ $mounted == true ]]; then
+		_info 'File-manager entries: point at the running AppImage' \
+			'mount; the launcher repoints them when the app quits'
+	else
+		_pass "File-manager entries: ${#entries[@]} (Send to Claude," \
+			'Open in Claude Code)'
+	fi
+
+	[[ $have_menu == true ]] || return 0
+	if icon=$(_file_manager_system_icon); then
+		_pass "File-manager menu icon: $icon"
+	elif icon=$(_file_manager_user_icon) && [[ -f $icon ]]; then
+		_pass "File-manager menu icon: $icon"
+	else
+		_warn "File-manager menu icon: no \"$FILE_MANAGER_ICON\" icon" \
+			'installed, so the menus show no logo'
+		_info 'Fix: start and quit Claude through the launcher once' \
+			'(FM-1)'
+	fi
+}
+
 # Return whether a session secret backend usable by Chromium's
 # os_crypt (Secret Service or KWallet) is reachable — running or
 # D-Bus-activatable. Prints the matched bus name on stdout.
@@ -1892,6 +1949,7 @@ print(len(servers))
 	else
 		_warn 'Desktop entry not found (expected for AppImage installs)'
 	fi
+	_doctor_check_file_manager_entries
 
 	# -- Disk space --
 	_doctor_check_disk_space "$config_dir"

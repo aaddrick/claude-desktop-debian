@@ -1,0 +1,24 @@
+#!/bin/sh
+# X-Claude-Generated=true
+[ -x '/tmp/.mount_claudeOHhjmk/usr/lib/claude-desktop/claude-desktop' ] || exit 0
+enc() { printf %s "$1" | od -An -v -tx1 | tr -d ' \n' | sed 's/../%&/g'; }
+dec() { printf %s "$1" | LC_ALL=C awk '{ o = ""; while (match($0, /%[0-9A-Fa-f][0-9A-Fa-f]/)) { x = toupper(substr($0, RSTART + 1, 2)); o = o substr($0, 1, RSTART - 1) sprintf("%c", (index("0123456789ABCDEF", substr(x, 1, 1)) - 1) * 16 + index("0123456789ABCDEF", substr(x, 2, 1)) - 1); $0 = substr($0, RSTART + 3) } printf "%s%s", o, $0 }'; }
+nl='
+'
+if [ -n "${NAUTILUS_SCRIPT_SELECTED_URIS+set}" ]; then
+  IFS="$nl"; set -f; uris="$NAUTILUS_SCRIPT_SELECTED_URIS"; set --
+  for u in $uris; do
+    [ "$#" -lt 32 ] || break
+    case "$u" in file:///*) p="$(dec "${u#file://}" && echo .)" && set -- "$@" "${p%.}" ;; esac
+  done
+fi
+q=""
+n=0
+for f in "$@"; do
+  n=$((n + 1)); [ "$n" -le 32 ] || break
+  case "$f" in /*) ;; *) continue ;; esac
+  if [ -d "$f" ]; then k="folder"; elif [ -e "$f" ]; then k="file"; else continue; fi
+  q="$q&$k=$(enc "$f")"
+done
+[ -n "$q" ] || exit 0
+exec '/tmp/.mount_claudeOHhjmk/usr/lib/claude-desktop/claude-desktop' "claude://cowork/new?source=services$q"
