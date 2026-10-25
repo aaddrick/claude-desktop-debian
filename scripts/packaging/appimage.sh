@@ -80,7 +80,7 @@ fi
 
 # Setup logging and environment
 setup_logging || exit 1
-setup_electron_env
+setup_electron_env 'appimage'
 
 cleanup_replaced_desktop_ui
 cleanup_orphaned_cowork_daemon

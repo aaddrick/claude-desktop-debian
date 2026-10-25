@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The AppImage no longer starts the bwrap Cowork fallback where `bwrap` can't create its sandbox. No AppArmor profile can cover the AppImage's changing mount path, so on Ubuntu 24.04 every Cowork session failed with `bwrap: setting up uid map: Permission denied`. With `COWORK_VM_BACKEND=bwrap` set, the AppImage launcher now runs `bwrap` once at startup, and if that fails or `bwrap` is missing it drops the flag for that launch, so Cowork uses the official KVM path, and says why in `launcher.log`. The check runs `bwrap` rather than reading the userns sysctls, so Ubuntu 26.04, where Ubuntu's own `bwrap-userns-restrict` profile lets `bwrap` through, keeps the fallback. ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542))
+
 ## [v3.3.13] — 2026-10-23
 
 The AppImage sandbox change (#884) first went out in the `v3.3.12+claude3.1623.0` auto-release, and the GPU-crash recovery fix (#946) in `v3.3.12+claude3.1623.1`. This release records them under their own version.
