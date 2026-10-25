@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- The troubleshooting page no longer tells `.deb` users to install a system-wide AppArmor profile for the bwrap Cowork fallback. The fallback daemon and its `bwrap` inherit the package's `claude-desktop-unofficial` profile, so they get user namespaces on Ubuntu 24.04 without it, and Ubuntu 26.04 allows `bwrap` for every caller through its own `bwrap-userns-restrict`. The system-wide `/usr/bin/bwrap` profile is now documented only for the AppImage on Ubuntu 24.04, whose changing mount path no profile can cover. The page also points Debian and Ubuntu users with KVM to Anthropic's official package, and drops the stale "parked" wording for the fallback. ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542))
+
 ## [v3.3.13] — 2026-10-23
 
 The AppImage sandbox change (#884) first went out in the `v3.3.12+claude3.1623.0` auto-release, and the GPU-crash recovery fix (#946) in `v3.3.12+claude3.1623.1`. This release records them under their own version.

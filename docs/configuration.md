@@ -117,7 +117,7 @@ Requirements when flagged:
 | Component | Requirement | Doctor check |
 |-----------|-------------|--------------|
 | Node.js | A system `node` (or `nodejs`) on `PATH` providing `fs.statfsSync` (Node >= 18.15 / 16.19) — the bundled Electron binary ships with the RunAsNode fuse off and can't run the daemon itself. Override with `COWORK_NODE_PATH`. | `_doctor_check_bwrap_node` |
-| bubblewrap | `bwrap` installed, with unprivileged user namespaces allowed (Ubuntu 24.04+ blocks them via AppArmor — see [troubleshooting.md](troubleshooting.md)) | `_doctor_check_bwrap_fallback` |
+| bubblewrap | `bwrap` installed, with user namespaces allowed for it. On Ubuntu 24.04+ the `.deb`'s AppArmor profile covers the daemon's `bwrap`; the AppImage on Ubuntu 24.04 needs a system-wide profile (see [troubleshooting.md](troubleshooting.md#cowork-on-ubuntu-2404-bwrap-fallback-probe-fails)) | `_doctor_check_bwrap_fallback` |
 
 Run `claude-desktop-unofficial --doctor` with the flag set to see the bwrap-path diagnostics. Isolation is namespace-level, not a VM — weaker than the KVM default, which is the trade for running where KVM can't. Any `COWORK_VM_BACKEND` value other than `bwrap` is a 2.x knob the official client ignores.
 
