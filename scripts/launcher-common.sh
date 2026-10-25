@@ -1506,8 +1506,8 @@ _file_manager_icon_src=''
 #      empty -> no execPath heal, like heal_autostart_entry)
 # $2 = PNG to install as the menu icon (empty -> no icon)
 heal_file_manager_entries() {
-	local launcher="${1-$_file_manager_launcher}"
-	local icon_src="${2-$_file_manager_icon_src}"
+	local launcher="${1:-}"
+	local icon_src="${2:-}"
 	local entry current have_menu=false
 	local -a entries
 
@@ -1544,7 +1544,8 @@ cleanup_after_electron_exit() {
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers
 	cleanup_stale_lock
-	heal_file_manager_entries
+	heal_file_manager_entries "$_file_manager_launcher" \
+		"$_file_manager_icon_src"
 }
 
 _electron_launcher_forward_signal() {
