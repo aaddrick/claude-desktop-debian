@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `--doctor` no longer warns `bubblewrap: sandbox probe failed` on Ubuntu 24.04+ `.deb` installs that set `COWORK_VM_BACKEND=bwrap`. The probe runs from the doctor's shell, but the fallback daemon and its `bwrap` run under the package's `claude-desktop-unofficial` AppArmor profile, which allows the user namespaces they need, so the failure is now reported as information while that profile is loaded. The AppImage and rpm keep the warning, and its "likely cause" hint now also matches Ubuntu 24.04's `setting up uid map: Permission denied` error. ([#542](https://github.com/aaddrick/claude-desktop-debian/issues/542))
+
 ## [v3.3.13] — 2026-10-23
 
 The AppImage sandbox change (#884) first went out in the `v3.3.12+claude3.1623.0` auto-release, and the GPU-crash recovery fix (#946) in `v3.3.12+claude3.1623.1`. This release records them under their own version.
