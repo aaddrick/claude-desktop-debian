@@ -348,6 +348,50 @@ heal_call() {
 	}
 }
 
+# The `setup_electron_env` call each format must carry, verbatim. Only
+# the AppImage passes its package type: it gates the Cowork bwrap probe
+# (#542), which must not run for deb/rpm, whose daemon inherits the
+# deb's scoped AppArmor profile.
+electron_env_call() {
+	case "$1" in
+	deb.sh | rpm.sh)
+		printf '%s' 'setup_electron_env'
+		;;
+	appimage.sh)
+		printf '%s' "setup_electron_env 'appimage'"
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+@test "each launcher carries only its own setup_electron_env argument" {
+	# The bwrap tests call setup_electron_env appimage directly, so this
+	# pins the launchers themselves (#542).
+	local script body want offenders=''
+	for script in "${PACKAGING_SCRIPTS[@]}"; do
+		body=$(uncommented_launcher "$script")
+		want=$(electron_env_call "$script")
+
+		[[ $(grep -cFx -- "$want" <<<"$body" || true) -eq 1 ]] || {
+			offenders+="${script}: want exactly one: ${want}"$'\n'
+		}
+
+		# deb/rpm must not pass appimage in any quoting.
+		[[ $script == appimage.sh ]] && continue
+		grep -qE '^setup_electron_env[[:space:]].*appimage' <<<"$body" \
+			|| continue
+		offenders+="${script}: passes appimage to setup_electron_env"$'\n'
+	done
+
+	[[ -z "$offenders" ]] || {
+		printf 'wrong setup_electron_env argument:\n%s' \
+			"$offenders" >&2
+		false
+	}
+}
+
 # The words in command position in the launcher heredoc of <1>, one per
 # line. A command position is the start of a line, or what follows `;`,
 # `&&`, `||`, `|`, a standalone `{`, `!` or one of the keywords `if`,
