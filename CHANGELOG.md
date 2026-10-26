@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- `--doctor` reports the official app's file-manager entries: it warns when they run a command that no longer exists (an unmounted AppImage) or when no `claude-desktop` icon is installed, and passes only when both are fine. ([#955](https://github.com/aaddrick/claude-desktop-debian/issues/955))
+- Build-time tripwire FM-1: the build fails if the official bundle stops writing its file-manager entries the way the launcher's heal expects (the `X-Claude-Generated=true` marker, the `nautilus/scripts` and `kio/servicemenus` locations, `Icon=${basename(execPath)}`, or the script's `[ -x … ] || exit 0` guard), instead of the heal silently doing nothing. ([#955](https://github.com/aaddrick/claude-desktop-debian/issues/955))
+
+### Fixed
+
+- "Send to Claude" (files) and "Open in Claude Code" (folders), the file-manager items the official app writes for Dolphin and Nautilus, now show the Claude logo and work while the app is closed. The app points them at its own executable. Under the AppImage that is the temporary `/tmp/.mount_claude*` path, so once the app quit, Send to Claude did nothing and Open in Claude Code ran a command that no longer existed. On the deb and rpm they start the bare Electron binary, skipping the launcher. Their `Icon=claude-desktop` only exists when Anthropic's package is installed, because ours install the icon under their own name to avoid a file conflict. The launcher now points these entries at itself (`/usr/bin/claude-desktop-unofficial` or the AppImage file), before launch and again after the app exits, since the app rewrites them on every start. It leaves entries alone that point at the official package's binary while that package is installed. It also installs `claude-desktop.png` into the user icon theme when no system icon has that name, and removes it once one appears. Verified with the AppImage and the rpm in Dolphin (Fedora 44, KDE Plasma 6) and Nautilus (CentOS Stream 10, GNOME); the logo is Dolphin-only, since Nautilus lists scripts without icons. ([#955](https://github.com/aaddrick/claude-desktop-debian/issues/955))
+
 ## [v3.3.13] — 2026-10-23
 
 The AppImage sandbox change (#884) first went out in the `v3.3.12+claude3.1623.0` auto-release, and the GPU-crash recovery fix (#946) in `v3.3.12+claude3.1623.1`. This release records them under their own version.

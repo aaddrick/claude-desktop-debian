@@ -1,0 +1,9 @@
+#!/bin/sh
+# X-Claude-Generated=true
+[ -x '/tmp/.mount_claudeOHhjmk/usr/lib/claude-desktop/claude-desktop' ] || exit 0
+nl='
+'
+case "$NAUTILUS_SCRIPT_SELECTED_URIS" in *"$nl"?*) sel="" ;; *) sel="${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS%"$nl"}" ;; esac
+if [ -n "$sel" ] && [ -d "$sel" ]; then dir="$sel"; else case "$NAUTILUS_SCRIPT_CURRENT_URI" in file://*) dir="$PWD" ;; *) exit 0 ;; esac; fi
+case "$dir" in /*) ;; *) exit 0 ;; esac
+exec '/tmp/.mount_claudeOHhjmk/usr/lib/claude-desktop/claude-desktop' --os-entry=folder_verb "$dir"

@@ -703,6 +703,52 @@ toggle itself keeps working, since upstream's is-enabled check reads only
 file existence, never the `Exec` content. Entries pointing at a
 hand-rolled wrapper are left alone.
 
+### "Send to Claude" has no icon, or does nothing after Claude quits
+
+The official app adds two file-manager items on every start: **Send to
+Claude** (files) and **Open in Claude Code** (folders; in Dolphin it
+sits under the **Actions** submenu). It writes them as Nautilus scripts
+in `~/.local/share/nautilus/scripts/` and KDE service menus in
+`~/.local/share/kio/servicemenus/` (and `kservices5/ServiceMenus/`),
+marked `X-Claude-Generated=true`. Each one runs the app's own
+executable and uses `Icon=claude-desktop`, which assumes the official
+package's layout:
+
+- Under the AppImage the executable is the ephemeral
+  `/tmp/.mount_claude*` path. Once the app quits, Send to Claude
+  silently does nothing, and Open in Claude Code still shows in Dolphin
+  but runs a command that no longer exists.
+- On the deb and rpm, a click while the app is closed starts the bare
+  Electron binary and skips the launcher.
+- Only Anthropic's package installs an icon named `claude-desktop`;
+  ours install it under their own name, so the items show no logo.
+
+**Fix:** start and quit Claude once through the launcher. Before launch
+and again after the app exits, the launcher repoints these entries at
+itself (`/usr/bin/claude-desktop-unofficial`, or the AppImage path) and
+installs `claude-desktop.png` into
+`~/.local/share/icons/hicolor/256x256/apps/` when no system icon has
+that name (FM-1, `heal_file_manager_entries` in
+`scripts/launcher-common.sh`). Entries that point at the official
+package's binary while it is installed are left alone. `--doctor`
+reports the entries and the icon under "File-manager entries".
+
+**After uninstalling**, these entries stay: the app wrote them into your
+home directory, no package owns them, and the app removes them only when
+the feature is turned off in its settings. Dolphin keeps listing them
+(KF6 service menus ignore a missing `TryExec`), but they no longer do
+anything. Delete them by hand:
+
+```bash
+rm -f ~/.local/share/nautilus/scripts/{'Send to Claude','Open in Claude Code'} \
+	~/.local/share/{kio/servicemenus,kservices5/ServiceMenus}/com.anthropic.Claude.{SendTo,OpenInCode}.desktop \
+	~/.local/share/icons/hicolor/256x256/apps/claude-desktop.png
+```
+
+The script names are localized, so on a non-English desktop list
+`~/.local/share/nautilus/scripts/` and remove the files that contain
+`X-Claude-Generated=true`.
+
 ### Authentication Errors (401)
 
 If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).

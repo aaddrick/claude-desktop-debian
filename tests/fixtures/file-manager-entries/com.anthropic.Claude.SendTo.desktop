@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Service
+TryExec=@@DATA_HOME@@/nautilus/scripts/Send to Claude
+MimeType=all/all;
+X-KDE-Protocols=file
+Actions=sendToClaude
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+X-Claude-Generated=true
+
+[Desktop Action sendToClaude]
+Name=Send to Claude
+Icon=claude-desktop
+Exec="@@DATA_HOME@@/nautilus/scripts/Send to Claude" %F
