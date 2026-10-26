@@ -1333,10 +1333,219 @@ ensure_portal_app_id_entry() {
 	return 0
 }
 
+# Marker the official app writes into every file-manager entry it owns,
+# and the icon name it gives them (basename of process.execPath).
+readonly FILE_MANAGER_ENTRY_MARKER='X-Claude-Generated=true'
+readonly FILE_MANAGER_ICON='claude-desktop'
+
+# Print $1 single-quoted for sh, the way upstream quotes execPath in
+# its file-manager scripts: ' -> '\''.
+_sh_single_quote() {
+	local q="'\\''"
+	printf "'%s'" "${1//\'/$q}"
+}
+
+# The execPath the official app baked into file-manager entry $1, or
+# nothing. Scripts carry it in their `[ -x '<path>' ] || exit 0` guard;
+# service menus in TryExec, but only the folder verb's TryExec is the
+# app (Send to Claude's is its script).
+_file_manager_entry_exec() {
+	local entry="$1" line q="'\\''"
+	while IFS= read -r line; do
+		if [[ $line =~ ^\[\ -x\ \'(.*)\'\ \]\ \|\|\ exit\ 0$ ]]; then
+			line="${BASH_REMATCH[1]}"
+			printf '%s' "${line//"$q"/\'}"
+			return 0
+		fi
+		if [[ $line == TryExec=*/claude-desktop ]]; then
+			printf '%s' "${line#TryExec=}"
+			return 0
+		fi
+	done < "$entry"
+	return 1
+}
+
+# The file-manager entries the official app wrote: its Nautilus scripts
+# (localized names, so matched by marker) and its KDE service menus.
+_file_manager_entries() {
+	local data_home="${XDG_DATA_HOME:-$HOME/.local/share}" f menu
+	for f in "$data_home"/nautilus/scripts/*; do
+		[[ -f $f ]] || continue
+		grep -qF "$FILE_MANAGER_ENTRY_MARKER" "$f" 2>/dev/null \
+			&& printf '%s\n' "$f"
+	done
+	for menu in OpenInCode SendTo; do
+		for f in "$data_home/kio/servicemenus" \
+			"$data_home/kservices5/ServiceMenus"; do
+			f="$f/com.anthropic.Claude.$menu.desktop"
+			grep -qxF "$FILE_MANAGER_ENTRY_MARKER" "$f" \
+				2>/dev/null && printf '%s\n' "$f"
+		done
+	done
+	return 0
+}
+
+# Rewrite execPath $2 to launcher $3 in entry $1, in each form upstream
+# writes it: sh single-quoted (scripts), desktop-Exec double-quoted and
+# bare TryExec (menus). Keeps the file's mode: scripts must stay
+# executable. Returns 0 when the file changed. Silent on failure (a
+# read-only data home): the launcher's stderr is the user's terminal.
+_heal_file_manager_entry() {
+	local entry="$1" old="$2" new="$3" tmp line
+	local old_sh old_ex new_sh new_ex
+	old_sh=$(_sh_single_quote "$old")
+	new_sh=$(_sh_single_quote "$new")
+	old_ex=$(_desktop_exec_quote "$old")
+	new_ex=$(_desktop_exec_quote "$new")
+
+	tmp="$entry.tmp.$$"
+	{
+		while IFS= read -r line || [[ -n $line ]]; do
+			if [[ $line == "TryExec=$old" ]]; then
+				line="TryExec=$new"
+			else
+				line="${line//"$old_sh"/"$new_sh"}"
+				line="${line//"$old_ex"/"$new_ex"}"
+			fi
+			printf '%s\n' "$line"
+		done < "$entry" > "$tmp"
+	} 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
+
+	if cmp -s "$tmp" "$entry"; then
+		rm -f "$tmp"
+		return 1
+	fi
+	chmod --reference="$entry" "$tmp" 2>/dev/null
+	mv -f "$tmp" "$entry" 2>/dev/null \
+		|| { rm -f "$tmp" 2>/dev/null; return 1; }
+	return 0
+}
+
+# Where FM-1 installs $FILE_MANAGER_ICON in the user icon theme.
+_file_manager_user_icon() {
+	local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+	printf '%s' \
+		"$data_home/icons/hicolor/256x256/apps/$FILE_MANAGER_ICON.png"
+}
+
+# Print the first system hicolor icon named $FILE_MANAGER_ICON (one the
+# official package installed), or return 1 when there is none.
+_file_manager_system_icon() {
+	local dir f
+	local -a data_dirs
+	IFS=: read -r -a data_dirs \
+		<<< "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	for dir in "${data_dirs[@]}"; do
+		[[ -n $dir ]] || continue
+		for f in "$dir"/icons/hicolor/*/apps/"$FILE_MANAGER_ICON".*; do
+			[[ -f $f ]] || continue
+			printf '%s' "$f"
+			return 0
+		done
+	done
+	return 1
+}
+
+# Copy $1 to the user hicolor theme as $FILE_MANAGER_ICON when no
+# system theme carries that name. Once one does (the official package
+# got installed), remove our copy if it is still the one we wrote.
+_ensure_file_manager_icon() {
+	local src="$1" dest sys
+	dest=$(_file_manager_user_icon)
+
+	[[ -n $src && -f $src ]] || return 0
+
+	if sys=$(_file_manager_system_icon); then
+		if cmp -s "$src" "$dest" && rm -f "$dest" 2>/dev/null; then
+			log_message "Removed file-manager icon $dest" \
+				"(system icon $sys)"
+		fi
+		return 0
+	fi
+
+	# A user's own icon of that name is not ours to replace.
+	[[ -e $dest ]] && return 0
+	mkdir -p "${dest%/*}" 2>/dev/null || return 0
+	cp -f "$src" "$dest" 2>/dev/null || return 0
+	log_message "Installed file-manager icon $dest (FM-1)"
+	return 0
+}
+
+# Launcher and icon source from the pre-launch call, reused by
+# cleanup_after_electron_exit.
+_file_manager_launcher=''
+_file_manager_icon_src=''
+
+# FM-1: the official app writes "Open in Claude Code" / "Send to
+# Claude" file-manager verbs on every start (Nautilus scripts under
+# nautilus/scripts, KDE service menus under kio/servicemenus and
+# kservices5/ServiceMenus). It assumes the official package's layout:
+#
+#   - Each entry runs process.execPath, the raw ELF, so on deb/rpm a
+#     click while the app is closed bypasses the launcher. Under
+#     AppImage it is the ephemeral /tmp/.mount_claude* path: once the
+#     app quits, Send to Claude silently does nothing (its script's
+#     `[ -x ]` guard exits) and Open in Claude Code runs a command that
+#     no longer exists (Dolphin still lists it: KF6 service menus do not
+#     honor TryExec, checked on Plasma 6).
+#   - Each menu sets Icon=claude-desktop, which only the official
+#     package installs. Our packages install the icon under their own
+#     name (no file conflict with the official package, D-002), so the
+#     menus show no logo.
+#
+# Rewrite the execPath to the launcher, under the same ownership rule
+# as AUTO-1 (heal_autostart_entry): our own tree, an AppImage mount, or
+# a command that no longer exists, never the official package's live
+# ELF. The app rewrites every entry at each start (the marker says they
+# are its own), so this runs before launch and again after Electron
+# exits, which is the state the entries are in while the app is closed.
+# And install $FILE_MANAGER_ICON into the user icon theme while any
+# such menu exists.
+#
+# $1 = absolute launcher path (/usr/bin/<package> or "$APPIMAGE";
+#      empty -> no execPath heal, like heal_autostart_entry)
+# $2 = PNG to install as the menu icon (empty -> no icon)
+heal_file_manager_entries() {
+	local launcher="${1:-}"
+	local icon_src="${2:-}"
+	local entry current have_menu=false
+	local -a entries
+
+	_file_manager_launcher="$launcher"
+	_file_manager_icon_src="$icon_src"
+
+	mapfile -t entries < <(_file_manager_entries)
+	((${#entries[@]})) || return 0
+
+	for entry in "${entries[@]}"; do
+		[[ $entry == *.desktop ]] && have_menu=true
+		[[ -n $launcher ]] || continue
+		current=$(_file_manager_entry_exec "$entry") || continue
+		[[ $current == "$launcher" ]] && continue
+		[[ $current == */claude-desktop ]] || continue
+		# An AppImage mount is ephemeral even while it exists: after
+		# Electron exits, AppRun still runs from it.
+		if [[ $current != /usr/lib/claude-desktop-unofficial/* \
+			&& $current != */.mount_*/usr/lib/claude-desktop/* ]] \
+			&& _autostart_target_exists "$current"; then
+			continue
+		fi
+		_heal_file_manager_entry "$entry" "$current" "$launcher" \
+			|| continue
+		log_message "Healed file-manager entry ${entry/#"$HOME"/\~}:" \
+			"$current -> $launcher (FM-1)"
+	done
+
+	[[ $have_menu == true ]] && _ensure_file_manager_icon "$icon_src"
+	return 0
+}
+
 cleanup_after_electron_exit() {
 	cleanup_orphaned_cowork_daemon
 	cleanup_stale_desktop_helpers
 	cleanup_stale_lock
+	heal_file_manager_entries "$_file_manager_launcher" \
+		"$_file_manager_icon_src"
 }
 
 _electron_launcher_forward_signal() {

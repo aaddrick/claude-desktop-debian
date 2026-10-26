@@ -64,6 +64,7 @@ readonly PRELAUNCH_CALLS=(
 	cleanup_stale_lock
 	cleanup_stale_vm_bundle_images
 	heal_autostart_entry
+	heal_file_manager_entries
 	backup_user_config
 	ensure_portal_app_id_entry
 )
