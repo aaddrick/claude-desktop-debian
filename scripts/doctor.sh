@@ -1535,7 +1535,9 @@ _claude_aa_profile_state() {
 # claude-desktop-unofficial profile, which allows user namespaces
 # (#542). A user-namespace failure is INFO there while that profile is
 # loaded (or on disk, when the loaded set can't be read). The AppImage
-# and rpm get no such profile, so their failure stays a WARN.
+# fails the package-type gate and keeps the WARN. The rpm passes it
+# (rpm.sh calls run_doctor with 'deb'), but it never installs the
+# profile, so the profile check keeps it on WARN.
 #
 # Path hooks (test-only): _DOCTOR_BWRAP, the bwrap to probe;
 # _DOCTOR_DEB_ELECTRON, the deb-installed Electron the profile pins.

@@ -1817,6 +1817,14 @@ _deb_profile_loaded() {
 	[[ $output == *'Likely cause: unprivileged user namespaces'* ]]
 }
 
+@test "run_doctor: passes the package type to _doctor_check_bwrap_fallback" {
+	# Structural pin, as for _doctor_check_pkg_version: the tests above
+	# pass the type directly. Without it the deb INFO branch is
+	# unreachable from a real --doctor run (the helper defaults to '').
+	run declare -f run_doctor
+	[[ $output == *'_doctor_check_bwrap_fallback "$_distro_id" "$package_type"'* ]]
+}
+
 # =============================================================================
 # _check_cowork_virtiofsd: mirror the client's probe, not "anywhere" (#771)
 # =============================================================================
