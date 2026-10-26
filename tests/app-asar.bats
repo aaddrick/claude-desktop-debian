@@ -5,7 +5,9 @@
 # (managed_by_package_manager, renamed from apt_channel_pending in the
 # 1.18286.2 → 1.19367.0 window) or the menu-bar-on default — the
 # deleted 2.x patches used to WARN when those anchors moved, and the
-# tripwires replace that signal.
+# tripwires replace that signal. FM-1 does the same for the launcher's
+# heal_file_manager_entries: it fails the build when the bundle stops
+# writing its file-manager entries the way that heal reads them.
 #
 # _resolve_anchor_file: there is no single main-process file any more.
 # 1.19367.0 split it into a stub plus one content-hashed chunk; 1.26832.0
@@ -42,11 +44,23 @@ _write_bundle() {
 	printf '%s\n' "$@" > "$dest"
 }
 
+# The FM-1 anchors as the 3.6556.2 bundle carries them (template text in
+# the file-manager entry writer), one per line so a test can drop one.
+_fm_anchor_lines() {
+	printf '%s\n' \
+		'var pOa="X-Claude-Generated=true"' \
+		'return n.default.join(yOa(),"nautilus/scripts")' \
+		'return[n.default.join(yOa(),"kio/servicemenus",e)]' \
+		'`Icon=${n.default.basename(e)}`' \
+		'`[ -x ${SOa(e)} ] || exit 0`'
+}
+
 @test "tripwires: clear when both anchors are present (minified)" {
 	local bundle="$BATS_TEST_TMPDIR/app.asar"
 	_write_bundle "$bundle" \
 		'nt("desktop_update_disabled",{reason:"managed_by_package_manager"})' \
 		'y={menuBarEnabled:!0}'
+	_fm_anchor_lines >> "$bundle"
 	run _check_upstream_tripwires "$bundle"
 	[[ $status -eq 0 ]]
 	[[ $output == *'tripwires clear'* ]]
@@ -57,6 +71,7 @@ _write_bundle() {
 	_write_bundle "$bundle" \
 		'x = { reason: "managed_by_package_manager" }' \
 		'y = { menuBarEnabled: !0 }'
+	_fm_anchor_lines >> "$bundle"
 	run _check_upstream_tripwires "$bundle"
 	[[ $status -eq 0 ]]
 }
@@ -87,6 +102,48 @@ _write_bundle() {
 	run _check_upstream_tripwires "$bundle"
 	[[ $status -eq 1 ]]
 	[[ $output == *'MB-1'* ]]
+}
+
+@test "tripwires: each missing FM-1 anchor fails with FM-1" {
+	# Drop one anchor at a time; every one must stop the build.
+	local bundle="$BATS_TEST_TMPDIR/app.asar" i
+	local -a lines
+	mapfile -t lines < <(_fm_anchor_lines)
+	for i in "${!lines[@]}"; do
+		_write_bundle "$bundle" 'x="managed_by_package_manager"' \
+			'y={menuBarEnabled:!0}'
+		printf '%s\n' "${lines[@]:0:i}" "${lines[@]:i+1}" >> "$bundle"
+		run _check_upstream_tripwires "$bundle"
+		[[ $status -eq 1 ]] || { echo "anchor $i not enforced"; false; }
+		[[ $output == *'FM-1'* ]]
+		[[ $output == *'heal_file_manager_entries'* ]]
+	done
+}
+
+@test "tripwires: FM-1 rejects a fixed icon name" {
+	# Upstream naming the icon itself would leave the launcher's
+	# claude-desktop icon unused.
+	local bundle="$BATS_TEST_TMPDIR/app.asar"
+	_write_bundle "$bundle" 'x="managed_by_package_manager"' \
+		'y={menuBarEnabled:!0}'
+	_fm_anchor_lines \
+		| sed 's/`Icon=\${n.default.basename(e)}`/`Icon=claude`/' \
+		>> "$bundle"
+	run _check_upstream_tripwires "$bundle"
+	[[ $status -eq 1 ]]
+	[[ $output == *'FM-1'*'Icon='* ]]
+}
+
+@test "tripwires: FM-1 tolerates spaces inside the interpolations" {
+	local bundle="$BATS_TEST_TMPDIR/app.asar"
+	_write_bundle "$bundle" 'x="managed_by_package_manager"' \
+		'y={menuBarEnabled:!0}' \
+		'"X-Claude-Generated=true" "nautilus/scripts"' \
+		'"kio/servicemenus"' \
+		'`Icon=${ n.default.basename(e) }`' \
+		'`[ -x ${ SOa(e) } ] || exit 0`'
+	run _check_upstream_tripwires "$bundle"
+	[[ $status -eq 0 ]]
 }
 
 @test "resolve: finds the single chunk carrying the anchor" {

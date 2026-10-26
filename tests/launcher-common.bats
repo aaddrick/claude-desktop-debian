@@ -2525,6 +2525,400 @@ _autostart_exec() {
 }
 
 # =============================================================================
+# heal_file_manager_entries (FM-1): repoint the app-written Nautilus
+# scripts and KDE service menus at the launcher, and give their
+# Icon=claude-desktop a user-level icon when no system one exists
+# =============================================================================
+
+readonly FM_MOUNT='/tmp/.mount_claudeXYZ/usr/lib/claude-desktop/claude-desktop'
+
+# Upstream-shaped Send to Claude script for execPath $1 (first lines of
+# the official writer's output, enough to carry every execPath form).
+_write_fm_script() {
+	local dir="$XDG_DATA_HOME/nautilus/scripts"
+	local q
+	q=$(_sh_single_quote "$1")
+	mkdir -p "$dir"
+	{
+		echo '#!/bin/sh'
+		echo '# X-Claude-Generated=true'
+		echo "[ -x $q ] || exit 0"
+		echo "exec $q \"claude://cowork/new?source=services\$q\""
+	} > "$dir/Send to Claude"
+	chmod 700 "$dir/Send to Claude"
+}
+
+# Upstream-shaped Open in Claude Code service menu for execPath $1.
+_write_fm_menu() {
+	local dir="$XDG_DATA_HOME/kio/servicemenus"
+	mkdir -p "$dir"
+	{
+		echo '[Desktop Entry]'
+		echo 'Type=Service'
+		echo "TryExec=$1"
+		echo 'MimeType=inode/directory;'
+		echo 'X-Claude-Generated=true'
+		echo ''
+		echo '[Desktop Action openInClaudeCode]'
+		echo 'Icon=claude-desktop'
+		echo "Exec=$(_desktop_exec_quote "$1") --os-entry=folder_verb %f"
+	} > "$dir/com.anthropic.Claude.OpenInCode.desktop"
+}
+
+_fm_script() { cat "$XDG_DATA_HOME/nautilus/scripts/Send to Claude"; }
+_fm_menu() {
+	local dir="$XDG_DATA_HOME/kio/servicemenus"
+	cat "$dir/com.anthropic.Claude.OpenInCode.desktop"
+}
+_fm_icon() {
+	echo "$XDG_DATA_HOME/icons/hicolor/256x256/apps/claude-desktop.png"
+}
+
+_fm_setup() {
+	export XDG_DATA_HOME="$TEST_TMP/data"
+	export XDG_DATA_DIRS="$TEST_TMP/sys"
+	mkdir -p "$XDG_DATA_HOME" "$XDG_DATA_DIRS"
+	printf 'PNG-test-icon' > "$TEST_TMP/icon.png"
+}
+
+@test "heal_file_manager_entries: rewrites a dead AppImage mount path" {
+	_fm_setup
+	_write_fm_script "$FM_MOUNT"
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" ''
+	local q="'$HOME/Apps/Claude.AppImage'"
+	_fm_script | grep -qxF "[ -x $q ] || exit 0"
+	_fm_script | grep -qF "exec $q \"claude://"
+	_fm_menu | grep -qxF "TryExec=$HOME/Apps/Claude.AppImage"
+	_fm_menu | grep -qxF \
+		"Exec=\"$HOME/Apps/Claude.AppImage\" --os-entry=folder_verb %f"
+	[[ $(_fm_script) != *.mount_claude* ]]
+	[[ $(_fm_menu) != *.mount_claude* ]]
+	# Marker and mode survive, so the app still owns and rewrites it.
+	_fm_script | grep -qxF '# X-Claude-Generated=true'
+	[[ $(stat -c %a "$XDG_DATA_HOME/nautilus/scripts/Send to Claude") \
+		== 700 ]]
+}
+
+@test "heal_file_manager_entries: rewrites a mount path that still exists" {
+	# After Electron exits, AppRun still runs from the mount, so the
+	# post-exit heal sees the path alive.
+	_fm_setup
+	_autostart_target_exists() { return 0; }
+	_write_fm_script "$FM_MOUNT"
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" ''
+	_fm_script | grep -qxF "[ -x '$HOME/Apps/Claude.AppImage' ] || exit 0"
+}
+
+@test "heal_file_manager_entries: rewrites our own live ELF" {
+	_fm_setup
+	_autostart_target_exists() { return 0; }
+	_write_fm_menu '/usr/lib/claude-desktop-unofficial/claude-desktop'
+	heal_file_manager_entries '/usr/bin/claude-desktop-unofficial' ''
+	_fm_menu | grep -qxF 'TryExec=/usr/bin/claude-desktop-unofficial'
+}
+
+@test "heal_file_manager_entries: leaves a live official ELF alone" {
+	_fm_setup
+	_autostart_target_exists() {
+		[[ $1 == /usr/lib/claude-desktop/claude-desktop ]]
+	}
+	_write_fm_script '/usr/lib/claude-desktop/claude-desktop'
+	local before
+	before=$(_fm_script)
+	heal_file_manager_entries '/usr/bin/claude-desktop-unofficial' ''
+	[[ $(_fm_script) == "$before" ]]
+}
+
+@test "heal_file_manager_entries: leaves a file without the marker alone" {
+	_fm_setup
+	_write_fm_script "$FM_MOUNT"
+	sed -i '/X-Claude-Generated/d' \
+		"$XDG_DATA_HOME/nautilus/scripts/Send to Claude"
+	local before
+	before=$(_fm_script)
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" \
+		"$TEST_TMP/icon.png"
+	[[ $(_fm_script) == "$before" ]]
+	[[ ! -e $(_fm_icon) ]]
+}
+
+@test "heal_file_manager_entries: quotes a launcher path with a quote and %" {
+	_fm_setup
+	_write_fm_script "$FM_MOUNT"
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries "/opt/it's 100%/Claude.AppImage" ''
+	_fm_script | grep -qxF \
+		"[ -x '/opt/it'\\''s 100%/Claude.AppImage' ] || exit 0"
+	local want='Exec="/opt/it'"'"'s 100%%/Claude.AppImage"'
+	_fm_menu | grep -qxF "$want --os-entry=folder_verb %f"
+}
+
+@test "heal_file_manager_entries: reads back a quoted execPath it wrote" {
+	_fm_setup
+	_write_fm_script "/tmp/.mount_it's/usr/lib/claude-desktop/claude-desktop"
+	[[ $(_file_manager_entry_exec \
+		"$XDG_DATA_HOME/nautilus/scripts/Send to Claude") == \
+		"/tmp/.mount_it's/usr/lib/claude-desktop/claude-desktop" ]]
+}
+
+@test "heal_file_manager_entries: idempotent once healed" {
+	_fm_setup
+	_write_fm_script "$HOME/Apps/Claude.AppImage"
+	local before
+	before=$(stat -c %Y "$XDG_DATA_HOME/nautilus/scripts/Send to Claude")
+	sleep 1
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" ''
+	[[ $(stat -c %Y "$XDG_DATA_HOME/nautilus/scripts/Send to Claude") \
+		== "$before" ]]
+}
+
+@test "heal_file_manager_entries: no-op with no entries" {
+	_fm_setup
+	run heal_file_manager_entries "$HOME/Apps/Claude.AppImage" \
+		"$TEST_TMP/icon.png"
+	[[ $status -eq 0 ]]
+	[[ ! -e $(_fm_icon) ]]
+}
+
+@test "heal_file_manager_entries: empty launcher still installs the icon" {
+	_fm_setup
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries '' "$TEST_TMP/icon.png"
+	_fm_menu | grep -qxF "TryExec=$FM_MOUNT"
+	cmp -s "$TEST_TMP/icon.png" "$(_fm_icon)"
+}
+
+@test "heal_file_manager_entries: no icon for scripts alone" {
+	_fm_setup
+	_write_fm_script "$FM_MOUNT"
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" \
+		"$TEST_TMP/icon.png"
+	[[ ! -e $(_fm_icon) ]]
+}
+
+@test "heal_file_manager_entries: no icon when a system one exists" {
+	_fm_setup
+	mkdir -p "$XDG_DATA_DIRS/icons/hicolor/48x48/apps"
+	: > "$XDG_DATA_DIRS/icons/hicolor/48x48/apps/claude-desktop.png"
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries '' "$TEST_TMP/icon.png"
+	[[ ! -e $(_fm_icon) ]]
+}
+
+@test "heal_file_manager_entries: removes its icon once a system one exists" {
+	_fm_setup
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries '' "$TEST_TMP/icon.png"
+	[[ -e $(_fm_icon) ]]
+	mkdir -p "$XDG_DATA_DIRS/icons/hicolor/48x48/apps"
+	: > "$XDG_DATA_DIRS/icons/hicolor/48x48/apps/claude-desktop.png"
+	heal_file_manager_entries '' "$TEST_TMP/icon.png"
+	[[ ! -e $(_fm_icon) ]]
+}
+
+@test "heal_file_manager_entries: keeps a user's own icon of that name" {
+	_fm_setup
+	mkdir -p "$(dirname "$(_fm_icon)")"
+	printf 'user-icon' > "$(_fm_icon)"
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries '' "$TEST_TMP/icon.png"
+	[[ $(cat "$(_fm_icon)") == 'user-icon' ]]
+	mkdir -p "$XDG_DATA_DIRS/icons/hicolor/48x48/apps"
+	: > "$XDG_DATA_DIRS/icons/hicolor/48x48/apps/claude-desktop.png"
+	heal_file_manager_entries '' "$TEST_TMP/icon.png"
+	[[ $(cat "$(_fm_icon)") == 'user-icon' ]]
+}
+
+@test "cleanup_after_electron_exit: re-heals with the pre-launch arguments" {
+	_fm_setup
+	cleanup_orphaned_cowork_daemon() { :; }
+	cleanup_stale_desktop_helpers() { :; }
+	cleanup_stale_lock() { :; }
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" \
+		"$TEST_TMP/icon.png"
+	# The app rewrites its entries with the mount path while it runs.
+	_write_fm_menu "$FM_MOUNT"
+	cleanup_after_electron_exit
+	_fm_menu | grep -qxF "TryExec=$HOME/Apps/Claude.AppImage"
+	cmp -s "$TEST_TMP/icon.png" "$(_fm_icon)"
+}
+
+@test "heal_file_manager_entries: logs the heal when logging is set up" {
+	_fm_setup
+	setup_logging
+	_write_fm_menu "$FM_MOUNT"
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" \
+		"$TEST_TMP/icon.png"
+	grep -q 'kio/servicemenus/com.anthropic.Claude.OpenInCode' \
+		"$log_file"
+	grep -q 'Installed file-manager icon' "$log_file"
+}
+
+# The real 3.6556.2 entries (tests/fixtures/file-manager-entries), each
+# written where upstream writes it, with the data home filled in.
+FM_FIXTURES="$SCRIPT_DIR/fixtures/file-manager-entries"
+readonly FM_UPSTREAM_EXEC='/tmp/.mount_claudeOHhjmk/usr/lib/'\
+'claude-desktop/claude-desktop'
+
+# Print where fixture $1 is installed, one path per line.
+_fm_fixture_dests() {
+	case "$1" in
+	*.desktop)
+		echo "$XDG_DATA_HOME/kio/servicemenus/$1"
+		echo "$XDG_DATA_HOME/kservices5/ServiceMenus/$1"
+		;;
+	*)
+		echo "$XDG_DATA_HOME/nautilus/scripts/$1"
+		;;
+	esac
+}
+
+_fm_fixture_names() {
+	printf '%s\n' 'Send to Claude' 'Open in Claude Code' \
+		com.anthropic.Claude.SendTo.desktop \
+		com.anthropic.Claude.OpenInCode.desktop
+}
+
+# The fixture $1 as upstream wrote it for this test's data home, with
+# its execPath replaced by $2 when given.
+_fm_fixture_text() {
+	local text
+	text=$(sed "s#@@DATA_HOME@@#$XDG_DATA_HOME#g" "$FM_FIXTURES/$1")
+	[[ -n ${2:-} ]] && text="${text//"$FM_UPSTREAM_EXEC"/"$2"}"
+	printf '%s\n' "$text"
+}
+
+_install_fm_fixtures() {
+	local name dest
+	while IFS= read -r name; do
+		while IFS= read -r dest; do
+			mkdir -p "${dest%/*}"
+			_fm_fixture_text "$name" > "$dest"
+			chmod 700 "$dest"
+		done < <(_fm_fixture_dests "$name")
+	done < <(_fm_fixture_names)
+}
+
+@test "heal_file_manager_entries: heals upstream's real 3.6556.2 entries" {
+	# Byte-exact: each file equals upstream's own with only the
+	# execPath swapped, so nothing else in it was touched.
+	_fm_setup
+	_install_fm_fixtures
+	local launcher="$HOME/Apps/Claude.AppImage" name dest
+	heal_file_manager_entries "$launcher" "$TEST_TMP/icon.png"
+	while IFS= read -r name; do
+		while IFS= read -r dest; do
+			diff <(_fm_fixture_text "$name" "$launcher") "$dest"
+			[[ $(stat -c %a "$dest") == 700 ]]
+		done < <(_fm_fixture_dests "$name")
+	done < <(_fm_fixture_names)
+	! grep -rqF '.mount_claude' "$XDG_DATA_HOME" || false
+	cmp -s "$TEST_TMP/icon.png" "$(_fm_icon)"
+}
+
+@test "heal_file_manager_entries: real entries need one pass, then none" {
+	_fm_setup
+	_install_fm_fixtures
+	setup_logging
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" ''
+	# Two scripts plus the folder verb's menu in kio and kservices5;
+	# Send to Claude's menus run the script, not the app.
+	[[ $(grep -c 'Healed file-manager entry' "$log_file") -eq 4 ]]
+	heal_file_manager_entries "$HOME/Apps/Claude.AppImage" ''
+	[[ $(grep -c 'Healed file-manager entry' "$log_file") -eq 4 ]]
+}
+
+@test "heal_file_manager_entries: read-only data home fails quietly" {
+	[[ $EUID -ne 0 ]] || skip 'root ignores directory permissions'
+	_fm_setup
+	_install_fm_fixtures
+	local before
+	before=$(cat "$XDG_DATA_HOME"/nautilus/scripts/* \
+		"$XDG_DATA_HOME"/kio/servicemenus/*)
+	chmod 500 "$XDG_DATA_HOME" "$XDG_DATA_HOME/nautilus/scripts" \
+		"$XDG_DATA_HOME/kio/servicemenus" \
+		"$XDG_DATA_HOME/kservices5/ServiceMenus"
+	run heal_file_manager_entries "$HOME/Apps/Claude.AppImage" \
+		"$TEST_TMP/icon.png"
+	chmod 700 "$XDG_DATA_HOME" "$XDG_DATA_HOME/nautilus/scripts" \
+		"$XDG_DATA_HOME/kio/servicemenus" \
+		"$XDG_DATA_HOME/kservices5/ServiceMenus"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+	[[ $(cat "$XDG_DATA_HOME"/nautilus/scripts/* \
+		"$XDG_DATA_HOME"/kio/servicemenus/*) == "$before" ]]
+	[[ ! -e $(_fm_icon) ]]
+	[[ -z $(find "$XDG_DATA_HOME" -name '*.tmp.*') ]]
+}
+
+# =============================================================================
+# _doctor_check_file_manager_entries (FM-1)
+# =============================================================================
+
+@test "doctor file-manager entries: info when the app has written none" {
+	_fm_setup
+	_doctor_colors
+	run _doctor_check_file_manager_entries
+	[[ $status -eq 0 ]]
+	[[ $output == *'File-manager entries: none'* ]]
+	[[ $output != *'[PASS]'* && $output != *'[WARN]'* ]]
+}
+
+@test "doctor file-manager entries: warns on a dead AppImage mount" {
+	# Upstream's real entries after the app quit, before any heal.
+	_fm_setup
+	_install_fm_fixtures
+	_doctor_colors
+	run _doctor_check_file_manager_entries
+	[[ $output == *'[WARN]'*'File-manager entries: 4 of 6 run'* ]]
+	[[ $output == *"$FM_UPSTREAM_EXEC, which no longer exists"* ]]
+	[[ $output == *'[WARN]'*'menu icon'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "doctor file-manager entries: info, not PASS, on a live mount" {
+	_fm_setup
+	_install_fm_fixtures
+	_doctor_colors
+	# The running app's mount: present, but gone once it quits.
+	local live="$TEST_TMP/.mount_claudeLIVE/usr/lib/claude-desktop"
+	mkdir -p "$live"
+	touch "$live/claude-desktop"
+	local name dest
+	while IFS= read -r name; do
+		while IFS= read -r dest; do
+			_fm_fixture_text "$name" "$live/claude-desktop" > "$dest"
+		done < <(_fm_fixture_dests "$name")
+	done < <(_fm_fixture_names)
+	run _doctor_check_file_manager_entries
+	[[ $output == *'point at the running AppImage mount'* ]]
+	[[ $output != *'[PASS] File-manager entries'* ]]
+}
+
+@test "doctor file-manager entries: passes once healed, with the icon" {
+	_fm_setup
+	_install_fm_fixtures
+	_doctor_colors
+	touch "$HOME/Claude.AppImage"
+	heal_file_manager_entries "$HOME/Claude.AppImage" "$TEST_TMP/icon.png"
+	run _doctor_check_file_manager_entries
+	[[ $output == *'[PASS]'*'File-manager entries: 6'* ]]
+	[[ $output == *'[PASS]'*"File-manager menu icon: $(_fm_icon)"* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "doctor file-manager entries: a system icon counts" {
+	_fm_setup
+	_install_fm_fixtures
+	_doctor_colors
+	mkdir -p "$XDG_DATA_DIRS/icons/hicolor/48x48/apps"
+	: > "$XDG_DATA_DIRS/icons/hicolor/48x48/apps/claude-desktop.png"
+	run _doctor_check_file_manager_entries
+	[[ $output == *'[PASS]'*"File-manager menu icon: $XDG_DATA_DIRS/"* ]]
+}
+
+# =============================================================================
 # ensure_portal_app_id_entry (#805): hidden <WM_CLASS>.desktop so the
 # xdg-desktop-portal Registry.Register call for the app id succeeds
 # =============================================================================

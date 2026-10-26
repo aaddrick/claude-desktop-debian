@@ -17,6 +17,8 @@ Thumbs.db
 
 *.AppImage
 *.desktop
+# ...except the upstream-written service menus used as test fixtures
+!tests/fixtures/file-manager-entries/*.desktop
 *.deb
 *.exe
 

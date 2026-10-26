@@ -90,6 +90,9 @@ cleanup_stale_vm_bundle_images
 # APPIMAGE is set by the AppImage runtime to the persistent image path;
 # an extracted/direct run leaves it unset and the heal no-ops.
 heal_autostart_entry "${APPIMAGE:-}"
+icon_dir="$appdir/usr/share/icons/hicolor/256x256/apps"
+heal_file_manager_entries "${APPIMAGE:-}" \
+	"$icon_dir/io.github.aaddrick.claude-desktop-debian.png"
 backup_user_config
 
 # Detect display backend

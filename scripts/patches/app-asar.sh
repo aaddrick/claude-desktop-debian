@@ -136,7 +136,47 @@ _check_upstream_tripwires() {
 		exit 1
 	fi
 
-	echo 'Upstream tripwires clear (updater off on Linux, menu bar on)'
+	_check_file_manager_tripwire "$asar_path" || exit 1
+
+	echo 'Upstream tripwires clear (updater off on Linux, menu bar on,' \
+		'file-manager entry writer unchanged)'
+}
+
+# FM-1: the launcher's heal_file_manager_entries repoints the official
+# app's file-manager entries and installs their icon. It finds them by
+# upstream's marker and locations, reads the execPath out of the
+# script guard and TryExec, and names the icon after basename(execPath).
+# If upstream changes any of that, the heal finds nothing and silently
+# stops working, so fail the build instead. These are string literals
+# in the bundle (template text), so no whitespace tolerance is needed
+# except inside the ${...} interpolations.
+_check_file_manager_tripwire() {
+	local asar_path="$1" i
+	local -a labels=(
+		'marker X-Claude-Generated=true'
+		'nautilus/scripts location'
+		'kio/servicemenus location'
+		'Icon=<basename of execPath>'
+		"script guard [ -x '<execPath>' ] || exit 0"
+	)
+	local -a patterns=(
+		'X-Claude-Generated=true'
+		'nautilus/scripts'
+		'kio/servicemenus'
+		'Icon=\$\{[^}]*basename\([^)]*\)[[:space:]]*\}'
+		'\[ -x \$\{[^}]*\} \] \|\| exit 0'
+	)
+
+	for i in "${!patterns[@]}"; do
+		LC_ALL=C grep -aqE -- "${patterns[i]}" "$asar_path" && continue
+		echo "Tripwire (FM-1): ${labels[i]} is gone from the official" \
+			'bundle — upstream changed how it writes the "Send to' \
+			'Claude" / "Open in Claude Code" file-manager entries.' \
+			'Re-check heal_file_manager_entries in' \
+			'launcher-common.sh before shipping.' >&2
+		return 1
+	done
+	return 0
 }
 
 # Digest every file under .vite/build (relative to CWD, like
