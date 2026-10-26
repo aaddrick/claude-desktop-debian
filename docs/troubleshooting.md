@@ -41,7 +41,7 @@ claude-desktop-unofficial --doctor
 | Recent crashes | 3+ Electron coredumps in the last 7 days → GPU-FATAL pointer ([#583](https://github.com/aaddrick/claude-desktop-debian/issues/583)) |
 | Log file | Launcher log size |
 
-Setting `COWORK_VM_BACKEND=bwrap` additionally runs the legacy bubblewrap diagnostics for the parked `scripts/cowork-fallback/` path — the shipped client has no bwrap backend.
+Setting `COWORK_VM_BACKEND=bwrap` additionally runs the diagnostics for the opt-in bubblewrap fallback (`patch_cowork_bwrap`, see [configuration.md](configuration.md#bubblewrap-fallback-cowork_vm_backendbwrap)).
 
 When opening an issue, include the output of `--doctor` to help with diagnosis.
 
@@ -430,21 +430,44 @@ TMPDIR=~/.config/Claude/tmp claude-desktop-unofficial
 
 Or add `TMPDIR=%h/.config/Claude/tmp` to the `Exec=` line in your `.desktop` file.
 
-### Cowork on Ubuntu 24.04+: bwrap fallback probe fails (parked diagnostics only)
+### Cowork on Ubuntu 24.04+: bwrap fallback probe fails
 
 This applies **only** to the opt-in bubblewrap fallback
-(`COWORK_VM_BACKEND=bwrap`, `scripts/cowork-fallback/`). The default Cowork
-backend is KVM and is not affected by the user-namespace restriction below.
-Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`, which blocks
-the user namespaces bwrap needs, so the doctor's `bubblewrap: sandbox probe
-failed` warning is expected there whether or not you ever set
-`COWORK_VM_BACKEND=bwrap`.
+(`COWORK_VM_BACKEND=bwrap`, see
+[configuration.md](configuration.md#bubblewrap-fallback-cowork_vm_backendbwrap)).
+The default Cowork backend is KVM and is not affected by the user-namespace
+restriction below. On Debian and Ubuntu with working KVM you don't need the
+fallback at all: Anthropic's
+[official package](https://code.claude.com/docs/en/desktop-linux) supports
+Ubuntu 22.04+ and Debian 12+ and runs Cowork in its KVM VM.
 
-**No package installs a bwrap AppArmor profile.** The only workaround we
-can document attaches the profile to the **shared** `/usr/bin/bwrap`
-binary, which grants `userns` to *every* program on the host that runs
-bwrap through that same path — Flatpak, Steam, your own scripts — not just
-Claude:
+Ubuntu 24.04+ sets `apparmor_restrict_unprivileged_userns=1`, which blocks
+the user namespaces bwrap needs. Whether the fallback works depends on how
+Claude is installed:
+
+| Install | Ubuntu 24.04 | Ubuntu 26.04 |
+|---------|--------------|--------------|
+| `.deb` | works, no extra profile | works, no extra profile |
+| AppImage | needs the system-wide profile below | works, no extra profile |
+
+**`.deb`:** the package's `/etc/apparmor.d/claude-desktop-unofficial`
+profile is attached to the Electron binary, and the fallback daemon and the
+`bwrap` it spawns inherit it, so their user namespaces are allowed. The
+doctor's `bubblewrap: sandbox probe` runs from your shell, outside that
+profile, so it can still report a failure on a `.deb` install; the daemon
+the app starts is not affected.
+
+**Ubuntu 26.04 and later:** Ubuntu loads its own `bwrap-userns-restrict`
+profile by default, which lets `/usr/bin/bwrap` create the namespace for any
+caller, AppImage included.
+
+**AppImage on Ubuntu 24.04:** the AppImage runs from a different
+`/tmp/.mount_claudeXXXXXX/…` path every launch, so no AppArmor profile can
+be attached to it, and the fallback fails with `bwrap: setting up uid map:
+Permission denied`. The only workaround attaches a profile to the
+**shared** `/usr/bin/bwrap` binary, which grants `userns` to *every*
+program on the host that runs bwrap through that same path — Flatpak,
+Steam, your own scripts — not just Claude:
 
 ```bash
 sudo tee /etc/apparmor.d/bwrap <<'EOF'
@@ -462,37 +485,21 @@ sudo apparmor_parser -r /etc/apparmor.d/bwrap
 ```
 
 Review that blast radius against your threat model before applying it.
+`.deb` users don't need it, and on Ubuntu 26.04 it has no effect after a
+reboot: it uses the same profile name, `bwrap`, as Ubuntu's own
+`bwrap-userns-restrict`, and Ubuntu's copy is the one loaded after boot.
 
-**Why this can't be scoped to Claude in documentation alone:** the
-per-application AppArmor pattern that opam and Apptainer use (see
+**Why the AppImage case can't be scoped to Claude:** the per-application
+AppArmor pattern that opam and Apptainer use (see
 [opam's profile](https://gitlab.com/apparmor/apparmor/-/blob/master/profiles/apparmor.d/opam)
 and [Apptainer#2262](https://github.com/apptainer/apptainer/pull/2262))
-attaches `flags=(unconfined)` to a binary *they own* that creates the
-namespace — opam's `bwrap` copy, Apptainer's `starter-suid`. Claude has no
-equivalent owned binary in this path: the namespace is created by the
-system's shared `/usr/bin/bwrap`, and the scoped
-`/etc/apparmor.d/claude-desktop-unofficial` profile installed above covers
-only the Electron binary — a separate `bwrap` child process is not covered
-by it (see `scripts/packaging/deb.sh`). Narrowing this for real needs a
-Claude-owned wrapper binary at a stable path for a profile to attach to;
-that's tracked as follow-up work on
-[#542](https://github.com/aaddrick/claude-desktop-debian/issues/542) and is
-not implemented yet.
+attaches `flags=(unconfined)` to a binary at a fixed path. An AppImage has
+no fixed path to attach to, which is also why it runs with `--no-sandbox`
+while the restriction is on (see
+["AppImage Sandbox Warning"](#appimage-sandbox-warning)).
 
-This only affects launches that opt into `COWORK_VM_BACKEND=bwrap` on
-Ubuntu 24.04+ — the default KVM backend never spawns bwrap and is
-unaffected either way.
-
-**AppImage:** the mount path changes every run
-(`/tmp/.mount_claudeXXXXXX/…`), so an AppImage build can't ship or pin a
-profile keyed to its own binary path. That doesn't matter for bwrap
-specifically, though: `/usr/bin/bwrap` is a fixed host path regardless of
-where the AppImage mounts, so the same system-wide recipe and warning above
-apply unchanged to an AppImage-launched bwrap fallback. (The Electron
-launch-crash profile above never applies to AppImage builds — they run
-with `--no-sandbox` while the restriction is on, see
-["AppImage Sandbox Warning"](#appimage-sandbox-warning) — so there's
-nothing AppImage-specific to add there either.)
+This only affects launches that opt into `COWORK_VM_BACKEND=bwrap` — the
+default KVM backend never spawns bwrap and is unaffected either way.
 
 No package ships a bwrap profile as of v3.0.0+. The deb's `postrm` removes
 the 2.x-era `/etc/apparmor.d/claude-desktop-bwrap` leftover (and a
