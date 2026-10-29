@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.14] — 2026-10-29
+
 ### Added
 
 - `--doctor` reports the official app's file-manager entries: it warns when they run a command that no longer exists (an unmounted AppImage) or when no `claude-desktop` icon is installed, and passes only when both are fine. ([#955](https://github.com/aaddrick/claude-desktop-debian/issues/955))
