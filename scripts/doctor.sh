@@ -1485,26 +1485,102 @@ _doctor_check_bwrap_node() {
 	fi
 }
 
+# Load state of the deb's scoped AppArmor profile. Echoes one of:
+#   loaded      the kernel's loaded set lists it (reading it needs root)
+#   not-loaded  the loaded set was readable and doesn't list it
+#   on-disk     the loaded set was unreadable, but the profile file exists
+#   absent      neither
+# The profile name must match deb.sh's /etc/apparmor.d/$package_name
+# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since the Phase 3
+# rename; plain claude-desktop is the official package's profile,
+# registered by Anthropic's own postinst). Path hooks: _DOCTOR_AA_PROFILE,
+# _DOCTOR_AA_LOADED (see _doctor_check_userns_apparmor).
+#
+# Usage: _claude_aa_profile_state
+_claude_aa_profile_state() {
+	local _aa_profile="${_DOCTOR_AA_PROFILE:-}"
+	[[ -n $_aa_profile ]] \
+		|| _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
+	local _aa_loaded="${_DOCTOR_AA_LOADED:-}"
+	[[ -n $_aa_loaded ]] \
+		|| _aa_loaded='/sys/kernel/security/apparmor/profiles'
+	# securityfs marks this file world-readable (0444), but the kernel
+	# still denies the actual read without CAP_MAC_ADMIN — so a -r test
+	# passes for non-root yet the read returns nothing. Attempt the read
+	# and judge by whether we actually got data, not by the mode bits.
+	# Unreadable also covers an unmounted securityfs (common in
+	# containers).
+	local _loaded_set=''
+	_loaded_set=$(cat "$_aa_loaded" 2>/dev/null)
+	if [[ -n $_loaded_set ]]; then
+		if printf '%s\n' "$_loaded_set" \
+			| grep -q '^claude-desktop-unofficial '; then
+			echo 'loaded'
+		else
+			echo 'not-loaded'
+		fi
+	elif [[ -e $_aa_profile ]]; then
+		echo 'on-disk'
+	else
+		echo 'absent'
+	fi
+}
+
 # Bwrap sandbox diagnostics for the opt-in COWORK_VM_BACKEND=bwrap path
 # (patch_cowork_bwrap). Runs solely when the user sets that flag.
 #
-# Usage: _doctor_check_bwrap_fallback <distro_id>
+# The probe runs from the doctor's shell, outside any AppArmor profile.
+# On a deb install that isn't where bwrap runs: Electron spawns the
+# fallback daemon, so it and its bwrap inherit the scoped
+# claude-desktop-unofficial profile, which allows user namespaces
+# (#542). A user-namespace failure is INFO there while that profile is
+# loaded (or on disk, when the loaded set can't be read). The AppImage
+# fails the package-type gate and keeps the WARN. The rpm passes it
+# (rpm.sh calls run_doctor with 'deb'), but it never installs the
+# profile, so the profile check keeps it on WARN.
+#
+# Path hooks (test-only): _DOCTOR_BWRAP, the bwrap to probe;
+# _DOCTOR_DEB_ELECTRON, the deb-installed Electron the profile pins.
+#
+# Usage: _doctor_check_bwrap_fallback <distro_id> [package_type]
 _doctor_check_bwrap_fallback() {
 	local distro="$1"
+	local package_type="${2:-}"
+	local _bwrap="${_DOCTOR_BWRAP:-bwrap}"
 
-	if command -v bwrap &>/dev/null; then
+	if command -v "$_bwrap" &>/dev/null; then
 		_pass 'bubblewrap: found'
 
 		# User namespaces must be available for bwrap to create its
 		# sandbox; Ubuntu 24.04+ blocks them via AppArmor (issue #351).
 		local _err='' _rc=0
-		_err=$(bwrap --ro-bind / / true 2>&1 >/dev/null) || _rc=$?
+		_err=$("$_bwrap" --ro-bind / / true 2>&1 >/dev/null) || _rc=$?
+		# Ubuntu 24.04's denial reads "setting up uid map: Permission
+		# denied", hence the uid map alternative.
+		local _re='(user[[:space:]_-]?namespace|uid map|apparmor|[Oo]peration not permitted|CLONE_NEW|CAP_SYS_ADMIN)'
+		local _deb_electron="${_DOCTOR_DEB_ELECTRON:-}"
+		[[ -n $_deb_electron ]] \
+			|| _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
+		local _aa_state=''
+		if ((_rc != 0)) && [[ $_err =~ $_re && $package_type == 'deb' \
+			&& -e $_deb_electron ]]; then
+			_aa_state=$(_claude_aa_profile_state)
+		fi
 		if ((_rc == 0)); then
 			_pass 'bubblewrap: sandbox probe succeeded'
+		elif [[ $_aa_state == 'loaded' || $_aa_state == 'on-disk' ]]; then
+			_info "bubblewrap: shell probe failed (rc=$_rc), expected on" \
+				'a .deb install'
+			[[ -n $_err ]] && _info "  stderr: $_err"
+			_info '  The fallback daemon runs under the' \
+				'claude-desktop-unofficial AppArmor'
+			_info '  profile, which allows the user namespaces bwrap needs.'
+			if [[ $_aa_state == 'on-disk' ]]; then
+				_info '  Re-run with sudo to confirm the profile is loaded.'
+			fi
 		else
 			_warn "bubblewrap: sandbox probe failed (rc=$_rc)"
 			[[ -n $_err ]] && _info "  stderr: $_err"
-			local _re='(user[[:space:]_-]?namespace|apparmor|[Oo]peration not permitted|CLONE_NEW|CAP_SYS_ADMIN)'
 			if [[ $_err =~ $_re ]]; then
 				_info \
 					'  Likely cause: unprivileged user namespaces' \
@@ -1555,45 +1631,25 @@ _doctor_check_userns_apparmor() {
 	[[ -n $_deb_electron ]] \
 		|| _deb_electron='/usr/lib/claude-desktop-unofficial/claude-desktop'
 	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
-		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
-		# (PACKAGE_NAME in build.sh — claude-desktop-unofficial since
-		# the Phase 3 rename; plain claude-desktop is the official
-		# package's profile, registered by Anthropic's own postinst).
 		local _aa_profile="${_DOCTOR_AA_PROFILE:-}"
 		[[ -n $_aa_profile ]] \
 			|| _aa_profile='/etc/apparmor.d/claude-desktop-unofficial'
-		local _aa_loaded="${_DOCTOR_AA_LOADED:-}"
-		[[ -n $_aa_loaded ]] \
-			|| _aa_loaded='/sys/kernel/security/apparmor/profiles'
-		# securityfs marks this file world-readable (0444), but the kernel
-		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
-		# passes for non-root yet the read returns nothing. Attempt the read
-		# and judge by whether we actually got data, not by the mode bits.
-		local _loaded_set=''
-		_loaded_set=$(cat "$_aa_loaded" 2>/dev/null)
-		if [[ -n $_loaded_set ]]; then
-			# Authoritative: we actually read the kernel's loaded profile
-			# set (needs root), so report the real load state — not
-			# mere presence on disk.
-			if printf '%s\n' "$_loaded_set" \
-				| grep -q '^claude-desktop-unofficial '; then
-				_pass 'User namespaces: restricted, AppArmor profile loaded'
+		local _aa_state
+		_aa_state=$(_claude_aa_profile_state)
+		if [[ $_aa_state == 'loaded' ]]; then
+			_pass 'User namespaces: restricted, AppArmor profile loaded'
+		elif [[ $_aa_state == 'not-loaded' ]]; then
+			_warn 'User namespaces: restricted by AppArmor,' \
+				'Claude profile not loaded'
+			if [[ -e $_aa_profile ]]; then
+				_info '  Profile is on disk but not loaded. Load it:'
+				_info "  sudo apparmor_parser -r $_aa_profile"
 			else
-				_warn 'User namespaces: restricted by AppArmor,' \
-					'Claude profile not loaded'
-				if [[ -e $_aa_profile ]]; then
-					_info '  Profile is on disk but not loaded. Load it:'
-					_info "  sudo apparmor_parser -r $_aa_profile"
-				else
-					_info '  No profile found. See docs/troubleshooting.md'
-					_info '  "Claude Desktop crashes immediately on launch".'
-				fi
+				_info '  No profile found. See docs/troubleshooting.md'
+				_info '  "Claude Desktop crashes immediately on launch".'
 			fi
-		elif [[ -e $_aa_profile ]]; then
-			# The loaded set was unreadable: non-root (the kernel needs
-			# CAP_MAC_ADMIN despite the 0444 mode), or securityfs is
-			# unmounted (common in containers). Report presence on disk
-			# only — never a definitive PASS.
+		elif [[ $_aa_state == 'on-disk' ]]; then
+			# Present on disk only — never a definitive PASS.
 			if (( EUID == 0 )); then
 				_info 'User namespaces: AppArmor profile present on disk' \
 					'(securityfs unavailable; cannot confirm it is loaded)'
@@ -1959,9 +2015,10 @@ print(len(servers))
 	echo -e "${_bold}Cowork Mode${_reset}"
 	echo '----------------'
 
-	# The official Linux client runs Cowork as coworkd + QEMU/KVM; there
-	# is no bwrap backend. Report the KVM stack honestly. Cowork absence
-	# is never a _fail — the app works fine without it.
+	# The official Linux client runs Cowork as coworkd + QEMU/KVM; the
+	# bwrap backend is ours and opt-in (patch_cowork_bwrap, checked
+	# below). Report the KVM stack honestly. Cowork absence is never a
+	# _fail — the app works fine without it.
 	_check_kvm
 	_check_vhost_vsock
 	# Resources dir sits next to the Electron ELF in the official
@@ -1998,7 +2055,7 @@ print(len(servers))
 			_info 'COWORK_VM_BACKEND=bwrap: Cowork routes through the' \
 				'bubblewrap fallback daemon (opt-in).'
 			_doctor_check_bwrap_node "$_resources_dir"
-			_doctor_check_bwrap_fallback "$_distro_id"
+			_doctor_check_bwrap_fallback "$_distro_id" "$package_type"
 		else
 			_info "COWORK_VM_BACKEND=$_cvb: not read by the official" \
 				'client (2.x knob)'

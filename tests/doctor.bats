@@ -32,6 +32,7 @@ setup() {
 	unset _DOCTOR_DEB_ELECTRON
 	unset _DOCTOR_AA_PROFILE
 	unset _DOCTOR_AA_LOADED
+	unset _DOCTOR_BWRAP
 	# Keep the host's /usr/libexec/qemu-kvm (EL) out of the QEMU check.
 	export _DOCTOR_QEMU_KVM="$TEST_TMP/no-qemu-kvm"
 
@@ -1717,6 +1718,111 @@ _userns_in_force() {
 	run _doctor_check_userns_apparmor
 	[[ $output == *'[WARN]'* ]]
 	[[ $output == *'no Claude profile found'* ]]
+}
+
+# =============================================================================
+# _doctor_check_bwrap_fallback: shell probe vs the deb's profile (#542)
+# =============================================================================
+
+# The probe runs outside any AppArmor profile, but on a deb install the
+# fallback daemon's bwrap inherits claude-desktop-unofficial. Tests stub
+# bwrap via _DOCTOR_BWRAP and the profile state via the userns hooks.
+
+# Write a bwrap stub at $TEST_TMP/bwrap that prints $1 to stderr and
+# exits $2 (default 1), and point the check at it.
+_stub_bwrap() {
+	printf '#!/bin/sh\necho "%s" >&2\nexit %s\n' "$1" "${2:-1}" \
+		> "$TEST_TMP/bwrap"
+	chmod +x "$TEST_TMP/bwrap"
+	_DOCTOR_BWRAP="$TEST_TMP/bwrap"
+	# Mount checks read the user's linux config; not under test here.
+	_doctor_check_bwrap_mounts() { :; }
+}
+
+# Ubuntu 24.04's actual denial text, from the #542 VM runs.
+_uid_map_denied='bwrap: setting up uid map: Permission denied'
+
+# Deb Electron present and our profile in the kernel's loaded set.
+_deb_profile_loaded() {
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+	printf 'claude-desktop-unofficial (unconfined)\n' > "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+}
+
+@test "_doctor_check_bwrap_fallback: probe succeeds — PASS" {
+	_stub_bwrap '' 0
+	run _doctor_check_bwrap_fallback ubuntu deb
+	[[ $output == *'sandbox probe succeeded'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_bwrap_fallback: deb, profile loaded — info, not WARN" {
+	_stub_bwrap "$_uid_map_denied"
+	_deb_profile_loaded
+	run _doctor_check_bwrap_fallback ubuntu deb
+	[[ $output == *'expected on a .deb install'* ]]
+	[[ $output == *'claude-desktop-unofficial AppArmor'* ]]
+	[[ $output != *'[WARN]'* ]]
+	[[ $output != *'confirm the profile is loaded'* ]]
+}
+
+@test "_doctor_check_bwrap_fallback: deb, loaded set unreadable, profile on disk — info + sudo hint" {
+	_stub_bwrap "$_uid_map_denied"
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+	_DOCTOR_AA_LOADED="$TEST_TMP/no-loaded"
+	: > "$TEST_TMP/profile"
+	_DOCTOR_AA_PROFILE="$TEST_TMP/profile"
+	run _doctor_check_bwrap_fallback ubuntu deb
+	[[ $output == *'expected on a .deb install'* ]]
+	[[ $output == *'Re-run with sudo to confirm the profile is loaded'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_bwrap_fallback: deb, profile not loaded — WARN" {
+	_stub_bwrap "$_uid_map_denied"
+	: > "$TEST_TMP/deb-electron"
+	_DOCTOR_DEB_ELECTRON="$TEST_TMP/deb-electron"
+	# The official package's profile is the near-miss: it must not count.
+	printf 'claude-desktop (unconfined)\n' > "$TEST_TMP/loaded"
+	_DOCTOR_AA_LOADED="$TEST_TMP/loaded"
+	run _doctor_check_bwrap_fallback ubuntu deb
+	[[ $output == *'[WARN]'*'sandbox probe failed'* ]]
+}
+
+@test "_doctor_check_bwrap_fallback: AppImage with the deb profile loaded — still WARN" {
+	# The profile pins the deb's Electron path; an AppImage run isn't
+	# under it even when the deb is installed alongside.
+	_stub_bwrap "$_uid_map_denied"
+	_deb_profile_loaded
+	run _doctor_check_bwrap_fallback ubuntu appimage
+	[[ $output == *'[WARN]'*'sandbox probe failed'* ]]
+	[[ $output != *'expected on a .deb install'* ]]
+}
+
+@test "_doctor_check_bwrap_fallback: deb, non-userns failure — still WARN" {
+	# Only user-namespace denials are explained by the profile.
+	_stub_bwrap 'bwrap: execvp true: No such file or directory'
+	_deb_profile_loaded
+	run _doctor_check_bwrap_fallback ubuntu deb
+	[[ $output == *'[WARN]'*'sandbox probe failed'* ]]
+	[[ $output != *'Likely cause'* ]]
+}
+
+@test "_doctor_check_bwrap_fallback: uid-map denial gets the userns hint" {
+	_stub_bwrap "$_uid_map_denied"
+	run _doctor_check_bwrap_fallback ubuntu
+	[[ $output == *'[WARN]'* ]]
+	[[ $output == *'Likely cause: unprivileged user namespaces'* ]]
+}
+
+@test "run_doctor: passes the package type to _doctor_check_bwrap_fallback" {
+	# Structural pin, as for _doctor_check_pkg_version: the tests above
+	# pass the type directly. Without it the deb INFO branch is
+	# unreachable from a real --doctor run (the helper defaults to '').
+	run declare -f run_doctor
+	[[ $output == *'_doctor_check_bwrap_fallback "$_distro_id" "$package_type"'* ]]
 }
 
 # =============================================================================
