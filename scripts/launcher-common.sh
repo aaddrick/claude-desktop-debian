@@ -1758,6 +1758,8 @@ setup_tray_icon_env() {
 		'using TrayIconLinux-Dark.png (CLAUDE_TRAY_USE_DARK_ICON=1)'
 }
 
+# Arguments: $1 = package type ("appimage", "deb", ...), passed to the
+# Cowork bwrap setup; optional.
 setup_electron_env() {
 	# Persistent per-user launcher env (GUI launches can't set env via
 	# the .desktop Exec line) — load before anything reads these vars.
@@ -1780,7 +1782,7 @@ setup_electron_env() {
 	fi
 
 	setup_tray_icon_env
-	setup_cowork_bwrap_env
+	setup_cowork_bwrap_env "${1:-}"
 	setup_cowork_qemu_path
 }
 
@@ -1815,6 +1817,43 @@ setup_cowork_qemu_path() {
 	log_message "Cowork qemu shim: $qemu_bin -> $qemu_kvm (via PATH)"
 }
 
+# Whether the bwrap fallback can create its sandbox from the AppImage
+# (#542). The AppImage gets no AppArmor profile (its /tmp/.mount_* path
+# changes every run), so where user namespaces are restricted the
+# daemon's bwrap fails every spawn with "setting up uid map: Permission
+# denied". Run bwrap itself rather than read the sysctls:
+# _userns_sandbox_block_reason reports Ubuntu 26.04 as blocked from
+# apparmor_restrict_unprivileged_userns=1 alone, yet its
+# bwrap-userns-restrict profile lets bwrap through there. Uses the same
+# probe as the daemon's detectBackend and the doctor. deb/rpm/nix don't
+# call this: the deb's daemon inherits the scoped claude-desktop-unofficial
+# profile, which a probe from this shell can't see. The bwrap binary is
+# overridable via _CLAUDE_BWRAP for tests.
+#
+# Returns 0 when bwrap works; otherwise logs why and returns 1.
+_cowork_bwrap_usable_for_appimage() {
+	local bwrap_bin="${_CLAUDE_BWRAP:-bwrap}" err
+	local fallback='dropping COWORK_VM_BACKEND for this launch, so Cowork'
+	fallback+=' uses the official KVM path.'
+	if ! command -v "$bwrap_bin" &> /dev/null; then
+		log_message \
+			'Cowork backend: bwrap requested but bwrap is not installed —' \
+			"$fallback"
+		return 1
+	fi
+	if ! err=$("$bwrap_bin" --ro-bind / / true 2>&1 > /dev/null); then
+		err=${err%%$'\n'*}
+		log_message \
+			"Cowork backend: bwrap can't create its sandbox here" \
+			"(${err:-no error output}) — $fallback On Ubuntu 24.04 the" \
+			'AppImage needs the system-wide AppArmor profile in' \
+			'docs/troubleshooting.md "Cowork on Ubuntu 24.04+: bwrap' \
+			'fallback probe fails", or use the .deb, which needs none.'
+		return 1
+	fi
+	return 0
+}
+
 # Opt-in Cowork bubblewrap backend (COWORK_VM_BACKEND=bwrap) for hosts
 # without KVM/vhost-vsock (ChromeOS Crostini, #772). The asar patch
 # (patch_cowork_bwrap) swaps the native Cowork helper for the Node
@@ -1823,8 +1862,19 @@ setup_cowork_qemu_path() {
 # daemon itself. Resolve a system node here and hand its path to the
 # patched spawn via COWORK_NODE_PATH. Only touches the environment when
 # the user actually opts in; unflagged launches are untouched.
+#
+# The AppImage also gets a bwrap probe first (see
+# _cowork_bwrap_usable_for_appimage); deb/rpm/nix skip it.
+#
+# Arguments: $1 = package type ("appimage" enables the probe)
 setup_cowork_bwrap_env() {
 	[[ ${COWORK_VM_BACKEND:-} == 'bwrap' ]] || return 0
+
+	if [[ ${1:-} == 'appimage' ]] && ! _cowork_bwrap_usable_for_appimage
+	then
+		unset COWORK_VM_BACKEND
+		return 0
+	fi
 
 	# Respect an explicit override; otherwise probe PATH for node then
 	# nodejs (Debian/Ubuntu ship the interpreter as `nodejs`).

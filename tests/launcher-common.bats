@@ -72,6 +72,10 @@ setup() {
 	# the probe to fail or be missing swap it out.
 	export _CLAUDE_UNSHARE="$TEST_TMP/bin/unshare"
 	_stub_unshare 0
+	# Same for the AppImage's Cowork bwrap probe (#542): a bwrap that
+	# works, unless a test swaps it out.
+	export _CLAUDE_BWRAP="$TEST_TMP/bin/bwrap"
+	_stub_bwrap 0
 
 	# Copy to temp dir so we can substitute the build-time placeholder
 	# and co-locate doctor.sh (sourced via BASH_SOURCE dirname).
@@ -111,6 +115,19 @@ _stub_unshare() {
 		exit $1
 	EOF
 	chmod +x "$TEST_TMP/bin/unshare"
+}
+
+# Write a bwrap stub at $TEST_TMP/bin/bwrap that exits $1, printing
+# Ubuntu 24.04's userns denial when it fails, and records its args.
+_stub_bwrap() {
+	mkdir -p "$TEST_TMP/bin"
+	cat > "$TEST_TMP/bin/bwrap" <<-EOF
+		#!/bin/sh
+		echo "\$*" >> "$TEST_TMP/bwrap.args"
+		[ $1 -eq 0 ] || echo 'bwrap: setting up uid map: Permission denied' >&2
+		exit $1
+	EOF
+	chmod +x "$TEST_TMP/bin/bwrap"
 }
 
 teardown() {
@@ -3503,6 +3520,77 @@ _stub_featureless_node() {
 	setup_cowork_bwrap_env
 	grep -q 'lacks fs.statfsSync' "$log_file"
 	grep -q 'refuse to start' "$log_file"
+}
+
+# The AppImage probes bwrap before setting up the daemon (#542): no
+# AppArmor profile can cover its mount path, so on a userns-restricted
+# host the flag is dropped instead of every spawn failing.
+
+@test "setup_cowork_bwrap_env: appimage, bwrap fails — drops the flag and logs why" {
+	_stub_bwrap 1
+	_stub_featureless_node "$TEST_TMP/oldnode"
+	export COWORK_VM_BACKEND=bwrap
+	export COWORK_NODE_PATH="$TEST_TMP/oldnode"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env appimage
+	[[ -z ${COWORK_VM_BACKEND+set} ]]
+	grep -qF "can't create its sandbox" "$log_file"
+	grep -qF 'setting up uid map: Permission denied' "$log_file"
+	grep -qF 'dropping COWORK_VM_BACKEND' "$log_file"
+	# Returned before the node checks.
+	run grep -q 'statfsSync' "$log_file"
+	[[ $status -ne 0 ]]
+	# Same probe as the daemon and the doctor.
+	[[ $(<"$TEST_TMP/bwrap.args") == '--ro-bind / / true' ]]
+}
+
+@test "setup_cowork_bwrap_env: appimage, bwrap not installed — drops the flag" {
+	export _CLAUDE_BWRAP="$TEST_TMP/no-bwrap"
+	export COWORK_VM_BACKEND=bwrap
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env appimage
+	[[ -z ${COWORK_VM_BACKEND+set} ]]
+	grep -qF 'bwrap is not installed' "$log_file"
+}
+
+@test "setup_cowork_bwrap_env: appimage, bwrap works — keeps the flag" {
+	_stub_bwrap 0
+	_stub_featureless_node "$TEST_TMP/oldnode"
+	export COWORK_VM_BACKEND=bwrap
+	export COWORK_NODE_PATH="$TEST_TMP/oldnode"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env appimage
+	[[ $COWORK_VM_BACKEND == 'bwrap' ]]
+	run grep -q 'dropping COWORK_VM_BACKEND' "$log_file"
+	[[ $status -ne 0 ]]
+	# Carried on to the node checks.
+	grep -q 'lacks fs.statfsSync' "$log_file"
+}
+
+@test "setup_cowork_bwrap_env: deb never probes bwrap" {
+	# The deb's daemon inherits the scoped AppArmor profile, which a
+	# probe from the launcher's shell can't see.
+	_stub_bwrap 1
+	_stub_featureless_node "$TEST_TMP/oldnode"
+	export COWORK_VM_BACKEND=bwrap
+	export COWORK_NODE_PATH="$TEST_TMP/oldnode"
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_cowork_bwrap_env deb
+	[[ $COWORK_VM_BACKEND == 'bwrap' ]]
+	[[ ! -e $TEST_TMP/bwrap.args ]]
+}
+
+@test "setup_electron_env: passes the package type to the bwrap setup" {
+	_stub_bwrap 1
+	export COWORK_VM_BACKEND=bwrap
+	log_file="$TEST_TMP/launcher.log"
+	: > "$log_file"
+	setup_electron_env appimage
+	[[ -z ${COWORK_VM_BACKEND+set} ]]
 }
 
 # =============================================================================
