@@ -259,7 +259,7 @@ setup_asar() {
 
 	if [[ ! -f $asar_bin_path ]]; then
 		echo "Installing @electron/asar locally into $work_dir..."
-		if ! npm install --no-save @electron/asar; then
+		if ! npm install --no-save @electron/asar@4.3.1; then
 			echo 'Failed to install @electron/asar locally.' >&2
 			cd "$project_root" || exit 1
 			exit 1
