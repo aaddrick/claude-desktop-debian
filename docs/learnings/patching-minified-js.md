@@ -329,6 +329,17 @@ says what "fixed upstream" means for that patch:
 - **`never`** — our own feature (the bwrap backend). A no-op is
   breakage; fix the anchor.
 
+To read the verdict without a build, run `tools/patch-necessity-audit.sh`.
+Its `patch_*` rows run every entry in `active_patches` on a throwaway
+copy of the bundle and map the result through the same `patch_retirement`
+kinds, so a new patch gets a row the day it is wired in. Hand-copied
+anchors in the audit drift: by 4.4212.0 its quick-window row read a
+sibling pop-up window and reported `check`. A `bytes` no-op reads
+`not-needed` only when upstream's fix is visibly in the bytes where a
+no-op is ambiguous (org-plugins' `sed` can miss silently; the tray flag
+splices in even after upstream teaches its detector about Cinnamon);
+otherwise it reads `check`.
+
 The harness's second pass (`tests/test-patch-stage.sh`) runs with
 `PATCH_STAGE_RERUN=1`, which inverts the check: over an already-patched
 bundle every patch must change *nothing*, so a guard that misses its

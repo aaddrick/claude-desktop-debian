@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Changed
+
+- `tools/patch-necessity-audit.sh` now covers every active patch. It used to re-derive anchors by hand for two of the six, and its quick-window row had drifted to a sibling pop-up window and read `check`; it now runs each entry in `active_patches` on a throwaway copy of the bundle and maps the result through its `patch_retirement` kind. A `not-needed` verdict for org-plugins or the tray override also requires upstream's fix to be visible in the bytes ([#964](https://github.com/aaddrick/claude-desktop-debian/pull/964))
+
 ### Fixed
 
 - `tests/test-patch-stage.sh` runs again. It died on `patch_cowork_firmware_probe: command not found` because its own list of patch scripts never gained the one #947 wired into the build; it now sources every `scripts/patches/*.sh`, and a test fails if the harness or `build.sh` misses one. Its parse check now covers only the files a patch changed, since upstream 4.4212.0 ships `await using`, which Node 22 cannot parse; a patched file the host Node cannot read fails as unverifiable instead of passing ([#963](https://github.com/aaddrick/claude-desktop-debian/pull/963))

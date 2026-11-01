@@ -19,6 +19,11 @@
 #   needed?     the construct exists and the fix is absent — candidate
 #               survivor, confirm behaviorally before keeping
 #   check       ambiguous — needs a human read
+#   diverges    our own feature, not an upstream gap (still applies)
+#
+# The rows named after a patch function (patch_*) come from running
+# every entry in active_patches on a throwaway copy of the bundle; see
+# probe_active_patches. Needs node on PATH, like the build.
 #===============================================================================
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -233,28 +238,6 @@ probe_menu_bar_default() {
 	fi
 }
 
-probe_quick_window() {
-	local quick_var hide_anchor blurred
-	quick_var=$(extract \
-		'[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))')
-	if [[ -z $quick_var ]]; then
-		report 'quick-window.sh' 'check' \
-			'pop-up-menu anchor absent — quick entry restructured?'
-		return
-	fi
-	local quick_var_re="${quick_var//\$/\\$}"
-	hide_anchor=$(count "\\|\\|\\s*${quick_var_re}\\.hide\\(\\)")
-	blurred=$(count "${quick_var_re}\\.blur\\(\\)")
-	if (( hide_anchor > 0 && blurred == 0 )); then
-		report 'quick-window.sh' 'needed?' \
-			"var $quick_var: ||hide() anchor present, no blur()" \
-			'— KDE focus bug likely persists; verify on Plasma'
-	else
-		report 'quick-window.sh' 'check' \
-			"var $quick_var: hide anchors $hide_anchor, blur $blurred"
-	fi
-}
-
 probe_claude_code_platform() {
 	if has 'process\.platform==="linux".*linux-arm64.*linux-x64'; then
 		report 'claude-code.sh' 'not-needed' \
@@ -377,6 +360,129 @@ probe_cowork() {
 }
 
 #-------------------------------------------------------------------------------
+# Active patches: dry-run every entry in active_patches
+#-------------------------------------------------------------------------------
+
+# Rows above re-derive a few patches' anchors by hand, and those copies
+# drift: by 4.4212.0 only two of the six active patches had one. This
+# runs the patch functions themselves, each on a throwaway copy of the
+# bundle, so every patch wired into the build gets a row automatically
+# and the verdict comes from the patch's own anchors.
+#
+#   changed bytes      still needed (or, for `never`, still applies)
+#   ran, no change     bytes: upstream fixed it; else: anchor reshaped
+#   failed             anchor moved — read the patch output
+
+# shellcheck source=scripts/patches/app-asar.sh
+source "$project_root/scripts/patches/app-asar.sh"
+for _audit_patch_sh in "$project_root"/scripts/patches/*.sh; do
+	# shellcheck source=/dev/null
+	source "$_audit_patch_sh"
+done
+unset _audit_patch_sh
+
+# Evidence a dry-run verdict cannot supply on its own. A no-op is only
+# `not-needed` if upstream's fix is really in the bytes (org-plugins'
+# sed can miss silently, which also reads as a no-op), and a change is
+# only `needed?` if that fix is absent (the tray flag still splices in
+# after upstream fixes the bug another way). $1 = patch, $2 = the
+# verdict so far. Prints text for the row; returns 1 when the evidence
+# contradicts the verdict, which turns it into `check`.
+_dry_run_hint() {
+	local patch_fn="$1" verdict="$2" q='[`"'"'"']' fixed
+	case "$patch_fn" in
+		patch_org_plugins_path)
+			# A linux case in the switch that returns the darwin
+			# org-plugins path, on either side of it.
+			local linux="case\\s*${q}linux${q}\\s*:"
+			local mac="Claude/org-plugins${q}"
+			fixed=$(( $(count "${linux}(?=[^}]{0,400}${mac})") \
+				+ $(count "${mac}[^}]{0,400}?${linux}") ))
+			echo "linux case in the org-plugins switch: $fixed"
+			;;
+		patch_tray_icon_env_override)
+			# The fix upstream would ship is a DE detector that knows
+			# Cinnamon (#604). A whole quoted literal ("cinnamon",
+			# `X-Cinnamon`): a bare substring also hits the settings-app
+			# list in 4.4212.0 ("cinnamon-settings").
+			fixed=$(count "(?i)${q}(x-)?cinnamon${q}")
+			echo "cinnamon refs: $fixed"
+			;;
+		*) return 0 ;;
+	esac
+	case "$verdict" in
+		not-needed) (( fixed > 0 )) ;;
+		needed\?) (( fixed == 0 )) ;;
+	esac
+}
+
+# Run one patch on a copy of $build_dir and report its verdict.
+dry_run_patch() {
+	local patch_fn="$1"
+	local retire="${patch_retirement[$patch_fn]:-}"
+	local kind="${retire%%:*}"
+	local sandbox="$work_dir/dry-run/$patch_fn"
+
+	if ! declare -F "$patch_fn" > /dev/null; then
+		report "$patch_fn" 'check' \
+			'in active_patches but never defined'
+		return
+	fi
+
+	local stage="$sandbox/app.asar.contents/.vite"
+	rm -rf "$sandbox"
+	if ! mkdir -p "$stage" || ! cp -a "$build_dir" "$stage/"; then
+		report "$patch_fn" 'check' \
+			'could not stage a bundle copy'
+		return
+	fi
+
+	local before after rc=0 log="$sandbox.log"
+	before=$(cd "$sandbox" && _bundle_digest) || before=''
+	(cd "$sandbox" && "$patch_fn") > "$log" 2>&1 || rc=$?
+	after=$(cd "$sandbox" && _bundle_digest) || after=''
+	rm -rf "$sandbox"
+
+	local verdict evidence
+	if (( rc != 0 )); then
+		verdict='check'
+		evidence="patch failed: $(grep -m1 -E 'WARNING|ERROR|Anchor' \
+			"$log" | sed 's/^[[:space:]]*//')"
+	elif [[ -z $before || -z $after ]]; then
+		verdict='check'
+		evidence='could not digest the bundle copy'
+	elif [[ $before != "$after" ]]; then
+		case "$kind" in
+			never) verdict='diverges' ;;
+			*) verdict='needed?' ;;
+		esac
+		evidence='patch changes the bundle'
+	else
+		case "$kind" in
+			bytes) verdict='not-needed' ;;
+			*) verdict='check' ;;
+		esac
+		evidence='patch ran and changed nothing'
+	fi
+	rm -f "$log"
+
+	local hint
+	if (( rc == 0 )) && [[ -n $before && -n $after ]]; then
+		hint=$(_dry_run_hint "$patch_fn" "$verdict") || verdict='check'
+	fi
+
+	report "$patch_fn" "$verdict" "$evidence${hint:+ ($hint)}" \
+		"— retires by: ${retire:-no patch_retirement entry}"
+}
+
+probe_active_patches() {
+	local patch_fn
+	for patch_fn in "${active_patches[@]}"; do
+		dry_run_patch "$patch_fn"
+	done
+}
+
+#-------------------------------------------------------------------------------
 # Run
 #-------------------------------------------------------------------------------
 
@@ -403,7 +509,6 @@ run_probes() {
 	probe_tray
 	probe_tray_template_icon
 	probe_menu_bar_default
-	probe_quick_window
 	probe_claude_code_platform
 	probe_org_plugins
 	probe_asar_guards
@@ -414,6 +519,7 @@ run_probes() {
 	probe_native_binding
 	probe_node_pty
 	probe_cowork
+	probe_active_patches
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
