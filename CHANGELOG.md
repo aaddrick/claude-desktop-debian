@@ -10,7 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Changed
 
-- `tools/patch-necessity-audit.sh` now covers every active patch. It used to re-derive anchors by hand for two of the six, and its quick-window row had drifted to a sibling pop-up window and read `check`; it now runs each entry in `active_patches` on a throwaway copy of the bundle and maps the result through its `patch_retirement` kind. A `not-needed` verdict for org-plugins or the tray override also requires upstream's fix to be visible in the bytes
+- `tools/patch-necessity-audit.sh` now covers every active patch. It used to re-derive anchors by hand for two of the six, and its quick-window row had drifted to a sibling pop-up window and read `check`; it now runs each entry in `active_patches` on a throwaway copy of the bundle and maps the result through its `patch_retirement` kind. A `not-needed` verdict for org-plugins or the tray override also requires upstream's fix to be visible in the bytes ([#964](https://github.com/aaddrick/claude-desktop-debian/pull/964))
 
 ### Fixed
 

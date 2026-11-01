@@ -422,17 +422,18 @@ dry_run_patch() {
 	local retire="${patch_retirement[$patch_fn]:-}"
 	local kind="${retire%%:*}"
 	local sandbox="$work_dir/dry-run/$patch_fn"
-	local name="$patch_fn"
 
 	if ! declare -F "$patch_fn" > /dev/null; then
-		report "$name" 'check' 'in active_patches but never defined'
+		report "$patch_fn" 'check' \
+			'in active_patches but never defined'
 		return
 	fi
 
+	local stage="$sandbox/app.asar.contents/.vite"
 	rm -rf "$sandbox"
-	if ! mkdir -p "$sandbox/app.asar.contents/.vite" \
-		|| ! cp -a "$build_dir" "$sandbox/app.asar.contents/.vite/"; then
-		report "$name" 'check' 'could not stage a bundle copy'
+	if ! mkdir -p "$stage" || ! cp -a "$build_dir" "$stage/"; then
+		report "$patch_fn" 'check' \
+			'could not stage a bundle copy'
 		return
 	fi
 
@@ -470,7 +471,7 @@ dry_run_patch() {
 		hint=$(_dry_run_hint "$patch_fn" "$verdict") || verdict='check'
 	fi
 
-	report "$name" "$verdict" "$evidence${hint:+ ($hint)}" \
+	report "$patch_fn" "$verdict" "$evidence${hint:+ ($hint)}" \
 		"— retires by: ${retire:-no patch_retirement entry}"
 }
 
