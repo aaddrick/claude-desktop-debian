@@ -13,7 +13,11 @@
 # Asserts, in order:
 #   1. the patch stage exits 0 — which includes the orchestrator's
 #      retirement tripwire: every active patch changed the pristine bundle
-#   2. every JS file in the repacked asar parses (node --check)
+#   2. every JS file a patch changed parses (node --check). Untouched
+#      files are upstream's bytes; they may need a newer Node than the
+#      host's, so they are not ours to parse. A changed file this Node
+#      cannot read fails as unverifiable: since 4.4212.0 the patched
+#      chunk uses `await using`, so run on Node 24+ (Electron 44's)
 #   3. each injected marker survives the repack
 #   4. a second pass is a no-op per patch and leaves the asar
 #      byte-identical
@@ -83,6 +87,56 @@ _stage_official() {
 		"$dest/resources/" || return 1
 }
 
+# Source every patch script, the way build.sh does. A glob, not a list:
+# a hardcoded list here missed cowork-firmware-probe.sh when #947 wired
+# it into the build, and every run since died on "command not found"
+# before reaching a single real check.
+_source_patch_stage() {
+	local patch_sh
+	for patch_sh in "$project_root"/scripts/patches/*.sh; do
+		# shellcheck source=/dev/null
+		source "$patch_sh"
+	done
+}
+
+# Parse every JS file under $2 (patched tree) that differs from $1
+# (pristine tree), and only those.
+#
+# Unchanged files are upstream's own bytes and parse under the Electron
+# that ships them, whatever this host's Node makes of them. Since
+# 4.4212.0 upstream ships `await using` (31 of 519 files), which Node 22
+# cannot parse and Electron 44's bundled Node 24 can, so checking every
+# file failed on clean upstream bytes. A changed file whose pristine
+# copy also fails here is unverifiable on this Node — that fails too,
+# so an old host can never pass a patch it could not read.
+_parse_check_changed() {
+	local pristine="$1" patched="$2"
+	local f rel changed=0 broken=0 unverifiable=0
+	while IFS= read -r f; do
+		rel=${f#"$patched"/}
+		cmp -s "$f" "$pristine/$rel" && continue
+		changed=$((changed + 1))
+		node --check "$f" > /dev/null 2>&1 && continue
+		if [[ -f $pristine/$rel ]] \
+			&& ! node --check "$pristine/$rel" > /dev/null 2>&1; then
+			unverifiable=$((unverifiable + 1))
+			echo "  unverifiable on Node $(node --version): $rel"
+		else
+			broken=$((broken + 1))
+			echo "  SyntaxError in $rel"
+		fi
+	done < <(find "$patched/.vite/build" -name '*.js' -type f)
+	echo "  parsed $changed patched JS file(s)"
+	_check 'at least one patched JS file' test "$changed" -gt 0
+	_check 'patched JS files parse' test "$broken" -eq 0
+	_check 'host Node can parse what it checks' \
+		test "$unverifiable" -eq 0
+	if (( unverifiable > 0 )); then
+		echo '  Rerun with a Node at least as new as the one bundled' \
+			'in the shipped Electron (on PATH).'
+	fi
+}
+
 main() {
 	local src="${1:-}"
 	local tmp
@@ -113,14 +167,11 @@ main() {
 			"$app_staging_dir/resources/" || exit 1
 	fi
 
-	local patch_sh
-	for patch_sh in quick-window org-plugins virtiofsd-probe \
-		cowork-bwrap tray-icon-selection; do
-		# shellcheck source=/dev/null
-		source "$project_root/scripts/patches/$patch_sh.sh"
-	done
-	# shellcheck source=scripts/patches/app-asar.sh
-	source "$project_root/scripts/patches/app-asar.sh"
+	_source_patch_stage
+
+	# Keep the pristine tree: the parse check compares against it.
+	"$asar_exec" extract "$app_staging_dir/resources/app.asar" \
+		"$tmp/pristine" > /dev/null || exit 1
 
 	# --- pass 1 ----------------------------------------------------------
 	echo '=== pass 1: patch stage ==='
@@ -131,20 +182,11 @@ main() {
 	sed 's/^/  | /' "$tmp/pass1.log"
 	_check 'patch stage exits 0' test "$rc1" -eq 0
 
-	# --- every emitted file must parse ------------------------------------
+	# --- every file a patch changed must parse ---------------------------
 	echo '=== parse check ==='
 	"$asar_exec" extract "$app_staging_dir/resources/app.asar" \
 		"$tmp/verify" > /dev/null || exit 1
-	local broken=0 total=0 f
-	while IFS= read -r f; do
-		total=$((total + 1))
-		if ! node --check "$f" > /dev/null 2>&1; then
-			broken=$((broken + 1))
-			echo "  SyntaxError in ${f#"$tmp"/verify/}"
-		fi
-	done < <(find "$tmp/verify/.vite/build" -name '*.js' -type f)
-	echo "  parsed $total JS files"
-	_check "all $total JS files parse" test "$broken" -eq 0
+	_parse_check_changed "$tmp/pristine" "$tmp/verify"
 
 	# --- injected markers must survive the repack -------------------------
 	echo '=== marker check ==='
@@ -179,4 +221,8 @@ main() {
 	echo 'All patch-stage checks passed'
 }
 
-main "$@"
+# Guarded so tests/app-asar.bats can source this file and check
+# _source_patch_stage without downloading a .deb.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	main "$@"
+fi

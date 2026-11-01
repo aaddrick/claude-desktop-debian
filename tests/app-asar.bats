@@ -409,3 +409,90 @@ _patch_fails() {
 		return 1
 	done
 }
+
+# The patch-stage harness and build.sh each source the patch scripts
+# themselves. #947 added cowork-firmware-probe.sh to build.sh only, and
+# the harness's hardcoded list then died on "command not found" on every
+# run — the tool meant to vet each upstream bump was silently broken.
+@test "patch stage: the harness defines every active patch" {
+	project_root="$BATS_TEST_DIRNAME/.."
+	# shellcheck source=tests/test-patch-stage.sh
+	source "$BATS_TEST_DIRNAME/test-patch-stage.sh"
+	_source_patch_stage
+	local patch_fn missing=()
+	for patch_fn in "${active_patches[@]}"; do
+		declare -F "$patch_fn" > /dev/null || missing+=("$patch_fn")
+	done
+	(( ${#active_patches[@]} > 0 ))
+	(( ${#missing[@]} == 0 )) || {
+		printf 'harness never defines: %s\n' "${missing[@]}" >&2
+		return 1
+	}
+}
+
+@test "patch stage: build.sh sources every patch script" {
+	local patch_sh name missing=()
+	for patch_sh in "$BATS_TEST_DIRNAME"/../scripts/patches/*.sh; do
+		name=${patch_sh##*/}
+		grep -qE "^source \"\\\$script_dir/scripts/patches/${name//./\\.}\"$" \
+			"$BATS_TEST_DIRNAME/../build.sh" || missing+=("$name")
+	done
+	(( ${#missing[@]} == 0 )) || {
+		printf 'build.sh never sources: %s\n' "${missing[@]}" >&2
+		return 1
+	}
+}
+
+# _parse_check_changed vets only the bytes a patch changed. Upstream's
+# untouched files can use syntax newer than the host Node (4.4212.0
+# ships `await using`); those are not ours to parse. The stub `node`
+# rejects any file containing BROKEN, so these never depend on the
+# host's Node version.
+_parse_fixture() {
+	local root="$BATS_TEST_TMPDIR/parse"
+	rm -rf "$root"
+	mkdir -p "$root/pristine/.vite/build" "$root/patched/.vite/build"
+	cd "$root" || return 1
+	_fail_count=0
+	project_root="$BATS_TEST_DIRNAME/.."
+	# shellcheck source=tests/test-patch-stage.sh
+	source "$BATS_TEST_DIRNAME/test-patch-stage.sh"
+	node() { ! grep -q BROKEN "$2"; }
+}
+
+# $1 = file name, $2 = pristine body, $3 = patched body
+_parse_file() {
+	printf '%s\n' "$2" > "pristine/.vite/build/$1"
+	printf '%s\n' "$3" > "patched/.vite/build/$1"
+}
+
+@test "parse check: an untouched file the host cannot parse is ignored" {
+	_parse_fixture
+	_parse_file upstream.js 'BROKEN await using' 'BROKEN await using'
+	_parse_file patched.js 'a()' 'a();b()'
+	_parse_check_changed pristine patched > /dev/null
+	(( _fail_count == 0 ))
+}
+
+@test "parse check: a patch that breaks a file fails" {
+	_parse_fixture
+	_parse_file patched.js 'a()' 'a();BROKEN'
+	_parse_check_changed pristine patched > "$BATS_TEST_TMPDIR/out"
+	(( _fail_count == 1 ))
+	grep -q 'SyntaxError in .vite/build/patched.js' "$BATS_TEST_TMPDIR/out"
+}
+
+@test "parse check: a patched file the host cannot read fails, not passes" {
+	_parse_fixture
+	_parse_file patched.js 'BROKEN await using' 'BROKEN await using;b()'
+	_parse_check_changed pristine patched > "$BATS_TEST_TMPDIR/out"
+	(( _fail_count == 1 ))
+	grep -q 'unverifiable on Node' "$BATS_TEST_TMPDIR/out"
+}
+
+@test "parse check: no patched file at all fails" {
+	_parse_fixture
+	_parse_file upstream.js 'a()' 'a()'
+	_parse_check_changed pristine patched > /dev/null
+	(( _fail_count == 1 ))
+}
