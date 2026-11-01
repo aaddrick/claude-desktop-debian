@@ -284,20 +284,6 @@ _bundle_many_chunks() {
 	[[ $(_row) == *'not-needed'* ]]
 }
 
-@test "verdict: quick-window resolves its var from any chunk" {
-	# The probe extracts a minified var name and then counts anchors
-	# built from it. Both halves have to see the whole bundle, and they
-	# are not guaranteed to be in the same chunk.
-	_chunk index.js 'const noise=1;'
-	_chunk index.chunk-aaa.js 'q.setAlwaysOnTop(!0,"pop-up-menu")'
-	_chunk index.chunk-bbb.js 'if(e||q.hide()){}'
-	_resolve_bundle > /dev/null || return 1
-
-	probe_quick_window
-	[[ $(_row) == *'var q'* ]] || return 1
-	[[ $(_row) == *'needed?'* ]]
-}
-
 @test "verdict: the preload probe stays scoped to mainView.js" {
 	# wco-shim is about a preload, not the main process. Widening it to
 	# the bundle would count main-process hits as preload evidence.
@@ -350,4 +336,211 @@ _bundle_many_chunks() {
 	# parsed inside _stage_tree now.
 	grep -q 'main "\$@"' \
 		"$BATS_TEST_DIRNAME/../tools/patch-necessity-audit.sh"
+}
+
+# ---------------------------------------------------------------------
+# probe_active_patches: dry-run every active patch on a bundle copy
+# ---------------------------------------------------------------------
+#
+# The hand-written rows drift (by 4.4212.0 the quick-window one read a
+# sibling pop-up window and reported `check`), and only two of six
+# active patches had one. The dry-run rows come from the patch
+# functions themselves, so these pin the verdict mapping and the
+# sandbox, using stub patches that edit relative to CWD the way the
+# real ones do.
+
+_dry_fixture() {
+	work_dir="$BATS_TEST_TMPDIR/work"
+	mkdir -p "$work_dir"
+	_chunk index.js "${*:-const a=1;}"
+	_resolve_bundle > /dev/null || return 1
+}
+
+_stub_change() { echo '//x' >> app.asar.contents/.vite/build/index.js; }
+_stub_noop() { :; }
+_stub_fail() { echo '  WARNING: anchor gone from this bundle'; return 1; }
+_stub_wipe() { rm -rf app.asar.contents/.vite/build; }
+
+# The patch under test runs whichever stub _dry_as picked.
+patch_demo() { "$_dry_stub"; }
+
+# $1 = patch name, $2 = retirement row, $3 = stub for it to run
+_dry_as() {
+	_dry_stub="$3"
+	patch_retirement[$1]="$2"
+	dry_run_patch "$1"
+}
+
+@test "dry-run: a bytes patch that changes the bundle is needed?" {
+	_dry_fixture
+	_dry_as patch_demo 'bytes: demo' _stub_change
+	[[ $(_row) == patch_demo*needed?*'retires by: bytes: demo'* ]]
+}
+
+@test "dry-run: a bytes patch that changes nothing is not-needed" {
+	_dry_fixture
+	_dry_as patch_demo 'bytes: demo' _stub_noop
+	[[ $(_row) == patch_demo*not-needed*'changed nothing'* ]]
+}
+
+@test "dry-run: a behavior no-op is an anchor reshape, not a fix" {
+	_dry_fixture
+	_dry_as patch_demo 'behavior: demo' _stub_noop
+	[[ $(_row) == patch_demo*check*'changed nothing'* ]]
+}
+
+@test "dry-run: our own feature reads diverges, and a no-op is check" {
+	_dry_fixture
+	_dry_as patch_demo 'never: demo' _stub_change
+	[[ $(_row) == patch_demo*diverges* ]]
+	rows=()
+	_dry_as patch_demo 'never: demo' _stub_noop
+	[[ $(_row) == patch_demo*check* ]]
+}
+
+@test "dry-run: a failing patch is check and quotes its warning" {
+	_dry_fixture
+	_dry_as patch_demo 'bytes: demo' _stub_fail
+	[[ $(_row) == patch_demo*check*'WARNING: anchor gone'* ]]
+}
+
+@test "dry-run: a bundle the patch destroys is check, not needed?" {
+	_dry_fixture
+	_dry_as patch_demo 'bytes: demo' _stub_wipe
+	[[ $(_row) == patch_demo*check*'could not digest'* ]]
+}
+
+@test "dry-run: an undefined active patch is check" {
+	_dry_fixture
+	dry_run_patch patch_never_defined
+	[[ $(_row) == patch_never_defined*check*'never defined'* ]]
+}
+
+@test "dry-run: the real bundle and CWD are left untouched" {
+	_dry_fixture
+	local before here="$PWD"
+	before=$(sha256sum "$build_dir/index.js")
+	_dry_as patch_demo 'bytes: demo' _stub_change
+	[[ $(sha256sum "$build_dir/index.js") == "$before" ]]
+	[[ $PWD == "$here" ]]
+	[[ -z $(ls -A "$work_dir/dry-run") ]]
+}
+
+@test "dry-run: every active patch gets a row" {
+	# The real list, run on a bundle none of them can patch: each must
+	# still produce its own row (as check), so a patch wired into the
+	# build can never be missing from the audit.
+	_dry_fixture
+	probe_active_patches
+	(( ${#rows[@]} == ${#active_patches[@]} ))
+	local patch_fn
+	for patch_fn in "${active_patches[@]}"; do
+		[[ $(_row) == *"$patch_fn "*check* ]] || {
+			echo "no check row for $patch_fn" >&2
+			return 1
+		}
+	done
+}
+
+@test "dry-run: a quoted Cinnamon literal turns tray needed? into check" {
+	_dry_fixture 'const d="X-Cinnamon";'
+	patch_tray_icon_env_override() { "$_dry_stub"; }
+	_dry_as patch_tray_icon_env_override 'bytes: demo' _stub_change
+	[[ $(_row) == *check*'cinnamon refs: 1'* ]]
+}
+
+@test "dry-run: cinnamon-settings alone does not trip the tray hint" {
+	# 4.4212.0 ships this in a settings-app list unrelated to the tray.
+	_dry_fixture 'const y=new Set(["nemo","cinnamon-settings"]);'
+	patch_tray_icon_env_override() { "$_dry_stub"; }
+	_dry_as patch_tray_icon_env_override 'bytes: demo' _stub_change
+	[[ $(_row) == *needed?*'cinnamon refs: 0'* ]]
+}
+
+# The real virtiofsd patch, on the 1.26832.0+ resolver shape.
+_virtiofsd_body() {
+	printf '%s' 'var kT=[`/usr/libexec/virtiofsd`,`/usr/bin/virtiofsd`];' \
+		'function u(){return 1}async function r(){return await FT(kT)||' \
+		"$1}"
+}
+
+@test "dry-run: the real virtiofsd patch reads needed? on the gated shape" {
+	_dry_fixture "$(_virtiofsd_body '(e?IT(TT,N.constants.X_OK):null)')"
+	dry_run_patch patch_virtiofsd_probe
+	[[ $(_row) == patch_virtiofsd_probe*needed?* ]]
+}
+
+@test "dry-run: the real virtiofsd patch reads not-needed once ungated" {
+	_dry_fixture "$(_virtiofsd_body 'IT(TT,N.constants.X_OK)')"
+	dry_run_patch patch_virtiofsd_probe
+	[[ $(_row) == patch_virtiofsd_probe*not-needed* ]]
+}
+
+@test "dry-run: the full probe run includes every active patch" {
+	# probe_active_patches pinned on its own is not enough: dropping it
+	# from run_probes would leave the matrix without these rows.
+	_dry_fixture
+	app_dir="$BATS_TEST_TMPDIR"
+	main_view_js="$build_dir/mainView.js"
+	run_probes
+	local patch_fn
+	for patch_fn in "${active_patches[@]}"; do
+		[[ $(_row) == *"$patch_fn "* ]] || {
+			echo "run_probes left out $patch_fn" >&2
+			return 1
+		}
+	done
+}
+
+# A bytes no-op argues for deleting the patch, so the patches whose
+# no-op is ambiguous need upstream's fix in the bytes before the row
+# may read not-needed.
+_org_switch() {
+	printf '%s' 'function v(){switch(process.platform){case"darwin":' \
+		'return"/Library/Application Support/Claude/org-plugins";' \
+		"$1" 'default:return null}}'
+}
+
+@test "dry-run: an org-plugins no-op without a linux case is check" {
+	# org-plugins' sed can miss silently, which also reads as a no-op.
+	_dry_fixture "$(_org_switch '')"
+	patch_org_plugins_path() { "$_dry_stub"; }
+	_dry_as patch_org_plugins_path 'bytes: demo' _stub_noop
+	[[ $(_row) == *check*'linux case in the org-plugins switch: 0'* ]]
+}
+
+@test "dry-run: an org-plugins no-op with upstream's linux case is fixed" {
+	_dry_fixture "$(_org_switch 'case"linux":return"/etc/x/org-plugins";')"
+	patch_org_plugins_path() { "$_dry_stub"; }
+	_dry_as patch_org_plugins_path 'bytes: demo' _stub_noop
+	[[ $(_row) == *not-needed*'switch: 1'* ]]
+}
+
+@test "dry-run: a linux case ahead of darwin counts too" {
+	_dry_fixture 'switch(process.platform){case"linux":return"/x";' \
+		'case"darwin":return"/L/Claude/org-plugins";}'
+	patch_org_plugins_path() { "$_dry_stub"; }
+	_dry_as patch_org_plugins_path 'bytes: demo' _stub_change
+	[[ $(_row) == *check*'switch: 1'* ]]
+}
+
+@test "dry-run: a linux case in another switch is not the fix" {
+	_dry_fixture "$(_org_switch '')"'switch(p){case"linux":return"/y"}'
+	patch_org_plugins_path() { "$_dry_stub"; }
+	_dry_as patch_org_plugins_path 'bytes: demo' _stub_change
+	[[ $(_row) == *needed?*'switch: 0'* ]]
+}
+
+@test "dry-run: a tray no-op without a Cinnamon literal is check" {
+	_dry_fixture
+	patch_tray_icon_env_override() { "$_dry_stub"; }
+	_dry_as patch_tray_icon_env_override 'bytes: demo' _stub_noop
+	[[ $(_row) == *check*'cinnamon refs: 0'* ]]
+}
+
+@test "dry-run: a tray no-op with a Cinnamon literal is fixed" {
+	_dry_fixture 'if(d===`cinnamon`)'
+	patch_tray_icon_env_override() { "$_dry_stub"; }
+	_dry_as patch_tray_icon_env_override 'bytes: demo' _stub_noop
+	[[ $(_row) == *not-needed*'cinnamon refs: 1'* ]]
 }
