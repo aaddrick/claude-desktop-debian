@@ -454,6 +454,9 @@ Two rules fall out, both now in `app-asar.sh` / the patch suite:
   separate warm chunk — resolved there by a stable `[warm]` log literal,
   exactly the "anchor on a developer string, then find the file that
   carries it" move. Don't assume the whole patch touches one file.
+  (C2 is gone now: its anchor left in 1.26832.0, and by 4.4212.0 the
+  client no longer downloads warm files at all, so it was deleted
+  instead of warning on every build.)
 
 **The single-chunk assumption died in 1.26832.0.** That release
 dissolved the core: `index.js` went from a 773-byte stub with one
