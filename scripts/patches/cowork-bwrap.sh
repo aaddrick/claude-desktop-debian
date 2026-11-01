@@ -146,7 +146,7 @@ const GATE =
 // (#820).
 const q = s => '[`"\']' + s + '[`"\']';
 
-let loadBearingFailed = false;
+let anchorFailed = false;
 
 // ---------------------------------------------------------------------
 // Patch A: yukonSilver evaluator — report "supported" when flagged.
@@ -172,7 +172,7 @@ if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
     if (evalAll.length > 1) {
         console.log('  A: FATAL — yukonSilver platform-dispatch anchor ' +
             'matched ' + evalAll.length + ' sites, expected exactly 1');
-        loadBearingFailed = true;
+        anchorFailed = true;
     } else if (m) {
         const replacement = 'function ' + m[1] + '(){if(' + GATE +
             ')return{status:"supported"};return process.platform,' +
@@ -188,7 +188,7 @@ if (new RegExp('return\\{status:"supported"\\};return process\\.platform,')
     } else {
         console.log('  A: FATAL — yukonSilver platform-dispatch anchor ' +
             '(function X(){return process.platform,Y()}) not found');
-        loadBearingFailed = true;
+        anchorFailed = true;
     }
 }
 
@@ -227,7 +227,7 @@ if (codeB.includes('/*cowork-bwrap-spawn*/')) {
     if (spawnAll.length > 1) {
         console.log('  B: FATAL — helper spawn anchor matched ' +
             spawnAll.length + ' sites, expected exactly 1');
-        loadBearingFailed = true;
+        anchorFailed = true;
     } else if (m) {
         const spawnCall = m[1], helperPath = m[2], sockFn = m[3];
         const flagged = '(' + GATE + ')';
@@ -249,7 +249,7 @@ if (codeB.includes('/*cowork-bwrap-spawn*/')) {
     } else {
         console.log('  B: FATAL — helper spawn anchor ' +
             '(X.spawn(P,[`-socket`,S()],{stdio:[...]}))  not found');
-        loadBearingFailed = true;
+        anchorFailed = true;
     }
 }
 
@@ -307,7 +307,7 @@ if (codeC1.includes('/*cowork-bwrap-dl*/')) {
 } else if (dlAll.length > 1) {
     console.log('  C1: FATAL — foreground download anchor matched ' +
         dlAll.length + ' sites; refusing to guess. Re-derive the anchor.');
-    loadBearingFailed = true;
+    anchorFailed = true;
 } else if (dlAll.length === 1) {
     // Braced on purpose: the resolver's body fence must not be able to
     // swallow this on a re-run (see _CB_C1_MARKER on the shell side).
@@ -317,10 +317,10 @@ if (codeC1.includes('/*cowork-bwrap-dl*/')) {
 } else {
     console.log('  C1: FATAL — foreground download anchor not found; ' +
         'flagged runs would download an unused VM image');
-    loadBearingFailed = true;
+    anchorFailed = true;
 }
 
-if (loadBearingFailed) {
+if (anchorFailed) {
     console.log('  One or more anchors (A/B/C1) missed — ' +
         'refusing to ship a half-patched bwrap fallback.');
     process.exit(1);

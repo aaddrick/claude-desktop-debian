@@ -10,12 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Changed
 
-- `patch_cowork_bwrap` fails the build when its C1 sub-patch (blocking the VM-image download on the opt-in bwrap path) would be skipped, as A and B already did. Two C1 paths only warned, so a build could ship with A and B applied and C1 missing, a gap the bundle-wide retirement tripwire cannot see
+- `patch_cowork_bwrap` fails the build when its C1 sub-patch (blocking the VM-image download on the opt-in bwrap path) would be skipped, as A and B already did. Two C1 paths only warned, so a build could ship with A and B applied and C1 missing, a gap the bundle-wide retirement tripwire cannot see ([#965](https://github.com/aaddrick/claude-desktop-debian/pull/965))
 - `tools/patch-necessity-audit.sh` now covers every active patch. It used to re-derive anchors by hand for two of the six, and its quick-window row had drifted to a sibling pop-up window and read `check`; it now runs each entry in `active_patches` on a throwaway copy of the bundle and maps the result through its `patch_retirement` kind. A `not-needed` verdict for org-plugins or the tray override also requires upstream's fix to be visible in the bytes ([#964](https://github.com/aaddrick/claude-desktop-debian/pull/964))
 
 ### Removed
 
-- `patch_cowork_bwrap`'s C2 sub-patch for the warm VM-image prefetch, and the warning it printed on every build. Its anchor left the bundle in 1.26832.0, and the 4.4212.0 client never downloads warm files, only promotes one already on disk from inside the download path C1 gates
+- `patch_cowork_bwrap`'s C2 sub-patch for the warm VM-image prefetch, and the warning it printed on every build. Its anchor left the bundle in 1.26832.0, and the 4.4212.0 client never downloads warm files, only promotes one already on disk from inside the download path C1 gates ([#965](https://github.com/aaddrick/claude-desktop-debian/pull/965))
 
 ### Fixed
 
