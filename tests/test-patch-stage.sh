@@ -128,11 +128,13 @@ _parse_check_changed() {
 	done < <(find "$patched/.vite/build" -name '*.js' -type f)
 	echo "  parsed $changed patched JS file(s)"
 	_check 'at least one patched JS file' test "$changed" -gt 0
-	_check "patched JS files parse" test "$broken" -eq 0
+	_check 'patched JS files parse' test "$broken" -eq 0
 	_check 'host Node can parse what it checks' \
 		test "$unverifiable" -eq 0
-	(( unverifiable == 0 )) || echo "  Rerun with a Node at least as" \
-		'new as the one bundled in the shipped Electron (on PATH).'
+	if (( unverifiable > 0 )); then
+		echo '  Rerun with a Node at least as new as the one bundled' \
+			'in the shipped Electron (on PATH).'
+	fi
 }
 
 main() {
