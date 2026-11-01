@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `tests/test-patch-stage.sh` runs again. It died on `patch_cowork_firmware_probe: command not found` because its own list of patch scripts never gained the one #947 wired into the build; it now sources every `scripts/patches/*.sh`, and a test fails if the harness or `build.sh` misses one. Its parse check now covers only the files a patch changed, since upstream 4.4212.0 ships `await using`, which Node 22 cannot parse; a patched file the host Node cannot read fails as unverifiable instead of passing
+
 ## [v3.3.14] — 2026-10-29
 
 ### Added
