@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
 # cowork-bwrap-patch.bats
-# Guards patch_cowork_bwrap against a fixture carrying the four anchor
+# Guards patch_cowork_bwrap against a fixture carrying the three anchor
 # shapes (copied verbatim from the official 1.18286.0 bundle): all
 # injections land, the swapped spawn selects node+daemon only when
-# flagged, re-runs are no-ops, and a missing or duplicated load-bearing
-# anchor fails the build with the file left untouched.
+# flagged, re-runs are no-ops, and a missing or duplicated anchor fails
+# the build with the file left untouched.
 
 SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 PATCH_SH="${SCRIPT_DIR}/../../patches/cowork-bwrap.sh"
@@ -22,22 +22,19 @@ function Ben(){return process.platform,Cen()}
 function Cen(){return{status:"unsupported"}}
 function ygi(A){return IE.spawn(A,["-socket",Vie()],{stdio:["pipe","pipe","pipe"]})}
 async function OzA(A,e){const{yukonSilver:t}=sM();return(t==null?void 0:t.status)!=="supported"?!1:(log("[downloadVM] Download already in progress, waiting..."),doDownload())}
-async function Vdo(A,e,t){if(!e){log("[warm] Warm download disabled");return}return warmPrefetch()}
 JS
 }
 
-# The same four anchor shapes as emitted by 1.26832.0: backtick string
+# The same three anchor shapes as emitted by 1.26832.0: backtick string
 # literals, `let` over const, the bundler indirect-call form for spawn,
 # preserved optional chaining, and a module-binding destructure callee
-# (p.n() rather than sM()). C2's log literal is retained here so the
-# fixture still covers the sub-patch on bundles that carry it.
+# (p.n() rather than sM()).
 fixture_1268320() {
 	cat <<'JS'
 function Ben(){return process.platform,Cen()}
 function Cen(){return{status:`unsupported`}}
 function ygi(A){return (0,ye.spawn)(A,[`-socket`,Vie()],{stdio:[`pipe`,`pipe`,`pipe`]})}
 async function OzA(A,e){let{yukonSilver:t}=p.n();return t?.status===`supported`?(log(`[downloadVM] Download already in progress, waiting...`),doDownload()):!1}
-async function Vdo(A,e,t){if(!e){log(`[warm] Warm download disabled`);return}return warmPrefetch()}
 JS
 }
 
@@ -49,7 +46,7 @@ setup() {
 	source "$PATCH_SH"
 	# _resolve_anchor_file lives in the orchestrator; each sub-patch now
 	# resolves its own file instead of reading a main_js global (#820).
-	# This fixture keeps all four anchors in one file, which also covers
+	# This fixture keeps all three anchors in one file, which also covers
 	# the shared-file path of the patch's read/write cache.
 	# shellcheck source=scripts/patches/app-asar.sh
 	source "${SCRIPT_DIR}/../../patches/app-asar.sh"
@@ -61,7 +58,7 @@ teardown() {
 
 target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 
-@test "patch: applies all four injections and reports success" {
+@test "patch: applies all three injections and reports success" {
 	cd "$WORK"
 	run patch_cowork_bwrap
 	echo "$output"
@@ -69,7 +66,20 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	[[ "$output" == *"A: gated yukonSilver"* ]]
 	[[ "$output" == *"B: swapped helper spawn"* ]]
 	[[ "$output" == *"C1: blocked foreground"* ]]
-	[[ "$output" == *"C2: blocked warm"* ]]
+}
+
+@test "patch: a clean apply prints no warning" {
+	# Every sub-patch either applies or fails the build. A WARNING in a
+	# successful run is a sub-patch skipping while the others apply,
+	# which the bundle-wide retirement tripwire cannot see.
+	cd "$WORK"
+	run patch_cowork_bwrap
+	[ "$status" -eq 0 ]
+	[[ "$output" != *WARNING* ]]
+	fixture_1268320 > "$(target)"
+	run patch_cowork_bwrap
+	[ "$status" -eq 0 ]
+	[[ "$output" != *WARNING* ]]
 }
 
 @test "patch: injected markers present and bundle still parses" {
@@ -79,7 +89,6 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	[ "$status" -eq 0 ]
 	grep -q '/\*cowork-bwrap-spawn\*/' "$(target)"
 	grep -q '/\*cowork-bwrap-dl\*/' "$(target)"
-	grep -q '/\*cowork-bwrap-warm\*/' "$(target)"
 	grep -q 'COWORK_VM_BACKEND==="bwrap")return{status:"supported"}' "$(target)"
 }
 
@@ -175,7 +184,6 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	[[ "$output" == *"A: gated yukonSilver"* ]]
 	[[ "$output" == *"B: swapped helper spawn"* ]]
 	[[ "$output" == *"C1: blocked foreground"* ]]
-	[[ "$output" == *"C2: blocked warm"* ]]
 	run node --check "$(target)"
 	[ "$status" -eq 0 ]
 }
@@ -210,4 +218,21 @@ target() { printf '%s' "$WORK/app.asar.contents/.vite/build/index.js"; }
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"already"* ]]
 	[ "$(cat "$(target)")" == "$first" ]
+}
+
+@test "patch: C1 missing past the resolver fails, file untouched" {
+	# The resolver and the node stage spell C1's anchor twice; if they
+	# drift, the resolver can hand over a file dlRe then finds nothing
+	# in. That used to warn and ship A and B without C1. Stub the
+	# resolver to force exactly that hand-off.
+	cd "$WORK"
+	local t; t="$(target)"
+	grep -v 'downloadVM' "$t" > "$t.tmp" && mv "$t.tmp" "$t"
+	_resolve_anchor_file() { target; }
+	local before; before="$(cat "$t")"
+	run patch_cowork_bwrap
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"C1: FATAL"* ]]
+	[[ "$output" == *"not found"* ]]
+	[ "$(cat "$t")" == "$before" ]
 }

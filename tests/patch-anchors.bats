@@ -411,19 +411,22 @@ $fenced"
 	[[ $output == *'matched no file'* ]]
 }
 
-@test "cowork C1: two same-shaped sites warn instead of guessing" {
+@test "cowork C1: two same-shaped sites fail instead of guessing" {
 	# The literal is unique in every bundle so far, but the exactly-1
-	# assertion is what turns a future second logger of it into a named
-	# warning: replace() would silently take the first match.
+	# assertion is what turns a future second logger of it into a build
+	# failure: replace() would silently take the first match. It used to
+	# warn and ship with A and B applied and C1 skipped — green, and
+	# invisible to the bundle-wide retirement tripwire.
 	local dup='async function XH(e,t){return await wB(),EB().status==="supported"&&(z(),J.info("[downloadVM] Download already in progress, waiting..."))}'
 	_chunk 'index.chunk-test.js' "$CB_NEW
 $dup"
+	local before; before="$(cat "$BUILD/index.chunk-test.js")"
 	run patch_cowork_bwrap
-	[[ $status -eq 0 ]]
-	[[ $output == *'C1: WARNING'* ]]
-	[[ $output == *'matched 2 sites'* ]]
-	run grep -qF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
 	[[ $status -ne 0 ]]
+	[[ $output == *'C1: FATAL'* ]]
+	[[ $output == *'matched 2 sites'* ]]
+	# Nothing is written, A and B included: no half-patched fallback.
+	[[ "$(cat "$BUILD/index.chunk-test.js")" == "$before" ]]
 }
 
 @test "cowork C1: binds downloadVM when startVM shares the chunk" {
@@ -434,14 +437,13 @@ $dup"
 	# on. The shell-side resolver pins that literal via _CB_C1_TAIL, but
 	# nothing above exercises the node-side dlRe against a same-headed
 	# neighbour: drop the literal terminus from dlSrc and dlRe binds
-	# both, the exactly-1 guard warns and skips, and the build stays
-	# green with no gate installed.
+	# both, and the exactly-1 guard fails the build.
 	local start_vm='async function aU(e,t){return await wB(),EB().status==="supported"&&(J.warn("[startVM] no"),!1)}'
 	_chunk 'index.chunk-test.js' "$CB_NEW
 $start_vm"
 	run patch_cowork_bwrap
 	[[ $status -eq 0 ]]
-	[[ $output != *'C1: WARNING'* ]]
+	[[ $output != *'C1: FATAL'* ]]
 	grep -qF 'async function YU(e,t){/*cowork-bwrap-dl*/' \
 		"$BUILD/index.chunk-test.js"
 	run grep -cF '/*cowork-bwrap-dl*/' "$BUILD/index.chunk-test.js"
