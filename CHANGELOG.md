@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.15] — 2026-11-04
+
 ### Changed
 
 - `patch_cowork_bwrap` fails the build when its C1 sub-patch (blocking the VM-image download on the opt-in bwrap path) would be skipped, as A and B already did. Two C1 paths only warned, so a build could ship with A and B applied and C1 missing, a gap the bundle-wide retirement tripwire cannot see ([#965](https://github.com/aaddrick/claude-desktop-debian/pull/965))
