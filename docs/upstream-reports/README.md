@@ -24,6 +24,7 @@ goes through the voice workflow first.
 | Quick Entry hotkey re-registration on KDE (SHORTCUT-1) | Anthropic | **not drafted** | CDL-ANT-0009 verification tracking (gitignored, local) |
 | doubled titlebar on sway (SWAY-1) | Anthropic | **not drafted** — env-scoped | CDL-ANT-0009 verification tracking (gitignored, local) |
 | Quick Entry square (untransparent) frame on niri/virtio-GPU (S10) | Anthropic | **not drafted** — niri/virtio-GL-scoped cosmetic; note, not a bug report per se | CDL-ANT-0009 verification tracking (gitignored, local) |
+| Terminal panel never answers DA1 for a shell started off screen (fish 4.x tabs stall 10s and lose pasted commands) | anthropics/claude-code | **drafted** — [`terminal-da1-hidden-shell.md`](terminal-da1-hidden-shell.md); the `terminal-da-reply` asar patch covers it meanwhile | [`terminal-da1-hidden-shell.md`](terminal-da1-hidden-shell.md) |
 
 Filing-path note: Claude Desktop has no in-app engineering report path
 (`/bug` and `/feedback` are inert; Help ▸ Get Support routes to the

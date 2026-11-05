@@ -73,6 +73,8 @@ source "$script_dir/scripts/patches/cowork-bwrap.sh"
 source "$script_dir/scripts/patches/config.sh"
 # shellcheck source=scripts/patches/tray-icon-selection.sh
 source "$script_dir/scripts/patches/tray-icon-selection.sh"
+# shellcheck source=scripts/patches/terminal-da-reply.sh
+source "$script_dir/scripts/patches/terminal-da-reply.sh"
 
 #===============================================================================
 # Packaging Functions

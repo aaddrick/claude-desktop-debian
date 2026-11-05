@@ -52,6 +52,12 @@
 #                              pending upstream (anthropics/claude-code
 #                              #77170); its hard-fail anchor is the
 #                              retirement tripwire.
+#   patch_terminal_da_reply  — a fish 4.x shell started off screen never
+#                              gets its DA1 answer, because the renderer
+#                              drops terminal reports during replay, so
+#                              the tab stalls 10s and loses pasted
+#                              commands. The main process answers
+#                              instead. Interim pending upstream.
 active_patches=(
 	patch_quick_window
 	patch_org_plugins_path
@@ -59,6 +65,7 @@ active_patches=(
 	patch_cowork_firmware_probe
 	patch_cowork_bwrap
 	patch_tray_icon_env_override
+	patch_terminal_da_reply
 )
 
 # Retirement tripwire: how each active patch stops being needed. Every
@@ -82,6 +89,7 @@ declare -gA patch_retirement=(
 	[patch_cowork_firmware_probe]='bytes: 884-cowork-firmware-probe.md'
 	[patch_cowork_bwrap]='never: opt-in bwrap backend (#772)'
 	[patch_tray_icon_env_override]='bytes: 604-tray-panel-theme.md'
+	[patch_terminal_da_reply]='behavior: terminal-da1-hidden-shell.md'
 )
 
 # The #768 config-wipe guard (config.sh) is NOT wired: a contrarian
