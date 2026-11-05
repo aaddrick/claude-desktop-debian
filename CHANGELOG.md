@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- Terminal tabs started off screen no longer stall for 10 seconds under fish 4.x or lose the command sent during the wait. The official renderer drops terminal reports while replaying buffered output, so fish never got its Primary Device Attribute reply; `patch_terminal_da_reply` answers from the main process and drops the duplicate xterm reply ([#966](https://github.com/aaddrick/claude-desktop-debian/issues/966))
+
 ## [v3.3.15] — 2026-11-04
 
 ### Changed
