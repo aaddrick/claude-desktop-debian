@@ -174,11 +174,12 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 3. **Use `-E` flag with sed** for extended regex support when patterns need grouping or alternation.
 
-4. **Extract variable names dynamically** rather than hardcoding them. Example (simplified from `scripts/patches/quick-window.sh`): the same anchor regex first resolves the file, then captures the variable. Write string delimiters as a quote class, since upstream's minifier has emitted both `"…"` and backtick literals:
+4. **Extract variable names dynamically** rather than hardcoding them. Example (simplified from `scripts/patches/quick-window.sh`): the same anchor regex first resolves the file, then captures the variable. Write string delimiters as a quote class, since upstream's minifier has emitted both `"…"` and backtick literals. The `QUICK_ENTRY)` prefix is part of the anchor: a second pop-up window in another chunk makes the identical `setAlwaysOnTop` call (#919), so without it the anchor matches two files:
    ```bash
-   # The minified Quick Entry window var, anchored on a stable literal
+   # The minified Quick Entry window var, anchored on stable literals
    q='[`"'"'"']'
-   re="[\$\\w]+(?=\\.setAlwaysOnTop\\(\\s*!0\\s*,\\s*${q}pop-up-menu${q}\\))"
+   re="QUICK_ENTRY\\)[^;]{0,200}?\\K[\$\\w]+"
+   re+="(?=\\.setAlwaysOnTop\\(\\s*!0\\s*,\\s*${q}pop-up-menu${q}\\))"
    index_js=$(_resolve_anchor_file 'quick-window setAlwaysOnTop' "$re") \
        || return 1
    quick_var=$(grep -oP "$re" "$index_js" | head -1)
