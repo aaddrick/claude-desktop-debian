@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.16] — 2026-11-12
+
+The terminal fix (#966) first went out in the `v3.3.15+claude4.23118.0` auto-release. This release records it under its own version.
+
 ### Fixed
 
 - Terminal tabs started off screen no longer stall for 10 seconds under fish 4.x or lose the command sent during the wait. The official renderer drops terminal reports while replaying buffered output, so fish never got its Primary Device Attribute reply; `patch_terminal_da_reply` answers from the main process and drops the duplicate xterm reply ([#966](https://github.com/aaddrick/claude-desktop-debian/issues/966))
