@@ -166,7 +166,7 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 ### Important Guidelines
 
-1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh`, `org-plugins.sh`, `virtiofsd-probe.sh`, and `cowork-bwrap.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Since upstream 1.19367.0 the main process is **code-split**: `.vite/build/index.js` is a stub that `require()`s a content-hashed `index.chunk-<hash>.js` main chunk, so patches operate on `$main_js` (resolved by `_resolve_main_js` in `app-asar.sh`), not on `index.js` directly — one patch can even span chunks (`cowork-bwrap.sh`'s sub-patches each resolve their own). Variable and function names are minified and **change between releases**; full anchor-craft and code-split lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
+1. **Always use regex patterns** when modifying the source JavaScript. Patches live in `scripts/patches/*.sh` — `app-asar.sh` is the orchestrator with the explicit `active_patches` array (currently `quick-window.sh`, `org-plugins.sh`, `virtiofsd-probe.sh`, `cowork-firmware-probe.sh`, `cowork-bwrap.sh`, `tray-icon-selection.sh`, and `terminal-da-reply.sh`; `config.sh` is sourced but parked/unwired). An empty array ships the official `app.asar` byte-identical (patch-zero). Since upstream 1.19367.0 the main process is **code-split**, and since 1.26832.0 there is no single main chunk: `.vite/build/index.js` `require()`s dozens of content-hashed chunks across two families (`index.chunk-*` and `index2.chunk-*`). So there is no "main JS file" to hand a patch — each patch resolves the file its own anchor lives in with `_resolve_anchor_file` in `app-asar.sh`, which takes a PCRE for the full anchor shape and fails unless exactly one file matches. One patch can span chunks (`cowork-bwrap.sh`'s sub-patches each resolve their own). Variable and function names are minified and **change between releases**; full anchor-craft and code-split lessons are in [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md).
 
 2. **The beautified code in `build-reference/` has different spacing** than the actual minified code in the app. Patterns must handle both:
    - Minified: `oe.nativeTheme.on("updated",()=>{`
@@ -174,11 +174,15 @@ Contributors are listed in chronological order: inspirational projects first (k3
 
 3. **Use `-E` flag with sed** for extended regex support when patterns need grouping or alternation.
 
-4. **Extract variable names dynamically** rather than hardcoding them. Example (from `scripts/patches/quick-window.sh`), where `$index_js` is `${main_js:-…/index.js}` — the resolved main chunk:
+4. **Extract variable names dynamically** rather than hardcoding them. Example (simplified from `scripts/patches/quick-window.sh`): the same anchor regex first resolves the file, then captures the variable. Write string delimiters as a quote class, since upstream's minifier has emitted both `"…"` and backtick literals. The `QUICK_ENTRY)` prefix is part of the anchor: a second pop-up window in another chunk makes the identical `setAlwaysOnTop` call (#919), so without it the anchor matches two files:
    ```bash
-   # The minified Quick Entry window var, anchored on a stable literal
-   quick_var=$(grep -oP '[$\w]+(?=\.setAlwaysOnTop\(\s*!0\s*,\s*"pop-up-menu"\))' \
-       "$index_js")
+   # The minified Quick Entry window var, anchored on stable literals
+   q='[`"'"'"']'
+   re="QUICK_ENTRY\\)[^;]{0,200}?\\K[\$\\w]+"
+   re+="(?=\\.setAlwaysOnTop\\(\\s*!0\\s*,\\s*${q}pop-up-menu${q}\\))"
+   index_js=$(_resolve_anchor_file 'quick-window setAlwaysOnTop' "$re") \
+       || return 1
+   quick_var=$(grep -oP "$re" "$index_js" | head -1)
    ```
 
 5. **Handle optional whitespace** in regex patterns:
@@ -200,8 +204,9 @@ Contributors are listed in chronological order: inspirational projects first (k3
 `scripts/patches/app-asar.sh` owns the asar patch stage:
 
 - **`active_patches` array** — the only place a patch gets wired in. Empty array ⇒ no extract, no repack, official `app.asar` ships byte-identical.
-- **productName guard** — the build fails if upstream's `productName` stops matching `WM_CLASS` (breaks `StartupWMClass` in every `.desktop` file).
-- **Upstream tripwires (AU-1/MB-1)** — the build fails if the official bundle stops shipping `apt_channel_pending` (autoupdater still pending, see [D-001](docs/decisions.md)) or `menuBarEnabled:!0` (menu-bar default). These replace the per-patch WARNINGs that left with the v3.0.0 deletions.
+- **`WM_CLASS` derivation** — `WM_CLASS` (the `StartupWMClass` in every `.desktop` file) is derived from the asar `package.json` `desktopName`, the field Chromium reads the window class from; the build fails if that field is missing or loses its `.desktop` suffix (#779).
+- **productName guard** — the build fails if upstream's `productName` stops being `Claude`, because Electron's userData path (`~/.config/Claude`) keys on it and the launcher, doctor, and docs assume that location.
+- **Upstream tripwires (AU-1/MB-1/FM-1)** — the build fails if the official bundle stops shipping `managed_by_package_manager` (in-app updater off on Linux, see [D-001](docs/decisions.md); upstream renamed it from `apt_channel_pending` in 1.19367.0), `menuBarEnabled:!0` (menu-bar default), or the file-manager entry writer shape that `heal_file_manager_entries` depends on (FM-1). These replace the per-patch WARNINGs that left with the v3.0.0 deletions.
 - **Retirement tripwire** — every active patch must change the pristine bundle's bytes, or the build fails naming it: upstream fixed the bug (retire the patch) or the anchor moved (re-derive it). Each patch needs a `patch_retirement` row (`bytes` / `behavior` / `never`) saying how it retires. See [`docs/learnings/patching-minified-js.md`](docs/learnings/patching-minified-js.md#retirement-a-patch-must-change-the-pristine-bundle).
 - **Config-wipe recovery is launcher-side, not an asar patch** — `backup_user_config` in `launcher-common.sh` rotates backups of `claude_desktop_config.json` and the Cowork stores before each launch (patch-zero-clean). The in-band `config.sh` guard is parked; if ever re-armed, its CFG-1 anchor-miss returns non-zero. See [`docs/learnings/config-wipe-guard.md`](docs/learnings/config-wipe-guard.md).
 - **Repack invariant** — the unpacked-file set is derived from the shipped `app.asar.unpacked` tree and must match after repack, so upstream native helpers can't silently inline.

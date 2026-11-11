@@ -76,12 +76,19 @@ To build a version before the automation catches it, download the `.deb` from th
 
 ## The patch stage (patch-zero contract)
 
-`active_patches` in `scripts/patches/app-asar.sh` lists every asar patch still active. The default verdict for any patch is delete: when the array is empty, the official `app.asar` ships **byte-identical** — it is never extracted or repacked. Two patches currently survive:
+`active_patches` in `scripts/patches/app-asar.sh` lists every asar patch still active. The default verdict for any patch is delete: when the array is empty, the official `app.asar` ships **byte-identical** — it is never extracted or repacked. Seven patches are currently active:
 
 - `patch_quick_window` (`scripts/patches/quick-window.sh`) — KDE-gated blur/focus workaround so the main window reappears after a Quick Entry submit (Electron stale-focus bug on Plasma).
-- `patch_org_plugins_path` (`scripts/patches/org-plugins.sh`) — adds a `case "linux"` to the upstream org-plugins platform switch, which only handles darwin/win32; without it MDM org plugins are silently dead on Linux (filed upstream).
+- `patch_org_plugins_path` (`scripts/patches/org-plugins.sh`) — adds a `case "linux"` to the upstream org-plugins platform switch, which only handles darwin/win32; without it MDM org plugins are silently dead on Linux.
+- `patch_virtiofsd_probe` (`scripts/patches/virtiofsd-probe.sh`) — un-gates upstream's bundled virtiofsd fallback, which is otherwise Ubuntu-22-only, so Cowork stops reporting "requires QEMU" on Arch, Debian and Pop!_OS hosts with a complete KVM stack. System paths stay preferred.
+- `patch_cowork_firmware_probe` (`scripts/patches/cowork-firmware-probe.sh`) — adds the edk2 firmware paths Arch and EL use after upstream's two `/usr/share/OVMF` paths.
+- `patch_cowork_bwrap` (`scripts/patches/cowork-bwrap.sh`) — the opt-in bubblewrap Cowork backend for hosts without KVM; every branch is gated on `COWORK_VM_BACKEND=bwrap`.
+- `patch_tray_icon_env_override` (`scripts/patches/tray-icon-selection.sh`) — lets the launcher's `CLAUDE_TRAY_USE_DARK_ICON` override the tray icon choice where the panel theme and the GTK colour scheme disagree.
+- `patch_terminal_da_reply` (`scripts/patches/terminal-da-reply.sh`) — answers the Primary Device Attribute query from the main process, so fish 4.x terminal tabs started off screen don't stall for 10 seconds.
 
-Two build-time tripwires grep the pristine `app.asar` on every build and fail loudly if upstream flips behavior we deleted patches for: `apt_channel_pending` (AU-1 — the marker that keeps the official autoupdater dormant while the APT channel is pending) and `menuBarEnabled:!0` (MB-1 — the settings default that keeps the menu bar on).
+Each patch must change the pristine bundle's bytes or the build fails naming it (the retirement tripwire): either upstream shipped the fix or the anchor moved.
+
+Three build-time tripwires grep the pristine `app.asar` on every build and fail loudly if upstream flips behavior we depend on without patching: `managed_by_package_manager` (AU-1 — the marker inside the Linux updater's early return, which keeps updates in the package manager's hands), `menuBarEnabled:!0` (MB-1 — the settings default that keeps the menu bar on), and the file-manager entry writer (FM-1 — the marker, locations, icon name and script guard the launcher's `heal_file_manager_entries` relies on).
 
 When patches do run, the repack preserves upstream's `app.asar.unpacked` set exactly and aborts if the sets diverge.
 

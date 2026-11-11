@@ -705,8 +705,9 @@ Four layers: build log, syntactic validity, asar markers, runtime.
    #555 until it was deleted with the cowork patch set in v3.0.0; the
    surviving form of the layer is `_check_upstream_tripwires` in
    `scripts/patches/app-asar.sh`, which greps the pristine asar for
-   upstream-behavior anchors (AU-1 `apt_channel_pending`, MB-1
-   `menuBarEnabled:!0`) and fails the build if one disappears.
+   upstream-behavior anchors (AU-1 `managed_by_package_manager`,
+   MB-1 `menuBarEnabled:!0`, FM-1 the file-manager entry writer) and
+   fails the build if one disappears.
 
 4. Launch the AppImage and check runtime state (the checks below are
    for the deleted cowork daemon patches — historical example, the
