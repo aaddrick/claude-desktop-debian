@@ -789,27 +789,33 @@ _doctor_check_device_key() {
 
 	if [[ ! -r $tpm_dev || ! -w $tpm_dev ]]; then
 		local group
-		group=$(stat -c '%G' "$tpm_dev" 2>/dev/null) || group=''
+		group=$(stat -c '%G' "$tpm_dev" 2>/dev/null) || true
 		_info "Device key: $tpm_dev exists but this user cannot" \
 			'open it (the app registers as a keyless device)'
 		# Never suggest joining root's group: only name a
 		# dedicated TPM group.
-		if [[ -n $group && $group != 'root' \
-			&& $group != 'UNKNOWN' ]]; then
-			_info 'To let the app keep its device key in the' \
-				"TPM: sudo usermod -aG $group \$USER,"
-			_info 'then reboot (a re-login can keep the old' \
-				'groups) and sign in to Claude again.'
-		fi
+		case $group in
+			'' | root | UNKNOWN) ;;
+			*)
+				_info 'To let the app keep its device key in' \
+					'the TPM: sudo usermod -aG' \
+					"$group \$USER,"
+				_info 'then reboot (a re-login can keep the' \
+					'old groups) and sign in to Claude' \
+					'again.'
+				;;
+		esac
 		return 0
 	fi
 
-	local keys=()
-	local key
+	local key has_key=false
 	for key in "$config_dir"/device-keys/*.tpm2; do
-		[[ -e $key ]] && keys+=("$key")
+		if [[ -e $key ]]; then
+			has_key=true
+			break
+		fi
 	done
-	if ((${#keys[@]} > 0)); then
+	if [[ $has_key == true ]]; then
 		_info 'Device key: TPM-backed key present' \
 			"($config_dir/device-keys)"
 	else

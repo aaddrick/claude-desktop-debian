@@ -665,6 +665,7 @@ SHIM
 	chmod 400 "$_DOCTOR_TPM_DEV"
 	stat() { printf 'tss\n'; }
 	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
 	[[ $output == *'cannot open it'* ]]
 	[[ $output == *'usermod -aG tss'* ]]
 }
@@ -675,6 +676,30 @@ SHIM
 	touch "$_DOCTOR_TPM_DEV"
 	chmod 000 "$_DOCTOR_TPM_DEV"
 	stat() { printf 'root\n'; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output != *'usermod'* ]]
+}
+
+@test "_doctor_check_device_key: an unresolved group (UNKNOWN) gets no advice" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 000 "$_DOCTOR_TPM_DEV"
+	stat() { printf 'UNKNOWN\n'; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output != *'usermod'* ]]
+}
+
+@test "_doctor_check_device_key: a failing stat gets no advice" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 000 "$_DOCTOR_TPM_DEV"
+	stat() { return 1; }
 	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
 	[[ $status -eq 0 ]]
 	[[ $output == *'cannot open it'* ]]
