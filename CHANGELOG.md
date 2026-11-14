@@ -8,9 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.17] — 2026-11-14
+
 ### Added
 
-- `--doctor` reports whether the app can keep its device key in the TPM. Current official builds store that key in the TPM when the user can open `/dev/tpmrm0` and register as a keyless device otherwise; most distros leave desktop users out of the `tss` group, so the doctor now names the group to join, and the troubleshooting page covers the reboot and fresh sign-in the change needs ([#913](https://github.com/aaddrick/claude-desktop-debian/issues/913))
+- `--doctor` reports whether the app can keep its device key in the TPM. Current official builds store that key in the TPM when the user can open `/dev/tpmrm0` and register as a keyless device otherwise; most distros leave desktop users out of the `tss` group, so the doctor now names the group to join, and the troubleshooting page covers the reboot and fresh sign-in the change needs ([#974](https://github.com/aaddrick/claude-desktop-debian/pull/974), [#913](https://github.com/aaddrick/claude-desktop-debian/issues/913))
 
 ## [v3.3.16] — 2026-11-12
 
