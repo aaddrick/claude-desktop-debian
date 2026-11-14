@@ -766,6 +766,64 @@ _doctor_check_keyring_persistence() {
 	esac
 }
 
+# Report whether the app can keep its device key in the TPM (#913).
+# Arguments: $1 = config directory to check.
+#
+# Current official builds create a TPM-backed key under
+# <config>/device-keys at sign-in when the user can open the TPM
+# resource manager, and register as a keyless device otherwise. Most
+# distros ship /dev/tpmrm0 as root:tss 0660 with no desktop user in
+# the group, so a host with a TPM still comes up keyless. Keyless is a
+# supported upstream mode, so this is informational only — no
+# PASS/FAIL. The device path is overridable via _DOCTOR_TPM_DEV for
+# tests (same internal-hook convention as _DOCTOR_KVM_DEV).
+_doctor_check_device_key() {
+	local config_dir="$1"
+	local tpm_dev="${_DOCTOR_TPM_DEV:-/dev/tpmrm0}"
+
+	if [[ ! -e $tpm_dev ]]; then
+		_info "Device key: no TPM at $tpm_dev" \
+			'(the app registers as a keyless device)'
+		return 0
+	fi
+
+	if [[ ! -r $tpm_dev || ! -w $tpm_dev ]]; then
+		local group
+		group=$(stat -c '%G' "$tpm_dev" 2>/dev/null) || true
+		_info "Device key: $tpm_dev exists but this user cannot" \
+			'open it (the app registers as a keyless device)'
+		# Never suggest joining root's group: only name a
+		# dedicated TPM group.
+		case $group in
+			'' | root | UNKNOWN) ;;
+			*)
+				_info 'To let the app keep its device key in' \
+					'the TPM: sudo usermod -aG' \
+					"$group \$USER,"
+				_info 'then reboot (a re-login can keep the' \
+					'old groups) and sign in to Claude' \
+					'again.'
+				;;
+		esac
+		return 0
+	fi
+
+	local key has_key=false
+	for key in "$config_dir"/device-keys/*.tpm2; do
+		if [[ -e $key ]]; then
+			has_key=true
+			break
+		fi
+	done
+	if [[ $has_key == true ]]; then
+		_info 'Device key: TPM-backed key present' \
+			"($config_dir/device-keys)"
+	else
+		_info "Device key: $tpm_dev is accessible; the app" \
+			'creates its key at the next fresh sign-in'
+	fi
+}
+
 # Report free space on the partition holding the Claude config dir.
 # Arguments: $1 = config directory to check.
 #
@@ -1935,6 +1993,9 @@ run_doctor() {
 	# -- Password store --
 	_doctor_check_password_store
 	_doctor_check_keyring_persistence
+
+	# -- Device key (#913) --
+	_doctor_check_device_key "$config_dir"
 
 	# -- Tray icon (#604) --
 	_doctor_check_tray_icon

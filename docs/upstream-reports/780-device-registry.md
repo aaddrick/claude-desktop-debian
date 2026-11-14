@@ -2,6 +2,8 @@
 
 This is the upstream bug report covering [#780](https://github.com/aaddrick/claude-desktop-debian/issues/780). **Drafted 2026-07-11, not yet filed** (Claude Desktop has no in-app engineering report path — see the filing-path note in [`README.md`](README.md)). Revisit on the next `CLAUDE_DESKTOP_VERSION` bump: if Anthropic ships the Linux hardware-key backend, the `linux-not-yet-supported` string disappears from the native `.node` and this report is obsolete.
 
+> **Obsolete as of 2026-11-14 — do not file.** The Linux hardware-key backend shipped: the `claude-native-binding.node` in the official 5.1231.0 build no longer carries `linux-not-yet-supported` and has a TPM 2.0 backend (keys under `~/.config/Claude/device-keys/*.tpm2`). A device still registers keyless when the user cannot open `/dev/tpmrm0`; the doctor surface reports that and [troubleshooting](../troubleshooting.md) has the `tss` group fix ([#913](https://github.com/aaddrick/claude-desktop-debian/issues/913)). The draft below is kept as a diagnosis record of the 1.18286.x behavior.
+
 ## Template mismatch note
 
 The `anthropics/claude-code` bug template is built for the Claude Code CLI, not Claude Desktop. Fields like "Claude Code Version" and "Terminal/Shell" don't apply cleanly. Other Claude Desktop reports in the same repo work around this by putting `N/A — Claude Desktop <version>` in the version field and selecting `Other` for terminal (see #43705, #36319, #14807).

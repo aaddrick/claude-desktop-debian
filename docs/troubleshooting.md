@@ -29,6 +29,7 @@ claude-desktop-unofficial --doctor
 | User namespaces | AppArmor userns restriction and whether the `claude-desktop-unofficial` profile is loaded (Ubuntu 24.04+; run with `sudo` to confirm the kernel-loaded state) |
 | SingletonLock | Stale lock file detection |
 | Password store | Reports upstream `os_crypt` autodetect vs a `CLAUDE_PASSWORD_STORE` override (informational) |
+| Device key | Whether the app can keep its device key in the TPM: `/dev/tpmrm0` present and openable by this user, and a key under `~/.config/Claude/device-keys` (informational) |
 | MCP config | JSON validity and server count |
 | Node.js | Version (v20+ recommended for MCP servers) |
 | Desktop entry | `.desktop` file presence |
@@ -755,6 +756,33 @@ rm -f ~/.local/share/nautilus/scripts/{'Send to Claude','Open in Claude Code'} \
 The script names are localized, so on a non-English desktop list
 `~/.local/share/nautilus/scripts/` and remove the files that contain
 `X-Claude-Generated=true`.
+
+### `enclave key unavailable` / `device_id keyless` in `main.log` on a machine with a TPM ([#913](https://github.com/aaddrick/claude-desktop-debian/issues/913))
+
+The official app keeps a per-device key in the TPM when it can open `/dev/tpmrm0`, and registers as a keyless device when it can't. Most distros ship that device as group `tss`, mode `0660`, with no desktop user in the group, so a machine with a working TPM still logs:
+
+```
+[device-registry] enclave key unavailable — refusing to resolve row-PK
+[remote-tools-device] connect frame sent: device_id keyless (row_pk_enclave)
+```
+
+`claude-desktop-unofficial --doctor` reports this as `Device key: /dev/tpmrm0 exists but this user cannot open it`. To give the app access:
+
+```bash
+ls -l /dev/tpmrm0              # confirm the group (usually tss)
+sudo usermod -aG tss "$USER"
+```
+
+Then:
+
+1. **Reboot.** Logging out is not always enough: with lingering enabled (`loginctl show-user "$USER" -p Linger`), the `systemd --user` manager started at boot keeps the old group list and the desktop session inherits it. Check with `id -nG` after logging back in.
+2. **Sign out of Claude and sign in again.** The key is only created at a fresh sign-in; restarting with the cached session stays keyless.
+
+Afterwards `~/.config/Claude/device-keys/<hash>.tpm2` exists and the log reads `connect frame sent: device_id keyed`.
+
+Membership of `tss` lets every program you run talk to the TPM, so treat it as a deliberate choice; the packages and the launcher never change it for you. If `/dev/tpmrm0` is missing, the firmware TPM (fTPM / PTT) may be disabled in the BIOS setup.
+
+Whether a keyed device also stops the roughly daily forced re-login reported in #913 is not confirmed yet. That sign-out is a server decision (`session_stale_relogin`) and also affects the stock official package, so a keyless device is not a packaging fault either way.
 
 ### Authentication Errors (401)
 

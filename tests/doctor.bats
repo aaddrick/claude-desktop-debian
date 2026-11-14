@@ -33,6 +33,7 @@ setup() {
 	unset _DOCTOR_AA_PROFILE
 	unset _DOCTOR_AA_LOADED
 	unset _DOCTOR_BWRAP
+	unset _DOCTOR_TPM_DEV
 	# Keep the host's /usr/libexec/qemu-kvm (EL) out of the QEMU check.
 	export _DOCTOR_QEMU_KVM="$TEST_TMP/no-qemu-kvm"
 
@@ -618,6 +619,122 @@ SHIM
 	run _doctor_check_tray_icon
 	[[ $status -eq 0 ]]
 	[[ $output == *'upstream selection (no override)'* ]]
+}
+
+# =============================================================================
+# _doctor_check_device_key (#913)
+#
+# The official build keeps its device key in the TPM when the user can
+# open /dev/tpmrm0 and registers keyless otherwise. Informational only
+# — no PASS/FAIL. _DOCTOR_TPM_DEV points the check at a stand-in file.
+# =============================================================================
+
+@test "_doctor_check_device_key: no TPM device reports keyless without advice" {
+	export _DOCTOR_TPM_DEV="$TEST_TMP/no-tpmrm0"
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *"no TPM at $TEST_TMP/no-tpmrm0"* ]]
+	[[ $output == *'keyless device'* ]]
+	[[ $output != *'usermod'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_device_key: unopenable TPM names the group, reboot and sign-in" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 000 "$_DOCTOR_TPM_DEV"
+	stat() { printf 'tss\n'; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output == *'sudo usermod -aG tss $USER'* ]]
+	[[ $output == *'reboot'* ]]
+	[[ $output == *'sign in to Claude again'* ]]
+	[[ $output != *'[PASS]'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_device_key: read-only TPM access still counts as unopenable" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 400 "$_DOCTOR_TPM_DEV"
+	stat() { printf 'tss\n'; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output == *'usermod -aG tss'* ]]
+}
+
+@test "_doctor_check_device_key: never suggests joining the root group" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 000 "$_DOCTOR_TPM_DEV"
+	stat() { printf 'root\n'; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output != *'usermod'* ]]
+}
+
+@test "_doctor_check_device_key: an unresolved group (UNKNOWN) gets no advice" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 000 "$_DOCTOR_TPM_DEV"
+	stat() { printf 'UNKNOWN\n'; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output != *'usermod'* ]]
+}
+
+@test "_doctor_check_device_key: a failing stat gets no advice" {
+	[[ $EUID -ne 0 ]] || skip 'root can open any file'
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	chmod 000 "$_DOCTOR_TPM_DEV"
+	stat() { return 1; }
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'cannot open it'* ]]
+	[[ $output != *'usermod'* ]]
+}
+
+@test "_doctor_check_device_key: accessible TPM without a key points at the next sign-in" {
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'is accessible'* ]]
+	[[ $output == *'next fresh sign-in'* ]]
+	[[ $output != *'usermod'* ]]
+	[[ $output != *'key present'* ]]
+}
+
+@test "_doctor_check_device_key: accessible TPM with a .tpm2 key reports it present" {
+	export _DOCTOR_TPM_DEV="$TEST_TMP/tpmrm0"
+	touch "$_DOCTOR_TPM_DEV"
+	mkdir -p "$XDG_CONFIG_HOME/Claude/device-keys"
+	touch "$XDG_CONFIG_HOME/Claude/device-keys/abc123.tpm2"
+	run _doctor_check_device_key "$XDG_CONFIG_HOME/Claude"
+	[[ $status -eq 0 ]]
+	[[ $output == *'TPM-backed key present'* ]]
+	[[ $output != *'next fresh sign-in'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "run_doctor: passes the config dir to _doctor_check_device_key" {
+	# Structural pin: run_doctor runs every host check, so it is not
+	# exercised end to end here. Without the argument the key lookup
+	# globs /device-keys and never finds the user's key.
+	run declare -f run_doctor
+	[[ $output == *'_doctor_check_device_key "$config_dir"'* ]]
 }
 
 # =============================================================================
