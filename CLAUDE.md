@@ -77,7 +77,7 @@ Shell scripts are checked with `shellcheck` and GitHub Actions workflows with `a
    - The warning is a false positive
    - The pattern is intentional and unavoidable
    - Always add a comment explaining why the disable is needed
-3. **Run `/lint` to check manually** - Use this skill to check for issues before pushing
+3. **Run `/lint` to check manually** - Use this skill to check for issues before pushing. It covers only changed files; the full CI-equivalent commands are under [Checks before pushing](#checks-before-pushing)
 
 ## Docs
 
@@ -403,12 +403,16 @@ Full details including the redirect chain, the http-scheme-downgrade gotcha, cre
 ### Checks before pushing
 
 Run these from the repo root. They are the same commands CI runs
-(`.github/workflows/tests.yml` and `shellcheck.yml`), and both must
+(`.github/workflows/tests.yml` and `shellcheck.yml`), and all must
 pass:
 
 ```bash
-# Unit tests (needs bats and node)
+# Unit tests (needs bats and node; one label-vocabulary test skips
+# unless gh is installed and logged in)
 bats tests/*.bats scripts/cowork-fallback/tests/*.bats
+
+# The launcher's Chromium switch list still matches its baseline
+./tools/chromium-switch-smoke.sh
 
 # Lint every tracked shell script, sourced modules included
 git ls-files -- '*.sh' | xargs shellcheck -x
