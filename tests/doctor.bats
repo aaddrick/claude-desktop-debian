@@ -1500,6 +1500,30 @@ _doctor_qemu_shim() {
 	[[ $output != *'[WARN]'* ]]
 }
 
+@test "_check_device_registry: a keyless key alone reports registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"keyless:acct":"x"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered (keyless device)'* ]]
+}
+
+@test "_check_device_registry: a kl1 value alone reports registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct":"kl1:0000-1111"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered (keyless device)'* ]]
+}
+
+@test "_check_device_registry: a registry with no known row emits nothing" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
 @test "_check_device_registry: a stale none row next to a keyless row is registered" {
 	# The app leaves the old none row in place when it later
 	# registers keyless — the shape of a real upgraded profile.
@@ -1537,6 +1561,10 @@ _doctor_qemu_shim() {
 	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
 	echo '{"acct":"none:123"}' > "$_DOCTOR_DEVICE_REGISTRY"
 	_cowork_incomplete=false
+	_check_device_registry "$TEST_TMP/config" > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == false ]]
+
+	echo '{"keyless:acct":"kl1:0000-1111"}' > "$_DOCTOR_DEVICE_REGISTRY"
 	_check_device_registry "$TEST_TMP/config" > "$TEST_TMP/out"
 	[[ $_cowork_incomplete == false ]]
 }
