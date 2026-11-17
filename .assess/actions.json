@@ -1,0 +1,60 @@
+{
+  "schema": 2,
+  "run_id": "20261117132553-ba7d748c",
+  "actions": [
+    {
+      "rank": 1,
+      "action": "Clear the stale marker in scripts/cowork-fallback/cowork-vm-service.js:1663: fix it, ticket it, or delete the marker (reword as description of the shipped #342 fix)",
+      "layer": 8,
+      "effort": "small",
+      "files": [
+        "scripts/cowork-fallback/cowork-vm-service.js"
+      ],
+      "first_step": "Reword the comment at line 1663 as a description",
+      "done_when": "A re-run of /assess lists no unactioned_intent path for this file",
+      "scope_fence": "Only the comment at line 1663; no logic changes",
+      "finding": "unactioned_intent",
+      "status": "pending",
+      "claimed_by": null,
+      "completed_sha": null,
+      "mode": "verify_then_retire"
+    },
+    {
+      "rank": 2,
+      "action": "Generate a line-coverage report in CI and read it for the top hotspots first",
+      "layer": 6,
+      "effort": "medium",
+      "files": [
+        ".github/workflows/tests.yml",
+        "scripts/launcher-common.sh",
+        "scripts/cowork-fallback/cowork-vm-service.js",
+        "tests/test-artifact-common.sh"
+      ],
+      "first_step": "Wrap the bats run in tests.yml with kcov; enable c8 for scripts/cowork-fallback/tests/",
+      "done_when": "CI emits Cobertura or LCOV and a re-run reports coverage_report.available: true",
+      "scope_fence": "Measure only; no threshold, no new tests",
+      "status": "pending",
+      "claimed_by": null,
+      "completed_sha": null,
+      "mode": "characterize_first"
+    },
+    {
+      "rank": 3,
+      "action": "Make CLAUDE.md the single instruction file: stub or symlink AGENTS.md, cut CLAUDE.md toward 200 lines, name the exact check commands, commit a lockfile for tools/test-harness",
+      "layer": 0,
+      "effort": "medium",
+      "files": [
+        "CLAUDE.md",
+        "AGENTS.md",
+        "tools/test-harness/package.json"
+      ],
+      "first_step": "Add the bats and shellcheck commands to CLAUDE.md",
+      "done_when": "AGENTS.md under 32 KiB; re-run reports layer5_cap.applies: false and no claude_shadows_agents finding",
+      "scope_fence": "Instruction files and harness lockfile only",
+      "status": "pending",
+      "claimed_by": null,
+      "completed_sha": null,
+      "mode": "characterize_first"
+    }
+  ]
+}

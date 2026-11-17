@@ -1,0 +1,414 @@
+{
+  "artifact_schema_version": "1.4.0",
+  "run_id": "20261117132543-dd6e754b",
+  "plugin_version": "1.100.1",
+  "schema_version": 5,
+  "lizard_version": "1.23.0",
+  "scc_version": "3.7.0",
+  "files_scored": 283,
+  "excluded_generated": [],
+  "scoring_coverage": {
+    "lizard": 107,
+    "scc": 176
+  },
+  "churn_window": "commits (last 12mo)",
+  "churn_degenerate": false,
+  "loc": {
+    "p50": 105.0,
+    "p95": 497.3999999999994,
+    "max": 4962.0,
+    "max_code": 2256.0,
+    "max_data": 4962.0,
+    "total": 58253
+  },
+  "est_tokens": {
+    "p50": 1799.0,
+    "p95": 9918.599999999999,
+    "max": 42444.0,
+    "max_code": 42444.0,
+    "max_data": 29272.0,
+    "total": 872284,
+    "budget": {
+      "total": 872284,
+      "budget": 200000,
+      "budget_basis": "estimate (~4 chars/token, documented default)",
+      "chars_per_token": 4,
+      "files_over_budget": 0,
+      "subtrees_over_budget": 1,
+      "over_budget_subtrees": [
+        {
+          "path": "docs",
+          "est_tokens": 408493
+        }
+      ]
+    }
+  },
+  "ccn": {
+    "basis": "file-aggregate",
+    "p50": 0.0,
+    "p95": 49.89999999999998,
+    "max": 635.0
+  },
+  "fn_ccn": {
+    "basis": "per-function",
+    "source": [
+      {
+        "name": "lizard",
+        "approximate": false
+      }
+    ],
+    "backend_by_language": {
+      "BASH": null,
+      "JavaScript": "lizard",
+      "Nix": null,
+      "Python": "lizard",
+      "Shell": null,
+      "TypeScript": "lizard"
+    },
+    "function_count": 696,
+    "p50": 1.0,
+    "p95": 11.0,
+    "max": 31.0
+  },
+  "churn": {
+    "p50": 1.0,
+    "p95": 30.799999999999955,
+    "max": 205.0
+  },
+  "top_hotspots": [
+    {
+      "path": "scripts/launcher-common.sh",
+      "loc": 1229,
+      "est_tokens": 18442,
+      "ccn": 208.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 100,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/cowork-fallback/cowork-vm-service.js",
+      "loc": 2256,
+      "est_tokens": 29110,
+      "ccn": 635.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 31.0,
+      "max_fn_name": "startVM",
+      "commits": 15,
+      "source": "lizard"
+    },
+    {
+      "path": "tests/test-artifact-common.sh",
+      "loc": 581,
+      "est_tokens": 9576,
+      "ccn": 103.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 23,
+      "source": "scc"
+    },
+    {
+      "path": "build.sh",
+      "loc": 239,
+      "est_tokens": 2964,
+      "ccn": 52.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 121,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/packaging/deb.sh",
+      "loc": 291,
+      "est_tokens": 5310,
+      "ccn": 77.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 39,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/patches/app-asar.sh",
+      "loc": 235,
+      "est_tokens": 5034,
+      "ccn": 49.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 29,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/packaging/rpm.sh",
+      "loc": 253,
+      "est_tokens": 3891,
+      "ccn": 49.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 33,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/doctor.sh",
+      "loc": 2150,
+      "est_tokens": 19636,
+      "ccn": 5.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 64,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/packaging/appimage.sh",
+      "loc": 262,
+      "est_tokens": 3974,
+      "ccn": 50.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 31,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/setup/detect-host.sh",
+      "loc": 176,
+      "est_tokens": 2204,
+      "ccn": 49.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 37,
+      "source": "scc"
+    }
+  ],
+  "top_complex": [
+    {
+      "path": "scripts/cowork-fallback/cowork-vm-service.js",
+      "loc": 2256,
+      "est_tokens": 29110,
+      "ccn": 635.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 31.0,
+      "max_fn_name": "startVM",
+      "commits": 15,
+      "source": "lizard"
+    },
+    {
+      "path": "scripts/launcher-common.sh",
+      "loc": 1229,
+      "est_tokens": 18442,
+      "ccn": 208.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 100,
+      "source": "scc"
+    },
+    {
+      "path": "tests/test-artifact-common.sh",
+      "loc": 581,
+      "est_tokens": 9576,
+      "ccn": 103.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 23,
+      "source": "scc"
+    },
+    {
+      "path": "tools/test-harness/src/lib/electron.ts",
+      "loc": 411,
+      "est_tokens": 6435,
+      "ccn": 89.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 16.0,
+      "max_fn_name": "launchClaude",
+      "commits": 4,
+      "source": "lizard"
+    },
+    {
+      "path": "scripts/packaging/deb.sh",
+      "loc": 291,
+      "est_tokens": 5310,
+      "ccn": 77.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 39,
+      "source": "scc"
+    },
+    {
+      "path": "tools/test-harness/src/lib/quickentry.ts",
+      "loc": 458,
+      "est_tokens": 6230,
+      "ccn": 77.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 11.0,
+      "max_fn_name": "openAndWaitReady",
+      "commits": 2,
+      "source": "lizard"
+    },
+    {
+      "path": "scripts/cowork-fallback/cowork.sh",
+      "loc": 769,
+      "est_tokens": 9929,
+      "ccn": 70.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 2,
+      "source": "scc"
+    },
+    {
+      "path": "tools/test-harness/src/lib/claudeai.ts",
+      "loc": 215,
+      "est_tokens": 4111,
+      "ccn": 67.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 10.0,
+      "max_fn_name": "openPill",
+      "commits": 1,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/test-harness/src/lib/input-niri.ts",
+      "loc": 236,
+      "est_tokens": 3392,
+      "ccn": 67.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 13.0,
+      "max_fn_name": "getFocusedWindowId",
+      "commits": 1,
+      "source": "lizard"
+    },
+    {
+      "path": "scripts/cowork-fallback/tests/protocol-smoke.js",
+      "loc": 164,
+      "est_tokens": 2031,
+      "ccn": 61.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 25.0,
+      "max_fn_name": "main",
+      "commits": 1,
+      "source": "lizard"
+    }
+  ],
+  "top_large": [
+    {
+      "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/catalog.json",
+      "loc": 4962,
+      "est_tokens": 16878,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 1,
+      "source": "scc"
+    },
+    {
+      "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/issue_dates.json",
+      "loc": 4590,
+      "est_tokens": 29272,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 1,
+      "source": "scc"
+    },
+    {
+      "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/families.json",
+      "loc": 3236,
+      "est_tokens": 11326,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 1,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/cowork-fallback/cowork-vm-service.js",
+      "loc": 2256,
+      "est_tokens": 29110,
+      "ccn": 635.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 31.0,
+      "max_fn_name": "startVM",
+      "commits": 15,
+      "source": "lizard"
+    },
+    {
+      "path": "scripts/doctor.sh",
+      "loc": 2150,
+      "est_tokens": 19636,
+      "ccn": 5.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 64,
+      "source": "scc"
+    },
+    {
+      "path": ".github/workflows/issue-triage-v2.yml",
+      "loc": 1481,
+      "est_tokens": 22707,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 25,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/launcher-common.sh",
+      "loc": 1229,
+      "est_tokens": 18442,
+      "ccn": 208.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 100,
+      "source": "scc"
+    },
+    {
+      "path": "docs/reports/CDL-ANT-0010_code-split-chunk-census/chunk-census-data.json",
+      "loc": 930,
+      "est_tokens": 16555,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 1,
+      "source": "scc"
+    },
+    {
+      "path": "scripts/cowork-fallback/cowork.sh",
+      "loc": 769,
+      "est_tokens": 9929,
+      "ccn": 70.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 2,
+      "source": "scc"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "loc": 753,
+      "est_tokens": 10439,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 59,
+      "source": "scc"
+    }
+  ]
+}

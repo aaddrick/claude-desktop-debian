@@ -1,0 +1,5686 @@
+{
+  "run_id": "20261117132553-ba7d748c",
+  "artifact_schema_version": "1.4.0",
+  "run_date": "2026-11-17",
+  "scope": null,
+  "scope_slug": null,
+  "measured_commit": {
+    "available": true,
+    "head_sha": "3dda789715bb917509d4ede9d964034b928aa10b",
+    "head_short": "3dda789715bb",
+    "committed_date": "2026-11-17",
+    "subject": "Merge pull request #977 from sabiut/docs/973-update-available-banner",
+    "dirty": false,
+    "upstream": null,
+    "behind": null
+  },
+  "prior_stats_exists": false,
+  "stats_summary": {
+    "files_scored": 283,
+    "loc": {
+      "p50": 105.0,
+      "p95": 497.3999999999994,
+      "max": 4962.0,
+      "max_code": 2256.0,
+      "max_data": 4962.0,
+      "total": 58253
+    },
+    "est_tokens": {
+      "p50": 1799.0,
+      "p95": 9918.599999999999,
+      "max": 42444.0,
+      "max_code": 42444.0,
+      "max_data": 29272.0,
+      "total": 872284,
+      "budget": {
+        "total": 872284,
+        "budget": 200000,
+        "budget_basis": "estimate (~4 chars/token, documented default)",
+        "chars_per_token": 4,
+        "files_over_budget": 0,
+        "subtrees_over_budget": 1,
+        "over_budget_subtrees": [
+          {
+            "path": "docs",
+            "est_tokens": 408493
+          }
+        ]
+      }
+    },
+    "ccn": {
+      "basis": "file-aggregate",
+      "p50": 0.0,
+      "p95": 49.89999999999998,
+      "max": 635.0
+    },
+    "top_hotspots": [
+      {
+        "path": "scripts/launcher-common.sh",
+        "loc": 1229,
+        "est_tokens": 18442,
+        "ccn": 208.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 100,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/cowork-fallback/cowork-vm-service.js",
+        "loc": 2256,
+        "est_tokens": 29110,
+        "ccn": 635.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 31.0,
+        "max_fn_name": "startVM",
+        "commits": 15,
+        "source": "lizard"
+      },
+      {
+        "path": "tests/test-artifact-common.sh",
+        "loc": 581,
+        "est_tokens": 9576,
+        "ccn": 103.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 23,
+        "source": "scc"
+      },
+      {
+        "path": "build.sh",
+        "loc": 239,
+        "est_tokens": 2964,
+        "ccn": 52.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 121,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/packaging/deb.sh",
+        "loc": 291,
+        "est_tokens": 5310,
+        "ccn": 77.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 39,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/patches/app-asar.sh",
+        "loc": 235,
+        "est_tokens": 5034,
+        "ccn": 49.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 29,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/packaging/rpm.sh",
+        "loc": 253,
+        "est_tokens": 3891,
+        "ccn": 49.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 33,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/doctor.sh",
+        "loc": 2150,
+        "est_tokens": 19636,
+        "ccn": 5.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 64,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/packaging/appimage.sh",
+        "loc": 262,
+        "est_tokens": 3974,
+        "ccn": 50.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 31,
+        "source": "scc"
+      },
+      {
+        "path": "scripts/setup/detect-host.sh",
+        "loc": 176,
+        "est_tokens": 2204,
+        "ccn": 49.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": null,
+        "max_fn_name": null,
+        "commits": 37,
+        "source": "scc"
+      }
+    ]
+  },
+  "instruction_files": {
+    "CLAUDE.md": {
+      "grade": "B",
+      "score": 55,
+      "subscores": {
+        "positive_directives": 42,
+        "tradeoff_phrases": 7,
+        "path_references": 88,
+        "verifiable_outcomes": 0,
+        "line_count": 518,
+        "word_count": 4571,
+        "verified_commands": 3,
+        "external_commands": 14,
+        "unresolved_commands": 0,
+        "unknown_commands": 44,
+        "path_references_existing": 59,
+        "stale_references": 9,
+        "readme_overlap_pct": 0,
+        "directory_trees": 1,
+        "overview_sections": 1,
+        "bloat_penalty": 15,
+        "content_penalty": 15,
+        "score_before_penalties": 85,
+        "size_grade_capped": 1
+      },
+      "findings": [
+        {
+          "kind": "stale_path",
+          "line": 45,
+          "reference": "claude_desktop_config.json",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 45,
+          "reference": "local-stores.sh",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 171,
+          "reference": "build-reference/",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 211,
+          "reference": "claude_desktop_config.json",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 218,
+          "reference": "build-reference/",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 253,
+          "reference": ".tar.xz",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 253,
+          "reference": ".tar.zst",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 381,
+          "reference": ".zsync",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 498,
+          "reference": ".zsync",
+          "reason": "no tracked file or directory at this path"
+        }
+      ],
+      "freshness_days": 7,
+      "line_count": 518,
+      "present": true
+    },
+    "AGENTS.md": {
+      "grade": "B",
+      "score": 55,
+      "subscores": {
+        "positive_directives": 42,
+        "tradeoff_phrases": 7,
+        "path_references": 88,
+        "verifiable_outcomes": 0,
+        "line_count": 518,
+        "word_count": 4567,
+        "verified_commands": 3,
+        "external_commands": 14,
+        "unresolved_commands": 0,
+        "unknown_commands": 44,
+        "path_references_existing": 59,
+        "stale_references": 9,
+        "readme_overlap_pct": 0,
+        "directory_trees": 1,
+        "overview_sections": 1,
+        "bloat_penalty": 15,
+        "content_penalty": 15,
+        "score_before_penalties": 85,
+        "size_grade_capped": 1
+      },
+      "findings": [
+        {
+          "kind": "stale_path",
+          "line": 45,
+          "reference": "claude_desktop_config.json",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 45,
+          "reference": "local-stores.sh",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 171,
+          "reference": "build-reference/",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 211,
+          "reference": "claude_desktop_config.json",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 218,
+          "reference": "build-reference/",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 253,
+          "reference": ".tar.xz",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 253,
+          "reference": ".tar.zst",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 381,
+          "reference": ".zsync",
+          "reason": "no tracked file or directory at this path"
+        },
+        {
+          "kind": "stale_path",
+          "line": 498,
+          "reference": ".zsync",
+          "reason": "no tracked file or directory at this path"
+        }
+      ],
+      "freshness_days": 7,
+      "line_count": 518,
+      "present": true
+    }
+  },
+  "instructions_grade": "B",
+  "diff": {
+    "graduated": 0,
+    "regressed": 0,
+    "restructured": 0,
+    "new": 10,
+    "persistent": 0
+  },
+  "diff_reliable": true,
+  "diff_version_note": null,
+  "diff_trend_reset": false,
+  "prior_plugin_version": null,
+  "schema_version": 5,
+  "prior_schema_version": null,
+  "tool_versions": {
+    "lizard": "1.23.0",
+    "scc": "3.7.0"
+  },
+  "prior_tool_versions": {},
+  "diff_detail": {
+    "graduated": [],
+    "regressed": [],
+    "restructured": [],
+    "new": [
+      {
+        "path": "scripts/launcher-common.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/cowork-fallback/cowork-vm-service.js",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "tests/test-artifact-common.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "build.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/packaging/deb.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/patches/app-asar.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/packaging/rpm.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/doctor.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/packaging/appimage.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      },
+      {
+        "path": "scripts/setup/detect-host.sh",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0,
+        "max_fn_ccn_delta": null
+      }
+    ],
+    "persistent": []
+  },
+  "pruned_hotspots": [],
+  "retired_excluded_hotspots": [],
+  "dropped_first_flagged": [],
+  "provisional_first_flagged": [
+    "build.sh",
+    "scripts/cowork-fallback/cowork-vm-service.js",
+    "scripts/doctor.sh",
+    "scripts/launcher-common.sh",
+    "scripts/packaging/appimage.sh",
+    "scripts/packaging/deb.sh",
+    "scripts/packaging/rpm.sh",
+    "scripts/patches/app-asar.sh",
+    "scripts/setup/detect-host.sh",
+    "tests/test-artifact-common.sh"
+  ],
+  "log_integrity": {
+    "valid": true,
+    "broken_at_entry": null
+  },
+  "doc_graph": {
+    "available": true,
+    "reason": "",
+    "doc_count": 84,
+    "edge_count": 347,
+    "hubs": [
+      {
+        "path": "docs/testing/matrix.md",
+        "pagerank": 0.0662,
+        "out_degree": 12,
+        "in_degree": 16
+      },
+      {
+        "path": "docs/learnings/official-deb-rebase-verification.md",
+        "pagerank": 0.0632,
+        "out_degree": 2,
+        "in_degree": 25
+      },
+      {
+        "path": "docs/learnings/patching-minified-js.md",
+        "pagerank": 0.0427,
+        "out_degree": 2,
+        "in_degree": 19
+      },
+      {
+        "path": "docs/learnings/cowork-vm-daemon.md",
+        "pagerank": 0.042,
+        "out_degree": 4,
+        "in_degree": 9
+      },
+      {
+        "path": "README.md",
+        "pagerank": 0.0388,
+        "out_degree": 10,
+        "in_degree": 8
+      },
+      {
+        "path": "docs/configuration.md",
+        "pagerank": 0.0338,
+        "out_degree": 2,
+        "in_degree": 7
+      },
+      {
+        "path": "docs/learnings/tray-rebuild-race.md",
+        "pagerank": 0.0324,
+        "out_degree": 0,
+        "in_degree": 7
+      },
+      {
+        "path": "docs/learnings/config-wipe-guard.md",
+        "pagerank": 0.0317,
+        "out_degree": 2,
+        "in_degree": 6
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md",
+        "pagerank": 0.0312,
+        "out_degree": 2,
+        "in_degree": 2
+      },
+      {
+        "path": "docs/learnings/plugin-install.md",
+        "pagerank": 0.0266,
+        "out_degree": 1,
+        "in_degree": 7
+      }
+    ],
+    "orphans": [
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md",
+      "docs/upstream-reports/768-config-wipe.md"
+    ],
+    "orphan_rate": 0.179,
+    "island_count": 3,
+    "reachability_pct": 0.786,
+    "entry_points": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "README.md",
+      "docs/index.md"
+    ],
+    "unreachable": [
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md",
+      "docs/reports/REPORTING.md",
+      "docs/reports/REPORTS.md",
+      "docs/upstream-reports/768-config-wipe.md",
+      "scripts/cowork-fallback/README.md"
+    ],
+    "declared_mocs": [
+      {
+        "path": "docs/index.md",
+        "out_degree": 38,
+        "is_structural_hub": true
+      }
+    ],
+    "moc_named_but_not_wired": [],
+    "doc_to_code_edges": [
+      {
+        "doc": "docs/learnings/cowork-vm-daemon.md",
+        "code": "scripts/cowork-fallback/cowork.sh"
+      },
+      {
+        "doc": "docs/learnings/cowork-vm-daemon.md",
+        "code": "scripts/cowork-fallback/cowork-vm-service.js"
+      },
+      {
+        "doc": "docs/learnings/cowork-vm-daemon.md",
+        "code": "scripts/cowork-fallback/cowork-vm-service.js"
+      },
+      {
+        "doc": "docs/learnings/cowork-vm-daemon.md",
+        "code": "scripts/launcher-common.sh"
+      },
+      {
+        "doc": "docs/learnings/cross-build-host-vs-target.md",
+        "code": "scripts/setup/dependencies.sh"
+      },
+      {
+        "doc": "docs/learnings/cross-build-host-vs-target.md",
+        "code": "scripts/packaging/appimage.sh"
+      },
+      {
+        "doc": "docs/learnings/nix.md",
+        "code": "scripts/setup/official-deb.sh"
+      },
+      {
+        "doc": "docs/learnings/packaging-permissions.md",
+        "code": "scripts/packaging/deb.sh"
+      },
+      {
+        "doc": "docs/learnings/packaging-permissions.md",
+        "code": "scripts/packaging/rpm.sh"
+      },
+      {
+        "doc": "docs/learnings/packaging-permissions.md",
+        "code": "scripts/packaging/appimage.sh"
+      },
+      {
+        "doc": "docs/learnings/packaging-permissions.md",
+        "code": "scripts/setup/official-deb.sh"
+      },
+      {
+        "doc": "docs/learnings/test-harness-electron-hooks.md",
+        "code": "tools/test-harness/src/lib/quickentry.ts"
+      },
+      {
+        "doc": "docs/learnings/test-harness-electron-hooks.md",
+        "code": "tools/test-harness/src/lib/inspector.ts"
+      },
+      {
+        "doc": "docs/learnings/test-methodology-and-coverage.md",
+        "code": "tests/test-artifact-common.sh"
+      },
+      {
+        "doc": "docs/learnings/test-methodology-and-coverage.md",
+        "code": "scripts/doctor.sh"
+      },
+      {
+        "doc": "docs/learnings/test-methodology-and-coverage.md",
+        "code": "scripts/launcher-common.sh"
+      },
+      {
+        "doc": "docs/learnings/test-methodology-and-coverage.md",
+        "code": "tests/test-artifact-common.sh"
+      },
+      {
+        "doc": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "code": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/group_families.py"
+      },
+      {
+        "doc": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "code": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/make_charts.py"
+      },
+      {
+        "doc": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "code": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/fetch_issue_dates.py"
+      },
+      {
+        "doc": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "code": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/make_timeseries_charts.py"
+      },
+      {
+        "doc": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md",
+        "code": "docs/reports/CDL-ANT-0009_patch-suite-history/workflow-state/issue-environment-catalog-wf.js"
+      },
+      {
+        "doc": "docs/testing/README.md",
+        "code": "tools/test-harness/grounding-probe.ts"
+      },
+      {
+        "doc": "docs/testing/README.md",
+        "code": "tools/test-harness/orchestrator/sweep.sh"
+      },
+      {
+        "doc": "docs/testing/automation.md",
+        "code": "tools/test-harness/src/lib/inspector.ts"
+      },
+      {
+        "doc": "docs/testing/automation.md",
+        "code": "tools/test-harness/src/lib/electron.ts"
+      },
+      {
+        "doc": "docs/testing/cases/code-tab-foundations.md",
+        "code": "tools/test-harness/src/runners/T17_folder_picker.spec.ts"
+      },
+      {
+        "doc": "docs/testing/cases/launch.md",
+        "code": "tools/test-harness/src/runners/T01_app_launch.spec.ts"
+      },
+      {
+        "doc": "docs/testing/cases/tray-and-window-chrome.md",
+        "code": "tools/test-harness/src/runners/T03_tray_icon_present.spec.ts"
+      },
+      {
+        "doc": "docs/testing/cases/tray-and-window-chrome.md",
+        "code": "tools/test-harness/src/runners/T04_window_decorations.spec.ts"
+      },
+      {
+        "doc": "docs/testing/runbook.md",
+        "code": "tools/test-harness/grounding-probe.ts"
+      }
+    ],
+    "dangling_links": 6,
+    "broken_links": [
+      {
+        "from": "docs/learnings/cowork-vm-daemon.md",
+        "target": "../../scripts/cowork-vm-service.js",
+        "kind": "mdlink"
+      },
+      {
+        "from": "docs/learnings/plugin-install.md",
+        "target": "../../scripts/patches/cowork.sh",
+        "kind": "mdlink"
+      },
+      {
+        "from": "docs/learnings/plugin-install.md",
+        "target": "../../scripts/cowork-vm-service.js",
+        "kind": "mdlink"
+      },
+      {
+        "from": "docs/learnings/test-harness-electron-hooks.md",
+        "target": "../../scripts/frame-fix-wrapper.js",
+        "kind": "mdlink"
+      },
+      {
+        "from": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "target": "../../../learnings/linux-topbar-shim.md",
+        "kind": "mdlink"
+      },
+      {
+        "from": "docs/testing/cases/tray-and-window-chrome.md",
+        "target": "../../learnings/linux-topbar-shim.md",
+        "kind": "mdlink"
+      }
+    ],
+    "missing_xrefs": [],
+    "ambiguous_wikilinks": 0,
+    "vault_detected": false,
+    "obsidiantools_available": false,
+    "excluded_raw_trees": [],
+    "raw_source_doc_count": 0,
+    "curated_doc_count": 84,
+    "raw_source_orphan_rate": 0.0,
+    "raw_source_broken_links": 0,
+    "excluded_working_notes_trees": [],
+    "working_notes_doc_count": 0,
+    "working_notes_orphan_rate": 0.0,
+    "working_notes_broken_links": 0,
+    "link_only_orphan_rate": 0.19,
+    "link_only_reachability_pct": 0.786,
+    "directory_breakdown": [
+      {
+        "path": "docs",
+        "doc_count": 73,
+        "unreachable_count": 17,
+        "broken_link_count": 6
+      },
+      {
+        "path": "scripts",
+        "doc_count": 2,
+        "unreachable_count": 1,
+        "broken_link_count": 0
+      },
+      {
+        "path": ".",
+        "doc_count": 8,
+        "unreachable_count": 0,
+        "broken_link_count": 0
+      },
+      {
+        "path": "tools",
+        "doc_count": 1,
+        "unreachable_count": 0,
+        "broken_link_count": 0
+      }
+    ],
+    "directory_count": 4,
+    "link_parents": [
+      {
+        "path": "ACKNOWLEDGMENTS.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "AGENTS.md",
+        "link_parent": null,
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "CHANGELOG.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "CLAUDE.md",
+        "link_parent": null,
+        "link_entry": "CLAUDE.md"
+      },
+      {
+        "path": "CONTRIBUTING.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "README.md",
+        "link_parent": null,
+        "link_entry": "README.md"
+      },
+      {
+        "path": "RELEASING.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "SECURITY.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/archive/cowork-linux-handover.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/archive/linux-topbar-shim.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/building.md",
+        "link_parent": "CONTRIBUTING.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/configuration.md",
+        "link_parent": "docs/troubleshooting.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/decisions.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/index.md",
+        "link_parent": null,
+        "link_entry": "docs/index.md"
+      },
+      {
+        "path": "docs/issue-triage/README.md",
+        "link_parent": "README.md",
+        "link_entry": "README.md"
+      },
+      {
+        "path": "docs/learnings/apt-worker-architecture.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/config-wipe-guard.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/cowork-vm-daemon.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/cross-build-host-vs-target.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/mcp-double-spawn.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/nix.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/official-deb-rebase-verification.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/packaging-permissions.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/patching-minified-js.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/plugin-install.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/quit-cleanup-scope-fence.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/test-harness-ax-tree-walker.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/test-harness-electron-hooks.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/test-methodology-and-coverage.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/tray-rebuild-race.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/learnings/wayland-global-shortcuts-portal.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "link_parent": "README.md",
+        "link_entry": "README.md"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md",
+        "link_parent": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "link_entry": "README.md"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md",
+        "link_parent": "docs/learnings/official-deb-rebase-verification.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/reports/REPORTING.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/reports/REPORTS.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/styleguides/bash_styleguide.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/styleguides/docs_styleguide.md",
+        "link_parent": "AGENTS.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/README.md",
+        "link_parent": "docs/learnings/test-methodology-and-coverage.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/automation.md",
+        "link_parent": "docs/learnings/test-harness-electron-hooks.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/README.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/code-tab-foundations.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/code-tab-handoff.md",
+        "link_parent": "docs/testing/cases/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/code-tab-workflow.md",
+        "link_parent": "docs/testing/cases/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/distribution.md",
+        "link_parent": "docs/testing/cases/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/extensibility.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/launch.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/platform-integration.md",
+        "link_parent": "docs/testing/cases/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/routines.md",
+        "link_parent": "docs/testing/cases/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/shortcuts-and-input.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/cases/tray-and-window-chrome.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/matrix.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/testing/quick-entry-closeout.md",
+        "link_parent": "docs/index.md",
+        "link_entry": "docs/index.md"
+      },
+      {
+        "path": "docs/testing/runbook.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/troubleshooting.md",
+        "link_parent": "docs/upstream-reports/780-device-registry.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/546-mcp-double-spawn.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/604-tray-panel-theme.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/720-folder-picker-native-binding.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/768-config-wipe.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "docs/upstream-reports/771-cowork-virtiofsd-probe.md",
+        "link_parent": "CHANGELOG.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/780-device-registry.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/884-cowork-firmware-probe.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/955-file-manager-entries.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/README.md",
+        "link_parent": "docs/upstream-reports/771-cowork-virtiofsd-probe.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/electron-wco-linux-bugs.md",
+        "link_parent": "docs/archive/linux-topbar-shim.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/terminal-da1-hidden-shell.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "docs/upstream-reports/tray-theme-update-latch.md",
+        "link_parent": "docs/upstream-reports/README.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "scripts/cowork-fallback/PROTOCOL.md",
+        "link_parent": "docs/learnings/cowork-vm-daemon.md",
+        "link_entry": "AGENTS.md"
+      },
+      {
+        "path": "scripts/cowork-fallback/README.md",
+        "link_parent": null,
+        "link_entry": null
+      },
+      {
+        "path": "tools/test-harness/README.md",
+        "link_parent": "docs/testing/README.md",
+        "link_entry": "AGENTS.md"
+      }
+    ]
+  },
+  "doc_staleness": {
+    "available": true,
+    "churn_window": "commits (last 12mo)",
+    "churn_degenerate": false,
+    "docs": [
+      {
+        "path": "docs/learnings/plugin-install.md",
+        "last_commit_days": 211,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 328.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 328,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/apt-worker-architecture.md",
+        "last_commit_days": 207,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 318.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 318,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/546-mcp-double-spawn.md",
+        "last_commit_days": 197,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 308.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 308,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/test-harness-ax-tree-walker.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/README.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/code-tab-handoff.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/code-tab-workflow.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/extensibility.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/platform-integration.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/routines.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/matrix.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 307.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 307,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/styleguides/bash_styleguide.md",
+        "last_commit_days": 180,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 280.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 280,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/shortcuts-and-input.md",
+        "last_commit_days": 160,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 203.75,
+        "window_ratio": 203.75,
+        "code_churn_since_doc_change": 219,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/REPORTING.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 185.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 185,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/archive/cowork-linux-handover.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 184.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 184,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/archive/linux-topbar-shim.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 184.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 184,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/mcp-double-spawn.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 3,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 184.0,
+        "window_ratio": 271.67,
+        "code_churn_since_doc_change": 184,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/tray-rebuild-race.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 3,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 184.0,
+        "window_ratio": 271.67,
+        "code_churn_since_doc_change": 184,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/electron-wco-linux-bugs.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 184.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 184,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/styleguides/docs_styleguide.md",
+        "last_commit_days": 135,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 182.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 182,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/decisions.md",
+        "last_commit_days": 135,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 181.0,
+        "window_ratio": 203.75,
+        "code_churn_since_doc_change": 181,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/config-wipe-guard.md",
+        "last_commit_days": 135,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 178.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 178,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/768-config-wipe.md",
+        "last_commit_days": 135,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 178.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 178,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/771-cowork-virtiofsd-probe.md",
+        "last_commit_days": 134,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 177.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 177,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/quick-entry-closeout.md",
+        "last_commit_days": 133,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 175.0,
+        "window_ratio": 203.75,
+        "code_churn_since_doc_change": 175,
+        "confidence": "low"
+      },
+      {
+        "path": "scripts/cowork-fallback/PROTOCOL.md",
+        "last_commit_days": 133,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 174.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 174,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/720-folder-picker-native-binding.md",
+        "last_commit_days": 128,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 160.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 160,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/quit-cleanup-scope-fence.md",
+        "last_commit_days": 128,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 156.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 156,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/604-tray-panel-theme.md",
+        "last_commit_days": 127,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 153.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 153,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/tray-theme-update-latch.md",
+        "last_commit_days": 127,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 153.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 153,
+        "confidence": "low"
+      },
+      {
+        "path": "SECURITY.md",
+        "last_commit_days": 71,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 124.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 124,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/index.md",
+        "last_commit_days": 128,
+        "doc_churn_in_window": 8,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 101.88,
+        "window_ratio": 101.88,
+        "code_churn_since_doc_change": 156,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/issue-triage/README.md",
+        "last_commit_days": 57,
+        "doc_churn_in_window": 7,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 95.0,
+        "window_ratio": 116.43,
+        "code_churn_since_doc_change": 95,
+        "confidence": "low"
+      },
+      {
+        "path": "CONTRIBUTING.md",
+        "last_commit_days": 46,
+        "doc_churn_in_window": 6,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 65.0,
+        "window_ratio": 135.83,
+        "code_churn_since_doc_change": 65,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/wayland-global-shortcuts-portal.md",
+        "last_commit_days": 41,
+        "doc_churn_in_window": 12,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 60.0,
+        "window_ratio": 67.92,
+        "code_churn_since_doc_change": 60,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/testing/cases/distribution.md",
+        "last_commit_days": 39,
+        "doc_churn_in_window": 5,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 47.0,
+        "window_ratio": 163.0,
+        "code_churn_since_doc_change": 47,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/official-deb-rebase-verification.md",
+        "last_commit_days": 34,
+        "doc_churn_in_window": 8,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 44.0,
+        "window_ratio": 101.88,
+        "code_churn_since_doc_change": 44,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/884-cowork-firmware-probe.md",
+        "last_commit_days": 28,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 37.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 37,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/test-methodology-and-coverage.md",
+        "last_commit_days": 51,
+        "doc_churn_in_window": 6,
+        "code_churn_in_window": 210,
+        "subject_code_count": 4,
+        "subject_method": "explicit-links",
+        "ratio": 32.0,
+        "window_ratio": 35.0,
+        "code_churn_since_doc_change": 32,
+        "confidence": "high"
+      },
+      {
+        "path": "RELEASING.md",
+        "last_commit_days": 27,
+        "doc_churn_in_window": 9,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 29.0,
+        "window_ratio": 90.56,
+        "code_churn_since_doc_change": 29,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/955-file-manager-entries.md",
+        "last_commit_days": 23,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 24.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 24,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/configuration.md",
+        "last_commit_days": 22,
+        "doc_churn_in_window": 19,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 23.0,
+        "window_ratio": 42.89,
+        "code_churn_since_doc_change": 23,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/packaging-permissions.md",
+        "last_commit_days": 28,
+        "doc_churn_in_window": 3,
+        "code_churn_in_window": 160,
+        "subject_code_count": 4,
+        "subject_method": "explicit-links",
+        "ratio": 18.0,
+        "window_ratio": 53.33,
+        "code_churn_since_doc_change": 18,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/learnings/cowork-vm-daemon.md",
+        "last_commit_days": 60,
+        "doc_churn_in_window": 9,
+        "code_churn_in_window": 132,
+        "subject_code_count": 4,
+        "subject_method": "explicit-links",
+        "ratio": 14.67,
+        "window_ratio": 14.67,
+        "code_churn_since_doc_change": 34,
+        "confidence": "high"
+      },
+      {
+        "path": "ACKNOWLEDGMENTS.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 63,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 9.0,
+        "window_ratio": 12.94,
+        "code_churn_since_doc_change": 9,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/terminal-da1-hidden-shell.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 9.0,
+        "window_ratio": 815.0,
+        "code_churn_since_doc_change": 9,
+        "confidence": "low"
+      },
+      {
+        "path": "scripts/cowork-fallback/README.md",
+        "last_commit_days": 133,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 18,
+        "subject_code_count": 3,
+        "subject_method": "nearest-ancestor",
+        "ratio": 9.0,
+        "window_ratio": 9.0,
+        "code_churn_since_doc_change": 14,
+        "confidence": "high"
+      },
+      {
+        "path": "README.md",
+        "last_commit_days": 34,
+        "doc_churn_in_window": 91,
+        "code_churn_in_window": 671,
+        "subject_code_count": 28,
+        "subject_method": "nearest-ancestor",
+        "ratio": 7.37,
+        "window_ratio": 7.37,
+        "code_churn_since_doc_change": 42,
+        "confidence": "high"
+      },
+      {
+        "path": "AGENTS.md",
+        "last_commit_days": 7,
+        "doc_churn_in_window": 19,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 7.0,
+        "window_ratio": 42.89,
+        "code_churn_since_doc_change": 7,
+        "confidence": "low"
+      },
+      {
+        "path": "CLAUDE.md",
+        "last_commit_days": 7,
+        "doc_churn_in_window": 49,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 7.0,
+        "window_ratio": 16.63,
+        "code_churn_since_doc_change": 7,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/building.md",
+        "last_commit_days": 7,
+        "doc_churn_in_window": 6,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 7.0,
+        "window_ratio": 135.83,
+        "code_churn_since_doc_change": 7,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/patching-minified-js.md",
+        "last_commit_days": 7,
+        "doc_churn_in_window": 13,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 7.0,
+        "window_ratio": 62.69,
+        "code_churn_since_doc_change": 7,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/learnings/nix.md",
+        "last_commit_days": 50,
+        "doc_churn_in_window": 9,
+        "code_churn_in_window": 57,
+        "subject_code_count": 1,
+        "subject_method": "explicit-links",
+        "ratio": 6.33,
+        "window_ratio": 6.33,
+        "code_churn_since_doc_change": 23,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/learnings/cross-build-host-vs-target.md",
+        "last_commit_days": 32,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 47,
+        "subject_code_count": 2,
+        "subject_method": "explicit-links",
+        "ratio": 5.0,
+        "window_ratio": 11.75,
+        "code_churn_since_doc_change": 5,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/upstream-reports/780-device-registry.md",
+        "last_commit_days": 3,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 2.0,
+        "window_ratio": 407.5,
+        "code_churn_since_doc_change": 2,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/upstream-reports/README.md",
+        "last_commit_days": 3,
+        "doc_churn_in_window": 13,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 2.0,
+        "window_ratio": 62.69,
+        "code_churn_since_doc_change": 2,
+        "confidence": "low"
+      },
+      {
+        "path": "tools/test-harness/README.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 120,
+        "subject_code_count": 99,
+        "subject_method": "nearest-ancestor",
+        "ratio": 2.0,
+        "window_ratio": 60.0,
+        "code_churn_since_doc_change": 2,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/learnings/test-harness-electron-hooks.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 4,
+        "subject_code_count": 2,
+        "subject_method": "explicit-links",
+        "ratio": 1.0,
+        "window_ratio": 2.0,
+        "code_churn_since_doc_change": 1,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/testing/README.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 3,
+        "subject_code_count": 2,
+        "subject_method": "explicit-links",
+        "ratio": 1.0,
+        "window_ratio": 3.0,
+        "code_churn_since_doc_change": 1,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/testing/cases/tray-and-window-chrome.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 3,
+        "subject_code_count": 2,
+        "subject_method": "explicit-links",
+        "ratio": 1.0,
+        "window_ratio": 3.0,
+        "code_churn_since_doc_change": 1,
+        "confidence": "high"
+      },
+      {
+        "path": "CHANGELOG.md",
+        "last_commit_days": 0,
+        "doc_churn_in_window": 205,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 0.0,
+        "window_ratio": 3.98,
+        "code_churn_since_doc_change": 0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 4,
+        "subject_code_count": 4,
+        "subject_method": "explicit-links",
+        "ratio": 0.0,
+        "window_ratio": 4.0,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md",
+        "last_commit_days": 136,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 4,
+        "subject_code_count": 4,
+        "subject_method": "nearest-ancestor",
+        "ratio": 0.0,
+        "window_ratio": 4.0,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/reports/REPORTS.md",
+        "last_commit_days": 128,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 2,
+        "subject_code_count": 2,
+        "subject_method": "nearest-ancestor",
+        "ratio": 0.0,
+        "window_ratio": 1.0,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/testing/automation.md",
+        "last_commit_days": 45,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 6,
+        "subject_code_count": 2,
+        "subject_method": "explicit-links",
+        "ratio": 0.0,
+        "window_ratio": 3.0,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/testing/cases/code-tab-foundations.md",
+        "last_commit_days": 196,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 1,
+        "subject_code_count": 1,
+        "subject_method": "explicit-links",
+        "ratio": 0.0,
+        "window_ratio": 1.0,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/testing/cases/launch.md",
+        "last_commit_days": 133,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 1,
+        "subject_code_count": 1,
+        "subject_method": "explicit-links",
+        "ratio": 0.0,
+        "window_ratio": 0.5,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/testing/runbook.md",
+        "last_commit_days": 34,
+        "doc_churn_in_window": 3,
+        "code_churn_in_window": 2,
+        "subject_code_count": 1,
+        "subject_method": "explicit-links",
+        "ratio": 0.0,
+        "window_ratio": 0.67,
+        "code_churn_since_doc_change": 0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/troubleshooting.md",
+        "last_commit_days": 0,
+        "doc_churn_in_window": 32,
+        "code_churn_in_window": 815,
+        "subject_code_count": 136,
+        "subject_method": "repo-baseline",
+        "ratio": 0.0,
+        "window_ratio": 25.47,
+        "code_churn_since_doc_change": 0,
+        "confidence": "low"
+      }
+    ],
+    "bulk_commits_skipped": [],
+    "bulk_commits_skipped_total": 0,
+    "bulk_commit_scan_complete": true,
+    "creation_date_fallback_count": 0,
+    "association": {
+      "code_file_count": 136,
+      "doc_count": 84,
+      "code_under_base_doc": 136,
+      "pct_code_under_base_doc": 1.0,
+      "docs_mapping_to_code": 18,
+      "pct_docs_mapping_to_code": 0.214,
+      "methods": {
+        "repo-baseline": 66,
+        "nearest-ancestor": 5,
+        "explicit-links": 13
+      }
+    },
+    "modularity": {
+      "module_dir_count": 16,
+      "module_dirs_with_base_doc": 3,
+      "base_doc_dir_ratio": 0.188,
+      "base_doc_coverage_when_present": 1.0,
+      "code_file_count": 136,
+      "large_repo": true
+    }
+  },
+  "stale_hubs": [
+    {
+      "path": "docs/testing/matrix.md",
+      "pagerank": 0.0662,
+      "last_commit_days": 196,
+      "code_churn_in_window": 815,
+      "ratio": 307.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 20.323
+    },
+    {
+      "path": "docs/learnings/plugin-install.md",
+      "pagerank": 0.0266,
+      "last_commit_days": 211,
+      "code_churn_in_window": 815,
+      "ratio": 328.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 8.725
+    },
+    {
+      "path": "docs/learnings/tray-rebuild-race.md",
+      "pagerank": 0.0324,
+      "last_commit_days": 136,
+      "code_churn_in_window": 815,
+      "ratio": 184.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 5.962
+    },
+    {
+      "path": "docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md",
+      "pagerank": 0.0312,
+      "last_commit_days": 136,
+      "code_churn_in_window": 815,
+      "ratio": 185.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 5.772
+    },
+    {
+      "path": "docs/learnings/config-wipe-guard.md",
+      "pagerank": 0.0317,
+      "last_commit_days": 135,
+      "code_churn_in_window": 815,
+      "ratio": 178.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 5.643
+    },
+    {
+      "path": "docs/learnings/official-deb-rebase-verification.md",
+      "pagerank": 0.0632,
+      "last_commit_days": 34,
+      "code_churn_in_window": 815,
+      "ratio": 44.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 2.781
+    },
+    {
+      "path": "docs/learnings/cowork-vm-daemon.md",
+      "pagerank": 0.042,
+      "last_commit_days": 60,
+      "code_churn_in_window": 132,
+      "ratio": 14.67,
+      "subject_method": "explicit-links",
+      "confidence": "high",
+      "priority": 0.616
+    },
+    {
+      "path": "docs/configuration.md",
+      "pagerank": 0.0338,
+      "last_commit_days": 22,
+      "code_churn_in_window": 815,
+      "ratio": 23.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 0.777
+    },
+    {
+      "path": "README.md",
+      "pagerank": 0.0388,
+      "last_commit_days": 34,
+      "code_churn_in_window": 671,
+      "ratio": 7.37,
+      "subject_method": "nearest-ancestor",
+      "confidence": "high",
+      "priority": 0.286
+    },
+    {
+      "path": "docs/learnings/patching-minified-js.md",
+      "pagerank": 0.0427,
+      "last_commit_days": 7,
+      "code_churn_in_window": 815,
+      "ratio": 7.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 0.299
+    }
+  ],
+  "churn_degenerate": false,
+  "untracked_instruction_files": [],
+  "broken_instruction_refs": [],
+  "sensitive_instruction_content": {},
+  "archetype": {
+    "available": true,
+    "archetype": "software",
+    "detected_via": "heuristic",
+    "override": null,
+    "override_contradicts_signals": false,
+    "contradiction_details": null,
+    "reason": "code-file ratio 0.62 (136 code / 85 docs) exceeds the knowledge-base threshold 0.10",
+    "signals": {
+      "code_file_count": 136,
+      "doc_file_count": 85,
+      "other_file_count": 116,
+      "code_file_ratio": 0.615,
+      "has_runtime_surface": false
+    },
+    "applicable_layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "na_layers": [],
+    "denominator": 8,
+    "kb_maintenance": {
+      "documented": false,
+      "signals_found": [],
+      "gist_cited": false,
+      "gist": "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f"
+    }
+  },
+  "ancestor_instruction_files": [
+    "~/.claude/CLAUDE.md (global user instructions)"
+  ],
+  "skills_present": true,
+  "skills_count": 4,
+  "skill_files": [
+    ".claude/skills/lint/SKILL.md",
+    ".claude/skills/setup-build-tools/SKILL.md",
+    ".claude/skills/triage/SKILL.md",
+    ".claude/skills/simplify/SKILL.md"
+  ],
+  "instruction_file_size": {
+    "CLAUDE.md": {
+      "line_count": 518,
+      "word_count": 4571,
+      "bloat_penalty": 15
+    },
+    "AGENTS.md": {
+      "line_count": 518,
+      "word_count": 4567,
+      "bloat_penalty": 15
+    }
+  },
+  "dead_code": {
+    "available": true,
+    "candidate_count": 0,
+    "candidates": [],
+    "tools": [
+      {
+        "language": "python",
+        "tool": "vulture",
+        "status": "ran",
+        "reason": "0 candidate(s)"
+      },
+      {
+        "language": "typescript",
+        "tool": "ts-prune",
+        "status": "not_applicable",
+        "reason": "no root tsconfig.json; ts-prune runs from the repository root and would have no project to analyse"
+      },
+      {
+        "language": "typescript",
+        "tool": "knip",
+        "status": "tool_absent",
+        "reason": "knip not on PATH"
+      },
+      {
+        "language": "javascript",
+        "tool": "knip",
+        "status": "not_applicable",
+        "reason": "98 TypeScript file(s) against 5 JavaScript file(s); the dominant language's tool is used, so knip is not run and the 5 JavaScript file(s) are not analysed"
+      }
+    ],
+    "caveat": "Static reachability proves nothing in THIS repo references the symbol; it cannot prove no external consumer (a mobile app, another service) calls it. Cross-boundary liveness needs telemetry or a named human."
+  },
+  "observability": {
+    "rung": 0,
+    "instrumented": {
+      "present": false,
+      "signals": []
+    },
+    "discoverable": {
+      "present": true,
+      "signals": [
+        "runbook/observability doc: docs/testing/runbook.md"
+      ]
+    },
+    "reachable": {
+      "present": false,
+      "signals": []
+    },
+    "boundary": "Scores what the repo makes agent-reachable; cannot observe the agent's live environment."
+  },
+  "coverage_report": {
+    "available": false,
+    "source": "none found"
+  },
+  "coverage_gate": {
+    "available": true,
+    "enforced": false,
+    "gates": [],
+    "not_detected": [
+      "Go: `go test -coverprofile` with a script comparing the `go tool cover -func` total to a number, or go-test-coverage's `.testcoverage.yml`",
+      "Codecov / Coveralls status targets (server-side; a gate only when the status check is required)",
+      "Kover `minBound`, sbt-scoverage `coverageMinimumStmtTotal`, cargo-tarpaulin `--fail-under`, SimpleCov `minimum_coverage`",
+      "JaCoCo rules built programmatically or in a shared Gradle convention plugin",
+      "CLI thresholds in shell scripts or in CI and task files other than GitHub workflows and composite actions, `.gitlab-ci.yml`, CircleCI, Jenkinsfile, Azure Pipelines, Travis, Bitbucket Pipelines, `Makefile`, `justfile`, `Taskfile.yml`, `noxfile.py`, `tox.ini` and `package.json` scripts",
+      "coverage.py `fail_under` in a TOML inline table (`report = { fail_under = 85 }` under `[tool.coverage]`)",
+      "Vitest before 1.0: `lines` / `branches` directly under `coverage` with no `thresholds` key"
+    ]
+  },
+  "test_pressure": {
+    "mutation_config_present": false,
+    "mutation_tools_detected": [],
+    "ci_integrated": false,
+    "mutation_run": false,
+    "mutation_scope": [],
+    "per_file": [],
+    "survivor_density": {
+      "overall": null,
+      "total_survived": 0,
+      "total_mutants": null,
+      "by_file": {}
+    },
+    "survivor_clusters": [],
+    "gap_signal": "not assessed",
+    "cheap_heuristics": {
+      "assertion_on_internal": [],
+      "untested_boundaries": [],
+      "duplicate_truth": [],
+      "confidence_note": "candidate signals for human judgement, never verdicts"
+    },
+    "mutation_note": "opt-in required: mutation testing mutates and runs code"
+  },
+  "mutation_not_run_cap": {
+    "applies": true,
+    "mutation_run": false,
+    "partial": false,
+    "max_layer6_band": "Partial",
+    "annotation": "truth-pressure unproven (mutation not run)"
+  },
+  "test_focus": {
+    "available": true,
+    "coverage_present": false,
+    "entries": [
+      {
+        "path": "scripts/launcher-common.sh",
+        "risk_band": "high",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/cowork-fallback/cowork-vm-service.js",
+        "risk_band": "high",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tests/test-artifact-common.sh",
+        "risk_band": "high",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "build.sh",
+        "risk_band": "medium",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/packaging/deb.sh",
+        "risk_band": "medium",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/patches/app-asar.sh",
+        "risk_band": "medium",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/packaging/rpm.sh",
+        "risk_band": "medium",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/doctor.sh",
+        "risk_band": "low",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/packaging/appimage.sh",
+        "risk_band": "low",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "scripts/setup/detect-host.sh",
+        "risk_band": "low",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      }
+    ],
+    "total_focus_targets": 10
+  },
+  "promissory_markers": {
+    "available": true,
+    "reason": "",
+    "aging_reliable": true,
+    "stale_touches_threshold": 5,
+    "families": {
+      "todo": {
+        "total": 2,
+        "stale": 1,
+        "linked": 1,
+        "justified": 0,
+        "agent_introduced": 0
+      },
+      "suppression": {
+        "total": 1,
+        "stale": 0,
+        "linked": 0,
+        "justified": 0,
+        "agent_introduced": 0
+      },
+      "disabled_test": {
+        "total": 63,
+        "stale": 0,
+        "linked": 0,
+        "justified": 0,
+        "agent_introduced": 0
+      }
+    },
+    "todo_bare": 1,
+    "todo_linked": 1,
+    "total_markers": 66,
+    "total_stale": 1,
+    "stale_agent_introduced": 0,
+    "stale_by_file": {
+      "scripts/cowork-fallback/cowork-vm-service.js": {
+        "count": 1,
+        "families": [
+          "todo"
+        ],
+        "max_survived": 15
+      }
+    },
+    "top_offenders": [
+      {
+        "path": "scripts/cowork-fallback/cowork-vm-service.js",
+        "line": 1663,
+        "family": "todo",
+        "text": "// Detect and remove before mkdir so the bind mount works.",
+        "linked": false,
+        "justified": false,
+        "commit": "1a304d45cd40",
+        "agent_introduced": false,
+        "survived_touches": 15,
+        "severity": 28.96
+      }
+    ]
+  },
+  "agent_ops": {
+    "available": true,
+    "settings": [
+      {
+        "path": ".claude/settings.local.json",
+        "tracked": true,
+        "parse_ok": true,
+        "allow_count": 0,
+        "deny_count": 0,
+        "ask_count": 0,
+        "hook_events": 3,
+        "sandbox_configured": false
+      }
+    ],
+    "hooks_dir": {
+      "path": ".claude/hooks",
+      "present": true,
+      "file_count": 4,
+      "tracked_count": 4
+    },
+    "routine_dirs": [
+      {
+        "path": ".claude/workflows",
+        "present": false,
+        "file_count": 0,
+        "tracked_count": 0
+      },
+      {
+        "path": ".claude/routines",
+        "present": false,
+        "file_count": 0,
+        "tracked_count": 0
+      }
+    ],
+    "summary": {
+      "permissions_encoded": false,
+      "hooks_present": true,
+      "routines_present": false
+    }
+  },
+  "config_drift": {
+    "available": true,
+    "entries": [],
+    "dropped": 0,
+    "snapshots": []
+  },
+  "review_reality": {
+    "available": true,
+    "merged_count": 30,
+    "oldest_merged_days_ago": 39,
+    "reviewed_share": 0.567,
+    "approved_share": 0.533,
+    "bot_review_share": 0.0,
+    "self_merged_share": 0.5,
+    "review_required": null,
+    "hollow_required_review": null,
+    "required_approval_bypassed": null
+  },
+  "gate_cost_estimate": {
+    "available": true,
+    "runs_per_month": 21,
+    "minutes_per_run": 5,
+    "minutes_per_month": 105,
+    "assumption": "Assumes 5 minutes per gate run (a fixed figure, not measured on this repository) and one run per merged pull request: 21 merged in the last 30 days. Re-pushes to an open pull request add runs, so the run count is a floor.",
+    "capped": false,
+    "private": false
+  },
+  "accretion_ratchet": {
+    "available": true,
+    "reason": "",
+    "reliable": true,
+    "deletion_fraction_threshold": 0.15,
+    "files": [],
+    "total_in_band": 0
+  },
+  "structure": {
+    "available": true,
+    "reason": "no importable Python packages found",
+    "keyhole_budget": 2000,
+    "footprints": [],
+    "sccs": [],
+    "modularity_q": 0.0,
+    "front_door_ratio": 1.0,
+    "internal_burrow_edges": [],
+    "breakup_candidates": [],
+    "module_count": 0,
+    "edge_count": 0,
+    "name_collisions": []
+  },
+  "behaviour": {
+    "available": true,
+    "containment_by_dir": {
+      "scripts": 0.3415,
+      "tests": 0.1854,
+      ".github": 0.5644,
+      ".github/workflows": 0.5648,
+      "docs": 0.1678,
+      "nix": 0.0634,
+      "scripts/setup": 0.0769,
+      "scripts/packaging": 0.3636,
+      "scripts/cowork-fallback": 0.5062,
+      "docs/learnings": 0.0441,
+      "scripts/patches": 0.1176,
+      ".claude": 0.3095,
+      "scripts/cowork-fallback/tests": 0.1333,
+      ".claude/scripts": 0.0909,
+      ".claude/agents": 0.0588,
+      "tools": 0.125,
+      "docs/upstream-reports": 0.4,
+      ".claude/scripts/schemas": 0.0,
+      ".claude/scripts/prompts": 0.0833,
+      ".claude/skills": 0.0909,
+      "docs/testing": 0.0,
+      ".claude/hooks": 0.4444,
+      "docs/testing/cases": 0.0,
+      "docs/issue-triage": 0.1429,
+      "worker": 0.2857,
+      "docs/archive": 0.0,
+      "worker/src": 0.1667,
+      ".claude/scripts/triage": 0.0,
+      "tools/test-harness": 0.4,
+      "tools/test-harness/src": 0.2
+    },
+    "change_coupling_pairs": [
+      {
+        "file_a": "nix/claude-desktop.nix",
+        "file_b": "scripts/setup/official-deb.sh",
+        "co_change_count": 51,
+        "support_pct": 3.38
+      },
+      {
+        "file_a": "scripts/launcher-common.sh",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 51,
+        "support_pct": 3.38
+      },
+      {
+        "file_a": "scripts/packaging/appimage.sh",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 42,
+        "support_pct": 2.79
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "tests/doctor.bats",
+        "co_change_count": 38,
+        "support_pct": 2.52
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 34,
+        "support_pct": 2.26
+      },
+      {
+        "file_a": "nix/claude-desktop.nix",
+        "file_b": "scripts/setup/detect-host.sh",
+        "co_change_count": 34,
+        "support_pct": 2.26
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 32,
+        "support_pct": 2.12
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "nix/claude-desktop.nix",
+        "co_change_count": 29,
+        "support_pct": 1.92
+      },
+      {
+        "file_a": "scripts/packaging/deb.sh",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 29,
+        "support_pct": 1.92
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/doctor.sh",
+        "co_change_count": 26,
+        "support_pct": 1.73
+      },
+      {
+        "file_a": "scripts/launcher-common.sh",
+        "file_b": "scripts/packaging/appimage.sh",
+        "co_change_count": 26,
+        "support_pct": 1.73
+      },
+      {
+        "file_a": "scripts/packaging/appimage.sh",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 24,
+        "support_pct": 1.59
+      },
+      {
+        "file_a": "scripts/launcher-common.sh",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 23,
+        "support_pct": 1.53
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "docs/troubleshooting.md",
+        "co_change_count": 19,
+        "support_pct": 1.26
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/doctor.bats",
+        "co_change_count": 19,
+        "support_pct": 1.26
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 19,
+        "support_pct": 1.26
+      },
+      {
+        "file_a": "scripts/launcher-common.sh",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 19,
+        "support_pct": 1.26
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/packaging/appimage.sh",
+        "co_change_count": 16,
+        "support_pct": 1.06
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 16,
+        "support_pct": 1.06
+      },
+      {
+        "file_a": "AGENTS.md",
+        "file_b": "CLAUDE.md",
+        "co_change_count": 15,
+        "support_pct": 1.0
+      },
+      {
+        "file_a": "scripts/packaging/appimage.sh",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 15,
+        "support_pct": 1.0
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 14,
+        "support_pct": 0.93
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 14,
+        "support_pct": 0.93
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "CLAUDE.md",
+        "co_change_count": 13,
+        "support_pct": 0.86
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 13,
+        "support_pct": 0.86
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/patches/app-asar.sh",
+        "co_change_count": 13,
+        "support_pct": 0.86
+      },
+      {
+        "file_a": "scripts/packaging/rpm.sh",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 13,
+        "support_pct": 0.86
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "scripts/packaging/appimage.sh",
+        "co_change_count": 12,
+        "support_pct": 0.8
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "scripts/patches/app-asar.sh",
+        "co_change_count": 12,
+        "support_pct": 0.8
+      },
+      {
+        "file_a": "scripts/packaging/deb.sh",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 12,
+        "support_pct": 0.8
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "docs/configuration.md",
+        "co_change_count": 11,
+        "support_pct": 0.73
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 11,
+        "support_pct": 0.73
+      },
+      {
+        "file_a": "scripts/launcher-common.sh",
+        "file_b": "tests/doctor.bats",
+        "co_change_count": 11,
+        "support_pct": 0.73
+      },
+      {
+        "file_a": "tests/doctor.bats",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 11,
+        "support_pct": 0.73
+      },
+      {
+        "file_a": "tests/test-artifact-deb.sh",
+        "file_b": "tests/test-artifact-rpm.sh",
+        "co_change_count": 11,
+        "support_pct": 0.73
+      },
+      {
+        "file_a": ".github/workflows/build.yml",
+        "file_b": ".github/workflows/ci.yml",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": "docs/troubleshooting.md",
+        "file_b": "scripts/doctor.sh",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": "docs/troubleshooting.md",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": "scripts/cowork-fallback/cowork-vm-service.js",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": "scripts/launcher-common.sh",
+        "file_b": "scripts/patches/app-asar.sh",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": "tests/test-artifact-common.sh",
+        "file_b": "tests/test-artifact-rpm.sh",
+        "co_change_count": 10,
+        "support_pct": 0.66
+      },
+      {
+        "file_a": ".github/workflows/build-amd64.yml",
+        "file_b": ".github/workflows/build.yml",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": ".github/workflows/ci.yml",
+        "file_b": "CHANGELOG.md",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/test-artifact-common.sh",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": "docs/troubleshooting.md",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": "docs/troubleshooting.md",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": "scripts/cowork-fallback/cowork-vm-service.js",
+        "file_b": "scripts/cowork-fallback/tests/cowork-bwrap-config.bats",
+        "co_change_count": 9,
+        "support_pct": 0.6
+      },
+      {
+        "file_a": ".github/workflows/build-amd64.yml",
+        "file_b": ".github/workflows/ci.yml",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": ".github/workflows/ci.yml",
+        "file_b": ".github/workflows/codespell.yml",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/ci-release-job.bats",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/workflow-node-floor.bats",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "build.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "docs/configuration.md",
+        "file_b": "docs/troubleshooting.md",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "docs/configuration.md",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "nix/claude-desktop.nix",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "nix/claude-desktop.nix",
+        "file_b": "scripts/packaging/deb.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "nix/claude-desktop.nix",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "scripts/packaging/appimage.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "scripts/packaging/rpm.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "scripts/doctor.sh",
+        "file_b": "scripts/patches/app-asar.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "scripts/frame-fix-wrapper.js",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": "scripts/patches/app-asar.sh",
+        "file_b": "tests/launcher-common.bats",
+        "co_change_count": 8,
+        "support_pct": 0.53
+      },
+      {
+        "file_a": ".github/workflows/ci.yml",
+        "file_b": ".github/workflows/shellcheck.yml",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": ".github/workflows/ci.yml",
+        "file_b": "build.sh",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "README.md",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "docs/learnings/patching-minified-js.md",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/cowork-fallback/cowork-vm-service.js",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/test-artifact-rpm.sh",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "scripts/launcher-common.sh",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "build.sh",
+        "file_b": "scripts/frame-fix-wrapper.js",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "nix/claude-desktop.nix",
+        "file_b": "scripts/packaging/appimage.sh",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "scripts/claude-native-stub.js",
+        "file_b": "scripts/frame-fix-wrapper.js",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "scripts/cowork-fallback/cowork-vm-service.js",
+        "file_b": "scripts/cowork-fallback/tests/cowork-path-translation.bats",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "scripts/patches/app-asar.sh",
+        "file_b": "tests/app-asar.bats",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "tests/launcher-common.bats",
+        "file_b": "tests/test_helper.bash",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": "tests/test-artifact-common.sh",
+        "file_b": "tests/test-artifact-deb.sh",
+        "co_change_count": 7,
+        "support_pct": 0.46
+      },
+      {
+        "file_a": ".claude/agents/issue-triage.md",
+        "file_b": ".github/workflows/issue-triage.yml",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": ".github/workflows/apt-repo-heartbeat.yml",
+        "file_b": ".github/workflows/ci.yml",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": ".github/workflows/check-claude-version.yml",
+        "file_b": ".github/workflows/ci.yml",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": ".github/workflows/check-claude-version.yml",
+        "file_b": "build.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": ".github/workflows/codespell.yml",
+        "file_b": ".github/workflows/shellcheck.yml",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": ".github/workflows/tests.yml",
+        "file_b": "CHANGELOG.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "AGENTS.md",
+        "file_b": "CHANGELOG.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "RELEASING.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "build.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "docs/learnings/cowork-vm-daemon.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "docs/upstream-reports/README.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "scripts/patches/cowork-bwrap.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/patch-anchors.bats",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tests/test-artifact-deb.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CHANGELOG.md",
+        "file_b": "tools/patch-necessity-audit.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "README.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "build.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "docs/index.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "docs/learnings/patching-minified-js.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "docs/learnings/wayland-global-shortcuts-portal.md",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "scripts/patches/app-asar.sh",
+        "co_change_count": 6,
+        "support_pct": 0.4
+      }
+    ],
+    "change_coupling_pairs_total": 372,
+    "static_history_disagreement": [
+      {
+        "path": ".claude/scripts/schemas",
+        "containment_ratio": 0.0,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": ".claude/scripts/triage",
+        "containment_ratio": 0.0,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying",
+        "coupled_pairs": [],
+        "coupled_pairs_total": 0
+      },
+      {
+        "path": "docs/archive",
+        "containment_ratio": 0.0,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "docs/testing",
+        "containment_ratio": 0.0,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "docs/testing/cases",
+        "containment_ratio": 0.0,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "docs/learnings",
+        "containment_ratio": 0.0441,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": ".claude/agents",
+        "containment_ratio": 0.0588,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "nix",
+        "containment_ratio": 0.0634,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "scripts/setup",
+        "containment_ratio": 0.0769,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": ".claude/scripts/prompts",
+        "containment_ratio": 0.0833,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": ".claude/scripts",
+        "containment_ratio": 0.0909,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying",
+        "coupled_pairs": [
+          {
+            "file_a": ".claude/scripts/prompts/classify.txt",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 5,
+            "support_pct": 0.33
+          },
+          {
+            "file_a": ".claude/agents/issue-triage.md",
+            "file_b": ".claude/scripts/schemas/triage-classify.json",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          },
+          {
+            "file_a": ".claude/scripts/prompts/investigate.txt",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          },
+          {
+            "file_a": ".claude/scripts/reasons.json",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          },
+          {
+            "file_a": ".claude/scripts/schemas/classify.json",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          }
+        ],
+        "coupled_pairs_total": 12
+      },
+      {
+        "path": ".claude/skills",
+        "containment_ratio": 0.0909,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "scripts/patches",
+        "containment_ratio": 0.1176,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "tools",
+        "containment_ratio": 0.125,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "scripts/cowork-fallback/tests",
+        "containment_ratio": 0.1333,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "docs/issue-triage",
+        "containment_ratio": 0.1429,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "worker/src",
+        "containment_ratio": 0.1667,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "docs",
+        "containment_ratio": 0.1678,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying",
+        "coupled_pairs": [
+          {
+            "file_a": "CHANGELOG.md",
+            "file_b": "docs/troubleshooting.md",
+            "co_change_count": 19,
+            "support_pct": 1.26
+          },
+          {
+            "file_a": "CHANGELOG.md",
+            "file_b": "docs/configuration.md",
+            "co_change_count": 11,
+            "support_pct": 0.73
+          },
+          {
+            "file_a": "docs/troubleshooting.md",
+            "file_b": "scripts/doctor.sh",
+            "co_change_count": 10,
+            "support_pct": 0.66
+          },
+          {
+            "file_a": "docs/troubleshooting.md",
+            "file_b": "scripts/launcher-common.sh",
+            "co_change_count": 10,
+            "support_pct": 0.66
+          },
+          {
+            "file_a": "docs/troubleshooting.md",
+            "file_b": "scripts/packaging/deb.sh",
+            "co_change_count": 9,
+            "support_pct": 0.6
+          }
+        ],
+        "coupled_pairs_total": 84
+      },
+      {
+        "path": "tests",
+        "containment_ratio": 0.1854,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "tools/test-harness/src",
+        "containment_ratio": 0.2,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "worker",
+        "containment_ratio": 0.2857,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      }
+    ],
+    "hidden_coupling_findings": [
+      {
+        "path": ".claude/scripts/triage",
+        "containment_ratio": 0.0,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying",
+        "coupled_pairs": [],
+        "coupled_pairs_total": 0
+      },
+      {
+        "path": ".claude/scripts",
+        "containment_ratio": 0.0909,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying",
+        "coupled_pairs": [
+          {
+            "file_a": ".claude/scripts/prompts/classify.txt",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 5,
+            "support_pct": 0.33
+          },
+          {
+            "file_a": ".claude/agents/issue-triage.md",
+            "file_b": ".claude/scripts/schemas/triage-classify.json",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          },
+          {
+            "file_a": ".claude/scripts/prompts/investigate.txt",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          },
+          {
+            "file_a": ".claude/scripts/reasons.json",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          },
+          {
+            "file_a": ".claude/scripts/schemas/classify.json",
+            "file_b": ".github/workflows/issue-triage-v2.yml",
+            "co_change_count": 4,
+            "support_pct": 0.27
+          }
+        ],
+        "coupled_pairs_total": 12
+      },
+      {
+        "path": "docs",
+        "containment_ratio": 0.1678,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying",
+        "coupled_pairs": [
+          {
+            "file_a": "CHANGELOG.md",
+            "file_b": "docs/troubleshooting.md",
+            "co_change_count": 19,
+            "support_pct": 1.26
+          },
+          {
+            "file_a": "CHANGELOG.md",
+            "file_b": "docs/configuration.md",
+            "co_change_count": 11,
+            "support_pct": 0.73
+          },
+          {
+            "file_a": "docs/troubleshooting.md",
+            "file_b": "scripts/doctor.sh",
+            "co_change_count": 10,
+            "support_pct": 0.66
+          },
+          {
+            "file_a": "docs/troubleshooting.md",
+            "file_b": "scripts/launcher-common.sh",
+            "co_change_count": 10,
+            "support_pct": 0.66
+          },
+          {
+            "file_a": "docs/troubleshooting.md",
+            "file_b": "scripts/packaging/deb.sh",
+            "co_change_count": 9,
+            "support_pct": 0.6
+          }
+        ],
+        "coupled_pairs_total": 84
+      }
+    ],
+    "refactor_boundaries": [],
+    "static_modularity_projection": "repo-level (coarse)"
+  },
+  "documentation": {
+    "available": true,
+    "high_ccn_threshold": 49.9,
+    "freshness_by_doc": {
+      "scripts/cowork-fallback/README.md": -1.0,
+      "SECURITY.md": -1.0,
+      "ACKNOWLEDGMENTS.md": -1.0,
+      "AGENTS.md": -1.0,
+      "CHANGELOG.md": 1.0,
+      "CLAUDE.md": -1.0,
+      "CONTRIBUTING.md": -1.0,
+      "README.md": -1.0,
+      "RELEASING.md": -1.0,
+      "docs/archive/cowork-linux-handover.md": -1.0,
+      "docs/archive/linux-topbar-shim.md": -1.0,
+      "docs/building.md": -1.0,
+      "docs/configuration.md": -1.0,
+      "docs/decisions.md": -1.0,
+      "docs/index.md": -1.0,
+      "docs/issue-triage/README.md": -1.0,
+      "docs/learnings/apt-worker-architecture.md": -1.0,
+      "docs/learnings/config-wipe-guard.md": -1.0,
+      "docs/learnings/cowork-vm-daemon.md": -1.0,
+      "docs/learnings/cross-build-host-vs-target.md": -1.0,
+      "docs/learnings/mcp-double-spawn.md": -1.0,
+      "docs/learnings/nix.md": -1.0,
+      "docs/learnings/official-deb-rebase-verification.md": -1.0,
+      "docs/learnings/packaging-permissions.md": -1.0,
+      "docs/learnings/patching-minified-js.md": -1.0,
+      "docs/learnings/plugin-install.md": -1.0,
+      "docs/learnings/quit-cleanup-scope-fence.md": -1.0,
+      "docs/learnings/test-harness-ax-tree-walker.md": -1.0,
+      "docs/learnings/test-harness-electron-hooks.md": 0.5,
+      "docs/learnings/test-methodology-and-coverage.md": -1.0,
+      "docs/learnings/tray-rebuild-race.md": -1.0,
+      "docs/learnings/wayland-global-shortcuts-portal.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md": -1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md": 1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md": 1.0,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md": -1.0,
+      "docs/reports/REPORTING.md": -1.0,
+      "docs/reports/REPORTS.md": 1.0,
+      "docs/styleguides/bash_styleguide.md": -1.0,
+      "docs/styleguides/docs_styleguide.md": -1.0,
+      "docs/testing/README.md": 0.5,
+      "docs/testing/automation.md": 1.0,
+      "docs/testing/cases/README.md": -1.0,
+      "docs/testing/cases/code-tab-foundations.md": 1.0,
+      "docs/testing/cases/code-tab-handoff.md": -1.0,
+      "docs/testing/cases/code-tab-workflow.md": -1.0,
+      "docs/testing/cases/distribution.md": -1.0,
+      "docs/testing/cases/extensibility.md": -1.0,
+      "docs/testing/cases/launch.md": 1.0,
+      "docs/testing/cases/platform-integration.md": -1.0,
+      "docs/testing/cases/routines.md": -1.0,
+      "docs/testing/cases/shortcuts-and-input.md": -1.0,
+      "docs/testing/cases/tray-and-window-chrome.md": 0.5,
+      "docs/testing/matrix.md": -1.0,
+      "docs/testing/quick-entry-closeout.md": -1.0,
+      "docs/testing/runbook.md": 1.0,
+      "docs/troubleshooting.md": 1.0,
+      "docs/upstream-reports/546-mcp-double-spawn.md": -1.0,
+      "docs/upstream-reports/604-tray-panel-theme.md": -1.0,
+      "docs/upstream-reports/720-folder-picker-native-binding.md": -1.0,
+      "docs/upstream-reports/768-config-wipe.md": -1.0,
+      "docs/upstream-reports/771-cowork-virtiofsd-probe.md": -1.0,
+      "docs/upstream-reports/780-device-registry.md": 0.0,
+      "docs/upstream-reports/884-cowork-firmware-probe.md": -1.0,
+      "docs/upstream-reports/955-file-manager-entries.md": -1.0,
+      "docs/upstream-reports/README.md": 0.0,
+      "docs/upstream-reports/electron-wco-linux-bugs.md": -1.0,
+      "docs/upstream-reports/terminal-da1-hidden-shell.md": -1.0,
+      "docs/upstream-reports/tray-theme-update-latch.md": -1.0,
+      "scripts/cowork-fallback/PROTOCOL.md": -1.0,
+      "tools/test-harness/README.md": 0.0
+    },
+    "complexity_coverage": {
+      "scripts/cowork-fallback/README.md": {
+        "complexity_summarised": 635.0,
+        "subject_code_count": 3,
+        "doc_value": -635.0
+      },
+      "SECURITY.md": {
+        "complexity_summarised": 208.0,
+        "subject_code_count": 11,
+        "doc_value": -208.0
+      },
+      "ACKNOWLEDGMENTS.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "AGENTS.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "CHANGELOG.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "CLAUDE.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "CONTRIBUTING.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "RELEASING.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/archive/cowork-linux-handover.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/archive/linux-topbar-shim.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/building.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/configuration.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/decisions.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/index.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/issue-triage/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/apt-worker-architecture.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/config-wipe-guard.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/cowork-vm-daemon.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/cross-build-host-vs-target.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/mcp-double-spawn.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/nix.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/official-deb-rebase-verification.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/packaging-permissions.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/patching-minified-js.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/plugin-install.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/quit-cleanup-scope-fence.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/test-harness-ax-tree-walker.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/test-harness-electron-hooks.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/learnings/test-methodology-and-coverage.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/tray-rebuild-race.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/learnings/wayland-global-shortcuts-portal.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 3,
+        "doc_value": 0.0
+      },
+      "docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/REPORTING.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/reports/REPORTS.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 1,
+        "doc_value": 0.0
+      },
+      "docs/styleguides/bash_styleguide.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/styleguides/docs_styleguide.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/testing/automation.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/testing/cases/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/code-tab-foundations.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/testing/cases/code-tab-handoff.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/code-tab-workflow.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/distribution.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/extensibility.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/launch.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/testing/cases/platform-integration.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/routines.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/shortcuts-and-input.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/cases/tray-and-window-chrome.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/testing/matrix.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/quick-entry-closeout.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/testing/runbook.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/troubleshooting.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/upstream-reports/546-mcp-double-spawn.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/604-tray-panel-theme.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/720-folder-picker-native-binding.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/768-config-wipe.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/771-cowork-virtiofsd-probe.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/780-device-registry.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/upstream-reports/884-cowork-firmware-probe.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/955-file-manager-entries.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": 0.0
+      },
+      "docs/upstream-reports/electron-wco-linux-bugs.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/terminal-da1-hidden-shell.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/upstream-reports/tray-theme-update-latch.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "scripts/cowork-fallback/PROTOCOL.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "tools/test-harness/README.md": {
+        "complexity_summarised": 89.0,
+        "subject_code_count": 4,
+        "doc_value": 0.0
+      }
+    },
+    "stale_doc_on_complexity": [
+      {
+        "path": "scripts/cowork-fallback/README.md",
+        "complexity_summarised": 635.0,
+        "freshness": -1.0,
+        "doc_value": -635.0,
+        "finding": "lying_map",
+        "confidence": "high",
+        "subject_code_count": 3,
+        "recommendation": "Fix or DELETE this doc. A stale summary over complex code is worse than none -- it lies to the next agent. Do not auto-generate a replacement; a hollow summary is still a lying map."
+      }
+    ],
+    "unexplained_complexity": [],
+    "good_contracts": []
+  },
+  "understanding": {
+    "available": true,
+    "high_ccn_threshold": 49.9,
+    "human_anchor_by_path": {
+      ".github/workflows/ci.yml": true,
+      ".github/workflows/issue-triage-v2.yml": true,
+      "build.sh": true,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/catalog.json": true,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/families.json": true,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/issue_dates.json": true,
+      "docs/reports/CDL-ANT-0010_code-split-chunk-census/chunk-census-data.json": true,
+      "scripts/cowork-fallback/cowork-vm-service.js": true,
+      "scripts/cowork-fallback/cowork.sh": true,
+      "scripts/cowork-fallback/tests/protocol-smoke.js": true,
+      "scripts/doctor.sh": true,
+      "scripts/launcher-common.sh": true,
+      "scripts/packaging/appimage.sh": true,
+      "scripts/packaging/deb.sh": true,
+      "scripts/packaging/rpm.sh": true,
+      "scripts/patches/app-asar.sh": true,
+      "scripts/setup/detect-host.sh": true,
+      "tests/test-artifact-common.sh": true,
+      "tools/test-harness/src/lib/claudeai.ts": true,
+      "tools/test-harness/src/lib/electron.ts": true,
+      "tools/test-harness/src/lib/input-niri.ts": true,
+      "tools/test-harness/src/lib/quickentry.ts": true
+    },
+    "intent_source_by_path": {
+      ".github/workflows/ci.yml": true,
+      ".github/workflows/issue-triage-v2.yml": true,
+      "build.sh": true,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/catalog.json": true,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/families.json": true,
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/issue_dates.json": true,
+      "docs/reports/CDL-ANT-0010_code-split-chunk-census/chunk-census-data.json": true,
+      "scripts/cowork-fallback/cowork-vm-service.js": true,
+      "scripts/cowork-fallback/cowork.sh": true,
+      "scripts/cowork-fallback/tests/protocol-smoke.js": true,
+      "scripts/doctor.sh": true,
+      "scripts/launcher-common.sh": true,
+      "scripts/packaging/appimage.sh": true,
+      "scripts/packaging/deb.sh": true,
+      "scripts/packaging/rpm.sh": true,
+      "scripts/patches/app-asar.sh": true,
+      "scripts/setup/detect-host.sh": true,
+      "tests/test-artifact-common.sh": true,
+      "tools/test-harness/src/lib/claudeai.ts": true,
+      "tools/test-harness/src/lib/electron.ts": true,
+      "tools/test-harness/src/lib/input-niri.ts": true,
+      "tools/test-harness/src/lib/quickentry.ts": true
+    },
+    "authorship_class_by_path": {
+      ".github/workflows/ci.yml": "mixed",
+      ".github/workflows/issue-triage-v2.yml": "mixed",
+      "build.sh": "mixed",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/catalog.json": "human",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/families.json": "human",
+      "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/issue_dates.json": "human",
+      "docs/reports/CDL-ANT-0010_code-split-chunk-census/chunk-census-data.json": "human",
+      "scripts/cowork-fallback/cowork-vm-service.js": "mixed",
+      "scripts/cowork-fallback/cowork.sh": "mixed",
+      "scripts/cowork-fallback/tests/protocol-smoke.js": "human",
+      "scripts/doctor.sh": "mixed",
+      "scripts/launcher-common.sh": "mixed",
+      "scripts/packaging/appimage.sh": "mixed",
+      "scripts/packaging/deb.sh": "mixed",
+      "scripts/packaging/rpm.sh": "mixed",
+      "scripts/patches/app-asar.sh": "mixed",
+      "scripts/setup/detect-host.sh": "mixed",
+      "tests/test-artifact-common.sh": "mixed",
+      "tools/test-harness/src/lib/claudeai.ts": "human",
+      "tools/test-harness/src/lib/electron.ts": "mixed",
+      "tools/test-harness/src/lib/input-niri.ts": "human",
+      "tools/test-harness/src/lib/quickentry.ts": "human"
+    },
+    "orphaned_understanding": [],
+    "modules": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 31,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": ".github/workflows/issue-triage-v2.yml",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 32,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "build.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 12,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/catalog.json",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 136,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/families.json",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 136,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/issue_dates.json",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 136,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/reports/CDL-ANT-0010_code-split-chunk-census/chunk-census-data.json",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 128,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/cowork-fallback/cowork-vm-service.js",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 39,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/cowork-fallback/cowork.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 27,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/cowork-fallback/tests/protocol-smoke.js",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 133,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/doctor.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 0,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/launcher-common.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 22,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/packaging/appimage.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 22,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/packaging/deb.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 22,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/packaging/rpm.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 22,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/patches/app-asar.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 12,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "scripts/setup/detect-host.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 27,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tests/test-artifact-common.sh",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 49,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/test-harness/src/lib/claudeai.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 196,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/test-harness/src/lib/electron.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "mixed",
+        "days_since_comprehension_event": 51,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/test-harness/src/lib/input-niri.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 196,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/test-harness/src/lib/quickentry.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 136,
+        "finding": null,
+        "recommendation": null
+      }
+    ]
+  },
+  "runtime": {
+    "available": true,
+    "static_reachability": {
+      "available": true,
+      "candidate_count": 0,
+      "candidates": [],
+      "tools": [
+        {
+          "language": "python",
+          "tool": "vulture",
+          "status": "ran",
+          "reason": "0 candidate(s)"
+        },
+        {
+          "language": "typescript",
+          "tool": "ts-prune",
+          "status": "not_applicable",
+          "reason": "no root tsconfig.json; ts-prune runs from the repository root and would have no project to analyse"
+        },
+        {
+          "language": "typescript",
+          "tool": "knip",
+          "status": "tool_absent",
+          "reason": "knip not on PATH"
+        },
+        {
+          "language": "javascript",
+          "tool": "knip",
+          "status": "not_applicable",
+          "reason": "98 TypeScript file(s) against 5 JavaScript file(s); the dominant language's tool is used, so knip is not run and the 5 JavaScript file(s) are not analysed"
+        }
+      ],
+      "caveat": "Static reachability proves nothing in THIS repo references the symbol; it cannot prove no external consumer (a mobile app, another service) calls it. Cross-boundary liveness needs telemetry or a named human."
+    },
+    "observability_rung": 0,
+    "runtime_evidence_available": false
+  },
+  "derived_findings": [
+    {
+      "name": "hidden_coupling",
+      "paths": [
+        ".claude/scripts",
+        ".claude/scripts/triage",
+        "docs"
+      ],
+      "action": "investigate the seam"
+    },
+    {
+      "name": "lying_map",
+      "paths": [
+        "scripts/cowork-fallback/README.md"
+      ],
+      "action": "fix or delete the doc"
+    },
+    {
+      "name": "unexplained_complexity",
+      "paths": [],
+      "action": "write the missing contract (do NOT auto-generate)"
+    },
+    {
+      "name": "untrusted_hotspot",
+      "paths": [],
+      "action": "strengthen tests to pin observable behaviour (not internal state)"
+    },
+    {
+      "name": "self_referential_tests",
+      "paths": [],
+      "action": "request human review - tests verify internal consistency, not truth"
+    },
+    {
+      "name": "unactioned_intent",
+      "paths": [
+        "scripts/cowork-fallback/cowork-vm-service.js"
+      ],
+      "action": "action the promise: fix it, ticket it, or delete the marker/skip (stale: an untracked marker that survived 5 or more edits to its own file)"
+    },
+    {
+      "name": "accretion_ratchet",
+      "paths": [],
+      "action": "refactor down: extract, delete dead code, or split the file"
+    },
+    {
+      "name": "orphaned_understanding",
+      "paths": [],
+      "action": "assign a human anchor before further change"
+    },
+    {
+      "name": "candidate_dead_weight",
+      "paths": [],
+      "action": "verify liveness, then delete if dead"
+    },
+    {
+      "name": "override_contradicts_signals",
+      "paths": [],
+      "action": "Review archetype marker - deterministic signals suggest a different classification"
+    },
+    {
+      "name": "refactor_boundary",
+      "paths": [],
+      "action": "safe to hand an agent in isolation"
+    }
+  ],
+  "attention": [
+    {
+      "path": "scripts/cowork-fallback/cowork-vm-service.js",
+      "findings": [
+        "unactioned_intent"
+      ],
+      "score": 1
+    },
+    {
+      "path": ".claude/scripts/triage",
+      "findings": [
+        "hidden_coupling"
+      ],
+      "score": 1
+    },
+    {
+      "path": ".claude/scripts",
+      "findings": [
+        "hidden_coupling"
+      ],
+      "score": 1
+    },
+    {
+      "path": "docs",
+      "findings": [
+        "hidden_coupling"
+      ],
+      "score": 1
+    },
+    {
+      "path": "scripts/cowork-fallback/README.md",
+      "findings": [
+        "lying_map"
+      ],
+      "score": 1
+    }
+  ],
+  "attention_low_signal": true,
+  "findings_markdown": "## Cross-Layer Findings (Keyhole Readiness)\n\n### hidden_coupling\n\nAction: investigate the seam\n\nPaths:\n- .claude/scripts\n- .claude/scripts/triage\n- docs\n\n### lying_map\n\nAction: fix or delete the doc\n\nPaths:\n- scripts/cowork-fallback/README.md\n\n### unactioned_intent\n\nAction: action the promise: fix it, ticket it, or delete the marker/skip (stale: an untracked marker that survived 5 or more edits to its own file)\n\nPaths:\n- scripts/cowork-fallback/cowork-vm-service.js\n\n### Attention List (Priority Order)\n\n- scripts/cowork-fallback/cowork-vm-service.js (score 1): unactioned_intent\n- .claude/scripts/triage (score 1): hidden_coupling\n- .claude/scripts (score 1): hidden_coupling\n- docs (score 1): hidden_coupling\n- scripts/cowork-fallback/README.md (score 1): lying_map\n",
+  "keyhole_summary": {
+    "concerns": [
+      {
+        "name": "hidden_coupling",
+        "count": 3
+      },
+      {
+        "name": "lying_map",
+        "count": 1
+      },
+      {
+        "name": "unactioned_intent",
+        "count": 1
+      }
+    ],
+    "safe_zones": 0,
+    "total_concerns": 5,
+    "summary_text": "5 structural concerns (3 hidden coupling, 1 lying map, 1 unactioned intent), 0 safe zones."
+  },
+  "prescribed_actions": [
+    {
+      "path": "scripts/cowork-fallback/cowork-vm-service.js",
+      "action": "action the promise: fix it, ticket it, or delete the marker/skip (stale: an untracked marker that survived 5 or more edits to its own file)",
+      "findings": [
+        "unactioned_intent"
+      ],
+      "rank": 1
+    }
+  ],
+  "gap_actions": [
+    {
+      "signal": "coverage_report",
+      "action": "Generate a line-coverage report (coverage.xml or lcov.info) in CI and read it for the top hotspots first: no report was found, so how well the tests cover the riskiest files is unmeasured.",
+      "paths": [
+        "scripts/launcher-common.sh",
+        "scripts/cowork-fallback/cowork-vm-service.js",
+        "tests/test-artifact-common.sh"
+      ]
+    }
+  ],
+  "excluded_by_config": {
+    "dirs": [],
+    "patterns": [],
+    "affected_finding_paths": [],
+    "count": 0
+  },
+  "excluded_as_archive": {
+    "affected_finding_paths": [],
+    "count": 0
+  },
+  "pruned_finding_paths": {
+    "paths": [],
+    "count": 0,
+    "rename_map_complete": true
+  },
+  "excluded_generated": [],
+  "structure_drift": {
+    "tier_0": {
+      "available": true,
+      "empty_ownership_patterns": [
+        {
+          "pattern": "$TMPDIR/claude-test-*",
+          "declared_in": "tools/test-harness/README.md::Per-test isolation default",
+          "owners": []
+        },
+        {
+          "pattern": "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+          "declared_in": "docs/issue-triage/README.md::8c. Enhancement-design variant (classification = `enhancement`)",
+          "owners": []
+        },
+        {
+          "pattern": "*/plugins",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/learnings/test-harness-electron-hooks.md",
+          "declared_in": "tools/test-harness/README.md::Hooking Electron \u2014 read this before reaching for `BrowserWindow`",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/automation.md",
+          "declared_in": "tools/test-harness/README.md::Known limitations",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/automation.md",
+          "declared_in": "tools/test-harness/README.md::L1 attach is fused off on the official build (post-v3.0.0)",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/automation.md",
+          "declared_in": "tools/test-harness/README.md::Linux Compatibility Test Harness",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/automation.md",
+          "declared_in": "tools/test-harness/README.md::Per-test isolation default",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/automation.md",
+          "declared_in": "tools/test-harness/README.md::Quick Entry runners (S29\u2013S37, future QE-*)",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases",
+          "declared_in": "tools/test-harness/README.md::Adding a test",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases",
+          "declared_in": "tools/test-harness/README.md::Grounding probe",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases",
+          "declared_in": "tools/test-harness/README.md::Linux Compatibility Test Harness",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/code-tab-foundations.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/code-tab-handoff.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/code-tab-workflow.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/distribution.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/extensibility.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/launch.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/platform-integration.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/routines.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/shortcuts-and-input.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../../docs/testing/cases/tray-and-window-chrome.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "../archive/linux-topbar-shim.md",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "../learnings/config-wipe-guard.md",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "../learnings/mcp-double-spawn.md",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "../learnings/official-deb-rebase-verification.md",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "../learnings/wayland-global-shortcuts-portal.md",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "./results",
+          "declared_in": "tools/test-harness/README.md::Environment variables",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/scripts/prompts/{stage}.txt",
+          "declared_in": "docs/issue-triage/README.md::Implementation layout",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/scripts/reasons.json",
+          "declared_in": "docs/issue-triage/README.md::8b. Human-deferral variant (any gate failed)",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/scripts/reasons.json",
+          "declared_in": "docs/issue-triage/README.md::Implementation layout",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/scripts/schemas/{stage}.json",
+          "declared_in": "docs/issue-triage/README.md::Implementation layout",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/scripts/taxonomies/{name}.json",
+          "declared_in": "docs/issue-triage/README.md::Implementation layout",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/scripts/triage/{name}.sh",
+          "declared_in": "docs/issue-triage/README.md::Implementation layout",
+          "owners": []
+        },
+        {
+          "pattern": ".claude/triage-telemetry.jsonl",
+          "declared_in": "docs/issue-triage/README.md::Health monitoring",
+          "owners": []
+        },
+        {
+          "pattern": ".git",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": ".git",
+          "declared_in": "docs/issue-triage/README.md::Prompt injection resilience",
+          "owners": []
+        },
+        {
+          "pattern": ".git/config",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": ".git/config",
+          "declared_in": "docs/issue-triage/README.md::Prompt injection resilience",
+          "owners": []
+        },
+        {
+          "pattern": ".vite/build/*.js",
+          "declared_in": "docs/issue-triage/README.md::3. Fetch reference",
+          "owners": []
+        },
+        {
+          "pattern": ".vite/build/*.js",
+          "declared_in": "docs/issue-triage/README.md::Main-pipeline reads",
+          "owners": []
+        },
+        {
+          "pattern": "/bug",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "/claude/i",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "/dev/uinput",
+          "declared_in": "tools/test-harness/README.md::Quick Entry runners (S29\u2013S37, future QE-*)",
+          "owners": []
+        },
+        {
+          "pattern": "/epitaxy",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "/etc/claude/org-plugins",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "/etc/os-release",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "/feedback",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "/new",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "/proc/$pid/cmdline",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "/tmp/.ydotool_socket",
+          "declared_in": "tools/test-harness/README.md::Environment variables",
+          "owners": []
+        },
+        {
+          "pattern": "/tmp/triage",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "/usr/bin/virtiofsd",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "/usr/lib/qemu/virtiofsd",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "/usr/lib/virtiofsd",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "/usr/libexec/virtiofsd",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "10/141",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": "12/141",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": "3/4",
+          "declared_in": "docs/issue-triage/README.md::7. Decision gate",
+          "owners": []
+        },
+        {
+          "pattern": "5/141",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": "<issue_body source=\"reporter, untrusted\">\u2026</issue_body>",
+          "declared_in": "docs/issue-triage/README.md::Prompt injection resilience",
+          "owners": []
+        },
+        {
+          "pattern": "@ant/claude-native",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "A/B/C",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "APT/DNF",
+          "declared_in": "README.md::Maintainership",
+          "owners": []
+        },
+        {
+          "pattern": "Cinnamon/KDE",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "CustomPlugins/listInstalledPlugins",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "CustomPlugins/listInstalledPlugins([]",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "Debian/Ubuntu",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "Debian/Ubuntu",
+          "declared_in": "tools/test-harness/README.md::Prerequisites",
+          "owners": []
+        },
+        {
+          "pattern": "Driver/hardware/kernel",
+          "declared_in": "docs/issue-triage/README.md::What is explicitly out of scope",
+          "owners": []
+        },
+        {
+          "pattern": "Fedora/RHEL",
+          "declared_in": "README.md::Claude Desktop for Linux",
+          "owners": []
+        },
+        {
+          "pattern": "Fedora/RHEL",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "GNOME-W/Ubu-W",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "Grep/ast-grep",
+          "declared_in": "docs/issue-triage/README.md::GitHub token scope",
+          "owners": []
+        },
+        {
+          "pattern": "I/O",
+          "declared_in": "docs/issue-triage/README.md::Concurrency and LLM-call failure",
+          "owners": []
+        },
+        {
+          "pattern": "Issue/PR",
+          "declared_in": "docs/issue-triage/README.md::Main-pipeline reads",
+          "owners": []
+        },
+        {
+          "pattern": "KVM/Cowork",
+          "declared_in": "README.md::Features",
+          "owners": []
+        },
+        {
+          "pattern": "KVM/Cowork",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "KVM/vhost-vsock",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "LocalPlugins/getPlugins",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "LocalPlugins/getPlugins(",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "LocalSessions/getAll",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "N/A",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "Opens/updates",
+          "declared_in": "docs/issue-triage/README.md::Health monitoring",
+          "owners": []
+        },
+        {
+          "pattern": "Path/flag/layout",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "QE-7/8/9",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "Reject/downgrade",
+          "declared_in": "docs/issue-triage/README.md::6. Adversarial review",
+          "owners": []
+        },
+        {
+          "pattern": "S03/S04/S05/T13",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "S07/S12",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "S08/S09/S21/S22/S26/S27/S28/T11/T14a/T18/T22/T30/T31/T32/T33/T35/T36/T37/T38/H02/H03/S33",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "SessionManager/PowerManagement",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "Solver/Proposer/Checker",
+          "declared_in": "docs/issue-triage/README.md::3. Writer/Reviewer with fresh context on source",
+          "owners": []
+        },
+        {
+          "pattern": "Solver/Proposer/Checker",
+          "declared_in": "docs/issue-triage/README.md::Multi-agent review and adversarial self-critique",
+          "owners": []
+        },
+        {
+          "pattern": "T07/T16/T17/T26/S10/S29-S35/T05-T14b",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "T10/T14b/H04/S16/S30",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "T11/T14a/T18",
+          "declared_in": "tools/test-harness/README.md::L1 attach is fused off on the official build (post-v3.0.0)",
+          "owners": []
+        },
+        {
+          "pattern": "T22/T30",
+          "declared_in": "tools/test-harness/README.md::L1 attach is fused off on the official build (post-v3.0.0)",
+          "owners": []
+        },
+        {
+          "pattern": "Writer/Reviewer",
+          "declared_in": "docs/issue-triage/README.md::Agent design guidance and user-trust research",
+          "owners": []
+        },
+        {
+          "pattern": "YDOTOOL_SOCKET=/tmp/.ydotool_socket",
+          "declared_in": "tools/test-harness/README.md::Quick Entry runners (S29\u2013S37, future QE-*)",
+          "owners": []
+        },
+        {
+          "pattern": "[GlobalMemory] Copied CLAUDE.md",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "aaddrick/claude-desktop-debian",
+          "declared_in": "README.md::Maintainership",
+          "owners": []
+        },
+        {
+          "pattern": "aaddrick/claude-desktop-debian",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "aaddrick/contrarian",
+          "declared_in": "docs/issue-triage/README.md::6. Adversarial review",
+          "owners": []
+        },
+        {
+          "pattern": "ambiguous bug/enhancement classification",
+          "declared_in": "docs/issue-triage/README.md::2. Classify",
+          "owners": []
+        },
+        {
+          "pattern": "anthropics/claude-code",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "asar/UI",
+          "declared_in": "docs/issue-triage/README.md::8c. Enhancement-design variant (classification = `enhancement`)",
+          "owners": []
+        },
+        {
+          "pattern": "aur/claude-desktop",
+          "declared_in": "README.md::Arch Linux",
+          "owners": []
+        },
+        {
+          "pattern": "bug/duplicate",
+          "declared_in": "docs/issue-triage/README.md::7. Decision gate",
+          "owners": []
+        },
+        {
+          "pattern": "bug/enhancement",
+          "declared_in": "docs/issue-triage/README.md::7. Decision gate",
+          "owners": []
+        },
+        {
+          "pattern": "bug/enhancement",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "bug/enhancement/documentation/question",
+          "declared_in": "docs/issue-triage/README.md::Pipeline writes",
+          "owners": []
+        },
+        {
+          "pattern": "claude.settings/MCP/getMcpServersConfig",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "claude.web/CoworkMemory/readGlobalMemory",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "comment.md",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "deb/rpm",
+          "declared_in": "tools/test-harness/README.md::Environment variables",
+          "owners": []
+        },
+        {
+          "pattern": "dev/harness",
+          "declared_in": "tools/test-harness/README.md::L1 attach is fused off on the official build (post-v3.0.0)",
+          "owners": []
+        },
+        {
+          "pattern": "diff/PR",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": "electron/electron",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "enum/switch/case-block/object-literal",
+          "declared_in": "docs/issue-triage/README.md::5. Mechanical validation",
+          "owners": []
+        },
+        {
+          "pattern": "enum/switch/object-literal",
+          "declared_in": "docs/issue-triage/README.md::Structural code-search tooling",
+          "owners": []
+        },
+        {
+          "pattern": "exact / related / unrelated",
+          "declared_in": "docs/issue-triage/README.md::5. Mechanical validation",
+          "owners": []
+        },
+        {
+          "pattern": "exact/related/unrelated",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "explore/walker.ts",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "extract-json.py",
+          "declared_in": "docs/issue-triage/README.md::Implementation layout",
+          "owners": []
+        },
+        {
+          "pattern": "findings/anchor/sweep",
+          "declared_in": "docs/issue-triage/README.md::8c. Enhancement-design variant (classification = `enhancement`)",
+          "owners": []
+        },
+        {
+          "pattern": "gh pr view NNN -R aaddrick/claude-desktop-debian",
+          "declared_in": "docs/issue-triage/README.md::5. Mechanical validation",
+          "owners": []
+        },
+        {
+          "pattern": "lib",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "lib/ax.ts",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "lib/eipc.ts",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "lib/electron-mocks.ts",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "lib/electron.ts",
+          "declared_in": "tools/test-harness/README.md::L1 attach is fused off on the official build (post-v3.0.0)",
+          "owners": []
+        },
+        {
+          "pattern": "lib/input-niri.ts",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "lib/input.ts",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "lib/inspector.ts",
+          "declared_in": "tools/test-harness/README.md::L1 attach is fused off on the official build (post-v3.0.0)",
+          "owners": []
+        },
+        {
+          "pattern": "lib/quickentry.ts",
+          "declared_in": "tools/test-harness/README.md::Hooking Electron \u2014 read this before reaching for `BrowserWindow`",
+          "owners": []
+        },
+        {
+          "pattern": "lists.archlinux.org/thread/33X5H3TTGPXBEFKJFHEL5JYVGOE52IRV",
+          "declared_in": "README.md::Arch Linux",
+          "owners": []
+        },
+        {
+          "pattern": "n/a",
+          "declared_in": "docs/issue-triage/README.md::Issue templates",
+          "owners": []
+        },
+        {
+          "pattern": "niri/virtio-GL-scoped",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "niri/virtio-GPU",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "pass/fail",
+          "declared_in": "docs/issue-triage/README.md::5. Mechanical validation",
+          "owners": []
+        },
+        {
+          "pattern": "pass/fail",
+          "declared_in": "tools/test-harness/README.md::Adding a test",
+          "owners": []
+        },
+        {
+          "pattern": "pass/skip",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "read/search",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": "results/results-${ROW}-${DATE}",
+          "declared_in": "tools/test-harness/README.md::Run",
+          "owners": []
+        },
+        {
+          "pattern": "reviewer/drafter",
+          "declared_in": "docs/issue-triage/README.md::Prompt injection resilience",
+          "owners": []
+        },
+        {
+          "pattern": "rpm/deb",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "sandbox/doctor/BATS",
+          "declared_in": "docs/issue-triage/README.md::8c. Enhancement-design variant (classification = `enhancement`)",
+          "owners": []
+        },
+        {
+          "pattern": "search/rewrite",
+          "declared_in": "docs/issue-triage/README.md::Structural code-search tooling",
+          "owners": []
+        },
+        {
+          "pattern": "shell.openExternal('vscode://file/...'",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "site/mechanism/contradiction",
+          "declared_in": "docs/issue-triage/README.md::4. Investigate",
+          "owners": []
+        },
+        {
+          "pattern": "squashfs-root/AppRun --version",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "src/runners/T",
+          "declared_in": "tools/test-harness/README.md::Adding a test",
+          "owners": []
+        },
+        {
+          "pattern": "stale-path/icon",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "taxonomies/enhancement-design-questions.json",
+          "declared_in": "docs/issue-triage/README.md::8c. Enhancement-design variant (classification = `enhancement`)",
+          "owners": []
+        },
+        {
+          "pattern": "taxonomies/label-blocklist.json",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "triage/class/priority",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "valid/invalid",
+          "declared_in": "docs/issue-triage/README.md::9. Label + post + archive",
+          "owners": []
+        },
+        {
+          "pattern": "wlroots/i3",
+          "declared_in": "docs/upstream-reports/README.md::Upstream reports \u2014 pending pile",
+          "owners": []
+        },
+        {
+          "pattern": "working/blocked",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "writes/removes",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "xdg-open 'claude",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "xprop/DBus",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "yes/no",
+          "declared_in": "docs/issue-triage/README.md::6. Adversarial review",
+          "owners": []
+        },
+        {
+          "pattern": "~/.cache/claude-desktop-debian/launcher.log",
+          "declared_in": "docs/issue-triage/README.md::Issue templates",
+          "owners": []
+        },
+        {
+          "pattern": "~/.claude/plugins/installed_plugins.json",
+          "declared_in": "tools/test-harness/README.md::Status",
+          "owners": []
+        },
+        {
+          "pattern": "~/.config/Claude",
+          "declared_in": "README.md::Installation",
+          "owners": []
+        },
+        {
+          "pattern": "~/.config/Claude",
+          "declared_in": "tools/test-harness/README.md::Environment variables",
+          "owners": []
+        },
+        {
+          "pattern": "~/.config/Claude",
+          "declared_in": "tools/test-harness/README.md::Per-test isolation default",
+          "owners": []
+        },
+        {
+          "pattern": "~/.config/Claude/claude_desktop_config.json",
+          "declared_in": "README.md::Features",
+          "owners": []
+        },
+        {
+          "pattern": "~/.config/Claude/logs",
+          "declared_in": "docs/issue-triage/README.md::Issue templates",
+          "owners": []
+        }
+      ],
+      "total_patterns": 233,
+      "matched_patterns": 62
+    },
+    "tier_1": {
+      "available": true,
+      "human_grouped_static_splits_count": 54946,
+      "human_split_static_fuses_count": 0,
+      "human_grouped_never_cochange_count": 54946,
+      "human_split_but_cochange_count": 0,
+      "human_static_agree_count": 0,
+      "human_cochange_agree_count": 0,
+      "seam_allowlist_applied": true,
+      "allowlist_pairs_count": 2
+    }
+  },
+  "plugin_version": "1.100.1",
+  "decline_markers": [],
+  "reoffer_mutation": false,
+  "decline_disclosures": [],
+  "interactive": true,
+  "offers": [],
+  "uninstall_instructions_path": "references/uninstall.md",
+  "instruction_claims": {
+    "total": 0,
+    "verified": 0,
+    "failed": 0,
+    "failures": []
+  },
+  "claude_config": {
+    "available": true,
+    "reason": null,
+    "snapshot_date": "2026-10-08",
+    "source_urls": [
+      "https://code.claude.com/docs/en/skills.md",
+      "https://code.claude.com/docs/en/sub-agents.md",
+      "https://code.claude.com/docs/en/plugins-reference.md"
+    ],
+    "plugin_repo": false,
+    "manifest_error": null,
+    "files_scanned": 8,
+    "files_by_kind": {
+      "skill": 4,
+      "command": 0,
+      "agent": 4
+    },
+    "finding_count": 0,
+    "counts_by_kind": {},
+    "findings": []
+  },
+  "nested_instructions": {
+    "available": true,
+    "files": [],
+    "files_total": 0,
+    "budget": {
+      "chars_per_token": 4,
+      "claude_code": {
+        "files": [
+          "CLAUDE.md"
+        ],
+        "lines": 518,
+        "words": 4571,
+        "bytes": 36133,
+        "est_tokens": 8965,
+        "skipped_imports": []
+      },
+      "codex": {
+        "files": [
+          "AGENTS.md"
+        ],
+        "lines": 518,
+        "words": 4567,
+        "bytes": 36119,
+        "est_tokens": 8962,
+        "limit_bytes": 32768,
+        "exceeds_limit": true,
+        "deepest_chain": null
+      }
+    },
+    "findings": [
+      {
+        "kind": "claude_shadows_agents",
+        "path": "CLAUDE.md",
+        "parent": "AGENTS.md",
+        "detail": "Claude Code reads `CLAUDE.md` and never `AGENTS.md`, which differs; add `@AGENTS.md` to the CLAUDE.md or make one a symlink to the other"
+      }
+    ],
+    "findings_total": 1
+  },
+  "agent_harness": {
+    "available": true,
+    "tracked_known": true,
+    "executes": [],
+    "executes_by_kind": {},
+    "finding_count": 1,
+    "counts_by_kind": {
+      "tracked_local_settings": 1
+    },
+    "findings": [
+      {
+        "kind": "tracked_local_settings",
+        "file": ".claude/settings.local.json",
+        "line": null,
+        "detail": "personal settings file is committed",
+        "fix": "`git rm --cached .claude/settings.local.json` and gitignore it; commit shared settings in `.claude/settings.json`."
+      }
+    ]
+  },
+  "agent_environment": {
+    "available": true,
+    "setup": {
+      "present": false,
+      "sources": []
+    },
+    "check": {
+      "entry_points": [
+        {
+          "command": "npm run test",
+          "source": "package.json"
+        }
+      ],
+      "named": [],
+      "named_total": 0,
+      "unresolved": []
+    },
+    "pinning": {
+      "manifests": [
+        {
+          "ecosystem": "node",
+          "manifest": "tools/test-harness/package.json",
+          "locked": false,
+          "lockfile": null
+        }
+      ],
+      "all_locked": false
+    },
+    "ci_duration": {
+      "available": true,
+      "branch": "main",
+      "runs_sampled": 34,
+      "slowest_median_seconds": 463,
+      "target_seconds": 600,
+      "over_target": false,
+      "workflows": [
+        {
+          "workflow": "CI",
+          "runs": 7,
+          "median_seconds": 463
+        },
+        {
+          "workflow": "BATS Tests",
+          "runs": 7,
+          "median_seconds": 104
+        },
+        {
+          "workflow": "Nix Build",
+          "runs": 7,
+          "median_seconds": 62
+        },
+        {
+          "workflow": "Shellcheck",
+          "runs": 13,
+          "median_seconds": 24
+        }
+      ]
+    },
+    "findings": [],
+    "layer5_cap": {
+      "applies": true,
+      "ceiling": "Partial",
+      "unmet": [
+        "check_named",
+        "setup_or_lockfile"
+      ],
+      "reason": "no instruction file names a check command that resolves; no committed setup and no lockfile for `tools/test-harness/package.json`"
+    }
+  },
+  "anomalies": []
+}

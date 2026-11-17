@@ -1,0 +1,564 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1230" width="1180" height="1230" preserveAspectRatio="xMidYMid meet" role="img">
+<title>Documentation Navigability Graph</title>
+<desc>Graph showing documentation structure, reachability from entry point, and staleness indicators</desc>
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  text:not([fill]) { fill: #1a1a1a; }
+  circle:hover { stroke: #000; stroke-width: 2; }
+</style>
+<rect x="0" y="0" width="1180" height="1230" fill="#ffffff"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9aa0a6"/></marker></defs>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="362.7" y2="612.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="812.4" y2="695.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="412.0" y2="310.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="729.9" y2="788.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="731.9" y2="437.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="761.1" y2="456.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="631.5" y2="504.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="661.9" y2="829.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="473.8" y2="805.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="378.5" y2="532.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="423.8" y2="469.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="365.8" y2="648.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="392.7" y2="496.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="370.4" y2="570.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="416.1" y2="754.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="664.2" y2="392.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="363.3" y2="609.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="445.6" y2="438.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="626.5" y2="384.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="378.2" y2="686.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="547.5" y2="384.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="510.0" y2="395.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="393.7" y2="721.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="474.5" y2="412.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="587.5" y2="382.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="588.5" y2="833.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="626.9" y2="830.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="753.7" y2="754.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="698.1" y2="812.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="705.4" y1="644.7" x2="778.8" y2="732.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="376.9" y2="536.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="476.2" y2="812.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="394.0" y2="727.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="667.8" y2="268.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="708.1" y2="817.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="668.6" y2="834.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="631.1" y2="504.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="765.2" y2="457.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="575.0" y2="729.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="713.9" y2="664.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="744.0" y2="793.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="736.5" y2="438.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="763.4" y1="777.1" x2="421.3" y2="472.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="763.4" y1="777.1" x2="513.3" y2="829.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="763.4" y1="777.1" x2="456.4" y2="788.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="763.4" y1="777.1" x2="810.4" y2="694.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="763.4" y1="777.1" x2="551.7" y2="840.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="718.5" y2="797.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="723.4" y2="435.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="756.6" y2="454.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="622.0" y2="505.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="652.2" y2="832.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="472.3" y2="804.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="374.3" y2="539.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="415.0" y2="477.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="364.9" y2="653.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="388.3" y2="501.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="366.9" y2="578.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="416.7" y2="756.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="657.9" y2="391.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="361.5" y2="615.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="438.4" y2="443.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="619.2" y2="384.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="378.1" y2="691.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="541.0" y2="386.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="503.4" y2="398.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="394.1" y2="725.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="468.3" y2="416.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="579.9" y2="383.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="574.8" y2="831.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="610.3" y2="831.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="739.9" y2="771.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="686.8" y2="817.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="554.3" y1="724.4" x2="773.0" y2="743.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="669.1" y2="835.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="573.8" y2="733.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="708.9" y2="665.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="629.7" y2="505.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="734.6" y2="438.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="764.0" y2="457.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="552.0" y2="841.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="476.3" y2="813.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="745.2" y2="793.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="732.5" y1="804.0" x2="708.7" y2="818.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="689.2" y2="402.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="614.7" y2="499.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="743.6" y2="763.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="721.1" y2="793.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="653.3" y2="831.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="534.5" y2="830.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="497.3" y2="817.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="798.0" y2="664.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="774.9" y2="737.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="435.0" y2="763.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="697.5" y1="825.3" x2="571.7" y2="736.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="697.5" y1="825.3" x2="416.7" y2="763.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="697.5" y1="825.3" x2="743.9" y2="791.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="578.4" y1="850.2" x2="920.1" y2="492.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="578.4" y1="850.2" x2="513.3" y2="835.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="537.8" y1="844.8" x2="478.3" y2="589.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="537.8" y1="844.8" x2="362.5" y2="582.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="498.7" y1="832.6" x2="476.1" y2="589.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="498.7" y1="832.6" x2="799.8" y2="682.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="462.2" y1="813.9" x2="473.8" y2="589.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="462.2" y1="813.9" x2="368.2" y2="543.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="488.9" y2="565.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="541.3" y2="830.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="503.9" y2="818.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="803.8" y2="653.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="468.6" y2="801.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="694.7" y2="812.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="752.8" y2="755.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="379.3" y2="525.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="427.2" y2="460.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="364.0" y2="641.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="394.1" y2="490.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="411.5" y2="747.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="370.2" y2="562.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="657.9" y2="391.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="622.5" y2="384.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="448.6" y2="432.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="375.1" y2="678.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="362.3" y2="602.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="548.2" y2="383.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="512.0" y2="393.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="586.3" y2="382.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="389.9" y2="714.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="476.8" y2="409.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="777.3" y2="476.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="815.1" y2="620.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="809.2" y2="545.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="790.5" y2="508.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="818.2" y2="584.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="444.4" y2="766.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="802.6" y2="701.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="716.5" y2="428.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="751.6" y2="447.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="727.5" y2="789.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="560.6" y2="704.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="695.4" y2="625.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="658.4" y2="829.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="580.9" y2="831.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="625.7" y1="493.6" x2="619.7" y2="829.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="378.5" y1="725.6" x2="364.1" y2="543.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="378.5" y1="725.6" x2="400.7" y2="480.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="361.8" y1="688.2" x2="909.9" y2="747.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="361.8" y1="688.2" x2="378.5" y2="504.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="361.8" y1="688.2" x2="602.9" y2="838.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="361.8" y1="688.2" x2="488.4" y2="821.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="351.7" y1="648.5" x2="361.2" y2="543.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="352.2" y1="566.8" x2="358.5" y2="543.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="352.2" y1="566.8" x2="360.5" y2="671.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="362.8" y1="527.3" x2="728.6" y2="930.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="362.8" y1="527.3" x2="377.3" y2="710.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="379.8" y1="490.0" x2="363.3" y2="671.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="379.8" y1="490.0" x2="369.7" y2="512.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="403.0" y1="456.2" x2="607.8" y2="375.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="403.0" y1="456.2" x2="418.9" y2="439.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="431.5" y1="426.8" x2="366.1" y2="672.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="464.5" y1="402.6" x2="421.5" y2="440.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="464.5" y1="402.6" x2="367.4" y2="672.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="540.5" y1="372.6" x2="792.7" y2="501.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="581.1" y1="367.7" x2="621.5" y2="481.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="581.1" y1="367.7" x2="778.7" y2="468.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="581.1" y1="367.7" x2="424.9" y2="445.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="581.1" y1="367.7" x2="360.6" y2="637.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="662.0" y1="378.5" x2="468.1" y2="801.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="662.0" y1="378.5" x2="295.0" y2="425.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="662.0" y1="378.5" x2="822.1" y2="579.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.0" y1="1059.2" x2="372.8" y2="540.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.0" y1="1059.2" x2="415.6" y2="477.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="600.5" y1="1091.9" x2="410.2" y2="479.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="600.5" y1="1091.9" x2="369.2" y2="542.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="434.7" y1="1066.4" x2="473.3" y2="589.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="434.7" y1="1066.4" x2="365.0" y2="543.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="360.1" y2="543.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="397.7" y2="480.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="177.1" y1="859.5" x2="349.7" y2="699.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="177.1" y1="859.5" x2="391.0" y2="477.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="177.1" y1="859.5" x2="354.6" y2="541.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="177.1" y1="859.5" x2="897.3" y2="970.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="177.1" y1="859.5" x2="448.3" y2="816.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="116.3" y1="703.2" x2="529.8" y2="381.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="116.3" y1="703.2" x2="349.2" y2="536.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="116.3" y1="703.2" x2="323.7" y2="367.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="116.3" y1="703.2" x2="791.2" y2="516.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="116.3" y1="703.2" x2="459.5" y2="578.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="116.3" y1="703.2" x2="739.4" y2="774.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="379.3" y2="462.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="346.1" y2="527.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="166.6" y1="376.6" x2="349.6" y2="517.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="166.6" y1="376.6" x2="551.1" y2="956.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="166.6" y1="376.6" x2="379.7" y2="448.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="166.6" y1="376.6" x2="899.7" y2="965.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="271.6" y1="245.8" x2="390.0" y2="435.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="271.6" y1="245.8" x2="747.0" y2="759.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="271.6" y1="245.8" x2="419.5" y2="413.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="271.6" y1="245.8" x2="357.6" y2="511.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="271.6" y1="245.8" x2="388.2" y2="293.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="404.0" y2="431.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="821.1" y2="579.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="284.9" y2="411.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="365.1" y2="510.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="651.7" y2="369.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="533.6" y2="361.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="579.5" y1="126.1" x2="414.5" y2="434.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="579.5" y1="126.1" x2="370.7" y2="512.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="579.5" y1="126.1" x2="360.7" y2="550.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="745.3" y1="151.6" x2="629.5" y2="356.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="745.3" y1="151.6" x2="421.3" y2="439.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="745.3" y1="151.6" x2="374.6" y2="515.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="892.4" y1="232.3" x2="377.3" y2="519.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="892.4" y1="232.3" x2="587.1" y2="833.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="1002.9" y1="358.5" x2="378.8" y2="523.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1002.9" y1="358.5" x2="743.1" y2="927.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="699.9" y1="394.0" x2="811.5" y2="877.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="699.9" y1="394.0" x2="674.8" y2="383.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="699.9" y1="394.0" x2="368.9" y2="558.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="699.9" y1="394.0" x2="583.3" y2="831.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="737.5" y1="939.8" x2="373.9" y2="539.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="737.5" y1="939.8" x2="416.9" y2="476.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="1063.7" y1="514.8" x2="1067.2" y2="672.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="1067.4" y1="682.5" x2="1064.0" y2="526.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="765.3" y1="442.9" x2="637.4" y2="489.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="765.3" y1="442.9" x2="471.1" y2="803.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="765.3" y1="442.9" x2="413.2" y2="749.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="765.3" y1="442.9" x2="788.0" y2="729.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="816.9" y2="645.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="544.9" y2="832.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="489.3" y2="566.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="763.5" y2="752.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="733.9" y2="788.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="662.2" y2="829.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="699.8" y2="812.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="567.1" y2="707.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="711.4" y2="624.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="507.1" y2="820.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.3" y1="442.9" x2="427.5" y2="455.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="817.8" y2="535.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="825.9" y2="612.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="249.1" y2="687.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="344.6" y2="359.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="295.1" y2="429.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="281.9" y2="769.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="566.6" y2="955.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="873.5" y2="807.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="800.9" y2="493.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="790.8" y1="474.9" x2="654.2" y2="953.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="810.6" y1="510.8" x2="797.4" y2="486.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="810.6" y1="510.8" x2="827.5" y2="612.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="810.6" y1="510.8" x2="819.0" y2="534.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="818.1" y2="563.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="821.7" y2="647.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="247.8" y2="698.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="337.5" y2="368.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="287.0" y2="443.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="575.7" y2="969.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="404.1" y2="913.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="486.1" y2="952.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="250.4" y2="522.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="282.3" y2="783.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="335.3" y2="856.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="650.6" y1="966.1" x2="241.1" y2="613.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="559.9" y1="970.0" x2="815.8" y2="562.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="471.1" y1="951.2" x2="813.9" y2="561.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="471.1" y1="951.2" x2="247.6" y2="524.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="471.1" y1="951.2" x2="402.9" y2="917.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="471.1" y1="951.2" x2="237.9" y2="616.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="471.1" y1="951.2" x2="432.8" y2="444.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="389.7" y1="910.8" x2="812.2" y2="559.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="320.9" y1="851.6" x2="810.8" y2="557.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="320.9" y1="851.6" x2="390.8" y2="771.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="320.9" y1="851.6" x2="243.2" y2="703.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="269.1" y1="777.0" x2="809.8" y2="555.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="269.1" y1="777.0" x2="423.9" y2="443.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="269.1" y1="777.0" x2="533.4" y2="728.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="237.4" y1="691.9" x2="809.1" y2="553.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="237.4" y1="691.9" x2="313.9" y2="838.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="227.8" y1="601.6" x2="808.7" y2="550.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="227.8" y1="601.6" x2="348.0" y2="679.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="241.0" y1="511.8" x2="808.6" y2="548.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="276.2" y1="428.1" x2="809.0" y2="546.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="276.2" y1="428.1" x2="648.3" y2="380.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="276.2" y1="428.1" x2="322.6" y2="366.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="331.0" y1="355.7" x2="809.7" y2="543.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="331.0" y1="355.7" x2="814.2" y2="621.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="331.0" y1="355.7" x2="606.8" y2="368.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="796.4" y2="487.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="249.6" y2="689.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="344.1" y2="360.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="294.7" y2="432.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="245.3" y2="600.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="282.8" y2="771.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="568.3" y2="956.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="401.0" y2="901.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="481.0" y2="939.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="255.1" y2="512.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="333.9" y2="843.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="824.0" y1="549.5" x2="633.4" y2="379.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="830.7" y1="589.9" x2="294.4" y2="433.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="830.7" y1="589.9" x2="343.7" y2="361.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="830.5" y1="630.8" x2="825.3" y2="564.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="830.5" y1="630.8" x2="813.9" y2="530.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="830.5" y1="630.8" x2="656.8" y2="954.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="823.4" y1="671.2" x2="490.2" y2="577.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="823.4" y1="671.2" x2="512.1" y2="825.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="485.1" y1="262.3" x2="415.9" y2="293.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="485.1" y1="262.3" x2="939.4" y2="653.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="574.6" y1="247.1" x2="465.0" y2="800.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="665.1" y1="254.6" x2="806.3" y2="699.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="750.9" y1="284.4" x2="808.0" y2="699.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="750.9" y1="284.4" x2="818.5" y2="645.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="826.5" y1="334.6" x2="678.1" y2="261.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="887.3" y1="402.1" x2="416.9" y2="302.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="669.5" y2="268.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="394.1" y2="725.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="412.8" y2="310.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="363.1" y2="610.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="492.5" y2="272.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="937.1" y2="665.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="923.1" y2="494.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="594.8" y2="840.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="752.9" y2="299.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="581.0" y2="259.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="667.6" y2="391.1" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="826.0" y2="345.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="378.2" y2="533.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="884.4" y2="413.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="809.5" y1="709.7" x2="942.6" y2="578.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="929.5" y1="482.5" x2="591.7" y2="836.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="948.4" y1="661.7" x2="494.6" y2="270.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="948.4" y1="661.7" x2="414.7" y2="307.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="908.4" y1="972.2" x2="923.0" y2="763.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="814.9" y2="530.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="249.6" y2="694.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="341.6" y2="364.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="292.0" y2="438.6" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="244.4" y2="607.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="283.8" y2="778.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="574.4" y2="963.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="404.3" y2="908.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="485.5" y2="946.8" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="253.6" y2="518.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="336.1" y2="850.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="878.7" y1="827.8" x2="548.5" y2="383.5" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="878.7" y1="827.8" x2="574.6" y2="730.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="878.7" y1="827.8" x2="827.0" y2="564.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<circle cx="789.3" cy="745.4" r="13.4" fill="#fef0dc" stroke="#b8b8b8" stroke-width="1.0"><title>ACKNOWLEDGMENTS.md
+225 lines · in 4 · out 3 · reachable · 12d stale, subject churn 815</title></circle>
+<circle cx="705.4" cy="644.7" r="18.3" fill="#fef3e2" stroke="#0072B2" stroke-width="3.5"><title>AGENTS.md
+519 lines · in 4 · out 27 · entry · 7d stale, subject churn 815</title></circle>
+<circle cx="763.4" cy="777.1" r="21.2" fill="#fff7ec" stroke="#b8b8b8" stroke-width="1.0"><title>CHANGELOG.md
+749 lines · in 9 · out 17 · reachable · 0d stale, subject churn 815</title></circle>
+<circle cx="554.3" cy="724.4" r="18.3" fill="#fef3e2" stroke="#0072B2" stroke-width="3.5"><title>CLAUDE.md
+519 lines · in 7 · out 27 · entry · 7d stale, subject churn 815</title></circle>
+<circle cx="732.5" cy="804.0" r="12.3" fill="#fdd9a9" stroke="#b8b8b8" stroke-width="1.0"><title>CONTRIBUTING.md
+174 lines · in 6 · out 10 · reachable · 46d stale, subject churn 815</title></circle>
+<circle cx="474.6" cy="573.3" r="13.1" fill="#f5dfc0" stroke="#0072B2" stroke-width="3.5"><title>README.md
+210 lines · in 8 · out 10 · entry · 34d stale, subject churn 671</title></circle>
+<circle cx="697.5" cy="825.3" r="10.1" fill="#fde7c7" stroke="#b8b8b8" stroke-width="1.0"><title>RELEASING.md
+95 lines · in 6 · out 3 · reachable · 27d stale, subject churn 815</title></circle>
+<circle cx="659.4" cy="840.3" r="7.8" fill="#fdc28b" stroke="#b8b8b8" stroke-width="1.0"><title>SECURITY.md
+36 lines · in 7 · out 0 · reachable · 71d stale, subject churn 815</title></circle>
+<circle cx="619.3" cy="848.7" r="16.4" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/archive/cowork-linux-handover.md
+390 lines · in 4 · out 0 · reachable · 136d stale, subject churn 815</title></circle>
+<circle cx="578.4" cy="850.2" r="16.2" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/archive/linux-topbar-shim.md
+379 lines · in 7 · out 2 · reachable · 136d stale, subject churn 815</title></circle>
+<circle cx="537.8" cy="844.8" r="11.5" fill="#fef3e2" stroke="#b8b8b8" stroke-width="1.0"><title>docs/building.md
+142 lines · in 5 · out 2 · reachable · 7d stale, subject churn 815</title></circle>
+<circle cx="498.7" cy="832.6" r="12.0" fill="#feeace" stroke="#b8b8b8" stroke-width="1.0"><title>docs/configuration.md
+161 lines · in 7 · out 2 · reachable · 22d stale, subject churn 815</title></circle>
+<circle cx="462.2" cy="813.9" r="11.1" fill="#ec5e43" stroke="#b8b8b8" stroke-width="1.0"><title>docs/decisions.md
+126 lines · in 9 · out 2 · reachable · 135d stale, subject churn 815</title></circle>
+<circle cx="625.7" cy="493.6" r="9.4" fill="#f06a4a" stroke="#0072B2" stroke-width="3.5"><title>docs/index.md
+75 lines · in 7 · out 38 · entry · 128d stale, subject churn 815</title></circle>
+<circle cx="429.4" cy="789.4" r="24.0" fill="#fdcf99" stroke="#b8b8b8" stroke-width="1.0"><title>docs/issue-triage/README.md
+1013 lines · in 3 · out 0 · reachable · 57d stale, subject churn 815</title></circle>
+<circle cx="401.3" cy="759.7" r="12.9" fill="#850000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/apt-worker-architecture.md
+199 lines · in 6 · out 0 · reachable · 207d stale, subject churn 815</title></circle>
+<circle cx="378.5" cy="725.6" r="12.6" fill="#ec5e43" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/config-wipe-guard.md
+188 lines · in 6 · out 2 · reachable · 135d stale, subject churn 815</title></circle>
+<circle cx="361.8" cy="688.2" r="13.5" fill="#d8d0cc" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/cowork-vm-daemon.md
+229 lines · in 9 · out 4 · reachable · 60d stale, subject churn 132</title></circle>
+<circle cx="351.7" cy="648.5" r="11.0" fill="#d3d2d4" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/cross-build-host-vs-target.md
+125 lines · in 4 · out 1 · reachable · 32d stale, subject churn 47</title></circle>
+<circle cx="348.5" cy="607.6" r="11.9" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/mcp-double-spawn.md
+159 lines · in 5 · out 0 · reachable · 136d stale, subject churn 815</title></circle>
+<circle cx="352.2" cy="566.8" r="15.6" fill="#d4d1d2" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/nix.md
+342 lines · in 6 · out 2 · reachable · 50d stale, subject churn 57</title></circle>
+<circle cx="362.8" cy="527.3" r="13.6" fill="#fde2bb" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/official-deb-rebase-verification.md
+235 lines · in 25 · out 2 · reachable · 34d stale, subject churn 815</title></circle>
+<circle cx="379.8" cy="490.0" r="11.2" fill="#d9d5d3" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/packaging-permissions.md
+132 lines · in 4 · out 2 · reachable · 28d stale, subject churn 160</title></circle>
+<circle cx="403.0" cy="456.2" r="21.5" fill="#fef3e2" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/patching-minified-js.md
+780 lines · in 19 · out 2 · reachable · 7d stale, subject churn 815</title></circle>
+<circle cx="431.5" cy="426.8" r="15.1" fill="#7f0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/plugin-install.md
+312 lines · in 7 · out 1 · reachable · 211d stale, subject churn 815</title></circle>
+<circle cx="464.5" cy="402.6" r="11.1" fill="#f06a4a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/quit-cleanup-scope-fence.md
+127 lines · in 3 · out 2 · reachable · 128d stale, subject churn 815</title></circle>
+<circle cx="501.2" cy="384.4" r="11.3" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/test-harness-ax-tree-walker.md
+135 lines · in 3 · out 0 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="540.5" cy="372.6" r="10.5" fill="#d1d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/test-harness-electron-hooks.md
+108 lines · in 6 · out 1 · reachable · 136d stale, subject churn 4</title></circle>
+<circle cx="581.1" cy="367.7" r="12.7" fill="#dcd2c8" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/test-methodology-and-coverage.md
+190 lines · in 3 · out 4 · reachable · 51d stale, subject churn 210</title></circle>
+<circle cx="622.0" cy="369.6" r="12.3" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/tray-rebuild-race.md
+173 lines · in 7 · out 0 · reachable · 136d stale, subject churn 815</title></circle>
+<circle cx="662.0" cy="378.5" r="10.8" fill="#fdddb1" stroke="#b8b8b8" stroke-width="1.0"><title>docs/learnings/wayland-global-shortcuts-portal.md
+117 lines · in 7 · out 3 · reachable · 41d stale, subject churn 815</title></circle>
+<circle cx="765.0" cy="1059.2" r="14.6" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md
+287 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="600.5" cy="1091.9" r="13.2" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md
+215 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="434.7" cy="1066.4" r="14.5" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md
+277 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="287.6" cy="985.7" r="15.1" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md
+310 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="177.1" cy="859.5" r="17.7" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md
+474 lines · in 0 · out 5 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="116.3" cy="703.2" r="16.0" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md
+364 lines · in 0 · out 6 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="112.6" cy="535.5" r="14.4" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md
+272 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="166.6" cy="376.6" r="15.4" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md
+328 lines · in 0 · out 4 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="271.6" cy="245.8" r="13.9" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md
+246 lines · in 0 · out 5 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="415.0" cy="158.8" r="14.1" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md
+260 lines · in 0 · out 6 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="579.5" cy="126.1" r="16.5" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md
+396 lines · in 0 · out 3 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="745.3" cy="151.6" r="15.6" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md
+338 lines · in 0 · out 3 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="892.4" cy="232.3" r="14.3" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md
+267 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="1002.9" cy="358.5" r="11.0" fill="#ea5b40" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md
+124 lines · in 0 · out 2 · orphan · 136d stale, subject churn 815</title></circle>
+<circle cx="699.9" cy="394.0" r="10.7" fill="#d1d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md
+115 lines · in 1 · out 4 · reachable · 136d stale, subject churn 4</title></circle>
+<circle cx="815.2" cy="892.8" r="13.1" fill="#d1d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md
+211 lines · in 1 · out 0 · reachable · 136d stale, subject churn 4</title></circle>
+<circle cx="737.5" cy="939.8" r="10.3" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md
+101 lines · in 2 · out 2 · reachable · 136d stale, subject churn 815</title></circle>
+<circle cx="1063.7" cy="514.8" r="9.1" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/reports/REPORTING.md
+65 lines · in 1 · out 1 · island · 136d stale, subject churn 815</title></circle>
+<circle cx="1067.4" cy="682.5" r="7.1" fill="#d1d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/reports/REPORTS.md
+24 lines · in 1 · out 1 · island · 128d stale, subject churn 2</title></circle>
+<circle cx="734.7" cy="415.6" r="19.4" fill="#b80704" stroke="#b8b8b8" stroke-width="1.0"><title>docs/styleguides/bash_styleguide.md
+599 lines · in 5 · out 0 · reachable · 180d stale, subject churn 815</title></circle>
+<circle cx="765.3" cy="442.9" r="11.6" fill="#ec5e43" stroke="#b8b8b8" stroke-width="1.0"><title>docs/styleguides/docs_styleguide.md
+145 lines · in 5 · out 15 · reachable · 135d stale, subject churn 815</title></circle>
+<circle cx="790.8" cy="474.9" r="10.7" fill="#d0d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/README.md
+112 lines · in 4 · out 10 · reachable · 196d stale, subject churn 3</title></circle>
+<circle cx="810.6" cy="510.8" r="17.2" fill="#d1d1d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/automation.md
+440 lines · in 6 · out 3 · reachable · 45d stale, subject churn 6</title></circle>
+<circle cx="650.6" cy="966.1" r="10.1" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/README.md
+95 lines · in 2 · out 12 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="559.9" cy="970.0" r="12.8" fill="#d1d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/code-tab-foundations.md
+198 lines · in 5 · out 1 · reachable · 196d stale, subject churn 1</title></circle>
+<circle cx="471.1" cy="951.2" r="12.0" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/code-tab-handoff.md
+164 lines · in 3 · out 5 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="389.7" cy="910.8" r="11.7" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/code-tab-workflow.md
+152 lines · in 4 · out 1 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="320.9" cy="851.6" r="12.2" fill="#fddeb4" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/distribution.md
+169 lines · in 4 · out 3 · reachable · 39d stale, subject churn 815</title></circle>
+<circle cx="269.1" cy="777.0" r="11.8" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/extensibility.md
+154 lines · in 4 · out 3 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="237.4" cy="691.9" r="9.5" fill="#d1d0d6" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/launch.md
+78 lines · in 5 · out 2 · reachable · 133d stale, subject churn 1</title></circle>
+<circle cx="227.8" cy="601.6" r="14.6" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/platform-integration.md
+283 lines · in 4 · out 2 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="241.0" cy="511.8" r="11.1" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/routines.md
+126 lines · in 4 · out 1 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="276.2" cy="428.1" r="16.0" fill="#d32b1c" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/shortcuts-and-input.md
+364 lines · in 7 · out 3 · reachable · 160d stale, subject churn 815</title></circle>
+<circle cx="331.0" cy="355.7" r="11.0" fill="#d0d0d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/cases/tray-and-window-chrome.md
+124 lines · in 7 · out 3 · reachable · 196d stale, subject churn 3</title></circle>
+<circle cx="824.0" cy="549.5" r="12.4" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/matrix.md
+180 lines · in 16 · out 12 · reachable · 196d stale, subject churn 815</title></circle>
+<circle cx="830.7" cy="589.9" r="10.9" fill="#ed6245" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/quick-entry-closeout.md
+119 lines · in 3 · out 2 · reachable · 133d stale, subject churn 815</title></circle>
+<circle cx="830.5" cy="630.8" r="15.6" fill="#d1d1d6" stroke="#b8b8b8" stroke-width="1.0"><title>docs/testing/runbook.md
+340 lines · in 5 · out 3 · reachable · 34d stale, subject churn 2</title></circle>
+<circle cx="823.4" cy="671.2" r="23.3" fill="#fff7ec" stroke="#b8b8b8" stroke-width="1.0"><title>docs/troubleshooting.md
+943 lines · in 7 · out 2 · reachable · 0d stale, subject churn 815</title></circle>
+<circle cx="402.2" cy="299.3" r="12.1" fill="#990000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/546-mcp-double-spawn.md
+165 lines · in 6 · out 0 · reachable · 197d stale, subject churn 815</title></circle>
+<circle cx="485.1" cy="262.3" r="9.6" fill="#f16b4a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/604-tray-panel-theme.md
+79 lines · in 2 · out 2 · reachable · 127d stale, subject churn 815</title></circle>
+<circle cx="574.6" cy="247.1" r="11.2" fill="#f06a4a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/720-folder-picker-native-binding.md
+131 lines · in 1 · out 1 · reachable · 128d stale, subject churn 815</title></circle>
+<circle cx="1013.4" cy="841.4" r="12.0" fill="#ec5e43" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/upstream-reports/768-config-wipe.md
+161 lines · in 0 · out 0 · orphan · 135d stale, subject churn 815</title></circle>
+<circle cx="665.1" cy="254.6" r="11.5" fill="#ed6044" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/771-cowork-virtiofsd-probe.md
+144 lines · in 3 · out 1 · reachable · 134d stale, subject churn 815</title></circle>
+<circle cx="750.9" cy="284.4" r="11.9" fill="#fef5e8" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/780-device-registry.md
+160 lines · in 1 · out 2 · reachable · 3d stale, subject churn 815</title></circle>
+<circle cx="826.5" cy="334.6" r="8.1" fill="#fde7c6" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/884-cowork-firmware-probe.md
+43 lines · in 1 · out 1 · reachable · 28d stale, subject churn 815</title></circle>
+<circle cx="887.3" cy="402.1" r="9.2" fill="#feeacd" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/955-file-manager-entries.md
+68 lines · in 1 · out 1 · reachable · 23d stale, subject churn 815</title></circle>
+<circle cx="809.5" cy="709.7" r="7.7" fill="#fef5e8" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/README.md
+35 lines · in 3 · out 15 · reachable · 3d stale, subject churn 815</title></circle>
+<circle cx="929.5" cy="482.5" r="10.6" fill="#ea5b40" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/electron-wco-linux-bugs.md
+109 lines · in 2 · out 1 · reachable · 136d stale, subject churn 815</title></circle>
+<circle cx="950.2" cy="570.9" r="7.7" fill="#fef0dc" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/terminal-da1-hidden-shell.md
+34 lines · in 1 · out 0 · reachable · 12d stale, subject churn 815</title></circle>
+<circle cx="948.4" cy="661.7" r="8.9" fill="#f16b4a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/upstream-reports/tray-theme-update-latch.md
+61 lines · in 2 · out 2 · reachable · 127d stale, subject churn 815</title></circle>
+<circle cx="924.0" cy="749.2" r="11.2" fill="#ed6245" stroke="#b8b8b8" stroke-width="1.0"><title>scripts/cowork-fallback/PROTOCOL.md
+130 lines · in 2 · out 0 · reachable · 133d stale, subject churn 815</title></circle>
+<circle cx="908.4" cy="972.2" r="8.2" fill="#d1ced3" stroke="#b8b8b8" stroke-width="1.0"><title>scripts/cowork-fallback/README.md
+45 lines · in 2 · out 1 · island · 133d stale, subject churn 18</title></circle>
+<circle cx="878.7" cy="827.8" r="18.5" fill="#d4bfc0" stroke="#b8b8b8" stroke-width="1.0"><title>tools/test-harness/README.md
+532 lines · in 1 · out 14 · reachable · 136d stale, subject churn 120</title></circle>
+<line x1="699.9" y1="394.0" x2="557.6" y2="403.6" stroke="#CC79A7" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85"/>
+<line x1="331.0" y1="355.7" x2="557.6" y2="403.6" stroke="#CC79A7" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85"/>
+<circle cx="557.6" cy="403.6" r="7" fill="#ffffff" stroke="#CC79A7" stroke-width="1.6" stroke-dasharray="3,2"><title>BROKEN LINK (2 sources)
+docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md, docs/testing/cases/tray-and-window-chrome.md -&gt; docs/learnings/linux-topbar-shim.md
+missing file: create it or fix the links</title></circle>
+<line x1="361.8" y1="688.2" x2="400.6" y2="612.5" stroke="#CC79A7" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85"/>
+<line x1="431.5" y1="426.8" x2="400.6" y2="612.5" stroke="#CC79A7" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85"/>
+<circle cx="400.6" cy="612.5" r="7" fill="#ffffff" stroke="#CC79A7" stroke-width="1.6" stroke-dasharray="3,2"><title>BROKEN LINK (2 sources)
+docs/learnings/cowork-vm-daemon.md, docs/learnings/plugin-install.md -&gt; scripts/cowork-vm-service.js
+missing file: create it or fix the links</title></circle>
+<line x1="540.5" y1="372.6" x2="503.2" y2="406.8" stroke="#CC79A7" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85"/>
+<circle cx="503.2" cy="406.8" r="7" fill="#ffffff" stroke="#CC79A7" stroke-width="1.6" stroke-dasharray="3,2"><title>BROKEN LINK (1 source)
+docs/learnings/test-harness-electron-hooks.md -&gt; scripts/frame-fix-wrapper.js
+missing file: create it or fix the links</title></circle>
+<line x1="431.5" y1="426.8" x2="377.1" y2="418.1" stroke="#CC79A7" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85"/>
+<circle cx="377.1" cy="418.1" r="7" fill="#ffffff" stroke="#CC79A7" stroke-width="1.6" stroke-dasharray="3,2"><title>BROKEN LINK (1 source)
+docs/learnings/plugin-install.md -&gt; scripts/patches/cowork.sh
+missing file: create it or fix the links</title></circle>
+<text x="590" y="40" font-size="24" font-weight="600" text-anchor="middle">Doc map - 84 docs, 347 edges, 3 islands</text>
+<text x="590" y="66" font-size="14" fill="#555" text-anchor="middle">18% orphaned · 79% reachable from the entry point · 6 broken links to 4 missing files</text>
+<defs><linearGradient id="stalegrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff7ec"/><stop offset="0.5" stop-color="#fc8d59"/><stop offset="1" stop-color="#7f0000"/></linearGradient><pattern id="unmeasured" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#ffffff"/><line x1="0" y1="0" x2="0" y2="5" stroke="#8c8c8c" stroke-width="1.6"/></pattern></defs>
+<text x="254" y="1162" font-size="12" fill="#555" text-anchor="end">stable</text>
+<rect x="260" y="1151" width="110" height="12" rx="3" fill="url(#stalegrad)"/>
+<text x="376" y="1162" font-size="12" fill="#555">lying map</text>
+<circle cx="465" cy="1158" r="8" fill="url(#unmeasured)" stroke="#b8b8b8" stroke-width="1"/>
+<text x="479" y="1162" font-size="13">not measured</text>
+<circle cx="600" cy="1158" r="8" fill="#dddddd" stroke="#0072B2" stroke-width="3"/>
+<text x="614" y="1162" font-size="13">entry</text>
+<circle cx="695" cy="1158" r="8" fill="#dddddd" stroke="#1a1a1a" stroke-width="2" stroke-dasharray="3,2"/>
+<text x="709" y="1162" font-size="13">orphan</text>
+<circle cx="795" cy="1158" r="8" fill="#ffffff" stroke="#CC79A7" stroke-width="1.8" stroke-dasharray="3,2"/>
+<text x="809" y="1162" font-size="13">ghost (broken link)</text>
+<line data-legend-kind="link" x1="440" y1="1177" x2="468" y2="1177" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6"/>
+<text x="474" y="1181" font-size="13">link</text>
+<line data-legend-kind="reference" x1="550" y1="1177" x2="578" y2="1177" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round"/>
+<text x="584" y="1181" font-size="13">reference (backticked path)</text>
+<text x="590" y="1198" font-size="12" fill="#555" text-anchor="middle">colour = staleness · size = file length (lines) · rings = link-distance from entry · rim = unreachable</text>
+</svg>

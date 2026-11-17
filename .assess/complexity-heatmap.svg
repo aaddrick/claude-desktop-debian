@@ -1,0 +1,577 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000" preserveAspectRatio="xMidYMid meet" role="img">
+<title>Complexity Hotspot Heatmap</title>
+<desc>Treemap showing code complexity by file size, hue indicates cyclomatic complexity, saturation indicates git churn</desc>
+<style>
+  rect:hover { stroke: #000; stroke-width: 1.5; }
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; pointer-events: none; dominant-baseline: middle; }
+  text:not([fill]) { fill: #1a1a1a; }
+  text:not([text-anchor]) { text-anchor: middle; }
+</style>
+<rect x="0.00" y="0.00" width="253.14" height="212.11" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/issue_dates.json
+29,272 est. tokens · 4590 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="212.11" width="253.14" height="82.07" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/data/families.json
+11,326 est. tokens · 3236 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="253.14" y="0.00" width="190.42" height="162.58" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/catalog.json
+16,878 est. tokens · 4962 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="253.14" y="162.58" width="91.32" height="56.92" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/make_timeseries_charts.py
+2,834 est. tokens · 155 loc · ccn 19 · commits (last 12mo) 1</title></rect>
+<rect x="253.14" y="219.50" width="50.60" height="74.68" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/make_charts.py
+2,060 est. tokens · 116 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="303.74" y="219.50" width="40.72" height="38.92" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/group_families.py
+864 est. tokens · 69 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="303.74" y="258.41" width="40.72" height="35.76" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/scripts/fetch_issue_dates.py
+794 est. tokens · 70 loc · ccn 4 · commits (last 12mo) 1</title></rect>
+<rect x="344.46" y="162.58" width="99.10" height="79.94" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/reported-environments.md
+4,319 est. tokens · 190 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="344.46" y="242.52" width="93.03" height="51.66" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grouped-families.md
+2,620 est. tokens · 77 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="437.49" y="242.52" width="6.07" height="51.66" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/reported-environments/grep-crosscheck.txt
+171 est. tokens · 10 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="294.18" width="105.65" height="137.38" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/cowork.md
+7,913 est. tokens · 445 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="431.56" width="105.65" height="121.83" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/frame-fix-wrapper.md
+7,017 est. tokens · 335 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="105.65" y="294.18" width="85.66" height="136.34" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/tray.md
+6,367 est. tokens · 293 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="105.65" y="430.52" width="85.66" height="122.87" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/shared-machinery.md
+5,738 est. tokens · 360 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="191.31" y="294.18" width="93.61" height="98.37" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/node-pty.md
+5,020 est. tokens · 302 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="284.92" y="294.18" width="82.85" height="98.37" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/config.md
+4,443 est. tokens · 271 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="367.76" y="294.18" width="75.80" height="98.37" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-native-stub.md
+4,065 est. tokens · 245 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="191.31" y="392.55" width="91.00" height="81.60" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/wco-shim.md
+4,048 est. tokens · 240 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="191.31" y="474.14" width="91.00" height="79.24" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/asar-guards.md
+3,931 est. tokens · 244 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="282.31" y="392.55" width="84.78" height="80.81" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/menubar-default.md
+3,735 est. tokens · 238 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="282.31" y="473.36" width="84.78" height="80.03" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/quick-window.md
+3,699 est. tokens · 225 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="367.09" y="392.55" width="76.48" height="88.17" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/org-plugins.md
+3,676 est. tokens · 211 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="367.09" y="480.71" width="76.48" height="72.67" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/dossiers/claude-code.md
+3,030 est. tokens · 184 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="0.00" width="52.89" height="73.24" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/18-sandbox.tex
+2,112 est. tokens · 25 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="496.46" y="0.00" width="51.14" height="73.24" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/21-reassessment.tex
+2,042 est. tokens · 11 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="547.60" y="0.00" width="50.97" height="73.24" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/15-launcher.tex
+2,035 est. tokens · 19 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="73.24" width="52.40" height="70.57" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/10-cowork.tex
+2,016 est. tokens · 26 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="495.97" y="73.24" width="51.47" height="70.57" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/04-frame.tex
+1,980 est. tokens · 25 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="547.43" y="73.24" width="51.13" height="70.57" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/03-chassis.tex
+1,967 est. tokens · 27 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="143.80" width="56.61" height="63.35" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/preamble.tex
+1,955 est. tokens · 119 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="500.17" y="143.80" width="50.35" height="63.35" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/14-acquisition.tex
+1,739 est. tokens · 23 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="550.53" y="143.80" width="48.04" height="63.35" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/07-tray.tex
+1,659 est. tokens · 25 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="207.15" width="55.61" height="50.73" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/19-fate-matrix.tex
+1,538 est. tokens · 33 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="499.17" y="207.15" width="54.52" height="50.73" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/12-topbar.tex
+1,508 est. tokens · 12 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="553.70" y="207.15" width="44.87" height="50.73" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/05-native-binding.tex
+1,241 est. tokens · 16 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="257.88" width="53.27" height="41.90" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/13-config-writes.tex
+1,217 est. tokens · 15 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="299.79" width="53.27" height="41.32" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/17-icons.tex
+1,200 est. tokens · 16 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="341.10" width="53.27" height="39.84" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/08-quick-entry.tex
+1,157 est. tokens · 17 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="496.84" y="257.88" width="53.75" height="38.42" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/06-terminal.tex
+1,126 est. tokens · 14 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="550.59" y="257.88" width="47.98" height="38.42" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/11-org-plugins.tex
+1,005 est. tokens · 15 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="496.84" y="296.31" width="38.40" height="42.75" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/16-ssh-helpers.tex
+895 est. tokens · 12 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="496.84" y="339.05" width="38.40" height="41.89" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/01-overview.tex
+877 est. tokens · 4 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="535.24" y="296.31" width="32.98" height="46.11" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/09-code-tab.tex
+829 est. tokens · 16 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="568.21" y="296.31" width="30.35" height="46.11" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/02-method.tex
+763 est. tokens · 4 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="535.24" y="342.42" width="33.47" height="38.52" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/20-closing.tex
+703 est. tokens · 4 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="568.71" y="342.42" width="29.85" height="38.52" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/parts/00-cover.tex
+627 est. tokens · 36 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="380.94" width="116.46" height="82.29" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/workflow-state/patch-suite-dossier-wf.js
+5,225 est. tokens · 280 loc · ccn 19 · commits (last 12mo) 1</title></rect>
+<rect x="560.03" y="380.94" width="38.54" height="82.29" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/workflow-state/issue-environment-catalog-wf.js
+1,729 est. tokens · 92 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="443.56" y="463.24" width="105.21" height="90.15" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/verdict-reassessment-accessibility.md
+5,171 est. tokens · 75 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="548.78" y="463.24" width="49.79" height="75.01" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/matrix-update-guidance.md
+2,036 est. tokens · 105 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="548.78" y="538.24" width="49.79" height="15.14" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0009_patch-suite-history/CDL-ANT-0009-A_The_Legacy_Patch_Suite.tex
+411 est. tokens · 30 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="598.57" y="0.00" width="150.72" height="201.48" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0010_code-split-chunk-census/chunk-census-data.json
+16,555 est. tokens · 930 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="598.57" y="201.48" width="150.72" height="117.08" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0010_code-split-chunk-census/CDL-ANT-0010-A_Code_Split_Chunk_Census.tex
+9,620 est. tokens · 266 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="598.57" y="318.55" width="150.72" height="42.97" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0010_code-split-chunk-census/require-graph-manifest.json
+3,531 est. tokens · 474 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="598.57" y="361.52" width="150.72" height="128.10" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/CDL-ANT-0008_official-linux-teardown/claude-desktop-linux-teardown.tex
+10,526 est. tokens · 257 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="598.57" y="489.63" width="115.88" height="63.76" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/templates/latex/cdl-ant-report-template.tex
+4,028 est. tokens · 175 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="714.45" y="489.63" width="34.84" height="38.17" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/reports/REPORTING.md
+725 est. tokens · 47 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="714.45" y="527.80" width="34.84" height="25.59" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/reports/REPORTS.md
+486 est. tokens · 17 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="553.39" width="139.47" height="121.10" fill="#e4dbd1" stroke="white" stroke-width="0.5"><title>docs/learnings/patching-minified-js.md
+9,208 est. tokens · 641 loc · ccn 0 · commits (last 12mo) 13</title></rect>
+<rect x="0.00" y="674.48" width="139.47" height="104.80" fill="#d9d5d3" stroke="white" stroke-width="0.5"><title>docs/learnings/test-methodology-and-coverage.md
+7,969 est. tokens · 125 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="139.47" y="553.39" width="77.34" height="114.43" fill="#dcd7d3" stroke="white" stroke-width="0.5"><title>docs/learnings/official-deb-rebase-verification.md
+4,825 est. tokens · 217 loc · ccn 0 · commits (last 12mo) 8</title></rect>
+<rect x="139.47" y="667.82" width="77.34" height="111.47" fill="#e2dad1" stroke="white" stroke-width="0.5"><title>docs/learnings/wayland-global-shortcuts-portal.md
+4,700 est. tokens · 72 loc · ccn 0 · commits (last 12mo) 12</title></rect>
+<rect x="216.81" y="553.39" width="94.28" height="88.78" fill="#ded8d2" stroke="white" stroke-width="0.5"><title>docs/learnings/nix.md
+4,563 est. tokens · 299 loc · ccn 0 · commits (last 12mo) 9</title></rect>
+<rect x="311.09" y="553.39" width="59.65" height="88.78" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/learnings/plugin-install.md
+2,887 est. tokens · 250 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="370.74" y="553.39" width="56.30" height="88.78" fill="#ded8d2" stroke="white" stroke-width="0.5"><title>docs/learnings/cowork-vm-daemon.md
+2,725 est. tokens · 184 loc · ccn 0 · commits (last 12mo) 9</title></rect>
+<rect x="216.81" y="642.16" width="69.14" height="69.93" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/learnings/apt-worker-architecture.md
+2,636 est. tokens · 164 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="216.81" y="712.09" width="69.14" height="67.20" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/learnings/config-wipe-guard.md
+2,533 est. tokens · 159 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="285.95" y="642.16" width="46.59" height="69.29" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/learnings/tray-rebuild-race.md
+1,760 est. tokens · 138 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="285.95" y="711.45" width="46.59" height="67.84" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/learnings/test-harness-ax-tree-walker.md
+1,723 est. tokens · 110 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="332.54" y="642.16" width="47.56" height="63.02" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/learnings/mcp-double-spawn.md
+1,634 est. tokens · 127 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="380.10" y="642.16" width="46.95" height="63.02" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/learnings/quit-cleanup-scope-fence.md
+1,613 est. tokens · 101 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="332.54" y="705.18" width="64.75" height="37.93" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/learnings/packaging-permissions.md
+1,339 est. tokens · 101 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="332.54" y="743.11" width="64.75" height="36.17" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>docs/learnings/cross-build-host-vs-target.md
+1,277 est. tokens · 98 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="397.29" y="705.18" width="29.75" height="74.11" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/learnings/test-harness-electron-hooks.md
+1,202 est. tokens · 87 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="779.29" width="88.46" height="147.53" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>docs/testing/cases/shortcuts-and-input.md
+7,115 est. tokens · 245 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="0.00" y="926.82" width="88.46" height="73.18" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/platform-integration.md
+3,529 est. tokens · 218 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="88.46" y="779.29" width="88.35" height="64.11" fill="#d8d4d4" stroke="white" stroke-width="0.5"><title>docs/testing/cases/distribution.md
+3,088 est. tokens · 108 loc · ccn 0 · commits (last 12mo) 5</title></rect>
+<rect x="176.81" y="779.29" width="82.05" height="64.11" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/tray-and-window-chrome.md
+2,868 est. tokens · 85 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="88.46" y="843.40" width="59.25" height="78.86" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/code-tab-workflow.md
+2,547 est. tokens · 108 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="88.46" y="922.26" width="59.25" height="77.74" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/code-tab-foundations.md
+2,511 est. tokens · 151 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="147.70" y="843.40" width="58.18" height="78.88" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/extensibility.md
+2,502 est. tokens · 101 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="205.89" y="843.40" width="52.97" height="78.88" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/code-tab-handoff.md
+2,278 est. tokens · 120 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="147.70" y="922.28" width="48.10" height="77.72" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/routines.md
+2,038 est. tokens · 81 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="195.80" y="922.28" width="63.06" height="42.24" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/launch.md
+1,452 est. tokens · 52 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="195.80" y="964.51" width="63.06" height="35.49" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/cases/README.md
+1,220 est. tokens · 73 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="258.86" y="779.29" width="99.74" height="127.72" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/testing/automation.md
+6,945 est. tokens · 366 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="358.60" y="779.29" width="68.45" height="127.72" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>docs/testing/quick-entry-closeout.md
+4,766 est. tokens · 85 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="258.86" y="907.01" width="71.33" height="92.99" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/matrix.md
+3,616 est. tokens · 137 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="330.19" y="907.01" width="63.81" height="92.99" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/testing/runbook.md
+3,235 est. tokens · 248 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="394.00" y="907.01" width="33.04" height="92.99" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/testing/README.md
+1,675 est. tokens · 84 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="427.05" y="553.39" width="83.30" height="65.47" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/768-config-wipe.md
+2,973 est. tokens · 97 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="510.34" y="553.39" width="82.57" height="65.47" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/720-folder-picker-native-binding.md
+2,947 est. tokens · 82 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="427.05" y="618.85" width="86.71" height="56.06" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/780-device-registry.md
+2,650 est. tokens · 102 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="513.76" y="618.85" width="79.15" height="56.06" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/771-cowork-virtiofsd-probe.md
+2,419 est. tokens · 86 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="427.05" y="674.91" width="66.03" height="59.89" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/546-mcp-double-spawn.md
+2,156 est. tokens · 102 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="427.05" y="734.80" width="66.03" height="53.47" fill="#e4dbd1" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/README.md
+1,925 est. tokens · 31 loc · ccn 0 · commits (last 12mo) 13</title></rect>
+<rect x="493.08" y="674.91" width="55.31" height="50.97" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/604-tray-panel-theme.md
+1,537 est. tokens · 50 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="548.39" y="674.91" width="44.52" height="50.97" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/955-file-manager-entries.md
+1,237 est. tokens · 40 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="493.08" y="725.88" width="36.16" height="62.40" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/electron-wco-linux-bugs.md
+1,230 est. tokens · 89 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="529.24" y="725.88" width="30.78" height="62.40" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/tray-theme-update-latch.md
+1,047 est. tokens · 40 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="560.01" y="725.88" width="32.90" height="39.09" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/884-cowork-firmware-probe.md
+701 est. tokens · 25 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="560.01" y="764.97" width="32.90" height="23.31" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/upstream-reports/terminal-da1-hidden-shell.md
+418 est. tokens · 21 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="592.91" y="553.39" width="156.38" height="234.89" fill="#dbd6d3" stroke="white" stroke-width="0.5"><title>docs/issue-triage/README.md
+20,025 est. tokens · 710 loc · ccn 0 · commits (last 12mo) 7</title></rect>
+<rect x="427.05" y="788.28" width="180.82" height="113.78" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>docs/troubleshooting.md
+11,216 est. tokens · 734 loc · ccn 0 · commits (last 12mo) 32</title></rect>
+<rect x="427.05" y="902.06" width="105.01" height="97.94" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/archive/cowork-linux-handover.md
+5,607 est. tokens · 317 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="532.05" y="902.06" width="75.81" height="97.94" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/archive/linux-topbar-shim.md
+4,048 est. tokens · 309 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="607.86" y="788.28" width="84.39" height="71.88" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/styleguides/bash_styleguide.md
+3,307 est. tokens · 428 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="692.25" y="788.28" width="57.03" height="71.88" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/styleguides/docs_styleguide.md
+2,235 est. tokens · 109 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="607.86" y="860.16" width="89.95" height="75.94" fill="#ecdfce" stroke="white" stroke-width="0.5"><title>docs/configuration.md
+3,724 est. tokens · 106 loc · ccn 0 · commits (last 12mo) 19</title></rect>
+<rect x="607.86" y="936.09" width="89.95" height="63.91" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>docs/decisions.md
+3,134 est. tokens · 82 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="697.82" y="860.16" width="51.47" height="81.15" fill="#d9d5d3" stroke="white" stroke-width="0.5"><title>docs/building.md
+2,277 est. tokens · 98 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="697.82" y="941.30" width="51.47" height="58.70" fill="#dcd7d3" stroke="white" stroke-width="0.5"><title>docs/index.md
+1,647 est. tokens · 54 loc · ccn 0 · commits (last 12mo) 8</title></rect>
+<rect x="749.28" y="0.00" width="75.51" height="77.22" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S35_quick_entry_position_persisted_across_restarts.spec.ts
+3,179 est. tokens · 266 loc · ccn 19 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="77.22" width="75.51" height="72.36" fill="#cecacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S01_appimage_launches_without_libfuse2t64.spec.ts
+2,979 est. tokens · 248 loc · ccn 54 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="149.58" width="75.51" height="67.09" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T11_runtime.spec.ts
+2,762 est. tokens · 148 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="216.68" width="75.51" height="66.68" fill="#cecacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S15_appimage_extract_works.spec.ts
+2,745 est. tokens · 279 loc · ccn 48 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="283.36" width="75.51" height="64.40" fill="#d0cacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S16_appimage_mount_cleanup.spec.ts
+2,651 est. tokens · 239 loc · ccn 42 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="347.75" width="75.51" height="59.56" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T21_runtime.spec.ts
+2,452 est. tokens · 145 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="824.80" y="0.00" width="60.81" height="72.99" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S14_quick_entry_from_other_focus_niri.spec.ts
+2,420 est. tokens · 150 loc · ccn 20 · commits (last 12mo) 1</title></rect>
+<rect x="824.80" y="72.99" width="60.81" height="72.48" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S11_quick_entry_from_other_focus.spec.ts
+2,403 est. tokens · 149 loc · ccn 20 · commits (last 12mo) 1</title></rect>
+<rect x="824.80" y="145.47" width="60.81" height="71.42" fill="#d4c6c8" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S30_quick_entry_noop_after_app_exit.spec.ts
+2,368 est. tokens · 185 loc · ccn 28 · commits (last 12mo) 3</title></rect>
+<rect x="824.80" y="216.90" width="60.81" height="65.48" fill="#d2cfd3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T23_notification_reaches_dbus.spec.ts
+2,171 est. tokens · 158 loc · ccn 17 · commits (last 12mo) 1</title></rect>
+<rect x="824.80" y="282.38" width="60.81" height="64.03" fill="#d2c9cc" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T14b_second_instance_focuses_existing.spec.ts
+2,123 est. tokens · 183 loc · ccn 29 · commits (last 12mo) 2</title></rect>
+<rect x="824.80" y="346.42" width="60.81" height="60.90" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T33c_plugin_browser_invocation.spec.ts
+2,019 est. tokens · 123 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="885.61" y="0.00" width="62.28" height="57.49" fill="#d1cdd1" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T26_routines_page_renders.spec.ts
+1,952 est. tokens · 171 loc · ccn 30 · commits (last 12mo) 1</title></rect>
+<rect x="947.89" y="0.00" width="60.94" height="57.49" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T30_auto_archive_cadence_constants.spec.ts
+1,910 est. tokens · 99 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="1008.83" y="0.00" width="60.69" height="57.49" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T35b_mcp_config_runtime.spec.ts
+1,902 est. tokens · 118 loc · ccn 14 · commits (last 12mo) 1</title></rect>
+<rect x="1069.52" y="0.00" width="60.30" height="57.49" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S17_shell_path_inheritance.spec.ts
+1,890 est. tokens · 166 loc · ccn 7 · commits (last 12mo) 1</title></rect>
+<rect x="1129.82" y="0.00" width="60.30" height="57.49" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S25_safestorage_token_persists.spec.ts
+1,890 est. tokens · 136 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="1190.12" y="0.00" width="60.05" height="57.49" fill="#d2ced1" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S04_rpm_requires_declared.spec.ts
+1,882 est. tokens · 149 loc · ccn 24 · commits (last 12mo) 1</title></rect>
+<rect x="885.61" y="57.49" width="55.99" height="59.49" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T19_runtime.spec.ts
+1,816 est. tokens · 116 loc · ccn 10 · commits (last 12mo) 1</title></rect>
+<rect x="885.61" y="116.98" width="55.99" height="58.94" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T18_drag_drop_files_into_prompt.spec.ts
+1,799 est. tokens · 115 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="885.61" y="175.92" width="55.99" height="58.64" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T07_topbar_renders.spec.ts
+1,790 est. tokens · 134 loc · ccn 15 · commits (last 12mo) 1</title></rect>
+<rect x="885.61" y="234.56" width="55.99" height="57.92" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S29_quick_entry_lazy_create_closed_to_tray.spec.ts
+1,768 est. tokens · 116 loc · ccn 6 · commits (last 12mo) 2</title></rect>
+<rect x="885.61" y="292.49" width="55.99" height="57.63" fill="#d3cdce" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T05_claude_scheme_handler_delivery.spec.ts
+1,759 est. tokens · 139 loc · ccn 20 · commits (last 12mo) 2</title></rect>
+<rect x="885.61" y="350.11" width="55.99" height="57.20" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T13_doctor_package_format.spec.ts
+1,746 est. tokens · 142 loc · ccn 18 · commits (last 12mo) 1</title></rect>
+<rect x="941.60" y="57.49" width="52.79" height="60.57" fill="#d3cccd" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/H01_cdp_gate_canary.spec.ts
+1,743 est. tokens · 147 loc · ccn 23 · commits (last 12mo) 2</title></rect>
+<rect x="994.38" y="57.49" width="52.42" height="60.57" fill="#d2cfd3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S31_quick_entry_submit_reaches_new_chat.spec.ts
+1,731 est. tokens · 123 loc · ccn 17 · commits (last 12mo) 1</title></rect>
+<rect x="1046.81" y="57.49" width="51.64" height="60.57" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S32_quick_entry_submit_gnome_stale_isfocused.spec.ts
+1,705 est. tokens · 116 loc · ccn 14 · commits (last 12mo) 1</title></rect>
+<rect x="1098.44" y="57.49" width="50.82" height="60.57" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S28_worktree_permission_classifier.spec.ts
+1,678 est. tokens · 79 loc · ccn 4 · commits (last 12mo) 1</title></rect>
+<rect x="1149.26" y="57.49" width="50.52" height="60.57" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S05_doctor_recognises_rpm_install.spec.ts
+1,668 est. tokens · 123 loc · ccn 15 · commits (last 12mo) 1</title></rect>
+<rect x="1199.78" y="57.49" width="50.39" height="60.57" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T20_runtime.spec.ts
+1,664 est. tokens · 114 loc · ccn 10 · commits (last 12mo) 1</title></rect>
+<rect x="941.60" y="118.06" width="51.58" height="58.57" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T32_slash_menu_fingerprint.spec.ts
+1,647 est. tokens · 104 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="941.60" y="176.63" width="51.58" height="58.39" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T36_hooks_fingerprint.spec.ts
+1,642 est. tokens · 130 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="941.60" y="235.02" width="51.58" height="58.21" fill="#d3d0d1" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S26_auto_update_disabled_on_apt_dnf.spec.ts
+1,637 est. tokens · 141 loc · ccn 10 · commits (last 12mo) 2</title></rect>
+<rect x="941.60" y="293.23" width="51.58" height="58.11" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T27_scheduled_tasks_runtime.spec.ts
+1,634 est. tokens · 122 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="941.60" y="351.34" width="51.58" height="55.97" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T37b_global_memory_runtime.spec.ts
+1,574 est. tokens · 90 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="993.18" y="118.06" width="53.05" height="53.90" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T09_autostart_via_xdg.spec.ts
+1,559 est. tokens · 122 loc · ccn 4 · commits (last 12mo) 2</title></rect>
+<rect x="1046.23" y="118.06" width="52.92" height="53.90" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S02_xdg_current_desktop_substring_match.spec.ts
+1,555 est. tokens · 114 loc · ccn 19 · commits (last 12mo) 1</title></rect>
+<rect x="1099.15" y="118.06" width="51.93" height="53.90" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T37_claude_md_memory_fingerprint.spec.ts
+1,526 est. tokens · 117 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1151.08" y="118.06" width="49.62" height="53.90" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S34_shortcut_focuses_fullscreen_main.spec.ts
+1,458 est. tokens · 94 loc · ccn 13 · commits (last 12mo) 1</title></rect>
+<rect x="1200.69" y="118.06" width="49.48" height="53.90" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S07_claude_use_wayland_opt_in.spec.ts
+1,454 est. tokens · 104 loc · ccn 15 · commits (last 12mo) 1</title></rect>
+<rect x="993.18" y="171.96" width="52.60" height="50.22" fill="#d3d0d1" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T03_tray_icon_present.spec.ts
+1,440 est. tokens · 110 loc · ccn 10 · commits (last 12mo) 2</title></rect>
+<rect x="993.18" y="222.17" width="52.60" height="49.66" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S19_claude_config_dir_redirects.spec.ts
+1,424 est. tokens · 89 loc · ccn 3 · commits (last 12mo) 1</title></rect>
+<rect x="993.18" y="271.83" width="52.60" height="46.21" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T35_mcp_config_separation.spec.ts
+1,325 est. tokens · 81 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="993.18" y="318.04" width="52.60" height="45.58" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S03_deb_dependencies_declared.spec.ts
+1,307 est. tokens · 99 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="993.18" y="363.62" width="52.60" height="43.70" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T24_open_in_editor_no_throw.spec.ts
+1,253 est. tokens · 73 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1045.78" y="171.96" width="52.52" height="43.66" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T22b_pr_monitoring_handler_runtime.spec.ts
+1,250 est. tokens · 72 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="1098.29" y="171.96" width="52.14" height="43.66" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S27_plugins_install_per_user_fingerprint.spec.ts
+1,241 est. tokens · 61 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="1150.43" y="171.96" width="50.54" height="43.66" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T11_plugin_install_fingerprint.spec.ts
+1,203 est. tokens · 81 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1200.97" y="171.96" width="49.20" height="43.66" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S10_quick_entry_popup_transparent.spec.ts
+1,171 est. tokens · 67 loc · ccn 5 · commits (last 12mo) 2</title></rect>
+<rect x="1045.78" y="215.62" width="42.81" height="49.36" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T16_code_tab_loads.spec.ts
+1,152 est. tokens · 69 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="1045.78" y="264.98" width="42.81" height="48.42" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T17_folder_picker.spec.ts
+1,130 est. tokens · 74 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="1045.78" y="313.39" width="42.81" height="48.20" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/H03_patch_fingerprints.spec.ts
+1,125 est. tokens · 94 loc · ccn 5 · commits (last 12mo) 2</title></rect>
+<rect x="1045.78" y="361.60" width="42.81" height="45.72" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T22_pr_monitoring_handler.spec.ts
+1,067 est. tokens · 63 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1088.59" y="215.62" width="42.42" height="45.36" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T12_gpu_feature_status.spec.ts
+1,049 est. tokens · 41 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1131.00" y="215.62" width="41.29" height="45.36" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T31b_side_chat_handlers_runtime.spec.ts
+1,021 est. tokens · 82 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1172.29" y="215.62" width="39.22" height="45.36" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T02_doctor_exit_code.spec.ts
+970 est. tokens · 87 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="1211.51" y="215.62" width="38.66" height="45.36" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T38_open_in_editor_handler_registered.spec.ts
+956 est. tokens · 49 loc · ccn 3 · commits (last 12mo) 1</title></rect>
+<rect x="1088.59" y="260.98" width="46.97" height="36.79" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T33_plugin_browser_handler_registered.spec.ts
+942 est. tokens · 61 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1088.59" y="297.77" width="46.97" height="36.79" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T25_show_item_in_folder_no_throw.spec.ts
+942 est. tokens · 72 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1088.59" y="334.56" width="46.97" height="36.40" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T33b_plugin_browser_handler_runtime.spec.ts
+932 est. tokens · 82 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1088.59" y="370.95" width="46.97" height="36.36" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T38b_open_in_editor_handler_runtime.spec.ts
+931 est. tokens · 72 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="1135.55" y="260.98" width="38.95" height="43.32" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T08_hide_to_tray_on_close.spec.ts
+920 est. tokens · 65 loc · ccn 4 · commits (last 12mo) 2</title></rect>
+<rect x="1174.51" y="260.98" width="37.94" height="43.32" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S22_computer_use_disabled_on_linux_fingerprint.spec.ts
+896 est. tokens · 47 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="1212.44" y="260.98" width="37.73" height="43.32" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T31_side_chat_handlers_registered.spec.ts
+891 est. tokens · 52 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1135.55" y="304.30" width="45.48" height="34.65" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S36_quick_entry_fallback_to_primary_display.spec.ts
+859 est. tokens · 53 loc · ccn 3 · commits (last 12mo) 1</title></rect>
+<rect x="1135.55" y="338.95" width="45.48" height="34.28" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S12_global_shortcuts_portal_flag.spec.ts
+850 est. tokens · 65 loc · ccn 5 · commits (last 12mo) 2</title></rect>
+<rect x="1135.55" y="373.23" width="45.48" height="34.08" fill="#d2cfd3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S33_electron_version_capture.spec.ts
+845 est. tokens · 81 loc · ccn 17 · commits (last 12mo) 1</title></rect>
+<rect x="1181.03" y="304.30" width="34.81" height="41.68" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T14a_single_instance_fingerprint.spec.ts
+791 est. tokens · 43 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1215.84" y="304.30" width="34.33" height="41.68" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T06_quick_entry_shortcut_registered.spec.ts
+780 est. tokens · 44 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="1181.03" y="345.98" width="34.21" height="35.60" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S21_no_lid_switch_handler.spec.ts
+664 est. tokens · 41 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1181.03" y="381.58" width="34.21" height="25.74" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S09_quick_window_patch_only_kde.spec.ts
+480 est. tokens · 22 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1215.24" y="345.98" width="34.93" height="21.95" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/S37_quick_entry_popup_after_main_destroy.spec.ts
+418 est. tokens · 17 loc · ccn 1 · commits (last 12mo) 2</title></rect>
+<rect x="1215.24" y="367.93" width="34.93" height="21.27" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T04_window_decorations.spec.ts
+405 est. tokens · 35 loc · ccn 4 · commits (last 12mo) 1</title></rect>
+<rect x="1215.24" y="389.20" width="34.93" height="18.12" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/runners/T01_app_launch.spec.ts
+345 est. tokens · 29 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="407.31" width="150.02" height="78.68" fill="#c6b5ba" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/electron.ts
+6,435 est. tokens · 411 loc · ccn 89 · commits (last 12mo) 4</title></rect>
+<rect x="749.28" y="485.99" width="150.02" height="76.17" fill="#cbc3c8" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/quickentry.ts
+6,230 est. tokens · 458 loc · ccn 77 · commits (last 12mo) 2</title></rect>
+<rect x="899.31" y="407.31" width="103.04" height="78.11" fill="#d1cbd0" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/eipc.ts
+4,388 est. tokens · 185 loc · ccn 37 · commits (last 12mo) 1</title></rect>
+<rect x="899.31" y="485.42" width="103.04" height="76.74" fill="#cecacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/ax.ts
+4,311 est. tokens · 209 loc · ccn 58 · commits (last 12mo) 1</title></rect>
+<rect x="1002.35" y="407.31" width="88.88" height="84.84" fill="#cecacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/claudeai.ts
+4,111 est. tokens · 215 loc · ccn 67 · commits (last 12mo) 1</title></rect>
+<rect x="1002.35" y="492.16" width="88.88" height="70.01" fill="#cecacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/input-niri.ts
+3,392 est. tokens · 236 loc · ccn 67 · commits (last 12mo) 1</title></rect>
+<rect x="1091.23" y="407.31" width="71.45" height="81.92" fill="#cecacf" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/input.ts
+3,191 est. tokens · 190 loc · ccn 52 · commits (last 12mo) 1</title></rect>
+<rect x="1091.23" y="489.23" width="71.45" height="72.93" fill="#d3cbcd" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/inspector.ts
+2,841 est. tokens · 236 loc · ccn 24 · commits (last 12mo) 2</title></rect>
+<rect x="1162.68" y="407.31" width="52.67" height="68.58" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/electron-mocks.ts
+1,969 est. tokens · 116 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="1215.35" y="407.31" width="34.83" height="68.58" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/isolation.ts
+1,302 est. tokens · 97 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="1162.68" y="475.89" width="30.53" height="52.27" fill="#d2cfd2" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/host-claude.ts
+870 est. tokens · 75 loc · ccn 20 · commits (last 12mo) 1</title></rect>
+<rect x="1162.68" y="528.16" width="30.53" height="34.00" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/wm.ts
+566 est. tokens · 62 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1193.21" y="475.89" width="30.27" height="29.27" fill="#d3d0d1" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/asar.ts
+483 est. tokens · 39 loc · ccn 12 · commits (last 12mo) 2</title></rect>
+<rect x="1223.48" y="475.89" width="26.69" height="29.27" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/diagnostics.ts
+426 est. tokens · 57 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="1193.21" y="505.16" width="28.90" height="26.41" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/argv.ts
+416 est. tokens · 24 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="1222.11" y="505.16" width="28.06" height="26.41" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/sni.ts
+404 est. tokens · 46 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1193.21" y="531.57" width="18.53" height="30.59" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/dbus.ts
+309 est. tokens · 32 loc · ccn 7 · commits (last 12mo) 1</title></rect>
+<rect x="1211.74" y="531.57" width="17.99" height="30.59" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/row.ts
+300 est. tokens · 31 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1229.73" y="531.57" width="20.45" height="16.33" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/env.ts
+182 est. tokens · 29 loc · ccn 7 · commits (last 12mo) 1</title></rect>
+<rect x="1229.73" y="547.90" width="20.45" height="14.26" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/src/lib/retry.ts
+159 est. tokens · 24 loc · ccn 3 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="562.16" width="272.64" height="75.16" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/README.md
+11,172 est. tokens · 466 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1021.92" y="562.16" width="101.79" height="75.16" fill="#d2c7cb" stroke="white" stroke-width="0.5"><title>tools/test-harness/grounding-probe.ts
+4,171 est. tokens · 313 loc · ccn 33 · commits (last 12mo) 2</title></rect>
+<rect x="1123.71" y="562.16" width="60.52" height="75.16" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/eipc-registry-probe.ts
+2,480 est. tokens · 246 loc · ccn 16 · commits (last 12mo) 1</title></rect>
+<rect x="1184.23" y="562.16" width="65.94" height="35.47" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/test-harness/probe.ts
+1,275 est. tokens · 136 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="1184.23" y="597.63" width="46.02" height="39.70" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>tools/test-harness/orchestrator/sweep.sh
+996 est. tokens · 71 loc · ccn 16 · commits (last 12mo) 1</title></rect>
+<rect x="1230.25" y="597.63" width="19.92" height="15.10" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/playwright.config.ts
+164 est. tokens · 22 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1230.25" y="612.74" width="19.92" height="14.09" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/package.json
+153 est. tokens · 26 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1230.25" y="626.83" width="19.92" height="10.50" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/test-harness/tsconfig.json
+114 est. tokens · 18 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="749.28" y="637.33" width="391.68" height="21.10" fill="#d7b7b5" stroke="white" stroke-width="0.5"><title>tools/patch-necessity-audit.sh
+4,505 est. tokens · 368 loc · ccn 29 · commits (last 12mo) 7</title></rect>
+<rect x="1140.97" y="637.33" width="109.20" height="21.10" fill="#d6cfcd" stroke="white" stroke-width="0.5"><title>tools/chromium-switch-smoke.sh
+1,256 est. tokens · 77 loc · ccn 11 · commits (last 12mo) 4</title></rect>
+<rect x="1250.17" y="0.00" width="235.70" height="226.54" fill="#a96b6d" stroke="white" stroke-width="0.5"><title>scripts/cowork-fallback/cowork-vm-service.js
+29,110 est. tokens · 2256 loc · ccn 635 · commits (last 12mo) 15</title></rect>
+<rect x="1485.87" y="0.00" width="114.13" height="159.58" fill="#cbc3c8" stroke="white" stroke-width="0.5"><title>scripts/cowork-fallback/cowork.sh
+9,929 est. tokens · 769 loc · ccn 70 · commits (last 12mo) 2</title></rect>
+<rect x="1485.87" y="159.58" width="55.64" height="66.96" fill="#cecacf" stroke="white" stroke-width="0.5"><title>scripts/cowork-fallback/tests/protocol-smoke.js
+2,031 est. tokens · 164 loc · ccn 61 · commits (last 12mo) 1</title></rect>
+<rect x="1541.51" y="159.58" width="58.49" height="48.58" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/cowork-fallback/PROTOCOL.md
+1,549 est. tokens · 105 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1541.51" y="208.16" width="58.49" height="18.38" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>scripts/cowork-fallback/README.md
+586 est. tokens · 38 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1250.17" y="226.54" width="97.77" height="94.44" fill="#890c0c" stroke="white" stroke-width="0.5"><title>scripts/patches/app-asar.sh
+5,034 est. tokens · 235 loc · ccn 49 · commits (last 12mo) 29</title></rect>
+<rect x="1347.94" y="226.54" width="84.76" height="94.44" fill="#ddcec1" stroke="white" stroke-width="0.5"><title>scripts/patches/cowork-bwrap.sh
+4,364 est. tokens · 240 loc · ccn 11 · commits (last 12mo) 9</title></rect>
+<rect x="1250.17" y="320.98" width="75.63" height="65.32" fill="#d6d2d0" stroke="white" stroke-width="0.5"><title>scripts/patches/tray-icon-selection.sh
+2,693 est. tokens · 163 loc · ccn 5 · commits (last 12mo) 4</title></rect>
+<rect x="1250.17" y="386.30" width="75.63" height="55.52" fill="#ddcdc0" stroke="white" stroke-width="0.5"><title>scripts/patches/quick-window.sh
+2,289 est. tokens · 160 loc · ccn 12 · commits (last 12mo) 9</title></rect>
+<rect x="1325.80" y="320.98" width="59.05" height="63.64" fill="#dbd2c9" stroke="white" stroke-width="0.5"><title>scripts/patches/config.sh
+2,049 est. tokens · 112 loc · ccn 7 · commits (last 12mo) 7</title></rect>
+<rect x="1384.85" y="320.98" width="47.84" height="63.64" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>scripts/patches/terminal-da-reply.sh
+1,660 est. tokens · 118 loc · ccn 10 · commits (last 12mo) 1</title></rect>
+<rect x="1325.80" y="384.63" width="45.41" height="57.19" fill="#d5d2d3" stroke="white" stroke-width="0.5"><title>scripts/patches/virtiofsd-probe.sh
+1,416 est. tokens · 81 loc · ccn 2 · commits (last 12mo) 3</title></rect>
+<rect x="1371.21" y="384.63" width="38.68" height="57.19" fill="#d4d2d4" stroke="white" stroke-width="0.5"><title>scripts/patches/cowork-firmware-probe.sh
+1,206 est. tokens · 65 loc · ccn 2 · commits (last 12mo) 2</title></rect>
+<rect x="1409.89" y="384.63" width="22.80" height="57.19" fill="#d8d3d1" stroke="white" stroke-width="0.5"><title>scripts/patches/org-plugins.sh
+711 est. tokens · 25 loc · ccn 3 · commits (last 12mo) 5</title></rect>
+<rect x="1432.69" y="226.54" width="167.31" height="215.28" fill="#fddaac" stroke="white" stroke-width="0.5"><title>scripts/doctor.sh
+19,636 est. tokens · 2150 loc · ccn 5 · commits (last 12mo) 64</title></rect>
+<rect x="1250.17" y="441.82" width="156.17" height="216.61" fill="#7f0000" stroke="white" stroke-width="0.5"><title>scripts/launcher-common.sh
+18,442 est. tokens · 1229 loc · ccn 208 · commits (last 12mo) 100</title></rect>
+<rect x="1406.34" y="441.82" width="74.92" height="130.01" fill="#7f0000" stroke="white" stroke-width="0.5"><title>scripts/packaging/deb.sh
+5,310 est. tokens · 291 loc · ccn 77 · commits (last 12mo) 39</title></rect>
+<rect x="1481.26" y="441.82" width="118.74" height="61.39" fill="#7f0000" stroke="white" stroke-width="0.5"><title>scripts/packaging/appimage.sh
+3,974 est. tokens · 262 loc · ccn 50 · commits (last 12mo) 31</title></rect>
+<rect x="1481.26" y="503.21" width="104.01" height="68.62" fill="#850000" stroke="white" stroke-width="0.5"><title>scripts/packaging/rpm.sh
+3,891 est. tokens · 253 loc · ccn 49 · commits (last 12mo) 33</title></rect>
+<rect x="1585.27" y="503.21" width="14.73" height="68.62" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/packaging/io.github.aaddrick.claude-desktop-unofficial.metainfo.xml
+551 est. tokens · 44 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1406.34" y="571.82" width="55.09" height="86.60" fill="#b46466" stroke="white" stroke-width="0.5"><title>scripts/setup/dependencies.sh
+2,601 est. tokens · 214 loc · ccn 46 · commits (last 12mo) 16</title></rect>
+<rect x="1461.43" y="571.82" width="51.72" height="86.60" fill="#f77e52" stroke="white" stroke-width="0.5"><title>scripts/setup/official-deb.sh
+2,442 est. tokens · 173 loc · ccn 24 · commits (last 12mo) 57</title></rect>
+<rect x="1513.16" y="571.82" width="46.68" height="86.60" fill="#850000" stroke="white" stroke-width="0.5"><title>scripts/setup/detect-host.sh
+2,204 est. tokens · 176 loc · ccn 49 · commits (last 12mo) 37</title></rect>
+<rect x="1559.84" y="571.82" width="40.16" height="86.60" fill="#d7c5c1" stroke="white" stroke-width="0.5"><title>scripts/_common.sh
+1,896 est. tokens · 112 loc · ccn 22 · commits (last 12mo) 5</title></rect>
+<rect x="749.28" y="658.42" width="250.65" height="166.17" fill="#f5e4cc" stroke="white" stroke-width="0.5"><title>.github/workflows/issue-triage-v2.yml
+22,707 est. tokens · 1481 loc · ccn 0 · commits (last 12mo) 25</title></rect>
+<rect x="749.28" y="824.59" width="114.67" height="166.98" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>.github/workflows/ci.yml
+10,439 est. tokens · 753 loc · ccn 0 · commits (last 12mo) 59</title></rect>
+<rect x="863.96" y="824.59" width="68.83" height="66.79" fill="#dbd6d3" stroke="white" stroke-width="0.5"><title>.github/workflows/apt-repo-heartbeat.yml
+2,506 est. tokens · 194 loc · ccn 0 · commits (last 12mo) 7</title></rect>
+<rect x="932.78" y="824.59" width="67.15" height="66.79" fill="#ecdfce" stroke="white" stroke-width="0.5"><title>.github/workflows/check-claude-version.yml
+2,445 est. tokens · 165 loc · ccn 0 · commits (last 12mo) 19</title></rect>
+<rect x="863.96" y="891.38" width="57.38" height="61.15" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>.github/workflows/test-flags.yml
+1,913 est. tokens · 117 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="863.96" y="952.54" width="57.38" height="39.03" fill="#e5dbd0" stroke="white" stroke-width="0.5"><title>.github/workflows/test-artifacts.yml
+1,221 est. tokens · 84 loc · ccn 0 · commits (last 12mo) 14</title></rect>
+<rect x="921.34" y="891.38" width="41.86" height="36.20" fill="#d9d5d3" stroke="white" stroke-width="0.5"><title>.github/workflows/build.yml
+826 est. tokens · 56 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="963.20" y="891.38" width="36.74" height="36.20" fill="#e1d9d1" stroke="white" stroke-width="0.5"><title>.github/workflows/tests.yml
+725 est. tokens · 47 loc · ccn 0 · commits (last 12mo) 11</title></rect>
+<rect x="921.34" y="927.58" width="33.08" height="36.93" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>.github/workflows/official-pool-recorder.yml
+666 est. tokens · 59 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="921.34" y="964.51" width="33.08" height="27.06" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>.github/workflows/cleanup-runs.yml
+488 est. tokens · 42 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="954.42" y="927.58" width="23.96" height="35.90" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>.github/workflows/nix-build.yml
+469 est. tokens · 41 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="978.38" y="927.58" width="21.56" height="35.90" fill="#d9d5d3" stroke="white" stroke-width="0.5"><title>.github/workflows/update-flake-lock.yml
+422 est. tokens · 44 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="954.42" y="963.48" width="25.14" height="28.09" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>.github/workflows/deploy-worker.yml
+385 est. tokens · 37 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="979.56" y="963.48" width="20.38" height="28.09" fill="#d8d4d4" stroke="white" stroke-width="0.5"><title>.github/workflows/shellcheck.yml
+312 est. tokens · 28 loc · ccn 0 · commits (last 12mo) 5</title></rect>
+<rect x="749.28" y="991.57" width="154.26" height="8.43" fill="#d6d4d4" stroke="white" stroke-width="0.5"><title>.github/ISSUE_TEMPLATE/bug_report.yml
+709 est. tokens · 76 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="903.55" y="991.57" width="65.27" height="8.43" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>.github/ISSUE_TEMPLATE/feature_request.yml
+300 est. tokens · 34 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="968.82" y="991.57" width="30.03" height="8.43" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>.github/ISSUE_TEMPLATE/config.yml
+138 est. tokens · 10 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="998.85" y="991.57" width="1.09" height="8.43" fill="#d1d1d6" stroke="white" stroke-width="0.5"><title>.github/FUNDING.yml
+5 est. tokens · 1 loc · ccn 0 · commits (last 12mo) 0</title></rect>
+<rect x="999.93" y="658.42" width="227.92" height="341.58" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>CHANGELOG.md
+42,444 est. tokens · 500 loc · ccn 0 · commits (last 12mo) 205</title></rect>
+<rect x="1227.86" y="658.42" width="170.86" height="102.80" fill="#933436" stroke="white" stroke-width="0.5"><title>tests/test-artifact-common.sh
+9,576 est. tokens · 581 loc · ccn 103 · commits (last 12mo) 23</title></rect>
+<rect x="1227.86" y="761.23" width="75.31" height="71.48" fill="#ce7a77" stroke="white" stroke-width="0.5"><title>tests/test-artifact-deb.sh
+2,935 est. tokens · 189 loc · ccn 38 · commits (last 12mo) 15</title></rect>
+<rect x="1227.86" y="832.71" width="75.31" height="61.81" fill="#d5acaa" stroke="white" stroke-width="0.5"><title>tests/test_helper.bash
+2,538 est. tokens · 150 loc · ccn 33 · commits (last 12mo) 8</title></rect>
+<rect x="1303.17" y="761.23" width="49.88" height="88.62" fill="#de8f83" stroke="white" stroke-width="0.5"><title>tests/test-artifact-rpm.sh
+2,410 est. tokens · 143 loc · ccn 30 · commits (last 12mo) 17</title></rect>
+<rect x="1353.06" y="761.23" width="45.66" height="88.62" fill="#d6bbba" stroke="white" stroke-width="0.5"><title>tests/test-patch-stage.sh
+2,206 est. tokens · 129 loc · ccn 29 · commits (last 12mo) 6</title></rect>
+<rect x="1303.17" y="849.85" width="69.43" height="44.67" fill="#e0ac9d" stroke="white" stroke-width="0.5"><title>tests/test-artifact-appimage.sh
+1,691 est. tokens · 116 loc · ccn 25 · commits (last 12mo) 13</title></rect>
+<rect x="1372.60" y="849.85" width="26.11" height="20.72" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tests/fixtures/file-manager-entries/Send to Claude
+295 est. tokens · 22 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1372.60" y="870.57" width="15.93" height="23.95" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tests/fixtures/file-manager-entries/README.md
+208 est. tokens · 14 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1388.53" y="870.57" width="10.18" height="23.95" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tests/fixtures/file-manager-entries/Open in Claude Code
+133 est. tokens · 7 loc · ccn 4 · commits (last 12mo) 1</title></rect>
+<rect x="1227.86" y="894.52" width="170.86" height="105.48" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>ACKNOWLEDGMENTS.md
+9,825 est. tokens · 221 loc · ccn 0 · commits (last 12mo) 63</title></rect>
+<rect x="1398.72" y="658.42" width="100.66" height="163.37" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>CLAUDE.md
+8,965 est. tokens · 372 loc · ccn 0 · commits (last 12mo) 49</title></rect>
+<rect x="1499.37" y="658.42" width="100.63" height="163.37" fill="#ecdfce" stroke="white" stroke-width="0.5"><title>AGENTS.md
+8,962 est. tokens · 372 loc · ccn 0 · commits (last 12mo) 19</title></rect>
+<rect x="1398.72" y="821.79" width="80.96" height="78.93" fill="#fdd29c" stroke="white" stroke-width="0.5"><title>nix/claude-desktop.nix
+3,484 est. tokens · 210 loc · ccn 8 · commits (last 12mo) 136</title></rect>
+<rect x="1398.72" y="900.72" width="80.96" height="25.65" fill="#dcd5d0" stroke="white" stroke-width="0.5"><title>nix/fhs.nix
+1,132 est. tokens · 63 loc · ccn 2 · commits (last 12mo) 8</title></rect>
+<rect x="1398.72" y="926.37" width="80.96" height="73.63" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>README.md
+3,250 est. tokens · 137 loc · ccn 0 · commits (last 12mo) 91</title></rect>
+<rect x="1479.68" y="821.79" width="62.81" height="86.56" fill="#7f0000" stroke="white" stroke-width="0.5"><title>build.sh
+2,964 est. tokens · 239 loc · ccn 52 · commits (last 12mo) 121</title></rect>
+<rect x="1542.49" y="821.79" width="57.51" height="86.56" fill="#d1d1d6" stroke="white" stroke-width="0.5"><title>LICENSE-APACHE
+2,714 est. tokens · 170 loc · ccn 0 · commits (last 12mo) 0</title></rect>
+<rect x="1479.68" y="908.35" width="76.09" height="46.72" fill="#ded8d2" stroke="white" stroke-width="0.5"><title>RELEASING.md
+1,938 est. tokens · 63 loc · ccn 0 · commits (last 12mo) 9</title></rect>
+<rect x="1479.68" y="955.07" width="76.09" height="44.93" fill="#d9d5d3" stroke="white" stroke-width="0.5"><title>CONTRIBUTING.md
+1,864 est. tokens · 136 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="1555.77" y="908.35" width="44.23" height="38.73" fill="#d9d2cc" stroke="white" stroke-width="0.5"><title>worker/src/worker.js
+934 est. tokens · 49 loc · ccn 6 · commits (last 12mo) 6</title></rect>
+<rect x="1555.77" y="947.08" width="44.23" height="8.00" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>worker/wrangler.toml
+193 est. tokens · 6 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="1555.77" y="955.09" width="27.75" height="33.38" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>SECURITY.md
+505 est. tokens · 22 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1583.52" y="955.09" width="16.48" height="33.38" fill="#dbd6d3" stroke="white" stroke-width="0.5"><title>flake.nix
+300 est. tokens · 36 loc · ccn 0 · commits (last 12mo) 7</title></rect>
+<rect x="1555.77" y="988.47" width="44.23" height="11.53" fill="#d1d1d6" stroke="white" stroke-width="0.5"><title>LICENSE-MIT
+278 est. tokens · 23 loc · ccn 0 · commits (last 12mo) 0</title></rect>
+</svg>

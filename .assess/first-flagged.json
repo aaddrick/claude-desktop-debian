@@ -1,0 +1,12 @@
+{
+  "scripts/launcher-common.sh": "2026-11-17",
+  "scripts/cowork-fallback/cowork-vm-service.js": "2026-11-17",
+  "tests/test-artifact-common.sh": "2026-11-17",
+  "build.sh": "2026-11-17",
+  "scripts/packaging/deb.sh": "2026-11-17",
+  "scripts/patches/app-asar.sh": "2026-11-17",
+  "scripts/packaging/rpm.sh": "2026-11-17",
+  "scripts/doctor.sh": "2026-11-17",
+  "scripts/packaging/appimage.sh": "2026-11-17",
+  "scripts/setup/detect-host.sh": "2026-11-17"
+}
