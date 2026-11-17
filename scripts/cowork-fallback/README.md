@@ -31,14 +31,18 @@ bubblewrap instead of QEMU.
   resolves a system `node`/`nodejs` and exports `COWORK_NODE_PATH` for
   the patched spawn, since the official Electron binary has the
   RunAsNode fuse off and can't run the daemon itself.
-- **`tests/`** — bats suites for the daemon (backend detection, bwrap
-  config, guest-path translation). Run from the repo root:
-  `bats scripts/cowork-fallback/tests/`.
+- **`tests/`** — bats suites for the daemon and the patch: backend
+  detection, bwrap config, the asar patch itself, mount hiding,
+  guest-path translation, the socket protocol, and session mounts. Run
+  from the repo root: `bats scripts/cowork-fallback/tests/`.
+- **`cowork.sh`** — parked. The 2.x Cowork asar patch, kept as reference
+  code; `build.sh` does not source it.
 
 ## Protocol note
 
 `PROTOCOL.md` is the wire contract extracted from the official bundle
-(`build-reference/app-extracted/.vite/build/index.js`). When upstream
+(`build-reference/app-extracted/.vite/build/`; a single `index.js` when
+it was written, code-split chunks since 1.19367.0). When upstream
 reshapes the helper protocol, re-derive it there and re-verify the
 daemon against it — the daemon's job is to be a drop-in for whatever the
 current client dials.

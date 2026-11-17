@@ -1660,7 +1660,8 @@ class BwrapBackend extends LocalBackend {
             try {
                 // Fix #342: upstream fs-extra can create .mcpb-cache
                 // as a self-referential symlink after repeated sessions.
-                // Detect and remove before mkdir so the bind mount works.
+                // Such a symlink is unlinked here, ahead of the mkdir,
+                // so the bind mount works.
                 try {
                     const st = fs.lstatSync(hostPath);
                     if (st.isSymbolicLink()) {

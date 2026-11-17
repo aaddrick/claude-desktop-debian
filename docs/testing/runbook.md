@@ -147,7 +147,7 @@ Issue title format: `[<row>] <T## or S##>: <one-line symptom>`
 Issue body template:
 
 ```markdown
-**Test:** [T17 — Folder picker opens](./docs/testing/cases/code-tab-foundations.md#t17--folder-picker-opens)
+**Test:** [T17 — Folder picker opens](./cases/code-tab-foundations.md#t17--folder-picker-opens)
 **Environment:** GNOME (Fedora 43, Wayland)
 **Project version:** v1.3.23+claude1.4758.0
 **Upstream version:** 1.4758.0
