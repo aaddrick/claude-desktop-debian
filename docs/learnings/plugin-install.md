@@ -298,10 +298,11 @@ both the structural bug and the upstream fix.
 
 ## Key Files
 
-- [`scripts/patches/cowork.sh`](../../scripts/patches/cowork.sh) —
-  `patch_cowork_linux()` applies the cowork patches to the asar.
-  Patches 1–10 handle cowork mode infrastructure on Linux.
-- [`scripts/cowork-vm-service.js`](../../scripts/cowork-vm-service.js)
+- [`scripts/cowork-fallback/cowork.sh`](../../scripts/cowork-fallback/cowork.sh) —
+  `patch_cowork_linux()` applied the cowork patches to the asar in
+  2.x (Patches 1–10, cowork mode infrastructure on Linux). Parked
+  since the v3.0.0 rebase; `build.sh` no longer sources it.
+- [`scripts/cowork-fallback/cowork-vm-service.js`](../../scripts/cowork-fallback/cowork-vm-service.js)
   — Linux cowork VM daemon (separate subsystem, see
   [`cowork-vm-daemon.md`](cowork-vm-daemon.md)).
 - Minified install flow in the running app:

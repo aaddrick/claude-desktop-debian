@@ -46,7 +46,7 @@ still on the old format alone is left untouched.
 ## Architecture Overview
 
 Cowork mode on Linux uses a custom Node.js daemon
-([`scripts/cowork-vm-service.js`](../../scripts/cowork-vm-service.js))
+([`scripts/cowork-fallback/cowork-vm-service.js`](../../scripts/cowork-fallback/cowork-vm-service.js))
 that replaces the Windows cowork-vm-service. The Electron app talks to
 it over a Unix domain socket at
 `$XDG_RUNTIME_DIR/cowork-vm-service.sock` using length-prefixed JSON —

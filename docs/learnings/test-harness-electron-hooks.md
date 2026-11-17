@@ -102,6 +102,6 @@ post-construction.
 ## See also
 
 - [`tools/test-harness/src/lib/quickentry.ts`](../../tools/test-harness/src/lib/quickentry.ts) — `installInterceptor()` worked example
-- [`scripts/frame-fix-wrapper.js`](../../scripts/frame-fix-wrapper.js) — the Proxy + closure
+- `scripts/frame-fix-wrapper.js` (deleted in the v3.0.0 rebase) — the Proxy + closure
 - [`tools/test-harness/src/lib/inspector.ts`](../../tools/test-harness/src/lib/inspector.ts) — how the harness gets main-process JS access in the first place
 - [`docs/testing/automation.md`](../testing/automation.md) — overall harness architecture

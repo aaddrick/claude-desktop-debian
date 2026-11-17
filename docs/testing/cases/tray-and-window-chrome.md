@@ -40,7 +40,7 @@ Tests covering the tray icon, OS-native window decorations, the hybrid in-app to
 
 **Diagnostics on failure:** `xprop _NET_WM_WINDOW_TYPE` (X11) / `swaymsg -t get_tree` or compositor-equivalent (Wayland), launcher log line for `frame:` setting, screenshot.
 
-**References:** [PR #127](https://github.com/aaddrick/claude-desktop-debian/pull/127), [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538) (hybrid mode keeps native frame), [`docs/learnings/linux-topbar-shim.md`](../../learnings/linux-topbar-shim.md)
+**References:** [PR #127](https://github.com/aaddrick/claude-desktop-debian/pull/127), [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538) (hybrid mode keeps native frame), [`docs/archive/linux-topbar-shim.md`](../../archive/linux-topbar-shim.md)
 **Code anchors:** Upstream factory passes `titleBarStyle: "hidden"` and `titleBarOverlay: ys` (Windows-only flag) to `BrowserWindow` at `build-reference/app-extracted/.vite/build/index.js:524892-524909` (`Ori()`). On Linux the wrapper at `scripts/frame-fix-wrapper.js:122` overrides to `options.frame = true` and at `scripts/frame-fix-wrapper.js:129-130` deletes the macOS-only `titleBarStyle` / `titleBarOverlay` so the DE draws the frame. (Hybrid-mode plumbing — `CLAUDE_TITLEBAR_STYLE` resolution and the `native`/`hybrid`/`hidden` branches — lives on `main` per PR #538; the docs/compat-matrix branch's `frame-fix-wrapper.js` carries only the unconditional `frame:true` patch, which is sufficient for T04's "frame draws" assertion.)
 
 ## T07 — In-app topbar renders + clickable
@@ -59,7 +59,7 @@ Tests covering the tray icon, OS-native window decorations, the hybrid in-app to
 
 **Diagnostics on failure:** Screenshot, env (`OZONE_PLATFORM`, `ELECTRON_OZONE_PLATFORM_HINT`, `GDK_BACKEND`, `QT_QPA_PLATFORM`, `MOZ_ENABLE_WAYLAND`, `SDL_VIDEODRIVER`), launcher log, DevTools `document.querySelector('.topbar')` HTML if accessible.
 
-**References:** [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538), [PR #127](https://github.com/aaddrick/claude-desktop-debian/pull/127), [`docs/learnings/linux-topbar-shim.md`](../../learnings/linux-topbar-shim.md)
+**References:** [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538), [PR #127](https://github.com/aaddrick/claude-desktop-debian/pull/127), [`docs/archive/linux-topbar-shim.md`](../../archive/linux-topbar-shim.md)
 **Code anchors:** UA-spoof shim source `scripts/wco-shim.js` (lines 1-30 module guard / `CLAUDE_TITLEBAR_STYLE != 'native'` gate, lines 184-191 `navigator.userAgent` redefinition matching `/(win32|win64|windows|wince)/i`, lines 52-53 `CONTROLS_WIDTH=140` / `TITLEBAR_HEIGHT=40`); injection orchestrator `scripts/patches/wco-shim.sh` (`patch_wco_shim()` prepends shim source to `mainView.js`); hybrid-mode wrapper branch `scripts/frame-fix-wrapper.js:62-70` (`VALID_TITLEBAR_STYLES`, default `hybrid`) and `:152-240` (per-mode `frame` / `titleBarStyle` handling).
 
 ## T08 — Hide-to-tray on close
@@ -119,5 +119,5 @@ Tests covering the tray icon, OS-native window decorations, the hybrid in-app to
 
 **Currently:** Reproduces partial render on OmarchyOS Hyprland per [@lukedev45](https://github.com/lukedev45)'s video on [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538). @aaddrick attempted local repro on KDE Plasma + Wayland with the same env vars and could not reproduce; root cause TBD pending diagnostic capture from a broken run.
 
-**References:** [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538), [`docs/learnings/linux-topbar-shim.md`](../../learnings/linux-topbar-shim.md)
+**References:** [PR #538](https://github.com/aaddrick/claude-desktop-debian/pull/538), [`docs/archive/linux-topbar-shim.md`](../../archive/linux-topbar-shim.md)
 **Code anchors:** Shim is inlined at the top of `mainView.js` (the BrowserView preload), not loaded via `require` — see the rationale at `scripts/patches/wco-shim.sh:23-40` ("Sandboxed preloads can only require a fixed allowlist of modules…"). The injection prepends `scripts/wco-shim.js` source at the start of `app.asar.contents/.vite/build/mainView.js` so the UA override fires before the bundle's `isWindows()` regex (`/(win32|win64|windows|wince)/i`) ever runs in the page main world (`scripts/wco-shim.js:184-191`). The shim's IIFE no-ops on non-Linux at `wco-shim.js:29` and on `CLAUDE_TITLEBAR_STYLE === 'native'` at `wco-shim.js:30-32`, so the only env-export interaction with `OZONE_PLATFORM` etc. is via Chromium's own platform plumbing — none of those exports are read by the shim itself, which makes the partial-render repro on Omarchy mysterious to static analysis.
