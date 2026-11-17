@@ -1462,7 +1462,7 @@ _doctor_qemu_shim() {
 }
 
 # =============================================================================
-# _check_device_registry: ant-device-registry.json state (#780, path via
+# _check_device_registry: ant-device-registry.json rows (#780, path via
 # _DOCTOR_DEVICE_REGISTRY). Diagnostic-only — INFO or silent, never
 # WARN/FAIL, and must never flip _cowork_incomplete.
 # =============================================================================
@@ -1474,15 +1474,76 @@ _doctor_qemu_shim() {
 	[[ -z $output ]]
 }
 
-@test "_check_device_registry: none-only value reports the Linux upstream gap as INFO" {
+@test "_check_device_registry: none-only value reports not registered yet as INFO" {
 	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
 	echo '{"acct":"none:123"}' > "$_DOCTOR_DEVICE_REGISTRY"
 	run _check_device_registry "$TEST_TMP/config"
 	[[ $status -eq 0 ]]
-	[[ $output == *'not registered'* ]]
+	[[ $output == *'not registered yet'* ]]
 	[[ $output == *'#780'* ]]
+	# Upstream ships a TPM backend and keyless registration, so the
+	# doctor must not claim Linux cannot register (#913).
+	[[ $output != *'no hardware-backed'* ]]
+	[[ $output != *'upstream gap'* ]]
 	[[ $output != *'[FAIL]'* ]]
 	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_device_registry: keyless row reports registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"keyless:acct":"kl1:0000-1111"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered (keyless device)'* ]]
+	[[ $output != *'not registered'* ]]
+	[[ $output != *'[FAIL]'* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_check_device_registry: a keyless key alone reports registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"keyless:acct":"x"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered (keyless device)'* ]]
+}
+
+@test "_check_device_registry: a kl1 value alone reports registered" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct":"kl1:0000-1111"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered (keyless device)'* ]]
+}
+
+@test "_check_device_registry: a registry with no known row emits nothing" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{}' > "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "_check_device_registry: a stale none row next to a keyless row is registered" {
+	# The app leaves the old none row in place when it later
+	# registers keyless — the shape of a real upgraded profile.
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"acct":"none:123","keyless:acct":"kl1:0000-1111"}' \
+		> "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'registered (keyless device)'* ]]
+	[[ $output != *'not registered'* ]]
+}
+
+@test "_check_device_registry: pk1 wins over a keyless row" {
+	export _DOCTOR_DEVICE_REGISTRY="$TEST_TMP/registry.json"
+	echo '{"keyless:acct":"kl1:0000-1111","acct":"pk1:deadbeef:rowpk"}' \
+		> "$_DOCTOR_DEVICE_REGISTRY"
+	run _check_device_registry "$TEST_TMP/config"
+	[[ $status -eq 0 ]]
+	[[ $output == *'TPM-backed device key'* ]]
+	[[ $output != *'keyless'* ]]
 }
 
 @test "_check_device_registry: pk1 value reports registered" {
@@ -1490,7 +1551,8 @@ _doctor_qemu_shim() {
 	echo '{"acct":"pk1:deadbeef:rowpk"}' > "$_DOCTOR_DEVICE_REGISTRY"
 	run _check_device_registry "$TEST_TMP/config"
 	[[ $status -eq 0 ]]
-	[[ $output == *'registered'* ]]
+	[[ $output == *'registered (TPM-backed device key)'* ]]
+	[[ $output != *'not registered'* ]]
 }
 
 @test "_check_device_registry: never flips _cowork_incomplete" {
@@ -1501,6 +1563,10 @@ _doctor_qemu_shim() {
 	_cowork_incomplete=false
 	_check_device_registry "$TEST_TMP/config" > "$TEST_TMP/out"
 	[[ $_cowork_incomplete == false ]]
+
+	echo '{"keyless:acct":"kl1:0000-1111"}' > "$_DOCTOR_DEVICE_REGISTRY"
+	_check_device_registry "$TEST_TMP/config" > "$TEST_TMP/out"
+	[[ $_cowork_incomplete == false ]]
 }
 
 @test "_check_device_registry: mixed pk1+none prefers registered" {
@@ -1509,7 +1575,7 @@ _doctor_qemu_shim() {
 		> "$_DOCTOR_DEVICE_REGISTRY"
 	run _check_device_registry "$TEST_TMP/config"
 	[[ $status -eq 0 ]]
-	[[ $output == *'registered'* ]]
+	[[ $output == *'registered (TPM-backed device key)'* ]]
 	[[ $output != *'not registered'* ]]
 }
 
