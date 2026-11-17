@@ -8,13 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.18] — 2026-11-18
+
 ### Added
 
-- Troubleshooting entry for the sidebar's "Update available" banner, which cannot be clicked through on Linux: the app compares itself against Anthropic's official APT pool and leaves the upgrade to the package manager ([#973](https://github.com/aaddrick/claude-desktop-debian/issues/973))
+- Troubleshooting entry for the sidebar's "Update available" banner, which cannot be clicked through on Linux: the app compares itself against Anthropic's official APT pool and leaves the upgrade to the package manager ([#977](https://github.com/aaddrick/claude-desktop-debian/pull/977), [#973](https://github.com/aaddrick/claude-desktop-debian/issues/973))
 
 ### Fixed
 
-- `--doctor` no longer reports "Linux has no hardware-backed device key yet" in the Cowork section. That stopped being true once upstream shipped keyless device registration and the TPM backend, and v3.3.17 printed it next to the new `Device key` line that says the opposite. The `Device registry` line now reads the registry's `keyless` rows as registered, and a stale `none` row left behind by an older build no longer wins over them ([#780](https://github.com/aaddrick/claude-desktop-debian/issues/780), [#913](https://github.com/aaddrick/claude-desktop-debian/issues/913))
+- `--doctor` no longer reports "Linux has no hardware-backed device key yet" in the Cowork section. That stopped being true once upstream shipped keyless device registration and the TPM backend, and v3.3.17 printed it next to the new `Device key` line that says the opposite. The `Device registry` line now reads the registry's `keyless` rows as registered, and a stale `none` row left behind by an older build no longer wins over them ([#976](https://github.com/aaddrick/claude-desktop-debian/pull/976), [#780](https://github.com/aaddrick/claude-desktop-debian/issues/780), [#913](https://github.com/aaddrick/claude-desktop-debian/issues/913))
 
 ## [v3.3.17] — 2026-11-14
 
