@@ -784,6 +784,30 @@ Membership of `tss` lets every program you run talk to the TPM, so treat it as a
 
 Whether a keyed device also stops the roughly daily forced re-login reported in #913 is not confirmed yet. That sign-out is a server decision (`session_stale_relogin`) and also affects the stock official package, so a keyless device is not a packaging fault either way.
 
+### "Update available" banner in the sidebar does nothing when clicked ([#973](https://github.com/aaddrick/claude-desktop-debian/issues/973))
+
+The banner is accurate and the click is inert by design: on Linux the app leaves updates to the package manager, and `~/.config/Claude/logs/main.log` says so at every start:
+
+```
+[updater] Linux: in-app updater off (updates via apt)
+```
+
+About 30 seconds after start and then once an hour, the app reads the `Packages` index of Anthropic's official APT pool and shows the banner when that pool has a newer `claude-desktop` than the one running. Anthropic's own package behaves the same way. With this project's packages you see it in two situations:
+
+- **Upstream has released and this repo has not caught up yet.** The repackaged build normally follows within a few hours; until then there is nothing to install.
+- **The repackaged build is out and you have not upgraded,** or you upgraded without restarting the app.
+
+To clear it, upgrade and restart Claude:
+
+```bash
+sudo apt update && sudo apt upgrade     # Debian/Ubuntu
+sudo dnf upgrade --refresh              # Fedora/RHEL
+```
+
+AppImage users download the newest release, or let Gear Lever update it.
+
+`claude-desktop-unofficial --doctor` reports the same condition as `Version drift: official pool has X, this install packages Y`. If the doctor shows no drift after an upgrade and a restart and the banner is still there, open an issue with the doctor output.
+
 ### Authentication Errors (401)
 
 If you encounter recurring "API Error: 401" messages after periods of inactivity, the cached OAuth token may need to be cleared. This is an upstream application issue reported in [#156](https://github.com/aaddrick/claude-desktop-debian/issues/156).
