@@ -1,0 +1,12 @@
+# actionlint configuration (https://github.com/rhysd/actionlint).
+#
+# The compare-releases step in ci.yml is parked with `if: false` on
+# purpose: release notes are written by hand, and the step and its
+# pinned inputs are kept so it can be switched back on (see
+# tests/ci-release-job.bats). actionlint flags any constant condition,
+# so that one finding is ignored for that one file. Everything else in
+# every workflow is still checked.
+paths:
+  .github/workflows/ci.yml:
+    ignore:
+      - 'constant expression "false" in condition'
