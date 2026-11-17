@@ -400,6 +400,23 @@ Full details including the redirect chain, the http-scheme-downgrade gotcha, cre
 
 ## Testing
 
+### Checks before pushing
+
+Run these from the repo root. They are the same commands CI runs
+(`.github/workflows/tests.yml` and `shellcheck.yml`), and both must
+pass:
+
+```bash
+# Unit tests (needs bats and node)
+bats tests/*.bats scripts/cowork-fallback/tests/*.bats
+
+# Lint every tracked shell script, sourced modules included
+git ls-files -- '*.sh' | xargs shellcheck -x
+```
+
+After editing a workflow, also run `actionlint .github/workflows/*.yml`;
+CI does not run it.
+
 ### Local Build
 
 ```bash
