@@ -518,8 +518,53 @@ jobs:
           name: package-arm64-deb
           path: incoming/
 
+      - name: Checkout AppStream repo scripts
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          path: src
+          sparse-checkout: scripts/repo
+          persist-credentials: false
+
       - name: Install reprepro
-        run: sudo apt-get update && sudo apt-get install -y reprepro
+        # appstream + appstream-compose provide `appstreamcli compose`
+        # for the DEP-11 catalog (#708).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y reprepro appstream appstream-compose
+
+      - name: Stage DEP-11 (AppStream) catalog
+        # Store search (GNOME Software / App Center / Discover) on a
+        # system that has never installed the package reads DEP-11 from
+        # the repo, not the package's metainfo (#708). Best-effort: a
+        # compose failure must not block the release, and the export hook
+        # then re-lists the catalog already published.
+        continue-on-error: true
+        run: |
+          deb=$(find incoming -name 'claude-desktop-unofficial_*_amd64.deb' | head -1)
+          if [[ -z $deb ]]; then
+            echo "::warning::No amd64 claude-desktop-unofficial .deb; skipping DEP-11"
+            exit 0
+          fi
+          if ! bash src/scripts/repo/appstream-catalog.sh dep11 \
+              "$deb" "$RUNNER_TEMP/dep11"; then
+            rm -rf "$RUNNER_TEMP/dep11"
+            echo "::warning::DEP-11 compose failed; keeping the published catalog"
+          fi
+
+      - name: Install DEP-11 export hook
+        # reprepro only puts files in the signed Release when an export
+        # hook reports them (see scripts/repo/reprepro-dep11-hook.sh).
+        # conf/ lives on gh-pages, so wire the hook in idempotently here.
+        working-directory: apt-repo
+        run: |
+          install -m 755 ../src/scripts/repo/reprepro-dep11-hook.sh \
+            conf/reprepro-dep11-hook.sh
+          if ! grep -q '^DebIndices:' conf/distributions; then
+            sed -i '/^Codename: stable$/a DebIndices: Packages Release . .gz reprepro-dep11-hook.sh' \
+              conf/distributions
+          fi
+          grep -q '^DebIndices: .*reprepro-dep11-hook.sh$' conf/distributions \
+            || { echo "::error::conf/distributions DebIndices does not run the DEP-11 hook"; exit 1; }
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
@@ -538,6 +583,10 @@ jobs:
 
       - name: Add packages to repository
         working-directory: apt-repo
+        env:
+          # Read by conf/reprepro-dep11-hook.sh on every export. Absent
+          # staging makes the hook re-list the published catalog.
+          DEP11_STAGING: ${{ runner.temp }}/dep11
         run: |
           # incoming/ carries our renamed claude-desktop-unofficial .debs
           # plus the transitional dummy claude-desktop_<ver>_all.deb
@@ -706,8 +755,20 @@ jobs:
           name: package-arm64-rpm
           path: incoming/
 
+      - name: Checkout AppStream repo scripts
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          path: src
+          sparse-checkout: scripts/repo
+          persist-credentials: false
+
       - name: Install createrepo_c and rpm-sign
-        run: sudo apt-get update && sudo apt-get install -y createrepo-c rpm
+        # appstream + appstream-compose + cpio feed the repodata
+        # appstream records (#708).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y createrepo-c rpm cpio \
+            appstream appstream-compose
 
       - name: Import GPG key
         id: import_gpg
@@ -758,6 +819,18 @@ jobs:
 
               echo "Generating repodata for $arch..."
               createrepo_c --update "rpm/$arch/"
+
+              # AppStream records so store search finds the package
+              # before it is installed (#708). Added before repomd.xml is
+              # signed below. Best-effort: never blocks the release.
+              as_rpm=$(find "rpm/$arch" -name 'claude-desktop-unofficial-*.rpm' | head -1)
+              if [[ -n $as_rpm ]] \
+                  && bash ../src/scripts/repo/appstream-catalog.sh rpm \
+                    "$as_rpm" "rpm/$arch"; then
+                echo "AppStream records added for $arch"
+              else
+                echo "::warning::AppStream compose failed for $arch; repodata published without it"
+              fi
 
               # Sign repodata. Trailing '!' on keyid forces gpg to use
               # the primary key; without it gpg picks the most recent

@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- The APT and DNF repos now publish AppStream catalog metadata, so GNOME Software, Ubuntu App Center and KDE Discover can find Claude Desktop in search before it is installed. The catalog is composed from each release's own package: DEP-11 `Components` and icon tarballs in the signed APT Release (through a reprepro export hook), and `appstream` + `appstream-icons` records in the DNF repodata ([#708](https://github.com/aaddrick/claude-desktop-debian/issues/708))
+
 ## [v3.3.18] — 2026-11-18
 
 ### Added
