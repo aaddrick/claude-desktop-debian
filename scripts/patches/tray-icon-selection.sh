@@ -147,10 +147,17 @@ if (seen.length) {
 // minifier and re-emitted nearly every string as a backtick template, so
 // a bare " here matches nothing (#820).
 const q = s => '[`"\']' + s + '[`"\']';
+// The theme capture takes the whole dotted chain in front of
+// `.shouldUseDarkColors`. Through 5.x that was `<electron>.nativeTheme`
+// read inline; 6.28899 moved the selection into a helper
+// (f9s({flavor,safeIcon,theme,...})) that receives nativeTheme as a
+// parameter, so the chain is now a bare `n`. Capturing the chain rather
+// than requiring `.nativeTheme` covers both; the GNOME half and the
+// TrayIconLinux literals still pin the site.
 const ternRe = new RegExp(
     String.raw`((?:\(0,\s*[\w$]+(?:\.[\w$]+)*\)|[\w$]+(?:\.[\w$]+)*))` +
     `\\(\\)\\s*===\\s*${q('gnome')}\\s*\\|\\|\\s*` +
-    String.raw`([\w$]+(?:\.[\w$]+)*)\.nativeTheme\.shouldUseDarkColors` +
+    String.raw`([\w$]+(?:\.[\w$]+)*)\.shouldUseDarkColors` +
     `\\s*\\?\\s*${q('TrayIconLinux-Dark\\.png')}` +
     `\\s*:\\s*${q('TrayIconLinux\\.png')}`,
     'g');
@@ -186,16 +193,16 @@ if (!spliceSafe(m.index)) {
 }
 
 const deCall = m[1];
-const electron = m[2];
+const theme = m[2];
 const cond = applied +
     deCall + '()==="gnome"||' +
-    electron + '.nativeTheme.shouldUseDarkColors)';
+    theme + '.shouldUseDarkColors)';
 const replacement =
     cond + '?"TrayIconLinux-Dark.png":"TrayIconLinux.png"';
 code = code.substring(0, m.index) + replacement +
     code.substring(m.index + m[0].length);
 fs.writeFileSync(indexJs, code);
-console.log('  Tray icon ternary (' + deCall + '/' + electron +
+console.log('  Tray icon ternary (' + deCall + '/' + theme +
     ') now honors CLAUDE_TRAY_USE_DARK_ICON (1=dark-panel, 0=plain)');
 TRAY_ICON_PATCH
 	then
