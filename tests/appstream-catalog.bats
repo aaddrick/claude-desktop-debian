@@ -141,6 +141,27 @@ EOF
 	[[ $out != *pkgname* ]]
 }
 
+@test "dep11 origin: added after Version when convert dropped it" {
+	local yml="$BATS_TEST_TMPDIR/Components.yml"
+	printf '%s\n' '---' 'File: DEP-11' 'Version: '"'1.0'" \
+		'MediaBaseUrl: x' '---' 'Type: desktop-application' > "$yml"
+	appstream_dep11_ensure_origin "$yml" test-origin
+	[[ $(grep -c '^Origin: ' "$yml") -eq 1 ]]
+	[[ $(sed -n 4p "$yml") == 'Origin: test-origin' ]]
+}
+
+@test "dep11 origin: kept single when convert already emitted it" {
+	# appstream 1.0.2 (Ubuntu 24.04 runner) keeps the root origin, so an
+	# unconditional insert produced a duplicate YAML key.
+	local yml="$BATS_TEST_TMPDIR/Components.yml"
+	printf '%s\n' '---' 'File: DEP-11' 'Version: '"'1.0'" \
+		'Origin: test-origin' '---' 'Type: desktop-application' > "$yml"
+	cp "$yml" "$BATS_TEST_TMPDIR/before.yml"
+	appstream_dep11_ensure_origin "$yml" test-origin
+	[[ $(grep -c '^Origin: ' "$yml") -eq 1 ]]
+	cmp "$yml" "$BATS_TEST_TMPDIR/before.yml"
+}
+
 @test "ci: DEP-11 hook name in conf/distributions matches the script" {
 	grep -qF 'DebIndices: Packages Release . .gz reprepro-dep11-hook.sh' "$ci"
 	grep -qF 'conf/reprepro-dep11-hook.sh' "$ci"

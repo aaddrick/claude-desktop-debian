@@ -125,6 +125,19 @@ appstream_compose_pkg() {
 	fi
 }
 
+# DEP-11 carries the origin in the header document, which stores use to
+# locate the cached icons. Whether `appstreamcli convert` keeps the
+# root origin attribute varies by appstream version (1.0.2 on the
+# Ubuntu 24.04 runner keeps it), so add the header line only when it
+# is missing: a second Origin: key is a duplicate YAML key that strict
+# parsers reject.
+appstream_dep11_ensure_origin() {
+	local yml=$1 origin=$2
+	if ! grep -q '^Origin: ' "$yml"; then
+		sed -i "0,/^Version: .*/s//&\nOrigin: $origin/" "$yml"
+	fi
+}
+
 # Deterministic tar of the files under <dir> (sorted, no ./ prefix,
 # fixed owner and mtime) so an unchanged icon set hashes the same in
 # every Release file.
@@ -154,9 +167,7 @@ appstream_dep11_stage() {
 		rm -rf "$work"
 		return 1
 	fi
-	# convert drops the root origin attribute; DEP-11 carries it in the
-	# header document, which stores use to locate the cached icons.
-	sed -i "0,/^Version: .*/s//&\nOrigin: $origin/" "$work/Components.yml"
+	appstream_dep11_ensure_origin "$work/Components.yml" "$origin"
 	if ! grep -q '^Package: ' "$work/Components.yml" \
 		|| ! grep -q "^Origin: $origin\$" "$work/Components.yml"; then
 		echo 'DEP-11 output is missing Package: or Origin:' >&2
