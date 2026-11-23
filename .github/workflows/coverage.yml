@@ -1,0 +1,173 @@
+name: Coverage
+run-name: |
+  Coverage: ${{
+    github.event_name == 'pull_request' && format('PR #{0} by @{1} - {2}', github.event.pull_request.number, github.actor, github.event.pull_request.title) ||
+    github.event_name == 'push' && github.event.head_commit && format('Push by @{0} - {1}', github.actor, github.event.head_commit.message) ||
+    format('{0} triggered by @{1}', github.event_name, github.actor)
+  }}
+
+# Line coverage for the BATS suite (kcov) and the bwrap-daemon protocol
+# smoke (c8), measured only (#980). It is deliberately a separate
+# workflow rather than a wrapper around the bats job in tests.yml:
+# kcov traces every bash line through PS4/BASH_XTRACEFD, which is
+# slower than a plain run and can trip over the suite's subshells and
+# sourced modules. A coverage hiccup must never red the real test
+# signal, so every step that measures is continue-on-error and there
+# is no threshold; the job is not meant to be a required check. Read
+# the numbers on their own terms — shell has no per-function analyser
+# here, so they are a map of what the tests touch, not a score.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/**"
+      - "scripts/**"
+      - "tools/**"
+      - "build.sh"
+      - ".github/workflows/coverage.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/**"
+      - "scripts/**"
+      - "tools/**"
+      - "build.sh"
+      - ".github/workflows/coverage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Same single read-only call tests.yml grants: the label-vocabulary
+  # test runs `gh label list` against the canonical repo.
+  issues: read
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # kcov is not packaged for Ubuntu 24.04 and v43 ships no prebuilt
+  # binary, so it is built from source at this pinned commit (tag v43)
+  # and cached on that key.
+  KCOV_TAG: v43
+  KCOV_REF: a39874f938ce13f7a65f253120d1ec946b349ffe
+  # Pinned so a c8 release cannot move the numbers between runs.
+  C8_VERSION: 10.1.3
+
+jobs:
+  coverage:
+    name: Line coverage (informational)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install BATS and kcov build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bats cmake g++ make pkg-config \
+            binutils-dev libiberty-dev libcurl4-openssl-dev \
+            libdw-dev libssl-dev zlib1g-dev python3
+
+      - name: Restore kcov build
+        id: kcov-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/kcov
+          key: kcov-${{ runner.os }}-ubuntu-24.04-${{ env.KCOV_REF }}
+
+      - name: Build kcov
+        if: steps.kcov-cache.outputs.cache-hit != 'true'
+        # Cloned by tag because kcov's CMakeLists derives its version
+        # from `git describe`, which fails on a tagless SHA fetch; the
+        # resolved commit is then checked against the pin.
+        run: |
+          git clone -q --depth 1 --branch "$KCOV_TAG" \
+            https://github.com/SimonKagstrom/kcov.git /tmp/kcov
+          actual=$(git -C /tmp/kcov rev-parse HEAD)
+          if [[ $actual != "$KCOV_REF" ]]; then
+            echo "::error::kcov $KCOV_TAG resolved to $actual, pinned $KCOV_REF"
+            exit 1
+          fi
+          cmake -S /tmp/kcov -B /tmp/kcov/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$HOME/.local/kcov"
+          cmake --build /tmp/kcov/build -j"$(nproc)"
+          cmake --install /tmp/kcov/build
+
+      - name: Put kcov on PATH
+        run: |
+          echo "$HOME/.local/kcov/bin" >> "$GITHUB_PATH"
+
+      - name: BATS suite under kcov
+        id: kcov
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # One kcov run per .bats file, merged afterwards. A single kcov
+        # run over the whole suite stopped after 267 of 925 tests in
+        # local trials while every file passes on its own, and per-file
+        # runs mean a file kcov chokes on costs only that file's
+        # numbers. Scope is the shipped shell (scripts/, build.sh,
+        # tools/); the suites and their fixtures are excluded so the
+        # figure describes the code under test, not the tests.
+        run: |
+          kcov --version
+          mkdir -p coverage/bats-parts
+          failed=()
+          for suite in tests/*.bats scripts/cowork-fallback/tests/*.bats; do
+            name=$(basename "$suite" .bats)
+            if ! kcov \
+                --include-path="$PWD/scripts,$PWD/build.sh,$PWD/tools" \
+                --exclude-path="$PWD/scripts/cowork-fallback/tests" \
+                "coverage/bats-parts/$name" \
+                bats --print-output-on-failure "$suite"; then
+              failed+=("$name")
+            fi
+          done
+          kcov --merge coverage/bats coverage/bats-parts/*/
+          if (( ${#failed[@]} )); then
+            echo "::warning::bats under kcov failed in: ${failed[*]}"
+            exit 1
+          fi
+
+      - name: Protocol smoke under c8
+        id: c8
+        continue-on-error: true
+        # protocol-smoke.js (also run by cowork-protocol.bats) drives
+        # cowork-vm-service.js over its socket. c8 captures the daemon
+        # because NODE_V8_COVERAGE is inherited by the child it spawns
+        # and the smoke stops it with SIGTERM, so V8 flushes on exit.
+        run: |
+          npx --yes "c8@${C8_VERSION}" \
+            --reporter=lcov --reporter=text-summary \
+            --report-dir coverage/c8 \
+            --include 'scripts/cowork-fallback/**' \
+            --exclude 'scripts/cowork-fallback/tests/**' \
+            node scripts/cowork-fallback/tests/protocol-smoke.js
+
+      - name: Summarize
+        if: always()
+        run: ./tools/coverage-summary.sh coverage >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage
+          path: |
+            coverage/bats/kcov-merged/cobertura.xml
+            coverage/bats/kcov-merged/coverage.json
+            coverage/c8/lcov.info
+            coverage/c8/lcov-report/
+          if-no-files-found: warn
+          retention-days: 14
