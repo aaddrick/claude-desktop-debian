@@ -15,7 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 ### Fixed
 
-- The package's software-center description no longer says it is for Debian and Ubuntu or that it repacks the Windows binary. It now describes what has shipped since v3.0.0: the official Claude Desktop for Linux in `.deb`, `.rpm`, AppImage and Nix form, with the launcher and `--doctor` ([#992](https://github.com/aaddrick/claude-desktop-debian/pull/992))
+- The package's software-center description no longer says it is for Debian and Ubuntu or that it repacks the Windows binary. It now describes what has shipped since v3.0.0: the official Claude Desktop for Linux in `.deb`, `.rpm`, AppImage and Nix form, with the launcher and `--doctor` ([#993](https://github.com/aaddrick/claude-desktop-debian/pull/993))
 
 ## [v3.3.19] — 2026-11-24
 
