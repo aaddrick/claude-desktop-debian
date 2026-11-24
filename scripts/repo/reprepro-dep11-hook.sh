@@ -23,6 +23,9 @@
 # `appstream-catalog.sh dep11`. On an export without staging (a manual
 # reprepro run, or a failed compose) the files already in dists/ are
 # re-listed unchanged, so a release never drops the catalog it had.
+# The same fallback applies when staging is set but the files can't be
+# written into dists/: the hook warns and exits 0, because the catalog
+# is optional and must never fail the APT publish.
 #
 # Icon tarballs are architecture-independent; they are listed from the
 # $DEP11_ICONS_ARCH (default amd64) invocation only, so each lands in
@@ -43,29 +46,61 @@ dep11_dir="$dist_dir/$dep11_rel"
 icons_arch=${DEP11_ICONS_ARCH:-amd64}
 staging=${DEP11_STAGING:-}
 
-# Emit one file: from staging as <name>.new, otherwise re-list an
-# existing published copy so the Release keeps it.
-emit() {
-	local name=$1 src
-	src="$staging/$2"
-	if [[ -n $staging && -f $src ]]; then
-		mkdir -p "$dep11_dir" || return 1
-		cp "$src" "$dep11_dir/$name.new" || return 1
-		echo "$dep11_rel/$name.new" >&3
-	elif [[ -f $dep11_dir/$name ]]; then
-		echo "$dep11_rel/$name" >&3
-	fi
-}
-
-# Each index is listed uncompressed and as .gz: clients fetch the .gz
-# but verify it against the hash of the decompressed form, and treat a
-# target whose uncompressed hash is absent as missing from the Release.
+# Published name -> staging name, for this index. Each is listed
+# uncompressed and as .gz: clients fetch the .gz but verify it against
+# the hash of the decompressed form, and treat a target whose
+# uncompressed hash is absent as missing from the Release.
+names=() sources=()
 for ext in '' .gz; do
-	emit "Components-$arch.yml$ext" "Components.yml$ext" || exit 1
+	names+=("Components-$arch.yml$ext") sources+=("Components.yml$ext")
 	if [[ $arch == "$icons_arch" ]]; then
 		for size in 48x48 64x64 128x128; do
-			emit "icons-$size.tar$ext" "icons-$size.tar$ext" || exit 1
+			names+=("icons-$size.tar$ext") sources+=("icons-$size.tar$ext")
 		done
+	fi
+done
+
+# Stage every file that has a staged source as <name>.new. All or
+# nothing: if any copy fails, drop the .new files written so far, so
+# the Release never mixes new and previously published catalog files.
+staged=()
+stage_all() {
+	local i src
+	for i in "${!names[@]}"; do
+		src="$staging/${sources[$i]}"
+		[[ -f $src ]] || continue
+		mkdir -p "$dep11_dir" && cp "$src" "$dep11_dir/${names[$i]}.new" \
+			|| return 1
+		staged[i]=1
+	done
+}
+
+use_staging=false
+if [[ -n $staging ]]; then
+	if stage_all; then
+		use_staging=true
+	else
+		# Every name, not just the staged ones: the copy that failed may
+		# have left a partial file behind.
+		for i in "${!names[@]}"; do
+			rm -f "$dep11_dir/${names[$i]}.new"
+		done
+		staged=()
+		# The catalog is optional: warn and fall back to the published
+		# copy, like a failed compose, rather than fail the export.
+		echo "reprepro-dep11-hook: could not stage DEP-11 files into" \
+			"$dep11_dir; keeping the published catalog" >&2
+	fi
+fi
+
+# List each file: the staged .new if there is one, otherwise an existing
+# published copy so the Release keeps it. A failed write to reprepro's
+# fd 3 is the one error left fatal: reprepro would get a partial list.
+for i in "${!names[@]}"; do
+	if $use_staging && [[ -n ${staged[$i]:-} ]]; then
+		echo "$dep11_rel/${names[$i]}.new" >&3 || exit 1
+	elif [[ -f $dep11_dir/${names[$i]} ]]; then
+		echo "$dep11_rel/${names[$i]}" >&3 || exit 1
 	fi
 done
 exit 0

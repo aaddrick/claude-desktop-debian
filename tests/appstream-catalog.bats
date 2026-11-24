@@ -108,6 +108,50 @@ EOF
 	[[ ! -s $listing ]]
 }
 
+@test "hook: unwritable dep11 dir keeps the published catalog, exit 0" {
+	# A catalog write failure must not fail the APT publish (review
+	# note on #990): warn, then re-list what is already published.
+	[[ $EUID -ne 0 ]] || skip 'root ignores directory permissions'
+	mkdir -p "$dist/main/dep11"
+	touch "$dist/main/dep11/Components-amd64.yml" \
+		"$dist/main/dep11/Components-amd64.yml.gz"
+	chmod a-w "$dist/main/dep11"
+	DEP11_STAGING=$staging _run_hook amd64
+	chmod u+w "$dist/main/dep11"
+	[[ $status -eq 0 ]]
+	[[ $output == *'keeping the published catalog'* ]]
+	[[ $(cat "$listing") == $'main/dep11/Components-amd64.yml\nmain/dep11/Components-amd64.yml.gz' ]]
+}
+
+@test "hook: unwritable dist with nothing published lists nothing, exit 0" {
+	[[ $EUID -ne 0 ]] || skip 'root ignores directory permissions'
+	chmod a-w "$dist"
+	DEP11_STAGING=$staging _run_hook amd64
+	chmod u+w "$dist"
+	[[ $status -eq 0 ]]
+	[[ $output == *'keeping the published catalog'* ]]
+	[[ ! -s $listing ]]
+}
+
+@test "hook: a copy failing midway leaves no .new files behind" {
+	# Components copies fine, then an icon source can't be read: the
+	# staged Components.new must be removed too, so the Release lists
+	# the published set only, never a mix of new and old. The stale
+	# icons .new stands in for a partial file the failed copy left: the
+	# cleanup has to cover every name, not only the copies that worked.
+	[[ $EUID -ne 0 ]] || skip 'root ignores file permissions'
+	mkdir -p "$dist/main/dep11"
+	touch "$dist/main/dep11/Components-amd64.yml" \
+		"$dist/main/dep11/icons-64x64.tar.new"
+	chmod a-r "$staging/icons-64x64.tar"
+	DEP11_STAGING=$staging _run_hook amd64
+	chmod u+r "$staging/icons-64x64.tar"
+	[[ $status -eq 0 ]]
+	[[ $output == *'keeping the published catalog'* ]]
+	[[ -z $(find "$dist/main/dep11" -name '*.new') ]]
+	[[ $(cat "$listing") == 'main/dep11/Components-amd64.yml' ]]
+}
+
 @test "hook: ignores indices that are not binary Packages" {
 	run bash "$hook" "$dist" 'main/source/Sources.new' \
 		'main/source/Sources' new 3> "$listing"
