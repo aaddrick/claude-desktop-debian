@@ -13,6 +13,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 - An informational `Coverage` workflow that measures line coverage of the shipped shell under the BATS suite (kcov, one run per `.bats` file, merged) and of the bwrap fallback daemon under the protocol smoke (c8). It writes a summary table to the job page and uploads Cobertura/JSON/LCOV reports as an artifact; it has no threshold and every measuring step is `continue-on-error`, so it never reds a PR. The protocol smoke now stops its daemon with SIGTERM before falling back to SIGKILL, which is what lets V8 write the daemon's coverage ([#980](https://github.com/aaddrick/claude-desktop-debian/issues/980))
 - The APT and DNF repos now publish AppStream catalog metadata, so GNOME Software, Ubuntu App Center and KDE Discover can find Claude Desktop in search before it is installed. The catalog is composed from each release's own package: DEP-11 `Components` and icon tarballs in the signed APT Release (through a reprepro export hook), and `appstream` + `appstream-icons` records in the DNF repodata ([#708](https://github.com/aaddrick/claude-desktop-debian/issues/708))
 
+### Fixed
+
+- The package's software-center description no longer says it is for Debian and Ubuntu or that it repacks the Windows binary. It now describes what has shipped since v3.0.0: the official Claude Desktop for Linux in `.deb`, `.rpm`, AppImage and Nix form, with the launcher and `--doctor` ([#992](https://github.com/aaddrick/claude-desktop-debian/pull/992))
+
 ## [v3.3.19] — 2026-11-24
 
 ### Fixed
