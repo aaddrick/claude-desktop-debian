@@ -54,6 +54,7 @@ Anthropic serves the `.deb`. We serve everything else. Since v3.0.0 our packages
 | AppImage (any distro) | This project. |
 | AUR (Arch) | Not this project. See [Arch Linux](#arch-linux). |
 | Nix flake (NixOS) | This project. |
+| Homebrew (Linux) | Community tap wrapping our AppImage. See [Homebrew](#homebrew-linux). |
 
 On top of packaging, every format we build carries:
 
@@ -141,6 +142,16 @@ Or add to your NixOS configuration:
   };
 }
 ```
+
+### Homebrew (Linux)
+
+A community-maintained tap, [JVrachnis/homebrew-claude-desktop](https://github.com/JVrachnis/homebrew-claude-desktop), installs our AppImage without root or FUSE and follows our releases automatically:
+
+```bash
+brew install jvrachnis/claude-desktop/claude-desktop-unofficial
+```
+
+It is not maintained by this project; report tap problems [there](https://github.com/JVrachnis/homebrew-claude-desktop/issues). On Ubuntu 24.04 and newer, AppArmor blocks the user namespaces Chromium's sandbox needs, so this install (like the plain AppImage) runs with the sandbox off. The [APT repository](#using-apt-repository-debianubuntu---recommended) installs an AppArmor profile that keeps it on, so prefer it there. On Fedora and the Bluefin family the sandbox works.
 
 ### Using Pre-built Releases
 
