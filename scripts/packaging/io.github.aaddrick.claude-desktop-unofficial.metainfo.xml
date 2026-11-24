@@ -18,9 +18,10 @@
   <description>
     <p>
       Claude Desktop is an unofficial community repackaging of Anthropic's
-      Claude Desktop client for Debian and Ubuntu. The upstream Windows
-      binary is repacked and patched for Linux compatibility (frame, tray,
-      Cowork mode, MCP stdio, Quick Entry, etc.).
+      official Claude Desktop for Linux. It ships the same application as
+      .deb and .rpm packages, an AppImage, and a Nix flake, with a
+      launcher that adds fixes for Linux desktop environments and a
+      built-in --doctor diagnostic.
     </p>
     <p>Features:</p>
     <ul>
