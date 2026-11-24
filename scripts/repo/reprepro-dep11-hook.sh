@@ -61,15 +61,22 @@ for ext in '' .gz; do
 done
 
 # Stage every file that has a staged source as <name>.new. All or
-# nothing: if any copy fails, drop the .new files written so far, so
-# the Release never mixes new and previously published catalog files.
+# nothing for this index: if any copy fails, drop the .new files
+# written so far, so this index never mixes new and previously
+# published catalog files. reprepro runs the hook once per
+# architecture, so the guarantee is per index, not per release: when
+# an icon (listed only for $DEP11_ICONS_ARCH) fails to copy, that arch
+# keeps its old catalog while the others still get the new
+# Components. The Release is valid either way.
+# cp -T: if a directory already sits at a .new target, fail the copy
+# instead of copying into it (reprepro would then reject the listing).
 staged=()
 stage_all() {
 	local i src
 	for i in "${!names[@]}"; do
 		src="$staging/${sources[$i]}"
 		[[ -f $src ]] || continue
-		mkdir -p "$dep11_dir" && cp "$src" "$dep11_dir/${names[$i]}.new" \
+		mkdir -p "$dep11_dir" && cp -T "$src" "$dep11_dir/${names[$i]}.new" \
 			|| return 1
 		staged[i]=1
 	done

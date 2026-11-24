@@ -34,10 +34,13 @@ setup() {
 }
 
 # Run the hook the way reprepro does for one binary Packages index.
+# The local must not be called `status`: it would shadow the $status
+# that `run` sets, and every `[[ $status -eq 0 ]]` would then pass on
+# an empty string whatever the hook returned.
 _run_hook() {
-	local arch=$1 status=${2:-new}
+	local arch=$1 index_state=${2:-new}
 	run bash "$hook" "$dist" "main/binary-$arch/Packages.new" \
-		"main/binary-$arch/Packages" "$status" 3> "$listing"
+		"main/binary-$arch/Packages" "$index_state" 3> "$listing"
 }
 
 @test "hook: amd64 export lists Components and every icon tarball" {
@@ -149,6 +152,17 @@ EOF
 	[[ $status -eq 0 ]]
 	[[ $output == *'keeping the published catalog'* ]]
 	[[ -z $(find "$dist/main/dep11" -name '*.new') ]]
+	[[ $(cat "$listing") == 'main/dep11/Components-amd64.yml' ]]
+}
+
+@test "hook: a directory at a .new target is a copy failure, not a listing" {
+	# Without cp -T, cp copies into the directory and succeeds, the hook
+	# lists the directory, and reprepro export fails (rc 235).
+	mkdir -p "$dist/main/dep11/Components-amd64.yml.new"
+	touch "$dist/main/dep11/Components-amd64.yml"
+	DEP11_STAGING=$staging _run_hook amd64
+	[[ $status -eq 0 ]]
+	[[ $output == *'keeping the published catalog'* ]]
 	[[ $(cat "$listing") == 'main/dep11/Components-amd64.yml' ]]
 }
 
