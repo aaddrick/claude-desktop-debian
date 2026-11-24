@@ -88,6 +88,18 @@ EOF
 		"$build/index.chunk-test.js"
 }
 
+@test "tray icon override: matches the 6.28899 helper-parameter shape" {
+	# Real 6.28899.6 minified bytes: selection moved into a helper that
+	# takes nativeTheme as a parameter, so the theme chain is a bare `n`
+	# (no `.nativeTheme`) and a `t||` safeIcon guard sits in front. The
+	# leading `return t||` pins the splice to the callee, after the
+	# retained guard.
+	_make_chunk 'case"png":return t||i()==="gnome"||n.shouldUseDarkColors?"TrayIconLinux-Dark.png":"TrayIconLinux.png"}'
+	patch_tray_icon_env_override
+	grep -qF 'return t||process.env.CLAUDE_TRAY_USE_DARK_ICON==="1"||process.env.CLAUDE_TRAY_USE_DARK_ICON!=="0"&&(i()==="gnome"||n.shouldUseDarkColors)?"TrayIconLinux-Dark.png":"TrayIconLinux.png"}' \
+		"$BATS_TEST_TMPDIR/app.asar.contents/.vite/build/index.chunk-test.js"
+}
+
 @test "tray icon override: idempotent and byte-identical on re-run" {
 	_make_chunk "$upstream_ternary"
 	patch_tray_icon_env_override
