@@ -1,28 +1,28 @@
 Origin: claude-desktop-debian
 Label: Claude Desktop for Linux
 Codename: stable
-Date: Tue, 17 Nov 2026 16:07:18 UTC
+Date: Tue, 24 Nov 2026 03:48:06 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Claude Desktop unofficial Linux packages
 MD5Sum:
- 16c89efb3d7cc68c803647f3f1a52155 1976 main/binary-amd64/Packages
- d265faf32e2ee51a42a48f2610b164da 996 main/binary-amd64/Packages.gz
+ ac83367f52802b39181e2e17f425e756 1976 main/binary-amd64/Packages
+ edf4de2bb68cb949a27ef346558940e2 997 main/binary-amd64/Packages.gz
  02bfdb0962fdcbc813da34967372124d 152 main/binary-amd64/Release
- e0447d6ed168b3112a8f3a69ed42fec9 1988 main/binary-arm64/Packages
- e3cafd614544255bd7a98c36ca9ef727 1000 main/binary-arm64/Packages.gz
+ 16fa7a69f9581e3a7af4ba9e8f544acd 1988 main/binary-arm64/Packages
+ 20cb92c11940d4bbe0147dc9e0b6af5f 1000 main/binary-arm64/Packages.gz
  a34b0e690522268f14683fbce7f31005 152 main/binary-arm64/Release
 SHA1:
- 8008bb2afe09475d989f639b6715b86d98395872 1976 main/binary-amd64/Packages
- b21d6d3ddb5a4a1ea5fc00b779950bb25d452424 996 main/binary-amd64/Packages.gz
+ 9fc0973a8bb40ac648ce9b9b21bb510ad0abc5be 1976 main/binary-amd64/Packages
+ dc0f048b52539f31f24ee4a82697ffc386e4e5f8 997 main/binary-amd64/Packages.gz
  7e6572fbede38f2753bbf46197b1db20fc4c57a0 152 main/binary-amd64/Release
- 09bb05069c3a81baefb835ff70bf407361cc056b 1988 main/binary-arm64/Packages
- 5d04901e5a52184323d2a76d785aad48c205a57b 1000 main/binary-arm64/Packages.gz
+ 4e0269088e2d031fcb1b5e12e75c428022c57fc9 1988 main/binary-arm64/Packages
+ 585a3862488f146eff7166f432c581048a924077 1000 main/binary-arm64/Packages.gz
  9802bd79bf2009c5180e1df0d99da2dc7ba8f2f4 152 main/binary-arm64/Release
 SHA256:
- 6dcd34503412a4bbc669e4890b5a35a554ee4886f3eaabf17741b348cbfe14d7 1976 main/binary-amd64/Packages
- 9f94d435c17b8d93191846b1f4001608b7544a7fb4da6f53891720a5125839de 996 main/binary-amd64/Packages.gz
+ a7a4553d2e871822ff783d8be0fcfed243a553855cb3f70fd03dc9369077956d 1976 main/binary-amd64/Packages
+ d5effc2a72056614f76296d04597e279b42f19bd155145c1d5a0b89214665983 997 main/binary-amd64/Packages.gz
  2a288260d0eff0aee3beac611d50b711a495e6eaf053fffddf35ebdf498b0247 152 main/binary-amd64/Release
- 55c42a9352c1a171a4a8bca9e49337f324fc3f4b5d18971c50966c6c05e454ed 1988 main/binary-arm64/Packages
- 35a22cfa4454f4b4963246d845f9d9ca4793e2e399fd7df4801871a55f2afe61 1000 main/binary-arm64/Packages.gz
+ d95c02caac3d8d09cd1aae3ede56868d524b7d4b79f0265cb099ed197f1ea120 1988 main/binary-arm64/Packages
+ 79e305d3df48709a093621b4ae912d30caa6360d82d4558bb080cda3e2aa0b11 1000 main/binary-arm64/Packages.gz
  96728c0041e79a804531562cb2d8fb2e94869e09578537b2bc0afacf3de7025e 152 main/binary-arm64/Release
