@@ -106,7 +106,41 @@ on next `apt update` until they run the migration `sed` one-liner.
 | `worker/wrangler.toml` | Worker config. `custom_domain = true` binds DNS automatically; flipping the `pattern` between staging and production is how cutovers happen. |
 | `.github/workflows/deploy-worker.yml` | Runs `wrangler deploy` on push to `main` when `worker/**` or the workflow itself changes. Post-deploy probe asserts `https://pkg.<domain>/dists/stable/InRelease` returns 2xx/3xx. |
 | `.github/workflows/ci.yml` (`update-apt-repo`, `update-dnf-repo`) | Strip `.deb`/`.rpm` from the local pool tree before commit, **gated on a liveness probe against the Worker**. The probe's success is the cutover signal — misconfigured env vars can't accidentally strip. |
+| `scripts/repo/appstream-catalog.sh`, `scripts/repo/reprepro-dep11-hook.sh` | AppStream catalog for store search before install ([#708](https://github.com/aaddrick/claude-desktop-debian/issues/708)): DEP-11 under `dists/stable/main/dep11/`, `appstream` + `appstream-icons` records in `rpm/<arch>/repodata`. Both are plain metadata, so the Worker passes them through like `Packages`. See [AppStream catalog](#appstream-catalog-dep-11--repodata). |
 | `.github/workflows/apt-repo-heartbeat.yml` | Daily cron, matrix over `deb` + `rpm`, walks the full redirect chain and asserts size match against the Release asset. Opens a format-specific `heartbeat-failure-{deb,rpm}` tracking issue on failure; auto-closes on recovery. |
+
+## AppStream catalog (DEP-11 + repodata)
+
+The package's own metainfo only reaches a store once the package is
+installed. Search on a clean system reads the repo catalog, which the
+publish jobs compose from the released package with `appstreamcli
+compose` (so it always matches what the package installs), then add
+`<pkgname>` and the origin that compose cannot know.
+
+- **APT files must be in the signed Release.** reprepro has no DEP-11
+  support, and APT ignores any `dists/` file the Release doesn't list.
+  The export hook in `conf/distributions`
+  (`DebIndices: Packages Release . .gz reprepro-dep11-hook.sh`) writes
+  each extra path to **fd 3**; reprepro hashes those into the Release
+  and renames `*.new` into place. Stdout is ignored. The protocol is
+  only documented by reprepro's `examples/xz.example`
+- **List the uncompressed form too.** APT fetches
+  `Components-amd64.yml.gz` but verifies it against the hash of the
+  decompressed `Components-amd64.yml`. With only the `.gz` in the
+  Release, `apt update` silently treats the target as absent and
+  deletes it. Same for the `icons-<size>.tar` tarballs
+- **The hook re-lists when nothing is staged.** A manual `reprepro
+  export`, or a release whose compose step failed, keeps the catalog
+  already published instead of dropping it from the Release
+- **DNF records are installed by the consumer, not dnf.** libdnf5
+  downloads `appstream`/`appstream-icons` when
+  `optional_metadata_types` includes `appstream`, but only PackageKit
+  (GNOME Software, Discover) installs them into
+  `/var/cache/swcatalog`. Plain `dnf makecache` + `appstreamcli search`
+  finds nothing; that is expected
+- **Give `modifyrepo_c` uncompressed input** with `--compress-type=gz`.
+  `--no-compress` on an already-gzipped file publishes it without the
+  `.gz` suffix
 
 ## Credentials and ownership
 
