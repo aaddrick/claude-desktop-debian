@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- An informational `Coverage` workflow that measures line coverage of the shipped shell under the BATS suite (kcov, one run per `.bats` file, merged) and of the bwrap fallback daemon under the protocol smoke (c8). It writes a summary table to the job page and uploads Cobertura/JSON/LCOV reports as an artifact; it has no threshold and every measuring step is `continue-on-error`, so it never reds a PR. The protocol smoke now stops its daemon with SIGTERM before falling back to SIGKILL, which is what lets V8 write the daemon's coverage ([#980](https://github.com/aaddrick/claude-desktop-debian/issues/980))
+
 ## [v3.3.19] — 2026-11-24
 
 ### Fixed

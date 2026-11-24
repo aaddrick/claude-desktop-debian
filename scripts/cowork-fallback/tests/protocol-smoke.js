@@ -75,7 +75,24 @@ async function main() {
         env: { ...process.env, COWORK_VM_BACKEND: 'host' },
         stdio: ['ignore', 'ignore', 'inherit'],
     });
-    const stop = () => { try { daemon.kill('SIGKILL'); } catch (_) {} };
+    // SIGTERM first: the daemon's handler stops the VM, removes its
+    // socket and exits 0, which is also what lets V8 flush coverage
+    // when this runs under c8 (#980) — a SIGKILL'd child writes none.
+    // SIGKILL stays as the backstop so a wedged daemon cannot hang the
+    // smoke.
+    const stop = () => new Promise((resolve) => {
+        if (daemon.exitCode !== null || daemon.signalCode !== null) {
+            return resolve();
+        }
+        const backstop = setTimeout(() => {
+            try { daemon.kill('SIGKILL'); } catch (_) {}
+        }, 3000);
+        daemon.once('exit', () => { clearTimeout(backstop); resolve(); });
+        try { daemon.kill('SIGTERM'); } catch (_) {
+            clearTimeout(backstop);
+            resolve();
+        }
+    });
 
     try {
         await waitForSocket(6000);
@@ -187,7 +204,7 @@ async function main() {
         process.stderr.write('fatal: ' + (e && e.stack || e) + '\n');
         failures++;
     } finally {
-        stop();
+        await stop();
         try { fs.unlinkSync(SOCK); } catch (_) {}
     }
 
