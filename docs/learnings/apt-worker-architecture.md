@@ -131,14 +131,21 @@ compose` (so it always matches what the package installs), then add
   deletes it. Same for the `icons-<size>.tar` tarballs
 - **The hook re-lists when nothing is staged.** A manual `reprepro
   export`, or a release whose compose step failed, keeps the catalog
-  already published instead of dropping it from the Release
+  already published instead of dropping it from the Release. The same
+  fallback covers a staged file that can't be copied into `dists/`
+- **The fallback is per index, not per release.** reprepro runs the
+  hook once per architecture, and only the `DEP11_ICONS_ARCH` (amd64)
+  run lists the icon tarballs. If a staged icon can't be copied, amd64
+  keeps its previous catalog while arm64 still gets the new
+  `Components-arm64.yml`. The Release is valid either way
 - **DNF does not keep the old catalog.** `createrepo_c --update`
   rewrites `repomd.xml` with only its own records and deletes the
   `appstream`/`appstream-icons` files, so a release whose compose step
   fails publishes repodata with no catalog until the next good release.
   APT keeps the previous catalog in the same case. Both are acceptable
-  because the catalog is best-effort; carrying the old records forward
-  on DNF would mean re-adding them after `createrepo_c`
+  because the catalog is best-effort. If DNF should ever match APT,
+  `createrepo_c --update --keep-all-metadata` keeps the previous
+  records and their files
 - **DNF records are installed by the consumer, not dnf.** libdnf5
   downloads `appstream`/`appstream-icons` when
   `optional_metadata_types` includes `appstream`, but only PackageKit
