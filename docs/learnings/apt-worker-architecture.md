@@ -132,6 +132,13 @@ compose` (so it always matches what the package installs), then add
 - **The hook re-lists when nothing is staged.** A manual `reprepro
   export`, or a release whose compose step failed, keeps the catalog
   already published instead of dropping it from the Release
+- **DNF does not keep the old catalog.** `createrepo_c --update`
+  rewrites `repomd.xml` with only its own records and deletes the
+  `appstream`/`appstream-icons` files, so a release whose compose step
+  fails publishes repodata with no catalog until the next good release.
+  APT keeps the previous catalog in the same case. Both are acceptable
+  because the catalog is best-effort; carrying the old records forward
+  on DNF would mean re-adding them after `createrepo_c`
 - **DNF records are installed by the consumer, not dnf.** libdnf5
   downloads `appstream`/`appstream-icons` when
   `optional_metadata_types` includes `appstream`, but only PackageKit
