@@ -34,6 +34,9 @@ setup() {
 	unset _DOCTOR_AA_LOADED
 	unset _DOCTOR_BWRAP
 	unset _DOCTOR_TPM_DEV
+	# Keep the host's installed deb/rpm entry out of the desktop check.
+	export _DOCTOR_DESKTOP_FILE="$TEST_TMP/no-desktop-file"
+	unset XDG_DATA_DIRS
 	# Keep the host's /usr/libexec/qemu-kvm (EL) out of the QEMU check.
 	export _DOCTOR_QEMU_KVM="$TEST_TMP/no-qemu-kvm"
 
@@ -2450,4 +2453,76 @@ _stub_stat() {
 	run _doctor_check_chrome_sandbox "$TEST_TMP/app/electron" 'deb'
 	[[ $output == *'[FAIL]'* ]]
 	[[ $output == *'perms=644'* ]]
+}
+
+# -- _doctor_check_desktop_entry (#972 Homebrew tap) --
+# A brew keg is recognised from the electron path AppRun resolves into
+# <prefix>/Cellar/claude-desktop-unofficial/<version>/libexec/...
+
+_brew_keg() {
+	brew_prefix="$TEST_TMP/linuxbrew"
+	brew_electron="$brew_prefix/Cellar/claude-desktop-unofficial/1.2.3-4.5.6"
+	brew_electron+='/libexec/usr/lib/claude-desktop/claude-desktop'
+	brew_entry="$brew_prefix/share/applications"
+	brew_entry+='/io.github.aaddrick.claude-desktop-debian.desktop'
+}
+
+@test "_doctor_check_desktop_entry: deb/rpm entry passes" {
+	: > "$_DOCTOR_DESKTOP_FILE"
+	run _doctor_check_desktop_entry '/usr/lib/claude-desktop-unofficial/claude-desktop'
+	[[ $status -eq 0 ]]
+	[[ $output == *"[PASS]"*"Desktop entry: $_DOCTOR_DESKTOP_FILE"* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_desktop_entry: AppImage keeps the expected warning" {
+	run _doctor_check_desktop_entry '/tmp/.mount_Claude/usr/lib/claude-desktop/claude-desktop'
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'*'expected for AppImage installs'* ]]
+	[[ $output != *'Homebrew'* ]]
+}
+
+@test "_doctor_check_desktop_entry: Homebrew entry on XDG_DATA_DIRS passes" {
+	_brew_keg
+	mkdir -p "${brew_entry%/*}" && : > "$brew_entry"
+	export XDG_DATA_DIRS="/usr/share:$brew_prefix/share"
+	run _doctor_check_desktop_entry "$brew_electron"
+	[[ $status -eq 0 ]]
+	[[ $output == *"[PASS]"*"$brew_entry (Homebrew)"* ]]
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_desktop_entry: Homebrew share missing from XDG_DATA_DIRS warns" {
+	# Unset XDG_DATA_DIRS means the spec default, which has no brew share.
+	_brew_keg
+	mkdir -p "${brew_entry%/*}" && : > "$brew_entry"
+	run _doctor_check_desktop_entry "$brew_electron"
+	[[ $status -eq 0 ]]
+	[[ $output == *"[PASS]"*"(Homebrew)"* ]]
+	[[ $output == *'[WARN]'*"$brew_prefix/share is not in XDG_DATA_DIRS"* ]]
+	[[ $output == *'environment.d/homebrew.conf'* ]]
+	[[ $output != *'expected for AppImage installs'* ]]
+}
+
+@test "_doctor_check_desktop_entry: trailing slash in XDG_DATA_DIRS still matches" {
+	_brew_keg
+	mkdir -p "${brew_entry%/*}" && : > "$brew_entry"
+	export XDG_DATA_DIRS="/usr/share/:$brew_prefix/share/"
+	run _doctor_check_desktop_entry "$brew_electron"
+	[[ $output != *'[WARN]'* ]]
+}
+
+@test "_doctor_check_desktop_entry: Homebrew keg without its entry warns with a fix" {
+	_brew_keg
+	run _doctor_check_desktop_entry "$brew_electron"
+	[[ $status -eq 0 ]]
+	[[ $output == *'[WARN]'*"not found in $brew_prefix/share/applications (Homebrew install)"* ]]
+	[[ $output == *'brew reinstall claude-desktop-unofficial'* ]]
+	[[ $output != *'[PASS]'* ]]
+}
+
+@test "run_doctor: delegates the desktop entry check with the electron path" {
+	# Structural pin, like the other run_doctor delegation checks.
+	run declare -f run_doctor
+	[[ $output == *'_doctor_check_desktop_entry "$electron_path"'* ]]
 }
