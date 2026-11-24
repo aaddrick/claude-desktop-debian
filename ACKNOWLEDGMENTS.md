@@ -225,3 +225,4 @@ Special thanks to:
 - **[JVrachnis](https://github.com/JVrachnis)**
   - Getting builds working again on official 6.28899, which moved Linux tray icon selection into a helper and left the `CLAUDE_TRAY_USE_DARK_ICON` patch's anchor matching nothing, with a fixture taken from the shipped bytes (#987)
   - Adding an informational coverage workflow that measures the BATS suite under kcov and the bwrap daemon's protocol smoke under c8 without being able to fail a PR, and making the smoke stop its daemon cleanly so the daemon's coverage is recorded (#980, #989)
+  - Publishing AppStream catalog metadata from the APT and DNF repos, so GNOME Software, Ubuntu App Center and KDE Discover can find the package in search before it is installed (#708, #990)
