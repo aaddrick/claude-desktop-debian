@@ -267,21 +267,38 @@ VFSD_NEW='kT=[`/usr/libexec/virtiofsd`,`/usr/bin/virtiofsd`];async function AT()
 # the x86_64 one in the same ternary, and the virtiofsd array after it.
 FW_242='var lTn=process.arch==="arm64"?"qemu-system-aarch64":"qemu-system-x86_64",uTn=process.arch==="arm64"?["/usr/share/AAVMF/AAVMF_CODE.fd"]:["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd"],dTn=["/usr/libexec/virtiofsd","/usr/bin/virtiofsd"];'
 
+# 6.28899.6 shipped bytes: the VARS derivation, in the same chunk as the
+# probe array, followed by the function that hands its result to the
+# helper as firmwareVarsTemplatePath.
+FW_VARS='function YCr(e){return e.replace("OVMF_CODE","OVMF_VARS").replace("AAVMF_CODE","AAVMF_VARS")}function XCr(){'
+
+# A chunk carrying both anchors, as the shipped bundle does.
+FW_CHUNK="$FW_242$FW_VARS"
+
 # The same bytes with the backtick delimiters 1.26832.0's minifier used
 # for every literal.
-FW_TICK=${FW_242//\"/\`}
+FW_TICK=${FW_CHUNK//\"/\`}
 
-FW_PATCHED='["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd","/usr/share/edk2/x64/OVMF_CODE.4m.fd","/usr/share/edk2/ovmf/OVMF_CODE.fd"]'
+FW_PATCHED='["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd","/usr/share/edk2/x64/OVMF_CODE.4m.fd","/usr/share/edk2/ovmf/OVMF_CODE.fd","/usr/share/qemu/ovmf-x86_64-4m-code.bin"]'
 
-@test "firmware: appends the edk2 paths on the 2.42304.0 shape" {
-	_chunk 'index.chunk-test.js' "$FW_242"
+FW_VARS_PATCHED='.replace("OVMF_CODE","OVMF_VARS").replace("AAVMF_CODE","AAVMF_VARS").replace("-code.bin","-vars.bin")}'
+
+@test "firmware: appends the edk2 and openSUSE paths on the 2.42304.0 shape" {
+	_chunk 'index.chunk-test.js' "$FW_CHUNK"
 	run patch_cowork_firmware_probe
 	[[ $status -eq 0 ]]
-	# Official paths first, Arch then EL after them.
+	# Official paths first, then Arch, EL and openSUSE.
 	grep -qF ":$FW_PATCHED,dTn=" "$BUILD/index.chunk-test.js"
 	# aarch64 is left alone.
 	grep -qF '?["/usr/share/AAVMF/AAVMF_CODE.fd"]:' \
 		"$BUILD/index.chunk-test.js"
+}
+
+@test "firmware: VARS derivation maps openSUSE -code.bin to -vars.bin" {
+	_chunk 'index.chunk-test.js' "$FW_CHUNK"
+	run patch_cowork_firmware_probe
+	[[ $status -eq 0 ]]
+	grep -qF "$FW_VARS_PATCHED" "$BUILD/index.chunk-test.js"
 }
 
 @test "firmware: keeps the bundle's delimiter (backtick shape)" {
@@ -289,38 +306,67 @@ FW_PATCHED='["/usr/share/OVMF/OVMF_CODE_4M.fd","/usr/share/OVMF/OVMF_CODE.fd","/
 	run patch_cowork_firmware_probe
 	[[ $status -eq 0 ]]
 	grep -qF ":${FW_PATCHED//\"/\`},dTn=" "$BUILD/index.chunk-test.js"
+	grep -qF "${FW_VARS_PATCHED//\"/\`}" "$BUILD/index.chunk-test.js"
+}
+
+@test "firmware: VARS derivation in its own chunk is still patched" {
+	# Each edit resolves its own file, so a split must not break it.
+	_chunk 'index.chunk-a.js' "$FW_242"
+	_chunk 'index.chunk-b.js' "$FW_VARS"
+	run patch_cowork_firmware_probe
+	[[ $status -eq 0 ]]
+	grep -qF ":$FW_PATCHED,dTn=" "$BUILD/index.chunk-a.js"
+	grep -qF "$FW_VARS_PATCHED" "$BUILD/index.chunk-b.js"
 }
 
 @test "firmware: idempotent and byte-identical on re-run" {
-	_chunk 'index.chunk-test.js' "$FW_242"
+	_chunk 'index.chunk-test.js' "$FW_CHUNK"
 	patch_cowork_firmware_probe
 	local first; first="$(cat "$BUILD/index.chunk-test.js")"
 	run patch_cowork_firmware_probe
 	[[ $status -eq 0 ]]
-	[[ $output == *'already carries the edk2 paths'* ]]
+	[[ $output == *'already carries the extra paths'* ]]
+	[[ $output == *'already maps -code.bin'* ]]
 	[[ "$(cat "$BUILD/index.chunk-test.js")" == "$first" ]]
 }
 
 @test "firmware: missing probe array fails the build" {
 	_chunk 'index.chunk-test.js' \
-		'var x=["/usr/share/OVMF/OVMF_CODE.fd"];'
+		"var x=[\"/usr/share/OVMF/OVMF_CODE.fd\"];$FW_VARS"
 	run patch_cowork_firmware_probe
 	[[ $status -ne 0 ]]
 	[[ $output == *'matched no file'* ]]
 }
 
+@test "firmware: missing VARS derivation fails the build" {
+	# One edit from the anchor: the AAVMF swap is gone. Without the
+	# derivation the openSUSE path would boot with no VARS file.
+	_chunk 'index.chunk-test.js' \
+		"$FW_242${FW_VARS/.replace(\"AAVMF_CODE\",\"AAVMF_VARS\")/}"
+	run patch_cowork_firmware_probe
+	[[ $status -ne 0 ]]
+	[[ $output == *"'OVMF VARS derivation' matched no file"* ]]
+}
+
 @test "firmware: duplicated probe array fails the exactly-1 guard" {
-	_chunk 'index.chunk-test.js' "$FW_242$FW_242"
+	_chunk 'index.chunk-test.js' "$FW_242$FW_CHUNK"
 	run patch_cowork_firmware_probe
 	[[ $status -ne 0 ]]
 	[[ $output == *'found 2'* ]]
+}
+
+@test "firmware: duplicated VARS derivation fails the exactly-1 guard" {
+	_chunk 'index.chunk-test.js' "$FW_CHUNK$FW_VARS"
+	run patch_cowork_firmware_probe
+	[[ $status -ne 0 ]]
+	[[ $output == *'expected exactly 1 OVMF VARS derivation, found 2'* ]]
 }
 
 @test "firmware: an upstream-extended list fails instead of stacking" {
 	# One edit from the anchor: upstream adds its own third path. The
 	# patch must stop and ask for a re-check, not append behind it.
 	_chunk 'index.chunk-test.js' \
-		"${FW_242/OVMF_CODE.fd\"]/OVMF_CODE.fd\",\"/usr/share/qemu/OVMF.fd\"]}"
+		"${FW_CHUNK/OVMF_CODE.fd\"]/OVMF_CODE.fd\",\"/usr/share/qemu/OVMF.fd\"]}"
 	run patch_cowork_firmware_probe
 	[[ $status -ne 0 ]]
 	[[ $output == *'unexpected extra entries'* ]]

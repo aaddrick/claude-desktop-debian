@@ -22,6 +22,7 @@ It takes the first path that's readable and derives the VARS template from it wi
 
 - **Arch / CachyOS / Manjaro** (`edk2-ovmf`): `/usr/share/edk2/x64/OVMF_CODE.4m.fd` and `OVMF_VARS.4m.fd`
 - **RHEL / CentOS Stream / Alma / Rocky 9 and 10** (`edk2-ovmf`): `/usr/share/edk2/ovmf/OVMF_CODE.fd` and `OVMF_VARS.fd`. EL ships `/usr/share/OVMF/OVMF_VARS.fd` but no `OVMF_CODE.fd` next to it.
+- **openSUSE Leap / Tumbleweed** (`qemu-ovmf-x86_64`): `/usr/share/qemu/ovmf-x86_64-4m-code.bin` and `ovmf-x86_64-4m-vars.bin`. No `OVMF_CODE` swap reaches the VARS name, so the derivation needs a second replace as well as the path ([#998](https://github.com/aaddrick/claude-desktop-debian/issues/998)).
 
 Fedora isn't affected: its `edk2-ovmf` also ships `/usr/share/OVMF/OVMF_CODE.fd` and `OVMF_VARS.fd`, so the existing probe finds them.
 
@@ -31,12 +32,12 @@ On these hosts, `firmwarePath` ends up null even though the firmware is installe
 
 When firmware from the distro's own `edk2-ovmf` package is installed, Cowork should find it. Either of these would do it:
 
-1. Add `/usr/share/edk2/x64/OVMF_CODE.4m.fd` and `/usr/share/edk2/ovmf/OVMF_CODE.fd` to the probe list, after the existing paths. Both pair with the existing `replace()`.
+1. Add `/usr/share/edk2/x64/OVMF_CODE.4m.fd`, `/usr/share/edk2/ovmf/OVMF_CODE.fd` and `/usr/share/qemu/ovmf-x86_64-4m-code.bin` to the probe list, after the existing paths. The edk2 ones pair with the existing `replace()`; the openSUSE one also needs `.replace("-code.bin","-vars.bin")` in the VARS derivation.
 2. Add an env override for the firmware path, like the one qemu effectively has through `PATH`.
 
 ### Steps to Reproduce
 
-1. On Arch (or RHEL, CentOS Stream, Alma or Rocky 9/10), install `qemu` and `edk2-ovmf`, with a working `/dev/kvm` and `/dev/vhost-vsock`.
+1. On Arch (or RHEL, CentOS Stream, Alma or Rocky 9/10), install `qemu` and `edk2-ovmf` (on openSUSE, `qemu-x86` and `qemu-ovmf-x86_64`), with a working `/dev/kvm` and `/dev/vhost-vsock`.
 2. Install Claude Desktop and open Cowork.
 
 Expected: the VM is supported. Actual: the firmware probe resolves nothing, so Cowork isn't available. Linking the edk2 CODE and VARS files into `/usr/share/OVMF/` under the probed names, then restarting, fixes it.
