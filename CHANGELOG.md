@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+## [v3.3.19] — 2026-11-24
+
 ### Fixed
 
 - Builds against official 6.28899 work again. That release moved Linux tray icon selection into a helper that receives `nativeTheme` as a parameter, so the `CLAUDE_TRAY_USE_DARK_ICON` patch's anchor matched nothing and every format failed at the patch stage on both architectures; the anchor now captures whatever sits in front of `.shouldUseDarkColors` ([#987](https://github.com/aaddrick/claude-desktop-debian/pull/987), [#985](https://github.com/aaddrick/claude-desktop-debian/issues/985), [#986](https://github.com/aaddrick/claude-desktop-debian/issues/986))
