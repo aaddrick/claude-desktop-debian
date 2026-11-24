@@ -1,0 +1,66 @@
+---
+File: DEP-11
+Version: '1.0'
+Origin: claude-desktop-unofficial
+---
+Type: desktop-application
+ID: io.github.aaddrick.claude-desktop-debian
+Package: claude-desktop-unofficial
+ProjectLicense: LicenseRef-proprietary
+Name:
+  C: Claude Desktop
+Summary:
+  C: Unofficial desktop client for Claude AI
+Description:
+  C: >-
+    <p>
+          Claude Desktop is an unofficial community repackaging of Anthropic's
+          official Claude Desktop for Linux. It ships the same application as
+          .deb and .rpm packages, an AppImage, and a Nix flake, with a
+          launcher that adds fixes for Linux desktop environments and a
+          built-in --doctor diagnostic.
+        </p>
+    <p>Features:</p>
+
+    <ul><li>Conversations with the Claude model family (Sonnet, Opus, Haiku)</li><li>Projects with persistent context and
+    file uploads</li><li>Cowork mode — local agent VM for sandboxed code tasks</li><li>MCP (Model Context Protocol) stdio
+    servers for tool integration</li><li>System tray, Quick Entry hotkey, and tab system</li></ul>
+
+    <p>
+          This packaging is community-maintained and is not affiliated with or
+          endorsed by Anthropic. See the packaging source and issue tracker
+          linked below.
+        </p>
+Developer:
+  id: io.github.aaddrick
+  name:
+    C: aaddrick
+Categories:
+- Office
+- Utility
+Url:
+  homepage: https://github.com/aaddrick/claude-desktop-debian
+  bugtracker: https://github.com/aaddrick/claude-desktop-debian/issues
+  vcs-browser: https://github.com/aaddrick/claude-desktop-debian
+Icon:
+  cached:
+  - name: io.github.aaddrick.claude-desktop-debian.png
+    width: 48
+    height: 48
+  - name: io.github.aaddrick.claude-desktop-debian.png
+    width: 64
+    height: 64
+  - name: io.github.aaddrick.claude-desktop-debian.png
+    width: 128
+    height: 128
+  stock: claude-desktop-unofficial
+Launchable:
+  desktop-id:
+  - claude-desktop-unofficial.desktop
+Provides:
+  binaries:
+  - claude-desktop-unofficial
+  mediatypes:
+  - x-scheme-handler/claude
+ContentRating:
+  oars-1.1: {}

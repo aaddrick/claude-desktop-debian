@@ -1,6 +1,7 @@
 Origin: claude-desktop-debian
 Label: Claude Desktop for Linux
 Codename: stable
+DebIndices: Packages Release . .gz reprepro-dep11-hook.sh
 Architectures: amd64 arm64
 Components: main
 Description: Claude Desktop unofficial Linux packages
