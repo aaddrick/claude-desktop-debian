@@ -15,6 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 ### Fixed
 
 - `--doctor` no longer reports "Desktop entry not found" for installs from the community Homebrew tap ([#995](https://github.com/aaddrick/claude-desktop-debian/pull/995)). It recognises a Homebrew keg from the Electron path, checks the entry under the Homebrew prefix, and warns when that prefix's `share` is missing from `XDG_DATA_DIRS`, which `brew shellenv` does not set, with the `environment.d` line that fixes it.
+- Cowork finds OVMF firmware on openSUSE in every package format, including the AppImage. `qemu-ovmf-x86_64` installs it as `/usr/share/qemu/ovmf-x86_64-4m-code.bin` and `-4m-vars.bin`, which neither the official probe list nor its `OVMF_CODE` → `OVMF_VARS` swap can reach, so only the RPM's `%post` links helped and the AppImage found nothing. The firmware asar patch now appends that path and maps `-code.bin` to `-vars.bin` in the VARS derivation, and `--doctor` counts and pairs it the same way. No root links are needed, which also helps on read-only Leap Micro hosts. ([#998](https://github.com/aaddrick/claude-desktop-debian/issues/998))
+
 
 ## [v3.3.20] — 2026-11-24
 

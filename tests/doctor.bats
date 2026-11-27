@@ -1355,9 +1355,9 @@ _make_appdir() {
 	[[ $output == *'openSUSE'* ]]
 }
 
-@test "_cowork_fw_probe_paths: x86_64 lists official paths, then edk2 (#884)" {
+@test "_cowork_fw_probe_paths: x86_64 lists official paths, then edk2 and openSUSE (#884)" {
 	run _cowork_fw_probe_paths x86_64
-	[[ $output == '/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_CODE.fd:/usr/share/edk2/x64/OVMF_CODE.4m.fd:/usr/share/edk2/ovmf/OVMF_CODE.fd' ]]
+	[[ $output == '/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_CODE.fd:/usr/share/edk2/x64/OVMF_CODE.4m.fd:/usr/share/edk2/ovmf/OVMF_CODE.fd:/usr/share/qemu/ovmf-x86_64-4m-code.bin' ]]
 }
 
 @test "_cowork_fw_probe_paths: aarch64 is the official AAVMF path only" {
@@ -1386,6 +1386,21 @@ _make_appdir() {
 	: > "$TEST_TMP/edk2/x64/OVMF_VARS.4m.fd"
 	run _check_cowork_stack arch
 	[[ $output == *"Firmware: $TEST_TMP/edk2/x64/OVMF_CODE.4m.fd"* ]]
+	[[ $output != *'VARS template missing'* ]]
+}
+
+@test "_check_cowork_stack: openSUSE layout pairs -code.bin with -vars.bin" {
+	# openSUSE ships ovmf-x86_64-4m-code.bin beside -4m-vars.bin; the
+	# patched client's extra replace("-code.bin","-vars.bin") lands on
+	# the real file, and doctor must derive the same path.
+	mkdir -p "$TEST_TMP/qemu"
+	export _DOCTOR_OVMF_PATHS="$TEST_TMP/nope/OVMF_CODE.fd:$TEST_TMP/qemu/ovmf-x86_64-4m-code.bin"
+	: > "$TEST_TMP/qemu/ovmf-x86_64-4m-code.bin"
+	run _check_cowork_stack opensuse-leap
+	[[ $output == *"VARS template missing ($TEST_TMP/qemu/ovmf-x86_64-4m-vars.bin)"* ]]
+	: > "$TEST_TMP/qemu/ovmf-x86_64-4m-vars.bin"
+	run _check_cowork_stack opensuse-leap
+	[[ $output == *"Firmware: $TEST_TMP/qemu/ovmf-x86_64-4m-code.bin"* ]]
 	[[ $output != *'VARS template missing'* ]]
 }
 
