@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Added
+
+- The README lists a community-maintained Homebrew tap as an install option on Linux. It installs our AppImage without root or FUSE and follows our releases; on Ubuntu 24.04 and newer it runs with the Chromium sandbox off, so the APT repository remains the recommended route there ([#996](https://github.com/aaddrick/claude-desktop-debian/pull/996), [#972](https://github.com/aaddrick/claude-desktop-debian/issues/972))
+
 ### Fixed
 
 - `--doctor` no longer reports "Desktop entry not found" for installs from the community Homebrew tap ([#995](https://github.com/aaddrick/claude-desktop-debian/pull/995)). It recognises a Homebrew keg from the Electron path, checks the entry under the Homebrew prefix, and warns when that prefix's `share` is missing from `XDG_DATA_DIRS`, which `brew shellenv` does not set, with the `environment.d` line that fixes it.
