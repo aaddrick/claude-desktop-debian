@@ -4,13 +4,13 @@ Hash: SHA512
 Origin: claude-desktop-debian
 Label: Claude Desktop for Linux
 Codename: stable
-Date: Tue, 24 Nov 2026 10:03:52 UTC
+Date: Fri, 27 Nov 2026 03:48:35 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Claude Desktop unofficial Linux packages
 MD5Sum:
- 716671984f95897a6c4775293111c203 1976 main/binary-amd64/Packages
- c81e33789a76fa49b69ca9f46ff66839 998 main/binary-amd64/Packages.gz
+ 5cc3b327edcc31bce998cdfdc491100a 1976 main/binary-amd64/Packages
+ b0dd42a54c20b973eddff4fc54cc9596 997 main/binary-amd64/Packages.gz
  a2caf00b1736931b4559667c8bf5a6b1 2032 main/dep11/Components-amd64.yml
  c42448b3382ca36891d9fd26b1e32258 10240 main/dep11/icons-48x48.tar
  35cc535707ac9c44e8d95a3ee4a4579b 10240 main/dep11/icons-64x64.tar
@@ -20,14 +20,14 @@ MD5Sum:
  137e8173c1c20305592659c29cd484d0 5835 main/dep11/icons-64x64.tar.gz
  69b8822b1a32f40dafaf91d58617c07f 17506 main/dep11/icons-128x128.tar.gz
  02bfdb0962fdcbc813da34967372124d 152 main/binary-amd64/Release
- 06ea67531fc1ec98e80b719cbf06455e 1988 main/binary-arm64/Packages
- 4364b58a1ffe0dffac439d1e6f34364b 1001 main/binary-arm64/Packages.gz
+ 20a9214a82f7e3412be272e9bc6650c2 1988 main/binary-arm64/Packages
+ 612724e96a4e7054e5ed5005f50d2c31 1001 main/binary-arm64/Packages.gz
  a2caf00b1736931b4559667c8bf5a6b1 2032 main/dep11/Components-arm64.yml
  f3da0024aea2fcd605593a480830f01e 896 main/dep11/Components-arm64.yml.gz
  a34b0e690522268f14683fbce7f31005 152 main/binary-arm64/Release
 SHA1:
- b3b98df41bf9a4d193f18319fcbd7ed27dfa201d 1976 main/binary-amd64/Packages
- 9a883ea3c9a10386b02affe1033635a4fd2be997 998 main/binary-amd64/Packages.gz
+ 3d641d923a735ec82288817b9abbbdda5f1b964d 1976 main/binary-amd64/Packages
+ 63d76784762faa7ec1c770c69765ff0b49ed689f 997 main/binary-amd64/Packages.gz
  b9be377a25fa9c6b124ce19c6ecf9d4223041f96 2032 main/dep11/Components-amd64.yml
  ac4afe934a291efc3fdf55c1f28ca4e069b5b736 10240 main/dep11/icons-48x48.tar
  6d75a35930ce8ffcf51e24bf42306dbe69e11fa2 10240 main/dep11/icons-64x64.tar
@@ -37,14 +37,14 @@ SHA1:
  cb8d2916bf0c63103537fc13b33999f6b6275687 5835 main/dep11/icons-64x64.tar.gz
  aa5bb3c880219f9d68cf660cd7664a7d4d57d0ac 17506 main/dep11/icons-128x128.tar.gz
  7e6572fbede38f2753bbf46197b1db20fc4c57a0 152 main/binary-amd64/Release
- 3d646fce77d2d875fa779ff8455a1988d2f36f4d 1988 main/binary-arm64/Packages
- a29cc1885e29ddb9adf5846e7e054679f2d9b6ab 1001 main/binary-arm64/Packages.gz
+ e1da56142cf7843facc4752d5feaa69a898d184c 1988 main/binary-arm64/Packages
+ cfcc9d992211220c1284efb3292a2c09d3cecc05 1001 main/binary-arm64/Packages.gz
  b9be377a25fa9c6b124ce19c6ecf9d4223041f96 2032 main/dep11/Components-arm64.yml
  201bdc89aabcb2eb88a85ca6e857793cbd1d082b 896 main/dep11/Components-arm64.yml.gz
  9802bd79bf2009c5180e1df0d99da2dc7ba8f2f4 152 main/binary-arm64/Release
 SHA256:
- 5d1712dabac5f4d382acfb5febce0bc23d310ef3efa5d1fb858419b1bfd9f11d 1976 main/binary-amd64/Packages
- c7c81c8a03601fede12fd8daaa1bf55dc46cdb8d442fec5262c4c6afdf46e160 998 main/binary-amd64/Packages.gz
+ b34d955f3905d003f5e3122de4f51733365d59fca58195c32ad50430f8128eab 1976 main/binary-amd64/Packages
+ 67ff0048e201b6f4cb8e7bdac47d8e7797a42fdd7bc22b11ec38482d0e4743dd 997 main/binary-amd64/Packages.gz
  88bb01875a7b2f69efad5c83e0fe7f8fcfd125f4d3b1a436f6bc0dcefa3e418c 2032 main/dep11/Components-amd64.yml
  b2dfd153b995cb9d92ebd4a2f14fb62d5a282d0b5a3c2d03a9df8ae73f06d7bd 10240 main/dep11/icons-48x48.tar
  fbf855288c4fb08da862ecad470015683ed342f9b085e5cd94962fa8b54fe970 10240 main/dep11/icons-64x64.tar
@@ -54,24 +54,24 @@ SHA256:
  3890330b758a5f6be1be0f815ee929e114a941df1ba23e5061b4c6b44e37a90b 5835 main/dep11/icons-64x64.tar.gz
  f8fba6e6f03adaef6a9c3e10099c74907084c06f7191aaa860bdf282c7c9dde4 17506 main/dep11/icons-128x128.tar.gz
  2a288260d0eff0aee3beac611d50b711a495e6eaf053fffddf35ebdf498b0247 152 main/binary-amd64/Release
- e4f331f3d877e1bc4d5bd45cbfcf112c629fe33665e4e439efe927bd45726dab 1988 main/binary-arm64/Packages
- d7180edb401ecf6003722f1fe0073b8b79288898a40232696953a5a690035e4a 1001 main/binary-arm64/Packages.gz
+ 8304ca84811db86bf10d7c2ee6431b38adb9510bbe20b1d5321121dc879a2498 1988 main/binary-arm64/Packages
+ 4bc907c16c4f5701862ce8abf28928a8b4fa87d04141d30fc8618183b5d611ac 1001 main/binary-arm64/Packages.gz
  88bb01875a7b2f69efad5c83e0fe7f8fcfd125f4d3b1a436f6bc0dcefa3e418c 2032 main/dep11/Components-arm64.yml
  b904cb0385f1e3eeacb3996dc350584243b97a494f279c735096a12a5a3da24d 896 main/dep11/Components-arm64.yml.gz
  96728c0041e79a804531562cb2d8fb2e94869e09578537b2bc0afacf3de7025e 152 main/binary-arm64/Release
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAmsFYQgACgkQeM6R1yqp
-6bmA+g//df4K7ZKSVM+HjQ8C2+7M6NPog8CJrMCVRdDZdu4vtj/0pl8P3UmYdzRk
-I3h52GlvyEWKbauBkmrzsZnFi/tg/wy6UFLxeSiDbVtiSySuDPeWnTprJ9NMZ3E8
-Ug5KWCvUANMg7zg/AXC7jpCmdkT7GXyiStJKuHhAWislsfjgp48LyG+/pFCrg5cz
-NSxDuyfOKJGOQ1ros7bFs4Zko4s/O35ZvBWVel3V3yIRGSXd4bSyIA3efeDHa6Fg
-HgO36KdBw7iZvhuPy4ikd6xyXkFBVdDzUym9UbA0c6PLO0XsE0bQepPtTn3KE1wT
-ozZDByODHl1+ohq34rwAxMIAY0VFP4nt1QQPOeA+AAF+R4v9thSPwcDtJPaS3yAZ
-1H3n84XnyHZCdlMRMQROOzCGQbxE7uYDYJJU0Ytg5DIYvV8QlqmthNGtT8cQIlB/
-xa9Gf40tz/COxSFmNyhy0hGsDWL9e95TAqEEzg4HWA4ZaBhcctPgarmVhfG2hyc1
-+mItkH3PZTXQNiut+7NTJs8Zw1mfXjPMo9YVWjD8k/R5rk9EmXePuUbOqEJrKY66
-jrU3/8faz+KKFjLtaKihGHLRKA+G0Ep6SkoFrOhelxzXvnW1eJm6hkxx4fSr0fvR
-WIXw+ipw0EtPcRF1JbcpFDKiptK+ACNLThRCW/PlFz8rXiAFSaA=
-=/nCj
+iQIzBAEBCgAdFiEE96Grt/VF6QXwc8RWeM6R1yqp6bkFAmsI/ZMACgkQeM6R1yqp
+6bkH2Q//T9JKv+YAh46yE5266Hk9OHN/vLU2iV276tf/0xUos96q1hgVi/NSdT5r
+lddij2Rzw0kjDzJAcRcYdREF9RjNoDs+jg8W13Lf9xZYzIFwLqEXbOzmwAuVXD5/
+8X5WkbdTOMc3H+CMvkNdxIG/8Uzf8mflbjtfMQFXyXfG1n3V550nVug43F5gYnZu
+Ua4ryfVtTE/L5cWF9VAE9eesV+A+qHCoOhZYpuaXTDbxR9xNczccTpCi8bLLL5hh
+dKsoGaZhIBzfj2YNibbvAQ39tprb95bIESc6e0+xWlc3zetjnyZyztuA907760D5
+nmRBGqnhKMDArwWUoNmilsKp3Xlp3Wqqo7cvHh//jSDb3TixA/W+QD2+5yoq1YQt
+uyzDh3yhAG44Sya82ERJvFASXAsjykPYDbL9MHFQhTCtDJ6Z2MwaQz8Cm+kx5Uh3
+2/azlxP/IlIt7/YR8PG3LixEHfXAdTtny9fwQRNNgLQrQUJhRJgiPD0YOQQ74sfz
+u8G7lidBTpRb6A+wv0u0S4gP3YUl48US1RmIBtRcQ/l1i+bxqu0Jr3Pkdnu2Ucxt
+2aYEk3zn46TNIJXlzK6QBr5syn+yIR8v2JHQx1tZtB0P0ZKJIMsG6e0UbyZgwxKL
+8kuvV58E6y16Q95tV58mYCIWy5JiePu8DCVD9IPk1b9n+I0K1s4=
+=Rm8x
 -----END PGP SIGNATURE-----
