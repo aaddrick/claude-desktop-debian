@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — 
 
 <!-- Updated automatically by check-claude-version; will be current at release time. -->
 
+### Fixed
+
+- `--doctor` no longer reports "Desktop entry not found" for installs from the community Homebrew tap ([#972](https://github.com/aaddrick/claude-desktop-debian/issues/972)). It recognises a Homebrew keg from the Electron path, checks the entry under the Homebrew prefix, and warns when that prefix's `share` is missing from `XDG_DATA_DIRS`, which `brew shellenv` does not set, with the `environment.d` line that fixes it.
+
 ## [v3.3.20] — 2026-11-24
 
 ### Added
